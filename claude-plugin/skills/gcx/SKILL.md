@@ -54,6 +54,7 @@ right group:
 | Datasource-managed (Mimir/Loki ruler) rules | `alert ruler` | `gcx alert ruler groups list --datasource <uid>` |
 | Synthetic Monitoring checks | `synthetic-monitoring` | `gcx synthetic-monitoring checks list` |
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
+| Team business hours, pause escalation until working hours | `irm` | `gcx irm oncall teams get-working-hours <team-id>` (see below) |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
 | Metric names, labels, metadata | `metrics` | `gcx metrics list-names -d <uid> --contains <term> -o json` |
@@ -75,6 +76,59 @@ one your harness hasn't loaded. Dashboard authoring uses `create-dashboard`.
 
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.
+
+### Team Business Hours and Working-Hours Escalation
+
+A team's business hours are a list of named intervals, each with up to three
+time ranges per weekday. The escalation step "Pause escalation until team's
+working hours" holds an alert group until its team is in business hours. Use
+the team ID, not the name:
+
+```bash
+# Find the team ID
+gcx irm oncall teams list
+
+# Read the hours as a weekly grid, or as the editable document
+gcx irm oncall teams get-working-hours <team-id>
+gcx irm oncall teams get-working-hours <team-id> -o yaml
+
+# Replace the hours: the file's intervals become the team's entire set,
+# and `irm_working_hours: null` clears them
+gcx irm oncall teams update-working-hours <team-id> -f hours.yaml
+```
+
+`hours.yaml` (24-hour `HH:MM:SS` times in the team's timezone; a weekday with no
+ranges is a day off, but every interval needs a range on at least one weekday):
+
+```yaml
+irm_working_hours:
+  - name: Business hours
+    irm_working_hours:
+      monday:    [{start: "09:00:00", end: "17:00:00"}]
+      tuesday:   [{start: "09:00:00", end: "17:00:00"}]
+      wednesday: [{start: "09:00:00", end: "17:00:00"}]
+      thursday:  [{start: "09:00:00", end: "17:00:00"}]
+      friday:    [{start: "09:00:00", end: "17:00:00"}]
+      saturday:  []
+      sunday:    []
+```
+
+To pause an escalation chain until those hours, add a policy with step `27`
+(confirm the value with `gcx irm oncall escalation-policies list-step-types`).
+The step needs a team in `notify_to_team_members`; gcx rejects the policy
+before sending it when the team is missing or does not exist:
+
+```yaml
+step: 27
+escalation_chain: <chain-id>
+notify_to_team_members: <team-id>
+```
+
+```bash
+gcx irm oncall escalation-policies create -f policy.yaml
+```
+
+Hours that are not set mean the step does not pause: the escalation continues.
 
 ### Avoid Raw API Passthrough
 

@@ -15,6 +15,11 @@ import (
 func goldenEscalationStepOptions() []EscalationStepOption {
 	return []EscalationStepOption{
 		{Value: 19, CreateDisplayName: "Declare Incident", DisplayName: "declare incident", SlackIntegrationRequired: true},
+		{
+			Value:             27,
+			CreateDisplayName: "Pause escalation until team's working hours",
+			DisplayName:       "Pause escalation until {{pause_team}} working hours",
+		},
 		{Value: 0},
 	}
 }
