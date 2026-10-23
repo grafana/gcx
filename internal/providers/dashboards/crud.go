@@ -136,8 +136,8 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", newDashboardTableCodec(false, ""))
-	o.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, ""))
+	o.IO.RegisterCustomCodec("table", dashboardListTable("").Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec("wide", dashboardListTable("").Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -193,7 +193,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// Wide output needs the Grafana URL for link synthesis. Re-register
 			// with runtime context after cfg is loaded.
 			if opts.IO.OutputFormat == "wide" {
-				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
+				opts.IO.RegisterCustomCodec("wide", dashboardListTable(cfg.GrafanaURL).Codec(cmdio.FormatWide))
 			}
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), list); err != nil {
@@ -241,8 +241,8 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", newDashboardTableCodec(false, ""))
-	o.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, ""))
+	o.IO.RegisterCustomCodec("table", dashboardGetTable("").Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec("wide", dashboardGetTable("").Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -291,7 +291,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// Wide codec needs the Grafana URL for link synthesis.
 			// Re-register with the real URL after cfg is loaded.
 			if opts.IO.OutputFormat == "wide" {
-				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
+				opts.IO.RegisterCustomCodec("wide", dashboardGetTable(cfg.GrafanaURL).Codec(cmdio.FormatWide))
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), item)

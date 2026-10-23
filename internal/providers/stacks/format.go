@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/style"
 )
 
 // dryRunPreviewType is the collision-resistant discriminator carried by
@@ -56,19 +56,10 @@ type createdStackSummary struct {
 	URL     string `json:"url" yaml:"url"`
 }
 
-// stackTableCodec renders []cloud.StackInfo as a table. It also renders
-// dryRunPreview values (the --dry-run result of create/update) as the
-// classic human preview when table output is selected.
-type stackTableCodec struct {
-	Wide bool
-}
+// stackTableCodec retains the create/update dry-run preview alongside their table receipts.
+type stackTableCodec struct{}
 
-func (c *stackTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *stackTableCodec) Format() format.Format { return cmdio.FormatTable }
 
 func (c *stackTableCodec) Encode(w io.Writer, v any) error {
 	if p, ok := v.(dryRunPreview); ok {
@@ -77,48 +68,46 @@ func (c *stackTableCodec) Encode(w io.Writer, v any) error {
 	}
 
 	if s, ok := v.(createdStackSummary); ok {
-		tbl := style.NewTable("NAME", "ORGSLUG", "SLUG", "STATUS", "URL")
-		tbl.Row(s.Name, s.OrgSlug, s.Slug, s.Status, s.URL)
-		return tbl.Render(w)
+		return createdStackTable().Codec(cmdio.FormatTable).Encode(w, s)
 	}
-
-	stacks, ok := v.([]cloud.StackInfo)
-	if !ok {
-		if s, ok := v.(cloud.StackInfo); ok {
-			stacks = []cloud.StackInfo{s}
-		} else {
-			return errors.New("invalid data type for table codec: expected []cloud.StackInfo or cloud.StackInfo")
-		}
+	if s, ok := v.(cloud.StackInfo); ok {
+		return stackGetTable().Codec(cmdio.FormatTable).Encode(w, s)
 	}
-
-	var tbl *style.TableBuilder
-	if c.Wide {
-		tbl = style.NewTable("SLUG", "NAME", "STATUS", "REGION", "URL", "PLAN", "DELETE-PROTECTION", "CREATED")
-	} else {
-		tbl = style.NewTable("SLUG", "NAME", "STATUS", "REGION", "URL")
-	}
-
-	for _, s := range stacks {
-		if c.Wide {
-			dp := "false"
-			if s.DeleteProtection {
-				dp = "true"
-			}
-			created := s.CreatedAt
-			if len(created) > 10 {
-				created = created[:10]
-			}
-			tbl.Row(s.Slug, s.Name, s.Status, s.RegionSlug, s.URL, s.PlanName, dp, created)
-		} else {
-			tbl.Row(s.Slug, s.Name, s.Status, s.RegionSlug, s.URL)
-		}
-	}
-
-	return tbl.Render(w)
+	return fmt.Errorf("invalid data type for table codec: expected dryRunPreview, createdStackSummary or cloud.StackInfo, got %T", v)
 }
 
 func (c *stackTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+func stackTable() cmdio.Table[cloud.StackInfo] {
+	return cmdio.Table[cloud.StackInfo]{Columns: []cmdio.Column[cloud.StackInfo]{
+		{Header: "SLUG", Content: func(s cloud.StackInfo) string { return s.Slug }},
+		{Header: "NAME", Content: func(s cloud.StackInfo) string { return s.Name }},
+		{Header: "STATUS", Content: func(s cloud.StackInfo) string { return s.Status }},
+		{Header: "REGION", Content: func(s cloud.StackInfo) string { return s.RegionSlug }},
+		{Header: "URL", Content: func(s cloud.StackInfo) string { return s.URL }},
+		{Header: "PLAN", Visible: cmdio.WideOnly, Content: func(s cloud.StackInfo) string { return s.PlanName }},
+		{Header: "DELETE-PROTECTION", Visible: cmdio.WideOnly, Content: func(s cloud.StackInfo) string { return strconv.FormatBool(s.DeleteProtection) }},
+		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(s cloud.StackInfo) string { return s.CreatedAt[:min(len(s.CreatedAt), 10)] }},
+	}}
+}
+
+func stackGetTable() cmdio.TableAdapter[cloud.StackInfo, cloud.StackInfo] {
+	return cmdio.TableAdapter[cloud.StackInfo, cloud.StackInfo]{Table: stackTable(), Rows: func(s cloud.StackInfo) ([]cloud.StackInfo, error) { return []cloud.StackInfo{s}, nil }}
+}
+
+func createdStackTable() cmdio.TableAdapter[createdStackSummary, createdStackSummary] {
+	return cmdio.TableAdapter[createdStackSummary, createdStackSummary]{
+		Table: cmdio.Table[createdStackSummary]{Columns: []cmdio.Column[createdStackSummary]{
+			{Header: "NAME", Content: func(s createdStackSummary) string { return s.Name }},
+			{Header: "ORGSLUG", Content: func(s createdStackSummary) string { return s.OrgSlug }},
+			{Header: "SLUG", Content: func(s createdStackSummary) string { return s.Slug }},
+			{Header: "STATUS", Content: func(s createdStackSummary) string { return s.Status }},
+			{Header: "URL", Content: func(s createdStackSummary) string { return s.URL }},
+		}},
+		Rows: func(s createdStackSummary) ([]createdStackSummary, error) { return []createdStackSummary{s}, nil },
+	}
 }
 
 func regionTable() cmdio.Table[cloud.Region] {

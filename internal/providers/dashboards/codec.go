@@ -1,94 +1,44 @@
 package dashboards
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/gcx/internal/style"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// dashboardTableCodec renders an *unstructured.UnstructuredList (or a slice of
-// *unstructured.Unstructured) as a human-readable table.
-//
-// Default columns: NAME  TITLE  FOLDER  TAGS  AGE
-// Wide columns:    NAME  TITLE  FOLDER  TAGS  PANELS  URL  AGE.
-
-// newDashboardTableCodec constructs a dashboardTableCodec.
-// wide enables the extended PANELS and URL columns.
-// grafanaURL is used to synthesise deep-link URLs in wide mode.
-func newDashboardTableCodec(wide bool, grafanaURL string) *dashboardTableCodec {
-	return &dashboardTableCodec{Wide: wide, GrafanaURL: grafanaURL}
+func dashboardTable(grafanaURL string) cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{Columns: []cmdio.Column[unstructured.Unstructured]{
+		{Header: "NAME", Content: func(item unstructured.Unstructured) string { return item.GetName() }},
+		{Header: "TITLE", Content: func(item unstructured.Unstructured) string { return nestedString(item.Object, "spec", "title") }},
+		{Header: "FOLDER", Content: dashboardFolder},
+		{Header: "TAGS", Content: dashboardTags},
+		{Header: "PANELS", Visible: cmdio.WideOnly, Content: dashboardPanelCount},
+		{Header: "URL", Visible: cmdio.WideOnly, Content: func(item unstructured.Unstructured) string { return dashboardURL(grafanaURL, item) }},
+		{Header: "AGE", Content: dashboardAge},
+	}}
 }
 
-type dashboardTableCodec struct {
-	// Wide enables the extra PANELS and URL columns.
-	Wide bool
-
-	// GrafanaURL is the base Grafana URL used to synthesise deep-link URLs in
-	// wide mode (e.g. "https://mystack.grafana.net"). May be empty when not
-	// available, in which case the URL column is left blank.
-	GrafanaURL string
-}
-
-// Format implements format.Codec.
-func (c *dashboardTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-// Decode is a no-op: table format is display-only.
-func (c *dashboardTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// Encode writes the table to w.
-// It accepts:
-//   - *unstructured.UnstructuredList
-//   - unstructured.UnstructuredList
-//   - *unstructured.Unstructured   (wrapped in a synthetic list)
-//   - unstructured.Unstructured
-//   - []unstructured.Unstructured
-func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-
-	var headers []string
-	if c.Wide {
-		headers = []string{"NAME", "TITLE", "FOLDER", "TAGS", "PANELS", "URL", "AGE"}
-	} else {
-		headers = []string{"NAME", "TITLE", "FOLDER", "TAGS", "AGE"}
-	}
-
-	t := style.NewTable(headers...)
-
-	for _, item := range items {
-		name := item.GetName()
-		title := nestedString(item.Object, "spec", "title")
-		folder := dashboardFolder(item)
-		tags := dashboardTags(item)
-		age := dashboardAge(item)
-
-		if c.Wide {
-			panels := dashboardPanelCount(item)
-			dashURL := dashboardURL(c.GrafanaURL, item)
-			t.Row(name, title, folder, tags, panels, dashURL, age)
-		} else {
-			t.Row(name, title, folder, tags, age)
+func dashboardListTable(grafanaURL string) cmdio.TableAdapter[*unstructured.UnstructuredList, unstructured.Unstructured] {
+	return cmdio.TableAdapter[*unstructured.UnstructuredList, unstructured.Unstructured]{Table: dashboardTable(grafanaURL), Rows: func(list *unstructured.UnstructuredList) ([]unstructured.Unstructured, error) {
+		if list == nil {
+			return nil, nil
 		}
-	}
+		return list.Items, nil
+	}}
+}
 
-	return t.Render(w)
+func dashboardGetTable(grafanaURL string) cmdio.TableAdapter[*unstructured.Unstructured, unstructured.Unstructured] {
+	return cmdio.TableAdapter[*unstructured.Unstructured, unstructured.Unstructured]{Table: dashboardTable(grafanaURL), Rows: func(item *unstructured.Unstructured) ([]unstructured.Unstructured, error) {
+		if item == nil {
+			return nil, nil
+		}
+		return []unstructured.Unstructured{*item}, nil
+	}}
 }
 
 // dashboardFolder extracts the folder name from the dashboard's annotations.
@@ -208,28 +158,4 @@ func nestedString(obj map[string]any, fields ...string) string {
 		return ""
 	}
 	return s
-}
-
-// toUnstructuredSlice normalises the various input types into a []unstructured.Unstructured.
-func toUnstructuredSlice(v any) ([]unstructured.Unstructured, error) {
-	switch val := v.(type) {
-	case *unstructured.UnstructuredList:
-		if val == nil {
-			return nil, nil
-		}
-		return val.Items, nil
-	case unstructured.UnstructuredList:
-		return val.Items, nil
-	case *unstructured.Unstructured:
-		if val == nil {
-			return nil, nil
-		}
-		return []unstructured.Unstructured{*val}, nil
-	case unstructured.Unstructured:
-		return []unstructured.Unstructured{val}, nil
-	case []unstructured.Unstructured:
-		return val, nil
-	default:
-		return nil, fmt.Errorf("dashboardTableCodec: unsupported type %T", v)
-	}
 }
