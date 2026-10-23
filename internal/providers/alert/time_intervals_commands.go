@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -50,11 +49,20 @@ type timeIntervalsReadOpts struct {
 }
 
 func (o *timeIntervalsReadOpts) setup(flags *pflag.FlagSet, list bool) {
-	o.IO.RegisterCustomCodec("table", &timeIntervalTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &timeIntervalTableCodec{wide: true})
 	if list {
+		table := cmdio.TableAdapter[*unstructured.UnstructuredList, unstructured.Unstructured]{
+			Table: timeIntervalTable(),
+			Rows: func(items *unstructured.UnstructuredList) ([]unstructured.Unstructured, error) {
+				return items.Items, nil
+			},
+		}
+		o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+		o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 		o.IO.DefaultFormat("table")
 	} else {
+		table := timeIntervalGetTable()
+		o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+		o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 		o.IO.DefaultFormat("yaml")
 	}
 	o.IO.BindFlags(flags)
@@ -429,40 +437,29 @@ func cancelledNativeAlertDelete(kind, title string) error {
 	return &gcxerrors.DetailedError{Summary: "delete cancelled", Details: fmt.Sprintf("confirmation was declined; %s %q was not changed", kind, title), ExitCode: new(gcxerrors.ExitCancelled)}
 }
 
-type timeIntervalTableCodec struct{ wide bool }
+func timeIntervalTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{Columns: []cmdio.Column[unstructured.Unstructured]{
+		{Header: "TITLE", Content: func(item unstructured.Unstructured) string {
+			title, _, _ := unstructured.NestedString(item.Object, "spec", "name")
+			return title
+		}},
+		{Header: "API_NAME", Content: func(item unstructured.Unstructured) string { return item.GetName() }},
+		{Header: "INTERVALS", Content: func(item unstructured.Unstructured) string {
+			intervals, _, _ := unstructured.NestedSlice(item.Object, "spec", "time_intervals")
+			return strconv.Itoa(len(intervals))
+		}},
+		{Header: "READ-ONLY", Content: func(item unstructured.Unstructured) string {
+			return strconv.FormatBool(resources.IsReadOnlyNative(&item))
+		}},
+		{Header: "PROVENANCE", Visible: cmdio.WideOnly, Content: func(item unstructured.Unstructured) string { return item.GetAnnotations()[provenanceAnnotation] }},
+	}}
+}
 
-func (c *timeIntervalTableCodec) Format() format.Format {
-	if c.wide {
-		return "wide"
+func timeIntervalGetTable() cmdio.TableAdapter[*unstructured.Unstructured, unstructured.Unstructured] {
+	return cmdio.TableAdapter[*unstructured.Unstructured, unstructured.Unstructured]{
+		Table: timeIntervalTable(),
+		Rows: func(item *unstructured.Unstructured) ([]unstructured.Unstructured, error) {
+			return []unstructured.Unstructured{*item}, nil
+		},
 	}
-	return "table"
-}
-func (*timeIntervalTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
-}
-func (c *timeIntervalTableCodec) Encode(w io.Writer, v any) error {
-	var items []unstructured.Unstructured
-	switch val := v.(type) {
-	case *unstructured.UnstructuredList:
-		items = val.Items
-	case *unstructured.Unstructured:
-		items = []unstructured.Unstructured{*val}
-	default:
-		return fmt.Errorf("time interval table: unsupported type %T", v)
-	}
-	headers := []string{"TITLE", "API_NAME", "INTERVALS", "READ-ONLY"}
-	if c.wide {
-		headers = append(headers, "PROVENANCE")
-	}
-	table := style.NewTable(headers...)
-	for _, item := range items {
-		title, _, _ := unstructured.NestedString(item.Object, "spec", "name")
-		intervals, _, _ := unstructured.NestedSlice(item.Object, "spec", "time_intervals")
-		row := []string{title, item.GetName(), strconv.Itoa(len(intervals)), strconv.FormatBool(resources.IsReadOnlyNative(&item))}
-		if c.wide {
-			row = append(row, item.GetAnnotations()[provenanceAnnotation])
-		}
-		table.Row(row...)
-	}
-	return table.Render(w)
 }

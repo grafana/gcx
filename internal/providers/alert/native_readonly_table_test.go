@@ -20,7 +20,11 @@ func TestNativeReadOnlyTables(t *testing.T) {
 				var out bytes.Buffer
 				var err error
 				if kind == "TimeInterval" {
-					err = (&timeIntervalTableCodec{wide: wide}).Encode(&out, obj)
+					name := "table"
+					if wide {
+						name = "wide"
+					}
+					err = timeIntervalGetTable().Codec(name).Encode(&out, obj)
 				} else {
 					err = (&templateGroupTableCodec{wide: wide}).Encode(&out, obj)
 				}
