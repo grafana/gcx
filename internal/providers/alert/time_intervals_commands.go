@@ -58,7 +58,7 @@ func (o *timeIntervalsReadOpts) setup(flags *pflag.FlagSet, list bool) {
 		}
 		o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
 		o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
-		o.IO.DefaultFormat("table")
+		o.IO.DefaultFormat(cmdio.FormatTable)
 	} else {
 		table := timeIntervalGetTable()
 		o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
