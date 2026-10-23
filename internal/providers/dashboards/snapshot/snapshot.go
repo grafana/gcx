@@ -70,7 +70,7 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Since, "since", "", "Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to")
 	flags.StringVar(&opts.Tz, "tz", "", "Timezone (e.g. 'UTC', 'America/New_York')")
 	flags.IntVar(&opts.PanelID, "panel", 0, "Panel number to render a single panel instead of the full dashboard")
-	flags.IntVar(&opts.OrgID, "org-id", 1, "Grafana organization number")
+	flags.IntVar(&opts.OrgID, "org-id", 0, "Grafana organization number (default: configured org-id, or 1)")
 	flags.StringVar(&opts.OutputDir, "output-dir", ".", "Directory to write PNG files to (created if it does not exist)")
 	flags.IntVar(&opts.Concurrency, "concurrency", 10, "Maximum number of concurrent render requests")
 	flags.DurationVar(&opts.Timeout, "timeout", 0, "Maximum time for each render as a positive whole-second duration (e.g. 30s, 3m)")
