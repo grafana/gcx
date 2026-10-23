@@ -37,7 +37,7 @@ For each journey `J`, launch an agent that:
   Do not hand-author AlertRule manifests: there is no
   `gcx resources list-examples AlertRule` template, and gcx's alert provider is
   read-only for rules, so `gcx resources push` cannot create them.
-- Creates the SLO: `gcx slo definitions push slo-J.yaml --dry-run` then `gcx slo definitions push slo-J.yaml`. List SLOs to confirm.
+- Creates the SLO: `gcx resources push slos -p slo-J.yaml --dry-run` then `gcx resources push slos -p slo-J.yaml`. List SLOs to confirm.
 - Confirms the generated burn-rate rules appeared: `gcx alert rules list`.
 
 Launch all journey agents simultaneously. Wait for all to complete.

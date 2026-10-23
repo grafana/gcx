@@ -201,6 +201,48 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	return t.Render(w)
 }
 
+// FormatPatternsTable formats a PatternsResponse as a table with PATTERN and
+// SAMPLES columns, sorted by total sample count descending (the most frequent
+// pattern first). The API has no sum field, so the total is computed
+// client-side from each pattern's samples.
+func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
+	if len(resp.Data) == 0 {
+		fmt.Fprintln(w, "No patterns returned for this selector and range (the backend may prune low-volume patterns or hold no pattern data for it)")
+		return nil
+	}
+
+	type row struct {
+		pattern string
+		total   int64
+	}
+	rows := make([]row, 0, len(resp.Data))
+	for _, p := range resp.Data {
+		var total int64
+		for _, sample := range p.Samples {
+			if len(sample) >= 2 {
+				total += sample[1]
+			}
+		}
+		rows = append(rows, row{pattern: p.Pattern, total: total})
+	}
+	// Break ties on total by pattern text so the row order is fully
+	// deterministic — sort.Slice alone leaves equal-total patterns in an
+	// unspecified relative order, which can flip between otherwise-identical
+	// runs and make table output flaky to diff.
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].total != rows[j].total {
+			return rows[i].total > rows[j].total
+		}
+		return rows[i].pattern < rows[j].pattern
+	})
+
+	t := style.NewTable("PATTERN", "SAMPLES")
+	for _, r := range rows {
+		t.Row(r.pattern, strconv.FormatInt(r.total, 10))
+	}
+	return t.Render(w)
+}
+
 // FormatMetricQueryTable formats a MetricQueryResponse as a table with TIMESTAMP, VALUE, and label columns.
 func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 	if len(resp.Data.Result) == 0 {
@@ -569,11 +611,21 @@ func formatKeyValue(key, value string) string {
 }
 
 func formatHumanTimestamp(raw string) string {
-	nanos, err := strconv.ParseInt(raw, 10, 64)
+	t, err := ParseTimestamp(raw)
 	if err != nil {
 		return raw
 	}
-	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// ParseTimestamp parses a LogEntry's Timestamp field — Loki's raw
+// nanosecond-epoch string — into a time.Time.
+func ParseTimestamp(raw string) (time.Time, error) {
+	nanos, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse timestamp: %w", err)
+	}
+	return time.Unix(0, nanos), nil
 }
 
 func collectMetricLabelNames(samples []MetricQuerySample) []string {

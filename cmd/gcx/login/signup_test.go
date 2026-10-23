@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,11 +148,14 @@ func TestSignupFlagsAreOnlyTheBrowserOnes(t *testing.T) {
 // context name fixed before the browser opened.
 func TestSignupSavesTheNewStack(t *testing.T) {
 	signupEnvironment(t, "true")
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	browser := stubSignupBrowser(t, nil)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 
 	stderr, err := runSignup(t, "--config", path)
 	require.NoError(t, err, stderr)
+	assert.Equal(t, "complete", capture.CurrentLoginStage())
 	assert.Contains(t, stderr, `Connecting gcx to Grafana Cloud. The connection will be saved as context "default".`)
 
 	require.Equal(t, 1, browser.started())
@@ -272,6 +276,8 @@ func TestSignupRefusesBeforeTheBrowser(t *testing.T) {
 			for key, value := range tc.env {
 				t.Setenv(key, value)
 			}
+			capture.Reset()
+			t.Cleanup(capture.Reset)
 			browser := stubSignupBrowser(t, nil)
 			path := writeSignupConfig(t, tc.seed())
 			before, err := os.ReadFile(path)
@@ -283,6 +289,7 @@ func TestSignupRefusesBeforeTheBrowser(t *testing.T) {
 			assert.Contains(t, det.Details, tc.want)
 			assert.Equal(t, "Invalid command usage", det.Summary)
 			assert.Zero(t, browser.started(), "the refusal must come before the browser step")
+			assert.Equal(t, "preflight", capture.CurrentLoginStage())
 
 			after, err := os.ReadFile(path)
 			require.NoError(t, err)
@@ -499,11 +506,14 @@ func assertLoginAccepts(t *testing.T, command string) {
 // printing the result, after the connection is saved, is reported as itself.
 func TestSignupOutputFailureIsNotAnUnfinishedSignup(t *testing.T) {
 	signupEnvironment(t, "true")
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	stubSignupBrowser(t, nil)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 
 	_, err := runSignup(t, "--config", path, "-o", "json", "--jq", ".contextName | tonumber")
 	require.Error(t, err)
+	assert.Equal(t, "complete", capture.CurrentLoginStage(), "a failure to print the result does not undo the save")
 	var incomplete *internallogin.SignupIncompleteError
 	assert.NotErrorAs(t, err, &incomplete)
 

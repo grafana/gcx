@@ -1675,12 +1675,13 @@ func annotateErrorWithSource(filename string, contents []byte, err error) error 
 			return err
 		}
 
+		validationError.File = filename
 		annotatedSource, err := path.AnnotateSource(contents, true)
 		if err != nil {
-			return err
+			// Environment-only values have no YAML node to annotate.
+			return validationError
 		}
 
-		validationError.File = filename
 		validationError.AnnotatedSource = string(annotatedSource)
 
 		return validationError

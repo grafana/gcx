@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -156,11 +158,15 @@ type MakeFiltersOptions struct {
 
 	// Whether to only return the preferred version of the resource.
 	PreferredVersionOnly bool
+
+	// Warn receives deprecation diagnostics; nil suppresses them.
+	Warn io.Writer
 }
 
 // MakeFilters creates filters from selectors with the given options.
 func (r *Registry) MakeFilters(opts MakeFiltersOptions) (resources.Filters, error) {
 	var filters resources.Filters
+	warned := make(map[string]bool)
 
 	for _, selector := range opts.Selectors {
 		selectorFilters, err := r.makeFiltersForSelector(selector, opts.PreferredVersionOnly)
@@ -168,6 +174,14 @@ func (r *Registry) MakeFilters(opts MakeFiltersOptions) (resources.Filters, erro
 			return nil, err
 		}
 
+		group := selector.GroupVersionKind.Group
+		for _, filter := range selectorFilters {
+			canonicalGroup := filter.Descriptor.GroupVersion.Group
+			if opts.Warn != nil && !warned[canonicalGroup] && resources.MatchesGroupAlias(filter.Descriptor.GroupVersionKind(), group) {
+				output.EmitWarn(opts.Warn, fmt.Sprintf("resource group %q is deprecated; use %q instead", group, filter.Descriptor.GroupVersion.Group))
+				warned[canonicalGroup] = true
+			}
+		}
 		filters = append(filters, selectorFilters...)
 	}
 

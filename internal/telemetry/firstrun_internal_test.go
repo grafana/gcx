@@ -210,12 +210,12 @@ func TestFirstRunNoticeSkippedWhenStateFileUnreadable(t *testing.T) {
 // Pinning the exact text closes that. Any edit fails here, which forces the
 // author to make the revision decision deliberately instead of by omission.
 func TestFirstRunNoticeTextIsPinnedToItsRevision(t *testing.T) {
-	const pinnedRevision = "3"
+	const pinnedRevision = "4"
 	const pinnedNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect arguments, free-form flag values, or resource names, and no raw batch or resource counts. Flags you set are recorded by name only.
 
 For the resource commands that work on batches, we record fixed size categories for the operation's succeeded, failed and skipped portions, rather than numbers. What each portion counts depends on the command: for some it is individual resources, for others whole resource types. Two of those categories, "0" and "1", cover a single value each; the rest are ranges. We also record the output format used, and whether the operation ran in dry-run mode.
 
-For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations.
+For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations. For gcx signup, we record the last step it reached, such as browser or complete.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled

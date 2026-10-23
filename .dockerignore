@@ -1,0 +1,8 @@
+# Only the sources the build stage needs (`mise run docker:build`).
+*
+!cmd/
+!internal/
+!claude-plugin/
+!go.mod
+!go.sum
+!mise.toml

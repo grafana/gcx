@@ -93,3 +93,23 @@ jobs:
 
       - name: Build documentation
         run: mise run --skip-tools docs
+
+  # GoReleaser only uses the Dockerfile on tag push, so build it from source
+  # here: a broken Dockerfile then fails the PR instead of the release.
+  docker-image:
+    name: Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        with:
+          install: false
+          cache: false
+
+      - name: Build Docker image
+        run: mise run --skip-tools docker:build

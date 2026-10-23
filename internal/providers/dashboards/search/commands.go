@@ -45,8 +45,9 @@ type searchOpts struct {
 }
 
 func (o *searchOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &searchTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &searchTableCodec{Wide: true})
+	table := searchTable()
+	o.IO.RegisterCustomCodec("table", table.Codec("table"))
+	o.IO.RegisterCustomCodec("wide", table.Codec("wide"))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 

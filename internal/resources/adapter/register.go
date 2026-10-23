@@ -21,6 +21,7 @@ type Registration struct {
 	Factory               Factory
 	Descriptor            resources.Descriptor
 	Aliases               []string
+	GroupAliases          []string // Compatibility groups, not additional resource types.
 	GVK                   schema.GroupVersionKind
 	Schema                func() json.RawMessage         // Required, non-nil: returns the JSON Schema for this resource type (per CONSTITUTION.md). Called on demand, so schemas cost nothing at start-up.
 	Example               json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
@@ -40,6 +41,7 @@ var registrations []Registration
 // Provider.TypedRegistrations() — provider code must not call it directly
 // (CONSTITUTION.md § Architecture Invariants, unified provider registration).
 func Register(reg Registration) {
+	resources.RegisterGroupAliases(reg.Descriptor.GroupVersionKind(), reg.GroupAliases)
 	registrations = append(registrations, reg)
 }
 

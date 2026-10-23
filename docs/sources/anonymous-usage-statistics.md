@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 4
+weight: 30
 ---
 
 # Understand gcx usage statistics
@@ -20,7 +20,7 @@ The one place an argument value is used at all is the `api` command, where the r
 
 For the resource commands that operate on batches, the size of the operation is sent as one of seven fixed categories rather than as a number. Two of those categories, `0` and `1`, cover a single value each, so those two sizes are exact; every larger category is a range. See [How to read the batch fields](#how-to-read-the-batch-fields).
 
-Further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats; `dry_run` records whether the operation executed in dry-run mode; and `grafana_auth_method` records the authentication category selected for the Grafana connection, from a fixed vocabulary and never the credential itself. `output_format` is read from `--output`, which means a command that renders JSON because you passed `--json` is still recorded with `--output`'s value; that mismatch is a known bug rather than intended behaviour. `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag; `grafana_auth_method` is described in [Failure and authentication fields](#failure-and-authentication-fields). Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
+Further fields describe how the command ran rather than naming a flag: `output_format` records the output format used, from a fixed list of known formats; `dry_run` records whether the operation executed in dry-run mode; `grafana_auth_method` records the authentication category selected for the Grafana connection, from a fixed vocabulary and never the credential itself; and `signup_stage` records the last step `gcx signup` reached, also from a fixed vocabulary. `output_format` is read from `--output`, which means a command that renders JSON because you passed `--json` is still recorded with `--output`'s value; that mismatch is a known bug rather than intended behaviour. `dry_run` is derived from the operation and is set even for commands that have no `--dry-run` flag; `grafana_auth_method` is described in [Failure and authentication fields](#failure-and-authentication-fields), and `signup_stage` in [Signup fields](#signup-fields). Some server-side enrichment is also performed on the usage statistics exported - see [Server-side enrichment](#server-side-enrichment) for details.
 
 {{< admonition type="note" >}} Usage statistics reporting is **enabled by default**. See the [Opt out](#opt-out) section below for guidance on how to turn off usage reporting.{{< /admonition >}}
 
@@ -83,7 +83,7 @@ These fields are easy to misread, so the following constraints are part of the c
 
 ### Canceled invocations
 
-An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No property is collected specifically for cancellation — and the failure fields described in [Failure and authentication fields](#failure-and-authentication-fields) are never attached to one, for the same reason. Like every other event it is sent on a best-effort basis. For an invocation you interrupted, pressing Ctrl-C a second time ends the process immediately, before the report is sent; an invocation that stopped for another reason waits out the report like any other run, because there is no interrupt for the second Ctrl-C to follow.
+An invocation that stopped before it finished reports `outcome: canceled` with `exit_code: 5`, and `error_kind` present but empty, because a stop is not a kind of failure. No property records cancellation directly; for `gcx signup`, `signup_stage` shows how far it got. The failure fields described in [Failure and authentication fields](#failure-and-authentication-fields) are never attached to a cancellation, for the same reason. Like every other event it is sent on a best-effort basis. For an invocation you interrupted, pressing Ctrl-C a second time ends the process immediately, before the report is sent; an invocation that stopped for another reason waits out the report like any other run, because there is no interrupt for the second Ctrl-C to follow.
 
 Three things this value does *not* tell you:
 
@@ -114,11 +114,35 @@ These fields are easy to misread, so the following constraints are part of the c
 
 - **`http_status` is a transport status, never a body status.** Datasource queries can fail inside an HTTP 200 response, with the real error and its status embedded in the body. Such a failure sets no `http_status` at all. In exactly that case `error_kind` may still say `auth_failure`, because the command classifies and explains errors on the embedded status; the divergence is deliberate and must not be "fixed" by aligning either side.
 - **Only failure statuses travel.** A status outside `400`–`599` — a success, a redirect, anything malformed — is omitted, never coerced into the range.
-- **Coverage is partial, so absence proves nothing.** `http_status` is recorded where the failing client surfaces a machine-readable status: provider APIs that use the shared error helper, datasource query endpoints, datasource management commands, Knowledge Graph, Adaptive Logs, and `gcx api`. Clients that report failures as plain text — GCOM, Fleet, k6, Faro, Adaptive Metrics, and the assistant among them — are not instrumented, so the absence of `http_status` must never be read as "no HTTP failure occurred".
+- **Coverage is partial, so absence proves nothing.** `http_status` is recorded where the failing client surfaces a machine-readable status: provider APIs that use the shared error helper, datasource query endpoints, datasource management commands, Knowledge Graph, Adaptive Logs, `gcx api`, and the OAuth token exchange of `gcx login` and `gcx signup`. Clients that report failures as plain text — GCOM, Fleet, k6, Faro, Adaptive Metrics, and the assistant among them — are not instrumented, so the absence of `http_status` must never be read as "no HTTP failure occurred".
 - **Kubernetes failures report a reason, never a status.** A Kubernetes API error sets `k8s_reason` and leaves `http_status` empty; the status code inside a Kubernetes error never feeds `http_status`.
 - **Both failure fields are omitted for exit codes `4` and `5`.** A partial failure has no single causal status — the one that surfaced would stand in for many — and a canceled run is not a failure.
 - **`grafana_auth_method` describes Grafana connection authentication only**, never Grafana Cloud/GCOM authentication. Absent means the invocation never resolved a Grafana connection, or that it resolved several different methods (`gcx config check` examines every context, so it reports no single method when they differ). `anonymous` means a valid selection with no credential material — requests went out unauthenticated. `unknown` means the configured method could not be classified. A selected method whose credential is invalid or rejected reports the method: which authentication category fails is precisely what this field exists to show.
 - **`grafana_auth_method` is present on every outcome** — success, failure, partial failure, and cancellation — whenever the invocation resolved a Grafana connection. It follows that resolution rather than the configuration, so here too absence proves nothing: a command that never builds a Grafana connection, as Grafana Cloud–only commands do not, reports no method even under a fully configured context. `gcx login` reports the method it actually resolved by probing, even when the login fails after authentication was resolved.
+
+### Signup fields
+
+`gcx signup` records the last step of its login it reached, so an unfinished signup can be told apart from a saved one. Other commands, `gcx login` included, omit the field.
+
+| Field | Description | Example |
+| :---- | :---- | :---- |
+| `signup_stage` | The last login step reached. Exactly one of `preflight`, `credentials`, `browser`, `callback`, `validate`, `persist`, `complete`, or `unknown`. | `browser` |
+
+The steps, in order:
+
+- `preflight`: checking the flags, the config, and the destination.
+- `credentials`: checking that OAuth credentials can be stored, before the browser opens.
+- `browser`: waiting for the browser login, then exchanging its code for a token. This covers everything a person does in the browser, such as creating an account, choosing a stack, or approving access, and gcx cannot tell those pages apart.
+- `callback`: the browser's answer for this login ended the wait: an approval, a Cancel from the consent page, or an error that the browser or the token exchange reported. A pasted URL that gcx rejects does not count.
+- `validate`: credentials were obtained and gcx is checking the connection.
+- `persist`: gcx is saving the connection.
+- `complete`: the connection was saved. A later failure to print the result does not undo it.
+- `unknown`: a recorded step outside this vocabulary.
+
+These constraints are part of the contract:
+
+- **`canceled` at `callback` means the consent page's Cancel.** An interrupt while gcx waits for the browser or exchanges the token reports `browser`.
+- **Absence means signup never started its login**, for example because the arguments were invalid, or that the event came from a version without this field.
 
 ### Parse-failure fields
 

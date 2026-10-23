@@ -77,7 +77,7 @@ const (
 
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
-	AssistantPricing = "https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md"
+	AssistantPricing = "https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md"
 
 	// SyntheticMonitoringInvoice documents how Synthetic Monitoring test
 	// executions and their resulting metrics/logs are billed.

@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-func mutationFixture(t *testing.T, fixture *watcherstest.Server) *providers.ConfigLoader {
+func mutationFixture(t *testing.T, fixture http.Handler) *providers.ConfigLoader {
 	t.Helper()
 	server := httptest.NewServer(fixture)
 	t.Cleanup(server.Close)
@@ -101,7 +101,7 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	fixture := &watcherstest.Server{AllowWrites: true}
 	loader := mutationFixture(t, fixture)
 	path := filepath.Join(t.TempDir(), "watcher.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(commandManifest("Checkout health", "", "  interval: 20m\n  sensitivity: relaxed\n")), 0600))
+	require.NoError(t, os.WriteFile(path, []byte(commandManifest("Checkout health", "", "  interval: 20m\n  sensitivity: relaxed\n  notifications:\n    slack:\n      targetType: dm\n      userId: U_EXAMPLE\n      teamId: T_EXAMPLE\n    alerting:\n      severity: critical\n      routingTree: operations\n")), 0600))
 	cmd, out, _ := mutationCommand(t, loader, []string{"create", "-f", path, "-o", "json"}, "")
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
 	var created mutationResult
@@ -113,25 +113,28 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	require.NotEmpty(t, created.Target.ID)
 	require.True(t, *created.Changed)
 	requests := fixture.MutationRequests()
-	require.Len(t, requests, 1)
+	require.Len(t, requests, 2)
 	require.Equal(t, http.MethodPost, requests[0].Method)
 	var payload clientwatchers.ConfigurationRequest
 	require.NoError(t, json.Unmarshal(requests[0].Body, &payload))
 	require.Equal(t, "Checkout health", *payload.Name)
 	require.Equal(t, 1200, *payload.TriggerIntervalSeconds)
 	require.Equal(t, "relaxed", *payload.Sensitivity)
+	require.Equal(t, &clientwatchers.ChatTarget{Type: "dm", UserID: "U_EXAMPLE", TeamID: "T_EXAMPLE"}, payload.Actions.Slack.Target)
+	require.Equal(t, "critical", payload.Actions.Alerting.MinSeverity)
+	require.Equal(t, "operations", *payload.Actions.Alerting.RoutingTree)
 	require.NotContains(t, string(requests[0].Body), "status")
 
 	cmd, out, _ = mutationCommand(t, loader, []string{"create", "-f", path, "-o", "json"}, "")
 	err := cmd.ExecuteContext(t.Context())
 	require.ErrorContains(t, err, "already exists")
 	require.Empty(t, out.String())
-	require.Equal(t, 1, fixture.MutationCalls())
+	require.Equal(t, 2, fixture.MutationCalls())
 
 	cmd, out, _ = mutationCommand(t, loader, []string{"update", created.Target.ID, "-f", "-", "-o", "json"}, commandManifest("Renamed health", "22222222-2222-4222-8222-222222222222", ""))
 	require.ErrorContains(t, cmd.ExecuteContext(t.Context()), "conflicts")
 	require.Empty(t, out.String())
-	require.Equal(t, 1, fixture.MutationCalls())
+	require.Equal(t, 2, fixture.MutationCalls())
 
 	cmd, out, _ = mutationCommand(t, loader, []string{"update", created.Target.ID, "-f", "-", "-o", "json"}, commandManifest("Renamed health", created.Target.ID, ""))
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
@@ -141,8 +144,8 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	require.Equal(t, created.Target.ID, updated.Target.ID)
 	require.Equal(t, "renamed-health", updated.Target.Name)
 	require.True(t, *updated.Changed)
-	require.Equal(t, http.MethodPut, fixture.MutationRequests()[1].Method)
-	require.True(t, strings.HasSuffix(fixture.MutationRequests()[1].Path, "/"+created.Target.ID))
+	require.Equal(t, http.MethodPut, fixture.MutationRequests()[2].Method)
+	require.True(t, strings.HasSuffix(fixture.MutationRequests()[2].Path, "/"+created.Target.ID))
 }
 
 func TestPublicMutationFormatParityAndNoop(t *testing.T) {
@@ -330,7 +333,7 @@ func TestPublicCreateDeleteSupportedFormats(t *testing.T) {
 			require.Contains(t, out.String(), "deleted")
 			require.Contains(t, out.String(), item.ID)
 			require.Contains(t, out.String(), "checkout-health")
-			require.Equal(t, 2, fixture.MutationCalls())
+			require.Equal(t, 3, fixture.MutationCalls())
 		})
 	}
 }

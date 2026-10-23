@@ -144,7 +144,7 @@ func manifestHeaders(inputs []assistantmcp.Header) []mcpserver.MCPServerHeader {
 }
 
 // applyUpdate overlays a partial CLI update onto the current server manifest.
-// scope, name, and url form the immutable natural-key identity (ADR-021
+// scope, name, and url form the immutable natural-key identity (RFC 022
 // Decision 3), so an attempt to change any of them via update is a clear
 // error rather than a silent no-op — delete and recreate to change identity. Headers follow the CLI write-intent model: no --header flags
 // (nil) preserves every current header; any --header flags become the full
@@ -291,8 +291,8 @@ type listOpts struct {
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	table := listTable()
-	cmdio.RegisterTableAs(&o.IO, table, "text")
-	o.IO.RegisterCustomCodec("table", table.Codec("table"))
+	cmdio.RegisterTableAs(&o.IO, table, cmdio.FormatText)
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of integrations to request")

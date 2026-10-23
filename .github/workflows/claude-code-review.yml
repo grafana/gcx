@@ -27,14 +27,19 @@ jobs:
     # '@claude review' is the only re-review path. There is no review-outcome
     # label to remove: the published review carries the commit it reviewed, so
     # a second signal would only add a second thing to keep true.
+    #
+    # The Anthropic key lives in Vault under grafana/gcx only, so the review
+    # fails in any other repository. Skip it outside the canonical repo.
     if: |
-      (github.event_name == 'pull_request' &&
-        github.event.pull_request.user.type != 'Bot' &&
-        github.event.pull_request.draft == false) ||
-      (github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request != null &&
-        startsWith(github.event.comment.body, '@claude review') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      github.repository == 'grafana/gcx' && (
+        (github.event_name == 'pull_request' &&
+          github.event.pull_request.user.type != 'Bot' &&
+          github.event.pull_request.draft == false) ||
+        (github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          startsWith(github.event.comment.body, '@claude review') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      )
     runs-on: ubuntu-latest
     # A review costs several dollars and a quarter of an hour. Opening a PR as
     # ready, or asking twice, must not buy two of them.
@@ -197,12 +202,18 @@ jobs:
           # The action fails the step itself when the session returns no
           # structured output at all, so what reaches here is schema-valid.
           # `null` is the session saying its correctness pass did not complete.
+          # GitHub requires ranges on the same diff side to run forwards.
           review=$(jq -ce '
             .review
             | select(type == "object")
             | select((.body | type) == "string")
             | select(.body | test("\\S"))
             | select((.comments | type) == "array")
+            | .comments |= map(
+                if .start_side == .side and .start_line > .line then
+                  . + {start_line: .line, line: .start_line}
+                else . end
+              )
           ' <<< "${REVIEW_OUTPUT:-}") ||
             fail "the review did not complete: no review payload. Check the claude-review-transcript-${PR_NUMBER} artifact."
 

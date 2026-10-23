@@ -202,6 +202,7 @@ func dispatchLoki(ctx context.Context, req genericQueryRequest) (any, error) {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
+	dsquery.SurfaceLogLimit(req.warn, resp, req.limit)
 	return resp, nil
 }
 

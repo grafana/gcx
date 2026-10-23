@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 3
+weight: 5
 ---
 
 # Configure `gcx`
@@ -15,45 +15,8 @@ weight: 3
 You can configure `gcx` with a configuration file or using environment variables.
 
 - A configuration file stores named stacks, named Grafana Cloud credentials, and contexts that bind them. `gcx` can layer system, user, and repository files. Refer to the [configuration file reference documentation](#configuration-reference) for all options.
-  - If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration/).
+  - If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](/migrate-configuration).
 - Environment variables override the selected context in memory, so they work best in CI environments and are never persisted implicitly. Refer to [Configure `gcx` with environment variables](#configure-gcx-with-environment-variables) for more information.
-
-## Choose an authentication method
-
-`gcx` supports four ways to authenticate to a Grafana instance:
-
-- **OAuth** (Grafana Cloud only): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](#required-role-for-oauth-sign-in) for the permission this flow needs.
-- **Service account token**: Works for Grafana Cloud and on-premises instances, and is the recommended method for CI and other non-interactive environments. Refer to [Grafana service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/) for how to create one.
-- **Basic authentication**: Username and password. Use this only when service accounts aren't available.
-- **mTLS**: A client certificate and key for instances behind an identity-aware proxy. Configure the `grafana.tls` fields or corresponding TLS environment variables.
-
-Grafana Cloud platform APIs use a separate credential stored in a named Cloud
-entry. A Cloud Access Policy token has full command compatibility and is
-recommended for automation. Direct Cloud OAuth is available through
-`gcx cloud login` or the interactive Cloud step of `gcx login`, but remains
-experimental and is not yet accepted by every Cloud product command. OAuth
-entries retain expiry, granted scopes, and a coherent OAuth/API endpoint pair.
-
-### Required role for OAuth sign-in
-
-To authorize a `gcx` CLI connection with OAuth, your Grafana user needs the `grafana-assistant-app.tokens.gcx:access` permission. The **gcx User** role, registered by the Grafana Assistant application, grants this permission and is assigned automatically to users with the basic role Viewer or higher.
-
-{{< admonition type="note" >}}
-If your default role is `None`, or you're using a custom role that doesn't grant the default `plugins.app:access` action, you'll also need to explicitly grant access to `grafana-assistant-app`:
-
-```json
-{
-  "action": "plugins.app:access",
-  "scope": "plugins:id:grafana-assistant-app"
-}
-```
-{{< /admonition >}}
-
-The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `gcx` tokens for your own user. It doesn't grant access to other users' tokens and it doesn't extend your existing Grafana permissions.
-
-{{< admonition type="note" >}}
-If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, the Grafana Assistant application needs to be updated to a version that includes it.
-{{< /admonition >}}
 
 ## Understand the `gcx` configuration file in use
 
@@ -76,7 +39,7 @@ Credentials in the OS credential store (Keychain on macOS, Credential Manager
 on Windows, Secret Service on Linux) are tied to the canonical config file,
 exact owner kind and name, exact secret field, and normalized destination. Copying a config
 file does not make its stored credentials portable; authenticate the copied
-file separately. See [Keychain credential storage](../keychain/)
+file separately. Refer to [Keychain credential storage](/keychain)
 for storage rules and keychain error procedures.
 
 An automatically discovered repository `.gcx.yaml` cannot attach tokens,
@@ -176,7 +139,7 @@ gcx config view
 
 ## Configure `gcx` with environment variables 
 
-Every supported environment variable is listed in our [reference documentation](../cli-reference/#environment-variables).
+Every supported environment variable is listed in our [reference documentation](/cli-reference).
 
 Since `gcx` connects to Grafana through the REST API, you must configure authentication credentials. At minimum, set the Grafana URL and organization ID:
 
@@ -186,8 +149,8 @@ GRAFANA_SERVER='http://localhost:3000' GRAFANA_ORG_ID='1' gcx config check
 
 Depending on your authentication method, also set one of the following:
 
-- If you use a [Grafana service account](https://grafana.com/docs/grafana/latest/administration/service-accounts/) (recommended), set a [token](../cli-reference/#grafana_token).
-- If you use basic authentication, set a [username](../cli-reference/#grafana_user) and a [password](../cli-reference/#grafana_password).
+- If you use a [Grafana service account](https://grafana.com/docs/grafana/latest/administration/service-accounts/) (recommended), set a [token](/cli-reference#environment-variables).
+- If you use basic authentication, set a [username](/cli-reference#grafana_user) and a [password](/cli-reference#grafana_password).
 
 After you configure authentication, you can start using `gcx`.
 
@@ -197,7 +160,7 @@ If you want to persist this configuration, [create a context](#define-contexts).
 
 ## Configuration reference
 
-This schema describes configuration fields and their types in gcx **v1.6.0**.
+This schema describes configuration fields and their types in gcx **v1.7.1**.
 
 ```yaml
 # Config holds the information needed to connect to remote Grafana instances.
