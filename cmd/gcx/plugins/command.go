@@ -1,6 +1,6 @@
 //go:build !wasip1
 
-// Package plugins wires the typed go-plugin experiment into gcx.
+// Package plugins wires the generic go-plugin experiment into gcx.
 package plugins
 
 import (
@@ -29,7 +29,7 @@ type runOpts struct {
 
 func (o *runOpts) setup(flags *pflag.FlagSet) {
 	o.config.BindFlags(flags)
-	flags.BoolVar(&o.demo, "demo", false, "Use offline host resource fixtures, without backend access")
+	flags.BoolVar(&o.demo, "demo", false, "Execute offline fixture subprocesses, without backend access")
 }
 func (o *runOpts) Validate() error { return nil }
 func mark(c *cobra.Command) *cobra.Command {
@@ -39,9 +39,9 @@ func mark(c *cobra.Command) *cobra.Command {
 	return c
 }
 func Command() *cobra.Command {
-	c := mark(&cobra.Command{Use: "plugins", Short: "Run local plugins with typed host capabilities.", Long: disclosure})
+	c := mark(&cobra.Command{Use: "plugins", Short: "Run local plugins with generic command callbacks.", Long: disclosure})
 	opts := &runOpts{}
-	run := mark(&cobra.Command{Use: "run <executable> -- [args...]", Short: "Run a local Go plugin with typed resource callbacks.", Long: disclosure + "\n\nThe executable must implement the experimental plugin SDK. Host flags go before --; arguments after -- belong to the plugin. This PoC provides read-only resource capabilities.", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	run := mark(&cobra.Command{Use: "run <executable> -- [args...]", Short: "Run a local Go plugin with generic command callbacks.", Long: disclosure + "\n\nThe executable must implement the experimental plugin SDK. Host flags go before --; arguments after -- belong to the plugin. Each callback starts a separate gcx subprocess; the plugin can invoke any gcx command.", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(); err != nil {
 			return err
 		}
@@ -50,19 +50,16 @@ func Command() *cobra.Command {
 			return err
 		}
 		fmt.Fprintln(cmd.ErrOrStderr(), disclosure)
-		var host sdk.ResourceHostServer = &pluginhost.Demo{}
-		if !opts.demo {
-			if opts.config.Context == "" {
-				opts.config.Context = config.ContextNameFromCtx(cmd.Context())
-			}
-			cfg, err := opts.config.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			host, err = pluginhost.New(cmd.Context(), cfg)
-			if err != nil {
-				return err
-			}
+		if opts.config.Context == "" {
+			opts.config.Context = config.ContextNameFromCtx(cmd.Context())
+		}
+		gcxBinary, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		host := &pluginhost.Commands{Binary: gcxBinary, Context: opts.config.Context, ConfigFile: opts.config.ConfigFile}
+		if opts.demo {
+			host.Binary, host.Prefix = binary, []string{"--fixture"}
 		}
 		interactive := !agent.IsAgentMode() && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 		if interactive {

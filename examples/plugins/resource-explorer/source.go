@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
+	"fmt"
+	"sort"
 
 	"github.com/grafana/gcx-plugin-resource-explorer/browse"
 	"github.com/grafana/gcx-plugin-resource-explorer/resources"
@@ -14,71 +15,100 @@ import (
 	kjson "k8s.io/apimachinery/pkg/util/json"
 )
 
-type rpcSource struct {
-	host      sdk.ResourceHostClient
+type cliSource struct {
+	commands  sdk.Executor
 	selectors []string
 }
 
-func typed(d resources.Descriptor) *sdk.ResourceType {
-	return &sdk.ResourceType{Group: d.GroupVersion.Group, Version: d.GroupVersion.Version, Kind: d.Kind, Plural: d.Plural, Singular: d.Singular}
-}
-func (s *rpcSource) Types(ctx context.Context) (resources.Descriptors, error) {
-	response, err := s.host.ListTypes(ctx, &sdk.ListTypesRequest{Selectors: s.selectors})
+func (s *cliSource) call(ctx context.Context, args ...string) ([]byte, error) {
+	result, err := s.commands.Execute(ctx, sdk.CommandRequest{Args: args})
 	if err != nil {
-		return nil, err
+		return result.Stdout, err
 	}
-	out := make(resources.Descriptors, 0, len(response.GetTypes()))
-	for _, t := range response.GetTypes() {
-		out = append(out, resources.Descriptor{GroupVersion: schema.GroupVersion{Group: t.GetGroup(), Version: t.GetVersion()}, Kind: t.GetKind(), Plural: t.GetPlural(), Singular: t.GetSingular()})
-	}
-	return out.Sorted(), nil
+	return result.Stdout, result.Err()
 }
-func (s *rpcSource) Schemas(ctx context.Context, descs resources.Descriptors) (map[string]map[string]any, error) {
-	req := &sdk.GetSchemasRequest{}
-	for _, d := range descs {
-		req.Types = append(req.Types, typed(d))
+
+type typeEntry struct {
+	Kind, Plural, Singular string
+	Schema                 map[string]any
+}
+type typeResponse map[string]map[string][]typeEntry
+
+func (s *cliSource) discover(ctx context.Context, noSchema bool) (resources.Descriptors, map[string]map[string]any, error) {
+	selectors := s.selectors
+	if len(selectors) == 0 {
+		selectors = []string{""}
 	}
-	response, err := s.host.GetSchemas(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]map[string]any{}
-	for _, item := range response.GetSchemas() {
-		var spec map[string]any
-		if err := json.Unmarshal(item.GetSpecJson(), &spec); err != nil {
-			return nil, err
+	var result resources.Descriptors
+	schemas := map[string]map[string]any{}
+	seen := map[string]bool{}
+	for _, selector := range selectors {
+		args := []string{"resources", "list-types", "--output", "json"}
+		if noSchema {
+			args = append(args, "--no-schema")
 		}
-		key := item.GetType().GetPlural() + "." + item.GetType().GetVersion() + "." + item.GetType().GetGroup()
-		out[key] = spec
+		if selector != "" {
+			args = append(args, selector)
+		}
+		data, err := s.call(ctx, args...)
+		if err != nil {
+			return result, schemas, err
+		}
+		var groups typeResponse
+		if err := json.Unmarshal(data, &groups); err != nil {
+			return nil, nil, fmt.Errorf("decoding resource types: %w", err)
+		}
+		for group, versions := range groups {
+			for version, entries := range versions {
+				for _, entry := range entries {
+					d := resources.Descriptor{GroupVersion: schema.GroupVersion{Group: group, Version: version}, Kind: entry.Kind, Plural: entry.Plural, Singular: entry.Singular}
+					key := browse.Selector(d)
+					if !seen[key] {
+						result = append(result, d)
+						seen[key] = true
+					}
+					if entry.Schema != nil {
+						schemas[key] = entry.Schema
+					}
+				}
+			}
+		}
 	}
-	if len(response.GetWarnings()) > 0 {
-		return out, errors.New(strings.Join(response.GetWarnings(), "; "))
-	}
-	return out, nil
+	return result.Sorted(), schemas, nil
 }
-func (s *rpcSource) List(ctx context.Context, d resources.Descriptor) ([]unstructured.Unstructured, error) {
-	response, err := s.host.ListResources(ctx, &sdk.ListResourcesRequest{Type: typed(d)})
-	if err != nil {
+
+func (s *cliSource) Types(ctx context.Context) (resources.Descriptors, error) {
+	d, _, err := s.discover(ctx, true)
+	return d, err
+}
+
+func (s *cliSource) Schemas(ctx context.Context, _ resources.Descriptors) (map[string]map[string]any, error) {
+	_, schemas, err := s.discover(ctx, false)
+	return schemas, err
+}
+
+func (s *cliSource) List(ctx context.Context, d resources.Descriptor) ([]unstructured.Unstructured, error) {
+	data, err := s.call(ctx, "resources", "get", browse.Selector(d), "--output", "json", "--limit", "0")
+	var ce *sdk.ExitError
+	partial := errors.As(err, &ce) && ce.Code == 4
+	if err != nil && !partial {
 		return nil, err
 	}
-	items := make([]unstructured.Unstructured, 0, len(response.GetItems()))
-	for _, item := range response.GetItems() {
-		var obj map[string]any
-		// Resource bodies can omit kind; preserve the original object and integer metadata.
-		if err := kjson.Unmarshal(item.GetObjectJson(), &obj); err != nil {
-			return nil, err
-		}
-		items = append(items, unstructured.Unstructured{Object: obj})
+	var list struct {
+		Items []map[string]any `json:"items"`
 	}
-	warnings := append([]string(nil), response.GetWarnings()...)
-	for _, failure := range response.GetFailures() {
-		warnings = append(warnings, failure.GetMessage())
+	// Some datasource items omit kind. Decode their payload without TypeMeta validation,
+	// preserving integer precision for metadata such as generation.
+	if decodeErr := kjson.Unmarshal(data, &list); decodeErr != nil {
+		return nil, fmt.Errorf("decoding resources: %w", decodeErr)
 	}
-	if response.GetTruncated() {
-		warnings = append(warnings, "resource list is truncated")
+	items := make([]unstructured.Unstructured, len(list.Items))
+	for i, object := range list.Items {
+		items[i] = unstructured.Unstructured{Object: object}
 	}
-	if len(warnings) > 0 {
-		return items, &browse.PartialError{Failed: len(response.GetFailures()), Err: errors.New(strings.Join(warnings, "; "))}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].GetName() < items[j].GetName() })
+	if partial {
+		return items, &browse.PartialError{Err: err}
 	}
 	return items, nil
 }

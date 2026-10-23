@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"runtime"
 
@@ -16,11 +17,16 @@ import (
 	sdk "github.com/grafana/gcx/experimental/pluginsdk"
 )
 
-func main() { sdk.Serve(explorer{}) }
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--fixture" {
+		os.Exit(fixture(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	sdk.Serve(explorer{})
+}
 
 type explorer struct{}
 
-func (explorer) Run(ctx context.Context, request *sdk.RunRequest, host sdk.ResourceHostClient) (*sdk.RunResponse, error) {
+func (explorer) Run(ctx context.Context, request *sdk.RunRequest, host sdk.Executor) (*sdk.RunResponse, error) {
 	var diagnostics bytes.Buffer
 	flags := flag.NewFlagSet("resource-explorer", flag.ContinueOnError)
 	flags.SetOutput(&diagnostics)
@@ -36,7 +42,7 @@ func (explorer) Run(ctx context.Context, request *sdk.RunRequest, host sdk.Resou
 		}
 		return &sdk.RunResponse{ExitCode: code, Stderr: diagnostics.String()}, nil
 	}
-	src := &rpcSource{host: host, selectors: flags.Args()}
+	src := &cliSource{commands: host, selectors: flags.Args()}
 	if *noTUI {
 		var output bytes.Buffer
 		if err := report(ctx, src, &output); err != nil {

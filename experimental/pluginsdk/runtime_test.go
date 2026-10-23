@@ -2,7 +2,6 @@ package pluginsdk_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -16,9 +15,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("GCX_PLUGIN") == "typed-resources-v1" {
+	if os.Getenv("GCX_PLUGIN") == "generic-commands-v1" {
 		if os.Getenv("GCX_TEST_PROTOCOL") == "99" {
-			plugin.Serve(&plugin.ServeConfig{HandshakeConfig: plugin.HandshakeConfig{ProtocolVersion: 99, MagicCookieKey: "GCX_PLUGIN", MagicCookieValue: "typed-resources-v1"}, Plugins: map[string]plugin.Plugin{"extension": &incompatiblePlugin{}}, GRPCServer: plugin.DefaultGRPCServer})
+			plugin.Serve(&plugin.ServeConfig{HandshakeConfig: plugin.HandshakeConfig{ProtocolVersion: 99, MagicCookieKey: "GCX_PLUGIN", MagicCookieValue: "generic-commands-v1"}, Plugins: map[string]plugin.Plugin{"extension": &incompatiblePlugin{}}, GRPCServer: plugin.DefaultGRPCServer})
 			return
 		}
 		sdk.Serve(testApp{})
@@ -29,62 +28,58 @@ func TestMain(m *testing.M) {
 
 type testApp struct{}
 
-func (testApp) Run(ctx context.Context, r *sdk.RunRequest, host sdk.ResourceHostClient) (*sdk.RunResponse, error) {
+func (testApp) Run(ctx context.Context, r *sdk.RunRequest, host sdk.Executor) (*sdk.RunResponse, error) {
 	if len(r.GetArgs()) > 0 && r.GetArgs()[0] == "crash" {
 		os.Exit(9)
 	}
 	if len(r.GetArgs()) > 0 && r.GetArgs()[0] == "exit" {
 		return &sdk.RunResponse{ExitCode: 7, Stdout: []byte("raw result"), Stderr: "diagnostic"}, nil
 	}
-	types, err := host.ListTypes(ctx, &sdk.ListTypesRequest{Selectors: r.GetArgs()})
+	if len(r.GetArgs()) > 0 && r.GetArgs()[0] == "cancel-call" {
+		callCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		_, err := host.Execute(callCtx, sdk.CommandRequest{Args: []string{"wait"}})
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.New("individual call was not cancelled")
+		}
+		result, err := host.Execute(ctx, sdk.CommandRequest{Args: []string{"after-cancel"}})
+		return &sdk.RunResponse{Stdout: result.Stdout}, err
+	}
+	result, err := host.Execute(ctx, sdk.CommandRequest{Args: r.GetArgs(), Stdin: []byte("request input")})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := host.GetSchemas(ctx, &sdk.GetSchemasRequest{Types: types.GetTypes()}); err != nil {
-		return nil, err
-	}
-	result, err := host.ListResources(ctx, &sdk.ListResourcesRequest{Type: types.GetTypes()[0]})
-	if err != nil {
-		return nil, err
-	}
-	data, err := json.Marshal(result)
-	return &sdk.RunResponse{Stdout: data}, err
+	return &sdk.RunResponse{Stdout: result.Stdout, Stderr: string(result.Stderr), ExitCode: int32(result.ExitCode)}, nil //nolint:gosec // The SDK result originated from an int32 protobuf exit code.
 }
 
 type testHost struct {
-	sdk.UnimplementedResourceHostServer
+	sdk.UnimplementedCommandHostServer
 
 	entered   chan struct{}
 	cancelled chan struct{}
 	deny      bool
-	selectors []string
+	args      []string
+	stdin     string
 }
 
-func (h *testHost) ListTypes(_ context.Context, r *sdk.ListTypesRequest) (*sdk.ListTypesResponse, error) {
-	h.selectors = r.GetSelectors()
+func (h *testHost) Execute(ctx context.Context, r *sdk.ExecuteRequest) (*sdk.ExecuteResponse, error) {
 	if h.deny {
 		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
-	return &sdk.ListTypesResponse{Types: []*sdk.ResourceType{{Group: "test.app", Version: "v1", Kind: "Thing", Plural: "things"}}}, nil
-}
-func (*testHost) GetSchemas(_ context.Context, r *sdk.GetSchemasRequest) (*sdk.GetSchemasResponse, error) {
-	if len(r.GetTypes()) != 1 || r.GetTypes()[0].GetGroup() != "test.app" {
-		return nil, errors.New("wrong schema type")
+	if len(r.GetArgs()) > 0 && r.GetArgs()[0] == "wait" {
+		<-ctx.Done()
+		return nil, status.FromContextError(ctx.Err()).Err()
 	}
-	return &sdk.GetSchemasResponse{}, nil
-}
-func (h *testHost) ListResources(ctx context.Context, r *sdk.ListResourcesRequest) (*sdk.ListResourcesResponse, error) {
+	h.args, h.stdin = r.GetArgs(), string(r.GetStdin())
 	if h.entered != nil {
 		close(h.entered)
 		<-ctx.Done()
 		close(h.cancelled)
-		return nil, ctx.Err()
+		return nil, status.FromContextError(ctx.Err()).Err()
 	}
-	if r.GetType().GetPlural() != "things" {
-		return nil, errors.New("wrong list type")
-	}
-	return &sdk.ListResourcesResponse{Items: []*sdk.Resource{{Metadata: &sdk.ResourceMetadata{Name: "one"}, ObjectJson: []byte(`{"metadata":{"generation":9007199254740993}}`)}}, Failures: []*sdk.ResourceFailure{{Message: "second page failed"}}}, nil
+	return &sdk.ExecuteResponse{Stdout: []byte(`{"generation":9007199254740993}`), Stderr: []byte("partial failure"), ExitCode: 4}, nil
 }
+
 func TestRun(t *testing.T) {
 	binary, err := os.Executable()
 	if err != nil {
@@ -97,7 +92,8 @@ func TestRun(t *testing.T) {
 		code    int32
 		wantErr bool
 	}{
-		{name: "callbacks", args: []string{"things"}},
+		{name: "callback", args: []string{"resources", "get", "things"}, code: 4},
+		{name: "individual cancellation", args: []string{"cancel-call"}},
 		{name: "application exit", args: []string{"exit"}, code: 7},
 		{name: "crash", args: []string{"crash"}, wantErr: true},
 		{name: "permission denied", deny: true, wantErr: true},
@@ -117,14 +113,8 @@ func TestRun(t *testing.T) {
 			if result.GetExitCode() != tc.code {
 				t.Fatalf("exit=%d", result.GetExitCode())
 			}
-			if tc.name == "callbacks" {
-				var got sdk.ListResourcesResponse
-				if err := json.Unmarshal(result.GetStdout(), &got); err != nil {
-					t.Fatal(err)
-				}
-				if len(host.selectors) != 1 || host.selectors[0] != "things" || got.GetItems()[0].GetMetadata().GetName() != "one" || len(got.GetFailures()) != 1 || string(got.GetItems()[0].GetObjectJson()) != `{"metadata":{"generation":9007199254740993}}` {
-					t.Fatalf("bad roundtrip: %s", result.GetStdout())
-				}
+			if tc.name == "callback" && (len(host.args) != 3 || host.args[2] != "things" || host.stdin != "request input" || string(result.GetStdout()) != `{"generation":9007199254740993}` || result.GetStderr() != "partial failure") {
+				t.Fatalf("bad roundtrip: %v", result)
 			}
 		})
 	}

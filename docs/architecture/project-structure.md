@@ -7,7 +7,7 @@ gcx/
 ├── cmd/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
-│       ├── plugins/          # PoC local Go plugins with typed host RPC
+│       ├── plugins/          # PoC local Go plugins with generic command RPC
 │       ├── root/             # Root Cobra command, global flags, logging setup
 │       ├── login/            # 'login' and 'signup' commands (token, browser OAuth PKCE, Basic auth; account creation)
 │       ├── cloud/            # Cloud login, stack management, and OAuth user organisation memberships
@@ -33,7 +33,7 @@ gcx/
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
-│   ├── pluginhost/           # PoC typed resource callbacks using shared discovery and puller
+│   ├── pluginhost/           # PoC generic command callbacks launching gcx subprocesses
 │   ├── agent/                # Agent mode and identity detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP integrations, Watcher configuration)
@@ -201,7 +201,7 @@ output formatting, and error translation. It holds no business logic.
 `internal/` enforces Go's package visibility rule — external consumers cannot
 import these packages. This is intentional: the main module has no public Go
 API. Separate modules expose embedding through `experimental/sandbox` and the
-experimental typed RPC contract through `experimental/pluginsdk` (see their READMEs).
+experimental generic RPC contract through `experimental/pluginsdk` (see their READMEs).
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 

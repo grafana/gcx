@@ -15,7 +15,7 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 *"Don't guess. Check the actual production data."*
 
-This branch contains an experimental [typed go-plugin resource explorer](examples/plugins/resource-explorer/README.md), with local build instructions and an offline demo.
+This branch contains an experimental [generic go-plugin resource explorer](examples/plugins/resource-explorer/README.md), with local build instructions and an offline demo.
 
 ## What is gcx?
 

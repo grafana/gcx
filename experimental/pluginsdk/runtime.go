@@ -1,4 +1,4 @@
-// Package pluginsdk defines the typed, versioned RPC contract for the plugin PoC.
+// Package pluginsdk defines the generic, versioned RPC contract for the plugin PoC.
 package pluginsdk
 
 import (
@@ -19,12 +19,12 @@ const ProtocolVersion = 1
 const maxMessageSize = 64 << 20
 
 func handshake() plugin.HandshakeConfig {
-	return plugin.HandshakeConfig{ProtocolVersion: ProtocolVersion, MagicCookieKey: "GCX_PLUGIN", MagicCookieValue: "typed-resources-v1"}
+	return plugin.HandshakeConfig{ProtocolVersion: ProtocolVersion, MagicCookieKey: "GCX_PLUGIN", MagicCookieValue: "generic-commands-v1"}
 }
 
-// App owns its UI and receives only the typed host capability client.
+// App owns its UI and receives only the generic command executor.
 type App interface {
-	Run(ctx context.Context, request *RunRequest, host ResourceHostClient) (*RunResponse, error)
+	Run(ctx context.Context, request *RunRequest, host Executor) (*RunResponse, error)
 }
 
 func Serve(app App) {
@@ -41,7 +41,7 @@ type Options struct {
 }
 
 // Run launches one plugin and serves host callbacks for the duration of its Run RPC.
-func Run(ctx context.Context, opts Options, host ResourceHostServer) (*RunResponse, error) {
+func Run(ctx context.Context, opts Options, host CommandHostServer) (*RunResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func Run(ctx context.Context, opts Options, host ResourceHostServer) (*RunRespon
 	ready := make(chan *grpc.Server, 1)
 	go remote.broker.AcceptAndServe(id, func(options []grpc.ServerOption) *grpc.Server {
 		server := grpc.NewServer(append(options, grpc.MaxRecvMsgSize(maxMessageSize))...)
-		RegisterResourceHostServer(server, host)
+		RegisterCommandHostServer(server, host)
 		ready <- server
 		return server
 	})
@@ -118,5 +118,5 @@ func (s *extensionServer) Run(ctx context.Context, req *RunRequest) (*RunRespons
 		return nil, err
 	}
 	defer conn.Close()
-	return s.app.Run(ctx, req, NewResourceHostClient(conn))
+	return s.app.Run(ctx, req, commandClient{host: NewCommandHostClient(conn)})
 }

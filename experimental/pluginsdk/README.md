@@ -1,74 +1,62 @@
-# Typed go-plugin SDK experiment
+# Generic go-plugin SDK experiment
 
-This standalone, unpublished Go module owns the versioned contract between gcx
-and local plugin executables. It uses HashiCorp go-plugin v1.8.0 with gRPC and
-automatic mutual TLS. It exposes typed resource operations, not arbitrary CLI
-execution. The host and example use a local module replacement while evaluating
-this API; publishing it would require a separate module release.
+This standalone, unpublished module implements proposal 2.a: HashiCorp go-plugin
+with gRPC, automatic mutual TLS and one generic command callback. It is the RPC
+counterpart to the subprocess SDK in PR #1563, based on the typed RPC PoC in
+PR #1568. The host and example use local module replacements.
 
-A plugin implements one method and starts the SDK server:
+```text
+gcx host → plugin → Execute RPC → host → new gcx subprocess → Grafana
+```
+
+A plugin implements `App` and calls `Serve`:
 
 ```go
 func main() { pluginsdk.Serve(app{}) }
 
 type app struct{}
-
 func (app) Run(ctx context.Context, req *pluginsdk.RunRequest,
-    host pluginsdk.ResourceHostClient) (*pluginsdk.RunResponse, error) {
-    types, err := host.ListTypes(ctx, &pluginsdk.ListTypesRequest{
-        Selectors: []string{"dashboards"},
+    commands pluginsdk.Executor) (*pluginsdk.RunResponse, error) {
+    result, err := commands.Execute(ctx, pluginsdk.CommandRequest{
+        Args: []string{"resources", "get", "dashboards", "--output", "json"},
     })
     if err != nil { return nil, err }
-    if len(types.GetTypes()) == 0 { return &pluginsdk.RunResponse{}, nil }
-    result, err := host.ListResources(ctx, &pluginsdk.ListResourcesRequest{
-        Type: types.GetTypes()[0],
-    })
-    if err != nil { return nil, err }
-    // Check result.Failures, Warnings and Truncated before claiming completeness.
-    _ = result
-    return &pluginsdk.RunResponse{}, nil
+    return &pluginsdk.RunResponse{
+        Stdout: result.Stdout, Stderr: string(result.Stderr),
+        ExitCode: int32(result.ExitCode),
+    }, nil
 }
 ```
 
-`plugin.proto` is the contract; generated `.pb.go` files are checked in. Plugin
-authors don't need protoc to build an existing SDK version. `App`, `Serve` and
-`Run` in `runtime.go` hide go-plugin startup, broker wiring and cleanup.
+`Execute` accepts an argument vector and optional stdin bytes. The host starts
+its own gcx binary directly, without a shell, inheriting the environment and
+forwarding the selected context/config file. Each call loads configuration,
+resolves authentication and creates clients independently. No Grafana clients
+or credentials are passed over RPC. This does not remove subprocess overhead.
 
-| Method | Request | Response |
-|---|---|---|
-| `ListTypes` | Resource selector strings | Typed group/version/kind/plural/singular descriptors |
-| `GetSchemas` | Discovered descriptors | Schemas associated with exact descriptors, plus warnings |
-| `ListResources` | One discovered descriptor | Typed metadata, resource JSON, failures, warnings and truncation |
+Command failures return stdout, stderr and exit status, including partial output.
+Startup and transport failures are errors. Calls accept independent contexts;
+cancellation reaches the child gcx process. Grandchild process-tree management
+is outside this PoC. `DecodeJSON` adds JSON output selection, checks command status
+and decodes into an extension-owned destination. Command arguments and response
+models belong to the extension. Agent mode is inherited, so CLI output shapes
+remain subject to the same mode-dependent behaviour as the subprocess SDK.
 
-Resource bodies and OpenAPI schemas have runtime-defined shapes. They remain JSON
-bytes inside typed responses, preserving unknown fields, absent `kind` values and
-integer precision. This is not a statically generated Go model for every Grafana
-resource kind. There is no `Execute(args)` escape hatch and no typed profile API.
+The extension's output is separate from command output. `RunResponse` carries
+finite stdout, stderr and application exit status; the host prints these after
+Run completes. Ordinary plugin stderr is forwarded to host stderr. `SyncStdout`
+is unset, so ordinary stdout after SDK startup is discarded. Both sides use
+null go-plugin loggers. The explorer opens `/dev/tty` for its interactive UI;
+Windows interactive mode is unimplemented. The host restores terminal state.
 
-The host registers its capability server on a broker connection for one `Run`.
-The plugin calls back through the supplied typed client. The host owns clients
-and credentials; neither are serialised into requests. Each callback propagates
-its context cancellation through gRPC. A cancelled host run cancels RPC work and
-cleans up the plugin. Plugin startup and callback-server startup each have a ten-second timeout.
-
-`RunResponse` carries the application exit code, finite stdout and diagnostics.
-Transport failures are separate errors. Noninteractive stdout is buffered until
-Run completes; this is not a streaming output API. The example uses a separate
-controlling-terminal handle for its TUI because stdout belongs to go-plugin.
-Individual messages are limited to 64 MiB; larger responses fail explicitly.
-Pagination/streaming across that limit is not implemented.
-
-Protocol version 1 is checked at startup. Breaking method or wire changes need a
-new protocol version. Additive protobuf fields can be compatible, but new methods
-still need host-version/capability negotiation before plugin authors can rely on
-them. That negotiation, an SDK support window and schema compatibility CI are
-future work. Adding typed commands requires proto changes, generated bindings,
-host handlers and tests; it does not automatically expose the full CLI surface.
-
-The plugin is an ordinary process with the user's permissions and inherited
-environment. mTLS protects the RPC connection; it does not sandbox the plugin or
-prevent it from reading credentials or making its own network requests. The
-magic cookie identifies the protocol, not the trustworthiness of plugin code.
+`plugin.proto` is the wire contract; generated bindings are checked in. Startup
+checks protocol version 1 with a distinct generic-command handshake cookie;
+typed-PoC binaries are incompatible. Startup and callback-server startup each
+have a ten-second timeout. Messages are limited to 64 MiB. Streaming, capability
+negotiation, typed operations and remote installation are outside this PoC.
+Plugins run with the user's permissions and inherited environment. mTLS protects
+the connection; it does not sandbox third-party code. Generic execution can
+invoke any gcx command, including mutations; normal command safety rules apply.
 
 ## Development
 
@@ -78,10 +66,5 @@ go vet ./...
 mise exec -- golangci-lint run -c ../../.golangci.yaml ./...
 ```
 
-To regenerate after changing the proto, use protoc 36.2 and these Go generators:
-
-```sh
-go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
-sh generate.sh
-```
+Regenerate bindings with protoc 34.1, protoc-gen-go v1.36.11 and
+protoc-gen-go-grpc v1.6.1 on PATH, then run `sh generate.sh`.
