@@ -3,4 +3,4 @@ editable      opaque-editable      grafana  false
 imported      opaque-imported      mimir    true       
 protected     opaque-protected     grafana  true       system
 invalid       opaque-invalid       other    unknown    file
-default-kind  opaque-default-kind           unknown    
+default-kind  opaque-default-kind  grafana  false      

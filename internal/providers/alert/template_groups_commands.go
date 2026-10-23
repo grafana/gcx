@@ -39,7 +39,7 @@ func (o *templateGroupsListOpts) setup(flags *pflag.FlagSet) {
 	table := templateGroupListTable()
 	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
 	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.APIVersion, "api-version", "", apiVersionFlagUsage)
 }

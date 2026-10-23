@@ -17,10 +17,14 @@ func TestTemplateGroupsTableGolden(t *testing.T) {
 	for _, tc := range []struct{ title, kind, provenance string }{
 		{"editable", "grafana", ""}, {"imported", "mimir", ""}, {"protected", "grafana", "system"}, {"invalid", "other", "file"}, {"default-kind", "", ""},
 	} {
+		spec := map[string]any{"title": tc.title}
+		if tc.kind != "" {
+			spec["kind"] = tc.kind
+		}
 		items = append(items, unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": routingTreesGroup + "/v1beta1", "kind": templateGroupKind,
 			"metadata": map[string]any{"name": "opaque-" + tc.title, "annotations": map[string]any{provenanceAnnotation: tc.provenance}},
-			"spec":     map[string]any{"title": tc.title, "kind": tc.kind},
+			"spec":     spec,
 		}})
 	}
 	for _, name := range []string{"table", "wide"} {
