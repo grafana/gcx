@@ -26,6 +26,7 @@ func isolatedConfigEnv(t *testing.T) (string, string) {
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
+	t.Setenv(internalconfig.RequireContextEnvVar, "")
 	t.Chdir(workDir)
 	return userDir, workDir
 }
@@ -1414,4 +1415,82 @@ contexts:
 			testutils.CommandErrorContains("no previous context recorded"),
 		},
 	}.Run(t)
+}
+
+const strictCommandConfig = `version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.example.com
+      org-id: 1
+  b:
+    grafana:
+      server: https://b.example.com
+      org-id: 1
+contexts:
+  a:
+    stack: a
+  b:
+    stack: b
+current-context: a
+`
+
+func TestConfigCommands_StrictFileScoped(t *testing.T) {
+	isolateStateHome(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "")
+
+	for _, args := range [][]string{
+		{"view"},
+		{"current-context"},
+		{"list-contexts"},
+		{"path"},
+		{"use-context", "b"},
+		{"set", "stacks.a.grafana.server", "x"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			configFile := testutils.CreateTempFile(t, strictCommandConfig)
+			_, err := runConfigCmd(t, append([]string{"--config", configFile}, args...)...)
+			require.NoError(t, err)
+		})
+	}
+
+	// check without --context reports every context, so it is not refused. The
+	// example hosts do not resolve, so it may fail for other reasons.
+	t.Run("check without context is not refused", func(t *testing.T) {
+		configFile := testutils.CreateTempFile(t, strictCommandConfig)
+		out, err := runConfigCmd(t, "--config", configFile, "check")
+		require.NotErrorIs(t, err, internalconfig.ErrContextRequired)
+		require.Contains(t, out, "Configuration file:")
+	})
+}
+
+func TestOptionsLoadConfig_StrictAcceptsGCXContext(t *testing.T) {
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "b")
+	configFile := testutils.CreateTempFile(t, strictCommandConfig)
+
+	opts := &config.Options{ConfigFile: configFile}
+	cfg, err := opts.LoadConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "b", cfg.CurrentContext)
+}
+
+// A failing env override must show as itself for file-scoped commands. The strict
+// refusal must not replace it (FileScope has to run before anything that can fail).
+func TestConfigCommands_StrictFileScopedEnvError(t *testing.T) {
+	isolateStateHome(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "")
+	t.Setenv("GRAFANA_ORG_ID", "not-a-number")
+
+	for _, cmd := range []string{"view", "current-context", "list-contexts"} {
+		t.Run(cmd, func(t *testing.T) {
+			configFile := testutils.CreateTempFile(t, strictCommandConfig)
+			_, err := runConfigCmd(t, "--config", configFile, cmd)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, internalconfig.ErrContextRequired)
+			require.Contains(t, err.Error(), "GRAFANA_ORG_ID")
+		})
+	}
 }

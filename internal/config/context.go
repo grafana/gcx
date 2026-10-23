@@ -31,7 +31,7 @@ func ContextWithName(ctx context.Context, name string) context.Context {
 }
 
 // ContextNameFromCtx retrieves the Grafana config context name from a Go context.
-// Returns "" if not set, which causes loaders to fall back to the default context.
+// Returns "" if not set, so loaders fall back to the config's current-context.
 func ContextNameFromCtx(ctx context.Context) string {
 	if name, ok := ctx.Value(configContextKey{}).(string); ok {
 		return name

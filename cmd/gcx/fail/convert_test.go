@@ -2092,3 +2092,64 @@ func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
 
 	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
 }
+
+func TestErrorToDetailedError_ContextRequired(t *testing.T) {
+	got := toDetailedError(t, &config.ContextRequiredError{
+		Inherited: "prod",
+		Available: []string{"a", "b", "c", "d", "e", "f", "g"},
+	})
+
+	require.NotNil(t, got)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+	// The summary vocabulary in docs/design/errors.md admits only constants, so
+	// the summary cannot say "This invocation does not name a context".
+	assert.Equal(t, gcxerrors.SummaryInvalidCommandUsage, got.Summary)
+	assert.Equal(t,
+		`GCX_REQUIRE_CONTEXT is set, so gcx will not fall back to current-context ("prod") from the config file. `+
+			"Another shell or agent can change the shared current-context at any time.",
+		got.Details)
+	// The cause is in Details only. A Parent would print it a second time.
+	require.NoError(t, got.Parent)
+	assert.Contains(t, got.Suggestions, "Name a context for this command: gcx --context <name> <command>")
+	assert.Contains(t, got.Suggestions, "Or name it for this shell: export GCX_CONTEXT=<name>")
+	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
+	assert.Contains(t, got.Suggestions,
+		"List the configured contexts (a, b, c, d, e, +2 more): gcx config list-contexts")
+}
+
+func TestErrorToDetailedError_ContextRequired_Login(t *testing.T) {
+	got := toDetailedError(t, &config.ContextRequiredError{
+		Inherited: "prod",
+		Available: []string{"a", "b"},
+		Command:   "login",
+	})
+
+	require.NotNil(t, got)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "GCX_CONTEXT", "login ignores GCX_CONTEXT")
+	}
+	assert.Contains(t, got.Suggestions,
+		"Pass a context name: gcx login <name>, or use --context <name> or --server <url>")
+	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
+	assert.Contains(t, got.Suggestions, "List the configured contexts (a, b): gcx config list-contexts")
+}
+
+func TestErrorToDetailedError_ContextRequired_Signup(t *testing.T) {
+	got := toDetailedError(t, &config.ContextRequiredError{
+		Inherited: "prod",
+		Available: []string{"a", "b"},
+		Command:   "signup",
+	})
+
+	require.NotNil(t, got)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "GCX_CONTEXT", "signup ignores GCX_CONTEXT")
+		assert.NotContains(t, s, "gcx login", "login is a different flow")
+		assert.NotContains(t, s, "--server", "signup has no --server")
+	}
+	assert.Contains(t, got.Suggestions,
+		"Pass a context name: gcx signup <name>, or gcx signup --context <name>")
+	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
+	assert.Contains(t, got.Suggestions, "List the configured contexts (a, b): gcx config list-contexts")
+}

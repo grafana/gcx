@@ -149,19 +149,6 @@ func (l *ConfigLoader) resolvedConfigFile(ctx context.Context) string {
 	return config.ConfigFileFromCtx(ctx)
 }
 
-func contextSelectionOverride(ctxName string) config.Override {
-	return func(cfg *config.Config) error {
-		if ctxName == "" {
-			return nil
-		}
-		if !cfg.HasContext(ctxName) {
-			return config.ContextNotFound(ctxName, cfg.ContextNames())
-		}
-		cfg.CurrentContext = ctxName
-		return nil
-	}
-}
-
 func cloudEnvOverride(cfg *config.Config) error {
 	if cfg.CurrentContext == "" {
 		cfg.CurrentContext = config.DefaultContextName
@@ -271,7 +258,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 	ctxName := l.resolvedContextName(ctx)
 	configFile := l.resolvedConfigFile(ctx)
 	overrides := []config.Override{
-		contextSelectionOverride(ctxName),
+		config.SelectContext(ctxName),
 		envOverride,
 		contextMustExist,
 		func(cfg *config.Config) error {
@@ -307,7 +294,7 @@ type cloudBase struct {
 // LoadCloudTokenConfig (which does not).
 func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	ctxName := l.resolvedContextName(ctx)
-	overrides := []config.Override{contextSelectionOverride(ctxName), cloudEnvOverride}
+	overrides := []config.Override{config.SelectContext(ctxName), cloudEnvOverride}
 
 	loaded, err := config.LoadLayered(ctx, l.resolvedConfigFile(ctx), overrides...)
 	if err != nil {
@@ -436,7 +423,7 @@ func (l *ConfigLoader) configSource(ctx context.Context) config.Source {
 func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName string) (map[string]string, string, error) {
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{
-		contextSelectionOverride(ctxName),
+		config.SelectContext(ctxName),
 		envOverride,
 		contextMustExist,
 	}
@@ -476,7 +463,7 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{
-		contextSelectionOverride(ctxName),
+		config.SelectContext(ctxName),
 		envOverride,
 		contextMustExist,
 	}
@@ -649,12 +636,9 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 		return err
 	}
 
-	ctxName := l.resolvedContextName(ctx)
-	if ctxName == "" {
-		ctxName = loaded.CurrentContext
-	}
-	if ctxName == "" && loaded.HasContext(config.DefaultContextName) {
-		ctxName = config.DefaultContextName
+	ctxName, err := config.ResolveContextName(l.resolvedContextName(ctx), loaded)
+	if err != nil {
+		return err
 	}
 	if !loaded.HasContext(ctxName) {
 		return config.ContextNotFound(ctxName, loaded.ContextNames())
@@ -729,12 +713,9 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 		return err
 	}
 
-	ctxName := l.resolvedContextName(ctx)
-	if ctxName == "" {
-		ctxName = loaded.CurrentContext
-	}
-	if ctxName == "" && loaded.HasContext(config.DefaultContextName) {
-		ctxName = config.DefaultContextName
+	ctxName, err := config.ResolveContextName(l.resolvedContextName(ctx), loaded)
+	if err != nil {
+		return err
 	}
 	if !loaded.HasContext(ctxName) {
 		return config.ContextNotFound(ctxName, loaded.ContextNames())
@@ -782,7 +763,7 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 func (l *ConfigLoader) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
 	overrides := make([]config.Override, 0, 2+len(extraOverrides))
 	overrides = append(overrides,
-		contextSelectionOverride(l.resolvedContextName(ctx)),
+		config.SelectContext(l.resolvedContextName(ctx)),
 		envOverride,
 	)
 	overrides = append(overrides, extraOverrides...)
@@ -815,7 +796,7 @@ func (l *ConfigLoader) ConfigSource(ctx context.Context) config.Source {
 func (l *ConfigLoader) LoadFullConfig(ctx context.Context) (*config.Config, error) {
 	ctxName := l.resolvedContextName(ctx)
 	overrides := []config.Override{
-		contextSelectionOverride(ctxName),
+		config.SelectContext(ctxName),
 		envOverride,
 		contextMustExist,
 	}

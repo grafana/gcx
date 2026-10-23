@@ -130,6 +130,7 @@ const (
 	StandardConfigFileName = "config.yaml"
 	ConfigFileEnvVar       = "GCX_CONFIG"
 	ContextEnvVar          = "GCX_CONTEXT"
+	RequireContextEnvVar   = "GCX_REQUIRE_CONTEXT"
 	LocalConfigFileName    = ".gcx.yaml"
 
 	defaultEmptyConfigFile = `
@@ -508,6 +509,9 @@ func CreateDefaultConfigFile(file string) error {
 // Load reads the config document named by source. It reads the ambient config
 // layer, if a caller set one through ContextWithConfigSource, once here and
 // passes it down as an explicit option.
+// This load is not checked by strict context mode. A caller that then uses
+// CurrentContext to target a stack must resolve the name through
+// ResolveContextName or an enforced LoadLayered.
 func Load(ctx context.Context, source Source, overrides ...Override) (Config, error) {
 	return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
 }
@@ -525,6 +529,10 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 // It takes a whole Config rather than an exported policy value deliberately:
 // the policy type is private, so a caller cannot manufacture a plaintext
 // opt-out without first loading trusted configuration.
+//
+// This load is not checked by strict context mode. A caller that then uses
+// CurrentContext to target a stack must resolve the name through
+// ResolveContextName or an enforced LoadLayered.
 func LoadUnderResolvedPolicy(ctx context.Context, source Source, resolved Config, overrides ...Override) (Config, error) {
 	opts := loadOptions{layer: configLayerFromCtx(ctx)}
 	if resolved.keychainPolicy.source != "" {
@@ -1152,12 +1160,22 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // GCX_CONTEXT is resolved by the CLI layer alongside the --context flag
 // (the flag wins); LoadLayered itself never reads it.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
-	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
+	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx), enforceSelection: true}, overrides...)
 }
 
 // loadLayeredTracked is LoadLayered with explicit options.
 func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	cfg, err := loadLayered(ctx, explicitFile, opts, overrides...)
+	if opts.enforceSelection && StrictContextEnabled() {
+		if err == nil {
+			err = checkContextSelection(&cfg)
+		} else if refusal := inheritedRefusal(&cfg); refusal != nil {
+			// A failed load whose target was inherited from current-context
+			// reports the refusal, not the (possibly unrelated) load error:
+			// the invocation must name a context before anything else matters.
+			err = refusal
+		}
+	}
 	// Capture even when err is non-nil: the validation and credential-binding
 	// override paths below return a fully merged config, so the target is known
 	// even though the command will fail. Gating on success attributed those
@@ -1169,8 +1187,8 @@ func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptio
 	// names whichever context was current before --context was applied, and that
 	// is not what the invocation targeted — classifying it would report a
 	// confidently wrong kind where the honest answer is that no target was ever
-	// resolved.
-	if !errors.Is(err, ErrContextNotFound) {
+	// resolved. A strict-mode refusal is the same: no context was ever named.
+	if !errors.Is(err, ErrContextNotFound) && !errors.Is(err, ErrContextRequired) {
 		captureTargetKind(&cfg)
 	}
 	return cfg, err
@@ -1357,6 +1375,10 @@ func loadLayeredSources(ctx context.Context, sources []ConfigSource, opts loadOp
 //
 // explicitFile is the value of the --config flag; fileType is the value of
 // the --file flag. Both may be empty.
+//
+// This load is not checked by strict context mode. A caller that then uses
+// CurrentContext to target a stack must resolve the name through
+// ResolveContextName or an enforced LoadLayered.
 func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, Source, error) {
 	return loadForWrite(ctx, explicitFile, fileType, loadOptions{layer: configLayerFromCtx(ctx)})
 }

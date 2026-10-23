@@ -95,8 +95,15 @@ Inspect configuration only when the target is ambiguous or a request fails
 with a configuration, authentication, or connectivity error:
 - `gcx config list-contexts` — list configured contexts and their servers
 - `gcx config current-context` — show the active context name
-- `gcx config check` — validate the active context and test connectivity
+- `gcx config check` — validate contexts (all, or one with `--context`) and test connectivity
 - `gcx config view` — inspect configuration with secrets redacted
+
+If a command fails with "GCX_REQUIRE_CONTEXT is set, so gcx will not fall back
+to current-context", do not fall back to `current-context`. Pass
+`--context <name>` or set `GCX_CONTEXT=<name>` on that invocation, or ask the
+user which context to use. `gcx login` and `gcx signup` ignore `GCX_CONTEXT`.
+Give them a context name argument or `--context`.
+`gcx config list-contexts` lists the names you can choose from.
 
 ## Output Control
 
@@ -127,7 +134,7 @@ asks for speed.
 | Intent | Flag |
 |--------|------|
 | Preview without changing anything | `--dry-run` |
-| Target a specific context | `--context <name>` |
+| Target a specific context | `--context <name>` (with `GCX_REQUIRE_CONTEXT` set, pass it or set `GCX_CONTEXT`) |
 | Continue on errors vs stop | `--on-error fail\|ignore\|abort` |
 | Control concurrency | `--max-concurrent <n>` (default 10) |
 

@@ -2466,7 +2466,8 @@ func TestResolveSourceContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotSource, gotName := resolveSourceContext(tt.cfg, tt.contextName, tt.server)
+			gotSource, gotName, err := resolveSourceContext(tt.cfg, tt.contextName, tt.server, "login")
+			require.NoError(t, err)
 			assert.Same(t, tt.wantSource, gotSource, "sourceCtx mismatch")
 			assert.Equal(t, tt.wantName, gotName, "contextName mismatch")
 		})
@@ -2644,4 +2645,112 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	require.NoError(t, runCloudOAuth(context.Background(), &opts))
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
+}
+
+func TestResolveSourceContext_Strict(t *testing.T) {
+	cfg := config.Config{
+		Contexts:       map[string]*config.Context{"a": {}, "b": {}},
+		CurrentContext: "a",
+	}
+
+	tests := []struct {
+		name        string
+		strict      bool
+		contextName string
+		server      string
+		wantName    string
+		wantErr     error
+	}{
+		{name: "strict_bare_refused", strict: true, wantErr: config.ErrContextRequired},
+		{name: "strict_named", strict: true, contextName: "b", wantName: "b"},
+		{
+			name: "strict_server_derived", strict: true, server: "https://x.grafana.net",
+			wantName: config.ContextNameFromServerURL("https://x.grafana.net"),
+		},
+		{name: "non_strict_bare_uses_current", wantName: "a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.strict {
+				t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+			} else {
+				t.Setenv("GCX_REQUIRE_CONTEXT", "")
+			}
+			_, name, err := resolveSourceContext(cfg, tt.contextName, tt.server, "login")
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				var cre *config.ContextRequiredError
+				require.ErrorAs(t, err, &cre)
+				assert.Equal(t, "a", cre.Inherited)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantName, name)
+		})
+	}
+}
+
+func TestResolveSourceContext_StrictNoCurrentContextFallsThrough(t *testing.T) {
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	_, name, err := resolveSourceContext(config.Config{}, "", "", "login")
+	require.NoError(t, err)
+	assert.Empty(t, name)
+}
+
+// TestRunLogin_StrictEmptyPositionalRefused pins that `gcx login ""` cannot
+// fall back to the current-context of the file in strict context mode. The
+// refusal happens before any prompt or network access.
+func TestRunLogin_StrictEmptyPositionalRefused(t *testing.T) {
+	signupEnvironment(t, "true")
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	browser := stubSignupBrowser(t, nil)
+
+	var seed config.Config
+	seed.SetStack("a", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://a.invalid", OrgID: 1}})
+	seed.SetContext("a", true, config.Context{Stack: "a"})
+	path := writeSignupConfig(t, seed)
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"", "--config", path})
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorIs(t, err, config.ErrContextRequired)
+	assert.Zero(t, browser.started())
+}
+
+// TestLoadLoginSourceContext_StrictRefusalClearsTargetKind pins that a refused
+// strict login reports no target kind, even though the pre-load captured the
+// target kind of the inherited context.
+func TestLoadLoginSourceContext_StrictRefusalClearsTargetKind(t *testing.T) {
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_KEYCHAIN", "off")
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(cfgFile, []byte(`version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.grafana.net
+      token: x
+contexts:
+  a:
+    stack: a
+current-context: a
+`), 0o600))
+	config.ClearCapturedTargetKind()
+	t.Cleanup(config.ClearCapturedTargetKind)
+	// Prime a non-unknown kind, as the pre-load of the inherited context does.
+	config.CaptureTargetKindForServer("https://a.grafana.net")
+	require.NotEqual(t, string(config.TargetKindUnknown), config.CapturedTargetKind())
+
+	// GRAFANA_SERVER would name the login target, so the shell must not set it.
+	t.Setenv("GRAFANA_SERVER", "")
+	flags := &loginOpts{}
+	flags.Config.ConfigFile = cfgFile
+	_, src, _, err := loadLoginSourceContext(t.Context(), flags, "")
+	require.ErrorIs(t, err, config.ErrContextRequired)
+	assert.Nil(t, src)
+	assert.Equal(t, string(config.TargetKindUnknown), config.CapturedTargetKind())
 }
