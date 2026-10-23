@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGroupRulesTableCodec_Encode(t *testing.T) {
-	codec := &alert.GroupRulesTableCodec{}
+func TestGroupRulesTable_Encode(t *testing.T) {
+	codec := alert.GroupRulesTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 
 	group := &alert.RuleGroup{
