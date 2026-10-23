@@ -856,3 +856,16 @@ Default `MaxConcurrent` = 10 (set in `push.go`, `pull.go`, etc.).
    when both resources have the `kubectl` manager kind. This applies to direct
    lookups and natural-key matches. See [Manager Metadata](resource-model.md#manager-metadata).
    Other update paths must also satisfy Grafana's version and ownership checks.
+
+## Experimental generic plugin flow
+
+`gcx plugins run <executable>` starts the plugin through go-plugin. The SDK brokers
+a callback connection: the plugin sends arguments and optional stdin through
+Execute, and the host starts a new gcx subprocess. The subprocess loads its own
+configuration and credentials, makes API requests and returns stdout, stderr and
+exit status. The parent forwards the selected context and config file. RPC
+cancellation cancels the corresponding subprocess. The plugin owns its terminal
+UI and returns a finite application result when it finishes.
+
+See the [plugin SDK](../../experimental/pluginsdk/README.md)
+for terminal handling, trust boundaries and PoC limitations.

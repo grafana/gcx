@@ -6,3 +6,6 @@
 !go.mod
 !go.sum
 !mise.toml
+!experimental/
+experimental/*
+!experimental/pluginsdk/

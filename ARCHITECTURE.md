@@ -6,6 +6,13 @@ See [VISION.md](VISION.md) for goals, roadmap, and product surface.
 
 **In brief:** A CLI for managing Grafana and Grafana Cloud. Supports dynamic Grafana API resources via a kubectl-like resources layer, and per-product features via the provider interface. Includes observability-as-code workflows (`gcx dev`), multi-stack configuration/contexts, and Grafana Assistant integration. Optimized for AI agents and human use.
 
+## Experimental generic plugins
+
+The `gcx plugins run` PoC launches a local Go plugin through HashiCorp go-plugin
+and serves a generic Execute callback over gRPC. Each callback starts a gcx
+subprocess that loads its own configuration and clients; the plugin owns its UI. See the [plugin SDK](experimental/pluginsdk/README.md)
+for the protocol boundary, supported subset and validation instructions.
+
 ## System Overview
 
 ### 1. Resources Pipeline

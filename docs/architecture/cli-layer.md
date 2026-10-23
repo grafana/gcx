@@ -563,3 +563,11 @@ Use an existing neighboring command as the implementation example so imports, he
 - `OnErrorMode` is always validated in `opts.Validate()`, not inline
 - `terminal.Detect()` is called once in `PersistentPreRun`; use `terminal.IsPiped()` / `terminal.NoTruncate()` everywhere else
 - `--json` is mutually exclusive with `-o/--output`; enforced in `io.Options.Validate()`
+
+## Experimental plugin execution
+
+`gcx plugins run` launches a local plugin implementing the separate
+[generic SDK](../../experimental/pluginsdk/README.md). Its Execute callback passes
+arguments and optional stdin to a new gcx subprocess, forwarding the selected
+context/config file and returning captured output and exit status. The command
+is host-only; wasip1 does not register it.

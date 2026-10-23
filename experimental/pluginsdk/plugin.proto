@@ -1,0 +1,14 @@
+syntax = "proto3";
+package gcx.plugin.v1;
+option go_package = "github.com/grafana/gcx/experimental/pluginsdk;pluginsdk";
+
+service Extension { rpc Run(RunRequest) returns (RunResponse); }
+service CommandHost { rpc Execute(ExecuteRequest) returns (ExecuteResponse); }
+message RunRequest {
+  uint32 host_broker_id = 1;
+  repeated string args = 2;
+  bool interactive = 3;
+}
+message RunResponse { int32 exit_code = 1; bytes stdout = 2; string stderr = 3; }
+message ExecuteRequest { repeated string args = 1; bytes stdin = 2; }
+message ExecuteResponse { bytes stdout = 1; bytes stderr = 2; int32 exit_code = 3; }
