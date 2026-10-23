@@ -177,7 +177,7 @@ func (linter *Linter) RecordViolation(violation Violation) {
 }
 
 func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
-	preparedQuery, err := linter.prepare(ctx)
+	preparedQuery, err := linter.prepare(ctx, "lint := data")
 	if err != nil {
 		return nil, err
 	}
@@ -293,11 +293,10 @@ func restrictedCapabilities() *ast.Capabilities {
 	}
 }
 
-func (linter *Linter) prepare(ctx context.Context) (rego.PreparedEvalQuery, error) {
+func (linter *Linter) prepare(ctx context.Context, query string) (rego.PreparedEvalQuery, error) {
 	regoOpts := []func(*rego.Rego){
 		rego.Capabilities(restrictedCapabilities()),
-		// Matches the report-generation statement in `./bundle/gcx/main/main.rego`
-		rego.Query("lint := data.gcx.main.lint"),
+		rego.Query(query),
 		rego.ParsedBundle("internal", linter.createDataBundle()),
 	}
 
@@ -352,7 +351,14 @@ func (linter *Linter) createDataBundle() *bundle.Bundle {
 func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 	linter.externalViolations = nil
 
-	preparedQuery, err := linter.prepare(ctx)
+	// Matches the report-generation statement in `./bundle/gcx/main/main.rego`
+	violationsQuery, err := linter.prepare(ctx, "lint := data.gcx.main.lint")
+	if err != nil {
+		return Report{}, err
+	}
+
+	// Matches the report-generation statement in `./bundle/gcx/external/main.rego`
+	externalViolationsQuery, err := linter.prepare(ctx, "lint := data.gcx.external.lint")
 	if err != nil {
 		return Report{}, err
 	}
@@ -362,13 +368,28 @@ func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 		return Report{}, err
 	}
 
+	reports := make([]Report, len(inputs.AsList())+1)
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(linter.maxConcurrency)
 
-	reports := make([]Report, len(inputs.AsList()))
+	// Add external violations
+	resultSet, err := externalViolationsQuery.Eval(ctx, rego.EvalInput(map[string]any{
+		"externalViolations": linter.externalViolations,
+	}))
+	if err != nil {
+		return Report{}, fmt.Errorf("could not evaluate external violations: %w", err)
+	}
+
+	reports[len(inputs.AsList())], err = resultSetToReport("", resultSet)
+	if err != nil {
+		return Report{}, err
+	}
+
+	// Run linting rules
 	for i, input := range inputs.AsList() {
 		g.Go(func() error {
-			resultSet, err := preparedQuery.Eval(ctx, rego.EvalInput(input.ToUnstructured().Object))
+			resultSet, err := violationsQuery.Eval(ctx, rego.EvalInput(input.ToUnstructured().Object))
 			if err != nil {
 				return fmt.Errorf("could not lint %s: %w", input.SourcePath(), err)
 			}
@@ -388,10 +409,7 @@ func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 		return Report{}, err
 	}
 
-	finalReport := Report{
-		Violations: linter.externalViolations,
-	}
-
+	finalReport := Report{}
 	for _, report := range reports {
 		finalReport.Violations = append(finalReport.Violations, report.Violations...)
 	}
@@ -429,6 +447,10 @@ func resultSetToReport(filename string, resultSet rego.ResultSet) (Report, error
 		if err := jsonRoundTrip(binding, &r); err != nil {
 			return Report{}, fmt.Errorf("failed generating report from bindings: %v %w", binding, err)
 		}
+	}
+
+	if filename == "" {
+		return r, nil
 	}
 
 	for i := range r.Violations {
