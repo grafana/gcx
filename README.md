@@ -1,7 +1,5 @@
 # gcx — Grafana CLI
 
-This branch contains an experimental [generic go-plugin resource explorer](examples/plugins/resource-explorer/README.md), with local build instructions.
-
 <p>
 <a href="https://github.com/grafana/gcx/actions/workflows/ci.yaml"><img src="https://github.com/grafana/gcx/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
 <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go" alt="Go"></a>

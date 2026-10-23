@@ -45,7 +45,7 @@ Reference refresh is an explicit release operation: the release workflow refresh
 
 ## Experimental plugin SDK
 
-The resource-explorer PoC uses a separate unpublished generic RPC module at
+The plugin host uses a separate unpublished generic RPC module at
 `experimental/pluginsdk`, with host command execution in `internal/pluginhost`.
 See the [SDK contract](../../experimental/pluginsdk/README.md) for the subprocess,
 configuration and terminal boundaries.

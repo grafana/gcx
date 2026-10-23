@@ -3,7 +3,7 @@
 This standalone, unpublished module implements proposal 2.a: HashiCorp go-plugin
 with gRPC, automatic mutual TLS and one generic command callback. It is the RPC
 counterpart to the subprocess SDK in PR #1563, based on the typed RPC PoC in
-PR #1568. The host and example use local module replacements.
+PR #1568. The host uses a local module replacement.
 
 ```text
 gcx host → plugin → Execute RPC → host → new gcx subprocess → Grafana
@@ -46,8 +46,8 @@ The extension's output is separate from command output. `RunResponse` carries
 finite stdout, stderr and application exit status; the host prints these after
 Run completes. Ordinary plugin stderr is forwarded to host stderr. `SyncStdout`
 is unset, so ordinary stdout after SDK startup is discarded. Both sides use
-null go-plugin loggers. The explorer opens `/dev/tty` for its interactive UI;
-Windows interactive mode is unimplemented. The host restores terminal state.
+null go-plugin loggers. Interactive plugins must manage their terminal UI
+separately from stdout. The host restores terminal state on exit.
 
 `plugin.proto` is the wire contract; generated bindings are checked in. Startup
 checks protocol version 1 with a distinct generic-command handshake cookie;

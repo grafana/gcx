@@ -87,4 +87,4 @@ See [client/API layer](client-api-layer.md) for transport construction and error
 
 The `gcx plugins run` PoC uses go-plugin to expose a generic command callback.
 Each callback starts a gcx subprocess that loads its own configuration and
-clients; the plugin owns its terminal UI. See the [resource-explorer example](../../examples/plugins/resource-explorer/README.md).
+clients; the plugin owns its terminal UI. See the [plugin SDK](../../experimental/pluginsdk/README.md).

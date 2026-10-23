@@ -867,5 +867,5 @@ exit status. The parent forwards the selected context and config file. RPC
 cancellation cancels the corresponding subprocess. The plugin owns its terminal
 UI and returns a finite application result when it finishes.
 
-See the [resource-explorer example](../../examples/plugins/resource-explorer/README.md)
+See the [plugin SDK](../../experimental/pluginsdk/README.md)
 for terminal handling, trust boundaries and PoC limitations.

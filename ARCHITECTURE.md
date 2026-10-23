@@ -10,7 +10,7 @@ See [VISION.md](VISION.md) for goals, roadmap, and product surface.
 
 The `gcx plugins run` PoC launches a local Go plugin through HashiCorp go-plugin
 and serves a generic Execute callback over gRPC. Each callback starts a gcx
-subprocess that loads its own configuration and clients; the plugin owns its UI. See the [resource-explorer example](examples/plugins/resource-explorer/README.md)
+subprocess that loads its own configuration and clients; the plugin owns its UI. See the [plugin SDK](experimental/pluginsdk/README.md)
 for the protocol boundary, supported subset and validation instructions.
 
 ## System Overview
