@@ -2830,35 +2830,27 @@ type cypherOpts struct {
 }
 
 func (o *cypherOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, cypherTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-// CypherTableCodec renders a CypherSearchResponse as a table of entities.
-type CypherTableCodec struct{}
-
-func (c *CypherTableCodec) Format() format.Format { return "table" }
-
-func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*CypherSearchResponse)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
+func cypherTable() cmdio.TableAdapter[*CypherSearchResponse, CypherEntity] {
+	return cmdio.TableAdapter[*CypherSearchResponse, CypherEntity]{
+		Table: cmdio.Table[CypherEntity]{Columns: []cmdio.Column[CypherEntity]{
+			{Header: "TYPE", Content: func(e CypherEntity) string { return e.Type }},
+			{Header: "NAME", Content: func(e CypherEntity) string { return e.Name }},
+			{Header: "SCOPE", Content: func(e CypherEntity) string {
+				parts := make([]string, 0, len(e.Scope))
+				for k, val := range e.Scope {
+					parts = append(parts, fmt.Sprintf("%s=%v", k, val))
+				}
+				sort.Strings(parts)
+				return strings.Join(parts, ", ")
+			}},
+		}},
+		Rows: func(resp *CypherSearchResponse) ([]CypherEntity, error) { return resp.Entities, nil },
 	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE")
-	for _, e := range resp.Entities {
-		var parts []string
-		for k, val := range e.Scope {
-			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
-		}
-		sort.Strings(parts)
-		t.Row(e.Type, e.Name, strings.Join(parts, ", "))
-	}
-	return t.Render(w)
-}
-
-func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
