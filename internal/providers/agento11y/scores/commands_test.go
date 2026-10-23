@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTableCodec_Encode(t *testing.T) {
+func TestScoresTable_Encode(t *testing.T) {
 	f := func(v float64) *float64 { return &v }
 	b := func(v bool) *bool { return &v }
 
@@ -77,7 +77,11 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &scores.TableCodec{Wide: tc.wide, GenMeta: tc.genMeta}
+			name := "table"
+			if tc.wide {
+				name = "wide"
+			}
+			codec := scores.ScoresTable(tc.genMeta).Codec(name)
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -478,7 +482,7 @@ func TestNewListRuleScoresCommand_TableOutput(t *testing.T) {
 	assert.Contains(t, stdout.String(), "relevance")
 }
 
-func TestTableCodec_WideWithAgentModel(t *testing.T) {
+func TestScoresTable_WideWithAgentModel(t *testing.T) {
 	b := func(v bool) *bool { return &v }
 	f := func(v float64) *float64 { return &v }
 	now := time.Date(2026, 4, 2, 18, 30, 0, 0, time.UTC)
@@ -492,39 +496,11 @@ func TestTableCodec_WideWithAgentModel(t *testing.T) {
 		},
 	}
 
-	codec := &scores.TableCodec{Wide: true, GenMeta: true}
+	codec := scores.ScoresTable(true).Codec("wide")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, items))
 	output := buf.String()
 	assert.Contains(t, output, "billing-bot")
 	assert.Contains(t, output, "gpt-4")
 	assert.Contains(t, output, "Off topic")
-}
-
-func TestTableCodec_WrongType(t *testing.T) {
-	codec := &scores.TableCodec{}
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []Score")
-}
-
-func TestTableCodec_Format(t *testing.T) {
-	tests := []struct {
-		wide   bool
-		expect string
-	}{
-		{false, "table"},
-		{true, "wide"},
-	}
-	for _, tc := range tests {
-		codec := &scores.TableCodec{Wide: tc.wide}
-		assert.Equal(t, tc.expect, string(codec.Format()))
-	}
-}
-
-func TestTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &scores.TableCodec{}
-	err := codec.Decode(nil, nil)
-	require.Error(t, err)
 }
