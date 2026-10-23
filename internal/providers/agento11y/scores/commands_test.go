@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestScoresTable_Encode(t *testing.T) {
+func TestScoreTable_Encode(t *testing.T) {
 	f := func(v float64) *float64 { return &v }
 	b := func(v bool) *bool { return &v }
 
@@ -81,7 +81,11 @@ func TestScoresTable_Encode(t *testing.T) {
 			if tc.wide {
 				name = "wide"
 			}
-			codec := scores.ScoresTable(tc.genMeta).Codec(name)
+			table := scores.Table()
+			if tc.genMeta {
+				table = scores.RuleTable()
+			}
+			codec := table.Codec(name)
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -482,7 +486,7 @@ func TestNewListRuleScoresCommand_TableOutput(t *testing.T) {
 	assert.Contains(t, stdout.String(), "relevance")
 }
 
-func TestScoresTable_WideWithAgentModel(t *testing.T) {
+func TestScoreTable_WideWithAgentModel(t *testing.T) {
 	b := func(v bool) *bool { return &v }
 	f := func(v float64) *float64 { return &v }
 	now := time.Date(2026, 4, 2, 18, 30, 0, 0, time.UTC)
@@ -496,7 +500,7 @@ func TestScoresTable_WideWithAgentModel(t *testing.T) {
 		},
 	}
 
-	codec := scores.ScoresTable(true).Codec("wide")
+	codec := scores.RuleTable().Codec("wide")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, items))
 	output := buf.String()

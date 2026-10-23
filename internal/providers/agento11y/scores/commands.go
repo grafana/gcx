@@ -40,7 +40,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	cmdio.RegisterTable(&o.IO, ScoresTable(false))
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of scores to return")
@@ -107,7 +107,7 @@ type listRuleOpts struct {
 
 func (o *listRuleOpts) setup(flags *pflag.FlagSet) {
 	table := cmdio.TableAdapter[ruleScoresEnvelope, Score]{
-		Table: ScoresTable(true),
+		Table: RuleTable(),
 		Rows:  func(result ruleScoresEnvelope) ([]Score, error) { return result.Items, nil },
 	}
 	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
@@ -345,8 +345,17 @@ Filter by evaluator, time range, agent, model, or provider as needed.`,
 	return cmd
 }
 
-// genMeta adds the generation metadata only supplied by the rule endpoint.
-func ScoresTable(genMeta bool) cmdio.Table[Score] {
+// Table omits generation metadata that the generation endpoint doesn't populate.
+func Table() cmdio.Table[Score] {
+	return scoreTable(false)
+}
+
+// RuleTable includes generation metadata supplied only by the rule endpoint.
+func RuleTable() cmdio.Table[Score] {
+	return scoreTable(true)
+}
+
+func scoreTable(genMeta bool) cmdio.Table[Score] {
 	columns := []cmdio.Column[Score]{
 		{Header: "SCORE KEY", Content: func(s Score) string { return s.ScoreKey }},
 		{Header: "TYPE", Visible: cmdio.WideOnly, Content: func(s Score) string { return s.ScoreType }},
@@ -354,12 +363,12 @@ func ScoresTable(genMeta bool) cmdio.Table[Score] {
 		{Header: "PASSED", Content: func(s Score) string { return scorePassedDisplay(s.Passed) }},
 		{Header: "EVALUATOR", Content: func(s Score) string { return s.EvaluatorID }},
 		{Header: "VERSION", Visible: cmdio.WideOnly, Content: func(s Score) string { return s.EvaluatorVersion }},
-		{Header: "RULE", Visible: cmdio.WideOnly, Content: func(s Score) string { return dashOrEmpty(s.RuleID) }},
+		{Header: "RULE", Visible: cmdio.WideOnly, Content: func(s Score) string { return cmdio.OrDash(s.RuleID) }},
 	}
 	if genMeta {
 		columns = append(columns,
-			cmdio.Column[Score]{Header: "AGENT", Visible: cmdio.WideOnly, Content: func(s Score) string { return dashOrEmpty(s.AgentName) }},
-			cmdio.Column[Score]{Header: "MODEL", Visible: cmdio.WideOnly, Content: func(s Score) string { return dashOrEmpty(s.GenModel) }},
+			cmdio.Column[Score]{Header: "AGENT", Visible: cmdio.WideOnly, Content: func(s Score) string { return cmdio.OrDash(s.AgentName) }},
+			cmdio.Column[Score]{Header: "MODEL", Visible: cmdio.WideOnly, Content: func(s Score) string { return cmdio.OrDash(s.GenModel) }},
 		)
 	}
 	columns = append(columns,
@@ -367,14 +376,6 @@ func ScoresTable(genMeta bool) cmdio.Table[Score] {
 		cmdio.Column[Score]{Header: "CREATED AT", Content: func(s Score) string { return agento11yhttp.FormatTime(s.CreatedAt) }},
 	)
 	return cmdio.Table[Score]{Columns: columns}
-}
-
-// dashOrEmpty renders an empty cell value as "-".
-func dashOrEmpty(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }
 
 // scorePassedDisplay renders the tri-state pass/fail as yes/no/-.
