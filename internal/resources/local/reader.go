@@ -205,9 +205,19 @@ func (reader *FSReader) Read(
 			obj := res.Object
 			gvk := obj.GroupVersionKind()
 			target := resources.NormalizeGVK(gvk)
-			if reader.Warn != nil && !warned[gvk.GroupVersion()] && resources.MatchesGroupAlias(target, gvk.Group) {
-				output.EmitWarn(reader.Warn, fmt.Sprintf("apiVersion %q is deprecated; use %q instead", gvk.GroupVersion(), target.GroupVersion()))
-				warned[gvk.GroupVersion()] = true
+			if resources.MatchesGroupAlias(target, gvk.Group) {
+				// only write on reader.Warn once
+				if reader.Warn != nil && !warned[gvk.GroupVersion()] {
+					output.EmitWarn(reader.Warn, fmt.Sprintf("apiVersion %q is deprecated; use %q instead", gvk.GroupVersion(), target.GroupVersion()))
+					warned[gvk.GroupVersion()] = true
+				}
+
+				// but notify for every resource (used by the linter)
+				reader.notifyErrorListeners(resources.DeprecatedResourceError{
+					Ref:         obj.Ref(),
+					Used:        gvk.GroupVersion(),
+					Alternative: target.GroupVersion(),
+				}, res.Path)
 			}
 
 			if adapter.RetainsLocalDuplicates(obj.GroupVersionKind()) {

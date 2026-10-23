@@ -3,6 +3,8 @@ package resources
 import (
 	"fmt"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // UnsupportedResourceError reports a well-formed resource selector that the
@@ -22,5 +24,15 @@ type DuplicatedResourceError struct {
 }
 
 func (err DuplicatedResourceError) Error() string {
-	return fmt.Sprintf("duplicated resource '%s' found in %s", err.Ref, strings.Join(err.Files, ", "))
+	return fmt.Sprintf("duplicated resource %q found in %s", err.Ref, strings.Join(err.Files, ", "))
+}
+
+type DeprecatedResourceError struct {
+	Ref         ResourceRef
+	Used        schema.GroupVersion
+	Alternative schema.GroupVersion
+}
+
+func (err DeprecatedResourceError) Error() string {
+	return fmt.Sprintf("apiVersion %q is deprecated; use %q instead", err.Used, err.Alternative)
 }
