@@ -3,18 +3,15 @@ package scores
 import (
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -43,8 +40,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of scores to return")
@@ -110,10 +106,12 @@ type listRuleOpts struct {
 }
 
 func (o *listRuleOpts) setup(flags *pflag.FlagSet) {
-	// GenMeta only affects the wide layout (AGENT/MODEL columns), so the plain
-	// table codec is left at its default.
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true, GenMeta: true})
+	table := cmdio.TableAdapter[ruleScoresEnvelope, Score]{
+		Table: RuleTable(),
+		Rows:  func(result ruleScoresEnvelope) ([]Score, error) { return result.Items, nil },
+	}
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	// A client-side safety cap bounds --limit 0, so the standard "0 means all"
@@ -347,72 +345,37 @@ Filter by evaluator, time range, agent, model, or provider as needed.`,
 	return cmd
 }
 
-// --- table codec ---
-
-// TableCodec renders scores as a text table. Wide adds the VERSION/RULE/
-// EXPLANATION columns. GenMeta adds AGENT/MODEL columns, but only under Wide
-// (the plain table ignores it); it is set only for the rule endpoint, which
-// populates those fields — the generation endpoint leaves them empty.
-type TableCodec struct {
-	Wide    bool
-	GenMeta bool
+// Table omits generation metadata that the generation endpoint doesn't populate.
+func Table() cmdio.Table[Score] {
+	return scoreTable(false)
 }
 
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
+// RuleTable includes generation metadata supplied only by the rule endpoint.
+func RuleTable() cmdio.Table[Score] {
+	return scoreTable(true)
 }
 
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	// Accept both the bare slice (generation list-scores) and the rule
-	// list-scores envelope, so the codec renders the rows either way.
-	var items []Score
-	switch t := v.(type) {
-	case []Score:
-		items = t
-	case ruleScoresEnvelope:
-		items = t.Items
-	default:
-		return errors.New("invalid data type for table codec: expected []Score or ruleScoresEnvelope")
+func scoreTable(genMeta bool) cmdio.Table[Score] {
+	columns := []cmdio.Column[Score]{
+		{Header: "SCORE KEY", Content: func(s Score) string { return s.ScoreKey }},
+		{Header: "TYPE", Visible: cmdio.WideOnly, Content: func(s Score) string { return s.ScoreType }},
+		{Header: "VALUE", Content: func(s Score) string { return s.Value.Display() }},
+		{Header: "PASSED", Content: func(s Score) string { return scorePassedDisplay(s.Passed) }},
+		{Header: "EVALUATOR", Content: func(s Score) string { return s.EvaluatorID }},
+		{Header: "VERSION", Visible: cmdio.WideOnly, Content: func(s Score) string { return s.EvaluatorVersion }},
+		{Header: "RULE", Visible: cmdio.WideOnly, Content: func(s Score) string { return cmdio.OrDash(s.RuleID) }},
 	}
-
-	var t *style.TableBuilder
-	switch {
-	case c.Wide && c.GenMeta:
-		t = style.NewTable("SCORE KEY", "TYPE", "VALUE", "PASSED", "EVALUATOR", "VERSION", "RULE", "AGENT", "MODEL", "EXPLANATION", "CREATED AT")
-	case c.Wide:
-		t = style.NewTable("SCORE KEY", "TYPE", "VALUE", "PASSED", "EVALUATOR", "VERSION", "RULE", "EXPLANATION", "CREATED AT")
-	default:
-		t = style.NewTable("SCORE KEY", "VALUE", "PASSED", "EVALUATOR", "CREATED AT")
+	if genMeta {
+		columns = append(columns,
+			cmdio.Column[Score]{Header: "AGENT", Visible: cmdio.WideOnly, Content: func(s Score) string { return cmdio.OrDash(s.AgentName) }},
+			cmdio.Column[Score]{Header: "MODEL", Visible: cmdio.WideOnly, Content: func(s Score) string { return cmdio.OrDash(s.GenModel) }},
+		)
 	}
-
-	for _, s := range items {
-		passed := scorePassedDisplay(s.Passed)
-		switch {
-		case c.Wide && c.GenMeta:
-			t.Row(s.ScoreKey, s.ScoreType, s.Value.Display(), passed,
-				s.EvaluatorID, s.EvaluatorVersion, dashOrEmpty(s.RuleID), dashOrEmpty(s.AgentName), dashOrEmpty(s.GenModel),
-				agento11yhttp.Truncate(s.Explanation, 80), agento11yhttp.FormatTime(s.CreatedAt))
-		case c.Wide:
-			t.Row(s.ScoreKey, s.ScoreType, s.Value.Display(), passed,
-				s.EvaluatorID, s.EvaluatorVersion, dashOrEmpty(s.RuleID),
-				agento11yhttp.Truncate(s.Explanation, 80), agento11yhttp.FormatTime(s.CreatedAt))
-		default:
-			t.Row(s.ScoreKey, s.Value.Display(), passed,
-				s.EvaluatorID, agento11yhttp.FormatTime(s.CreatedAt))
-		}
-	}
-	return t.Render(w)
-}
-
-// dashOrEmpty renders an empty cell value as "-".
-func dashOrEmpty(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
+	columns = append(columns,
+		cmdio.Column[Score]{Header: "EXPLANATION", Visible: cmdio.WideOnly, Content: func(s Score) string { return agento11yhttp.Truncate(s.Explanation, 80) }},
+		cmdio.Column[Score]{Header: "CREATED AT", Content: func(s Score) string { return agento11yhttp.FormatTime(s.CreatedAt) }},
+	)
+	return cmdio.Table[Score]{Columns: columns}
 }
 
 // scorePassedDisplay renders the tri-state pass/fail as yes/no/-.
@@ -425,8 +388,4 @@ func scorePassedDisplay(passed *bool) string {
 	default:
 		return "no"
 	}
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
