@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/linter"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -181,13 +183,38 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 	// Record reader errors as linter violations: this makes sure parse errors
 	// (and other errors) are not silenced.
 	resourceReader.AddErrorListener(func(err error, path string) {
-		engine.RecordViolation(linter.Violation{
+		violation := linter.Violation{
 			ResourceType: "unknown",
 			Severity:     "error",
 			Location:     linter.Location{File: path},
 			Details:      err.Error(),
 			Description:  err.Error(),
-		})
+		}
+
+		deprecatedErr := resources.DeprecatedResourceError{}
+		if errors.As(err, &deprecatedErr) {
+			violation.ResourceType = strings.Split(deprecatedErr.Used.Group, ".")[0]
+			violation.Severity = "warning"
+			violation.Rule = "deprecated-resource"
+		}
+
+		duplicatedErr := resources.DuplicatedResourceError{}
+		if errors.As(err, &duplicatedErr) {
+			violation.Rule = "duplicated-resource"
+		}
+
+		parseErr := local.ParseError{}
+		if errors.As(err, &parseErr) {
+			violation.Rule = "syntax-error"
+		}
+
+		unrecognizedFormatErr := local.UnrecognisedFormatError{}
+		if errors.As(err, &unrecognizedFormatErr) {
+			violation.Rule = "unrecognized-format"
+			violation.Severity = "warning"
+		}
+
+		engine.RecordViolation(violation)
 	})
 
 	report, err := engine.Lint(cmd.Context())
