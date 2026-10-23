@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/synth"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -452,6 +453,24 @@ func TestCommand_ListTable_RendersRowsFromEnvelope(t *testing.T) {
 	assert.Contains(t, stdout, "https://a.example.com")
 	assert.Contains(t, stdout, "https://b.example.com")
 	assert.NotContains(t, stdout, "list_meta")
+}
+
+func TestCommand_ListTable_Golden(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"populated", twoSuggestions},
+		{"empty", `{"suggestions":[],"warnings":[]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newGrafana(t, tc.body)
+			stdout, _, err := runList(t, fakeLoader{host: s.URL, uid: "sm-uid"}, "-o", "table")
+			require.NoError(t, err)
+			testutils.Golden(t, "list_table_"+tc.name, stdout)
+		})
+	}
 }
 
 // The Reliability Inbox is an experimental service, so every command in the
