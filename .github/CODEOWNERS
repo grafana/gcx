@@ -10,6 +10,7 @@
 
 /cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/appcore
+/internal/cloud/ @grafana/grafana-gcx @grafana/appcore
 
 # Providers
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
