@@ -91,7 +91,7 @@ type groupsGetOpts struct {
 
 func (o *groupsGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec(cmdio.FormatTable, GroupRulesTable().Codec(cmdio.FormatTable))
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 }
 
