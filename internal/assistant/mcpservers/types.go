@@ -13,6 +13,11 @@ const (
 	defaultScope       = "user"
 
 	ValidationStatusOAuthRequired = "oauth_required"
+
+	// ConfigKeyPDCNetwork is the configuration key holding the PDC network ID.
+	// The API names it after the SOCKS proxy username it is sent as, but it is
+	// a network ID, not a credential.
+	ConfigKeyPDCNetwork = "socksProxyUsername"
 )
 
 var ErrNotFound = errors.New("MCP server not found")
@@ -69,6 +74,9 @@ type ServerInput struct {
 	Headers      []Header       `json:"headers,omitempty" yaml:"headers,omitempty"`
 	Applications []string       `json:"applications,omitempty" yaml:"applications,omitempty"`
 	Config       map[string]any `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+	// PDCNetwork is set from --pdc-network and merged into Config, so an update
+	// keeps the rest of the stored configuration. An empty value clears it.
+	PDCNetwork *string `json:"-" yaml:"-"`
 }
 
 func (in ServerInput) Validate(requireName bool) error {
