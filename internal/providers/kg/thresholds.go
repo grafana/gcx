@@ -38,7 +38,7 @@ func newThresholdsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "thresholds",
 		Short: "Manage Knowledge Graph threshold rules.",
-		Long: `Read Asserts threshold rules over the v1 threshold config API.
+		Long: `Read and write Asserts threshold rules over the v1 threshold config API.
 
 This targets v1 (/v1/config/threshold-rules) — the version the Asserts app UI and all
 user-configured thresholds run on.`,
@@ -124,7 +124,13 @@ request and resource categories exist in v1.`,
 	}
 	listOpts.setup(listCmd.Flags())
 
-	cmd.AddCommand(getCmd, listCmd)
+	cmd.AddCommand(
+		getCmd,
+		listCmd,
+		newThresholdsUpsertCommand(loader),
+		newThresholdsDeleteCommand(loader),
+		newThresholdsUpdateCommand(loader),
+	)
 	return cmd
 }
 
