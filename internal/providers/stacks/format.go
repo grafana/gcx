@@ -56,19 +56,10 @@ type createdStackSummary struct {
 	URL     string `json:"url" yaml:"url"`
 }
 
-// stackTableCodec renders []cloud.StackInfo as a table. It also renders
-// dryRunPreview values (the --dry-run result of create/update) as the
-// classic human preview when table output is selected.
-type stackTableCodec struct {
-	Wide bool
-}
+// stackTableCodec retains the create/update dry-run preview alongside their table receipts.
+type stackTableCodec struct{}
 
-func (c *stackTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
+func (c *stackTableCodec) Format() format.Format { return cmdio.FormatTable }
 
 func (c *stackTableCodec) Encode(w io.Writer, v any) error {
 	if p, ok := v.(dryRunPreview); ok {
@@ -80,9 +71,9 @@ func (c *stackTableCodec) Encode(w io.Writer, v any) error {
 		return createdStackTable().Codec(cmdio.FormatTable).Encode(w, s)
 	}
 	if s, ok := v.(cloud.StackInfo); ok {
-		return stackGetTable().Codec(string(c.Format())).Encode(w, s)
+		return stackGetTable().Codec(cmdio.FormatTable).Encode(w, s)
 	}
-	return stackTable().Codec(string(c.Format())).Encode(w, v)
+	return fmt.Errorf("invalid data type for table codec: expected dryRunPreview, createdStackSummary or cloud.StackInfo, got %T", v)
 }
 
 func (c *stackTableCodec) Decode(_ io.Reader, _ any) error {

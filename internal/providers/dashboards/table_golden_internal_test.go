@@ -43,4 +43,15 @@ func TestDashboardTableGolden(t *testing.T) {
 			testutils.Golden(t, "get_"+name, buf.String())
 		})
 	}
+	t.Run("get_wide_url", func(t *testing.T) {
+		o := &getOpts{}
+		flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+		o.setup(flags)
+		require.NoError(t, flags.Set("output", "wide"))
+		require.NoError(t, o.Validate())
+		o.IO.RegisterCustomCodec("wide", dashboardGetTable("https://example.grafana.net").Codec("wide"))
+		var buf bytes.Buffer
+		require.NoError(t, o.IO.Encode(&buf, &item))
+		testutils.Golden(t, "get_wide_url", buf.String())
+	})
 }
