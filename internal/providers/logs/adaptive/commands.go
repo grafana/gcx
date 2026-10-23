@@ -1038,8 +1038,7 @@ type dropRulesListOpts struct {
 func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.ExpirationFilter, "expiration-filter", "all",
 		"Filter by expiration: all, active, or expired")
-	o.IO.RegisterCustomCodec("table", &dropRulesTableCodec{wide: false})
-	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
+	cmdio.RegisterTable(&o.IO, dropRulesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of drop rules to return (0 for no limit)")
@@ -1088,8 +1087,12 @@ type dropRulesGetOpts struct {
 }
 
 func (o *dropRulesGetOpts) setup(cmd *cobra.Command) {
-	o.IO.RegisterCustomCodec("table", &dropRulesTableCodec{wide: false})
-	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
+	table := cmdio.TableAdapter[DropRule, DropRule]{
+		Table: dropRulesTable(),
+		Rows:  func(rule DropRule) ([]DropRule, error) { return []DropRule{rule}, nil },
+	}
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 }
@@ -1129,52 +1132,22 @@ func (h *logsHelper) dropRulesGetCommand() *cobra.Command {
 	return cmd
 }
 
-// Both single-record mutations and lists use this codec; Table only accepts slices.
-type dropRulesTableCodec struct{ wide bool }
-
-func (c *dropRulesTableCodec) Format() format.Format {
-	if c.wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
-	var rules []DropRule
-	switch t := v.(type) {
-	case []DropRule:
-		rules = t
-	case DropRule:
-		rules = []DropRule{t}
-	default:
-		return errors.New("invalid data type for table codec: expected []DropRule or DropRule")
-	}
-
-	var t *style.TableBuilder
-	if c.wide {
-		t = style.NewTable("ID", "NAME", "SEGMENT", "VERSION", "DISABLED", "EXPIRES AT", "CREATED AT", "UPDATED AT")
-	} else {
-		t = style.NewTable("ID", "NAME", "SEGMENT", "VERSION", "DISABLED", "EXPIRES AT")
-	}
-
-	for _, r := range rules {
-		exp := r.ExpiresAt
-		if exp == "" {
-			exp = "-"
-		}
-		disabled := strconv.FormatBool(r.Disabled)
-		if c.wide {
-			t.Row(r.ID, r.Name, r.SegmentID, strconv.Itoa(r.Version), disabled, exp, r.CreatedAt, r.UpdatedAt)
-		} else {
-			t.Row(r.ID, r.Name, r.SegmentID, strconv.Itoa(r.Version), disabled, exp)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *dropRulesTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func dropRulesTable() cmdio.Table[DropRule] {
+	return cmdio.Table[DropRule]{Columns: []cmdio.Column[DropRule]{
+		{Header: "ID", Content: func(r DropRule) string { return r.ID }},
+		{Header: "NAME", Content: func(r DropRule) string { return r.Name }},
+		{Header: "SEGMENT", Content: func(r DropRule) string { return r.SegmentID }},
+		{Header: "VERSION", Content: func(r DropRule) string { return strconv.Itoa(r.Version) }},
+		{Header: "DISABLED", Content: func(r DropRule) string { return strconv.FormatBool(r.Disabled) }},
+		{Header: "EXPIRES AT", Content: func(r DropRule) string {
+			if r.ExpiresAt == "" {
+				return "-"
+			}
+			return r.ExpiresAt
+		}},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r DropRule) string { return r.CreatedAt }},
+		{Header: "UPDATED AT", Visible: cmdio.WideOnly, Content: func(r DropRule) string { return r.UpdatedAt }},
+	}}
 }
 
 // readDropRuleFromFile reads and decodes a DropRuleFileSpec from a file path or stdin ("-").

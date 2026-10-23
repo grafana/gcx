@@ -1,13 +1,14 @@
-package settings //nolint:testpackage // Tests access unexported settingsTableCodec and updateOpts.
+package settings //nolint:testpackage // Tests access unexported settingsTable and updateOpts.
 
 // Internal tests for unexported codec types and command wiring.
-// Using package settings (not settings_test) to access settingsTableCodec.
+// Using package settings (not settings_test) to access settingsTable.
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/format"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,17 +17,17 @@ import (
 func TestSettingsTableCodec_Format(t *testing.T) {
 	tests := []struct {
 		name       string
-		codec      *settingsTableCodec
+		codec      format.Codec
 		wantFormat string
 	}{
 		{
 			name:       "table format",
-			codec:      &settingsTableCodec{},
+			codec:      settingsTable().Codec("table"),
 			wantFormat: "table",
 		},
 		{
 			name:       "wide format",
-			codec:      &settingsTableCodec{Wide: true},
+			codec:      settingsTable().Codec("wide"),
 			wantFormat: "wide",
 		},
 	}
@@ -75,7 +76,7 @@ func TestSettingsTableCodec_Encode_Table(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &settingsTableCodec{}
+			codec := settingsTable().Codec("table")
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, tc.settings)
 			require.NoError(t, err)
@@ -126,7 +127,7 @@ func TestSettingsTableCodec_Encode_Wide(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &settingsTableCodec{Wide: true}
+			codec := settingsTable().Codec("wide")
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, tc.settings)
 			require.NoError(t, err)
@@ -140,7 +141,7 @@ func TestSettingsTableCodec_Encode_Wide(t *testing.T) {
 }
 
 func TestSettingsTableCodec_Encode_InvalidType(t *testing.T) {
-	codec := &settingsTableCodec{}
+	codec := settingsTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not a PluginSettings")
 	require.Error(t, err)
@@ -148,7 +149,7 @@ func TestSettingsTableCodec_Encode_InvalidType(t *testing.T) {
 }
 
 func TestSettingsTableCodec_Decode_AlwaysErrors(t *testing.T) {
-	codec := &settingsTableCodec{}
+	codec := settingsTable().Codec("table")
 	err := codec.Decode(strings.NewReader("anything"), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")

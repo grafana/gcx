@@ -1,4 +1,4 @@
-package overrides //nolint:testpackage // Tests access unexported overridesTableCodec and parseOverridesFile.
+package overrides //nolint:testpackage // Tests access unexported overridesTable and parseOverridesFile.
 
 import (
 	"bytes"
@@ -126,7 +126,7 @@ func TestOverridesTableCodec_Encode_Columns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			codec := &overridesTableCodec{Wide: tt.wide}
+			codec := overridesTable().Codec(map[bool]string{false: "table", true: "wide"}[tt.wide])
 			var buf bytes.Buffer
 
 			err := codec.Encode(&buf, tt.cfg)
@@ -144,21 +144,21 @@ func TestOverridesTableCodec_Encode_Columns(t *testing.T) {
 }
 
 func TestOverridesTableCodec_Encode_WrongType(t *testing.T) {
-	codec := &overridesTableCodec{}
+	codec := overridesTable().Codec("table")
 	err := codec.Encode(io.Discard, "not a MetricsGeneratorConfig")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "MetricsGeneratorConfig")
 }
 
 func TestOverridesTableCodec_Decode_Unsupported(t *testing.T) {
-	codec := &overridesTableCodec{}
+	codec := overridesTable().Codec("table")
 	err := codec.Decode(strings.NewReader(""), nil)
 	require.Error(t, err)
 }
 
 func TestOverridesTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((&overridesTableCodec{Wide: false}).Format()))
-	assert.Equal(t, "wide", string((&overridesTableCodec{Wide: true}).Format()))
+	assert.Equal(t, "table", string((overridesTable().Codec("table")).Format()))
+	assert.Equal(t, "wide", string((overridesTable().Codec("wide")).Format()))
 }
 
 // ---------------------------------------------------------------------------
