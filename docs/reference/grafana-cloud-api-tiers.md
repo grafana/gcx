@@ -134,7 +134,7 @@ Some products emit calls across tiers. Knowing the map avoids wrong-tier fixes:
 
 - **Alerting** — Tier 2 (legacy `/api/ruler` + K8s `rules.alerting.grafana.app`) + Tier 3 (regional ruler + AM)
 - **Synthetic Monitoring** — Tier 2 (plugin settings) + Tier 3 (REST + gRPC) + Tier 1 (install/register)
-- **Fleet Management** — Tier 2 only (plugin proxy: the `fleet-management-api` RPCs, plus the `grafanacom-api` instance-record passthrough). See ADR-023.
+- **Fleet Management** — Tier 2 only (plugin proxy: the `fleet-management-api` RPCs, plus the `grafanacom-api` instance-record passthrough). See RFC 024.
 - **Frontend Observability (Faro)** — Tier 2 (plugin-proxy CRUD + sourcemaps) + Tier 3 (API + ingest)
 - **IRM** — Tier 2 (plugin-resources for OnCall + Incidents) + Tier 3 (OnCall public) + legacy Tier 3 Incident
 - **Adaptive {Metrics,Logs,Traces}** — Tier 2 (plugin UI) + Tier 3 (runtime config) + Tier 1 (enablement)

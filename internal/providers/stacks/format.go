@@ -121,26 +121,13 @@ func (c *stackTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-// regionTableCodec renders []cloud.Region as a table.
-type regionTableCodec struct{}
-
-func (c *regionTableCodec) Format() format.Format { return "table" }
-
-func (c *regionTableCodec) Encode(w io.Writer, v any) error {
-	regions, ok := v.([]cloud.Region)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []cloud.Region")
-	}
-
-	tbl := style.NewTable("SLUG", "NAME", "DESCRIPTION", "PROVIDER")
-	for _, r := range regions {
-		tbl.Row(r.Slug, r.Name, r.Description, r.Provider)
-	}
-	return tbl.Render(w)
-}
-
-func (c *regionTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func regionTable() cmdio.Table[cloud.Region] {
+	return cmdio.Table[cloud.Region]{Columns: []cmdio.Column[cloud.Region]{
+		{Header: "SLUG", Content: func(r cloud.Region) string { return r.Slug }},
+		{Header: "NAME", Content: func(r cloud.Region) string { return r.Name }},
+		{Header: "DESCRIPTION", Content: func(r cloud.Region) string { return r.Description }},
+		{Header: "PROVIDER", Content: func(r cloud.Region) string { return r.Provider }},
+	}}
 }
 
 // dryRunSummary prints a human-readable dry-run preview.

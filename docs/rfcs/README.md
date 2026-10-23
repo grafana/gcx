@@ -1,21 +1,19 @@
 # Requests for Comments
 
-RFCs propose engineering changes for review: the problem, user experience, technical design, tradeoffs, and validation still needed. A proposal is not evidence that a feature has been implemented or deployed. Existing architecture decisions remain documented in [ADRs](../adrs/).
-
-## Index
-
-| RFC | Status |
-| --- | --- |
-| [001: Unify alerting configuration and resource workflows](001-alerting-provider-refactor.md) | Proposed |
-| [002: Manage Assistant Watchers through gcx](002-assistant-watchers.md) | Proposed |
+RFCs record engineering proposals and design decisions: the problem, user experience, technical design, tradeoffs, and open questions. Browse [this directory](.) for the records. A proposal is not evidence that a feature has been implemented or deployed.
 
 ## Authoring and maintenance
 
-Use `NNN-title.md`, choosing the next unused number starting at `001`, and add the document to this index. Keep later revisions in the same file. Define proposed terms in the RFC. When a feature ships, move its terms to the [glossary](../glossary/README.md) and link to them from the RFC instead of repeating them.
+Follow the [contribution workflow](../../CONTRIBUTING.md#contributing-code) to determine whether an RFC is needed and obtain the applicable maintainer agreement. An RFC records design and scope decisions for implementation PRs. Developers choose their own implementation and planning approach. Start agent-assisted contribution work with [`contribute`](../../.agents/skills/contribute/SKILL.md).
 
-The repository provides two contributor skills:
+Use `NNN-title.md`, choosing the next unused number, and title the document `RFC NNN: <Title>`. Keep later revisions in the same file. Record status near the title, such as proposed, accepted, implemented, superseded, or retired; link a replacement when applicable. Keep terminology in the RFC. Do not maintain a separate RFC list or copy status into other documents.
 
-- [create-rfc](../../.claude/skills/create-rfc/SKILL.md): research and develop a proposal through review, using the [Rust-based template](../../.claude/skills/create-rfc/references/rfc-template.md).
-- [update-rfc](../../.claude/skills/update-rfc/SKILL.md): reconcile an existing RFC with implementation evidence when explicitly requested, distinguishing implementation, verification, and deployment.
+The repository provides these contributor skills:
+
+- [create-rfc](../../.agents/skills/create-rfc/SKILL.md): research and develop a proposal through review, using the [Rust-based template](../../.agents/skills/create-rfc/references/rfc-template.md).
+- [review-rfc](../../.agents/skills/review-rfc/SKILL.md): review claims, scope, rules, consistency, and structure before sharing or acceptance.
+- [update-rfc](../../.agents/skills/update-rfc/SKILL.md): reconcile an existing RFC with implementation evidence when explicitly requested, distinguishing implementation, verification, and deployment.
+
+Use the template for new proposals and adapt its depth to the change. Historical records may retain their original structure and decision context; moving a record does not change its status or ratify its proposals.
 
 These workflows do not authorize implementation or publication. RFCs and their examples must be suitable for this public repository; restricted research belongs outside the checkout.

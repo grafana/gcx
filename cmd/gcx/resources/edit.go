@@ -152,6 +152,7 @@ The edition will be cancelled if no changes are written to the file or if the fi
 			// Fetch the resource
 			res, err := FetchResources(ctx, FetchRequest{
 				Config:             cfg,
+				Warn:               cmd.ErrOrStderr(),
 				StopOnError:        true,
 				ExpectSingleTarget: true,
 			}, args)

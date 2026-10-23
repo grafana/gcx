@@ -1,7 +1,7 @@
 // Package clusters provides the "gcx instrumentation clusters" command group.
 //
 // It implements declared/observed state management for K8s monitoring clusters
-// following the action-verb CLI design from ADR-018.
+// following the action-verb CLI design from RFC 019.
 //
 // Commands:
 //

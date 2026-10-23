@@ -99,8 +99,8 @@ func TestFaroGet_ErrorsAreNotReportedAsMissingApp(t *testing.T) {
 	}))
 	t.Cleanup(forbidden.Close)
 
-	// "App 1" goes straight to the list; "app-1" is slug-shaped and hits the
-	// per-ID GET first. Neither may turn a 403 into "no app has that name".
+	// A display name and a slug-id both resolve from the app list. A 403 on
+	// that list must not turn into "no app has that name".
 	for _, arg := range []string{"App 1", "app-1"} {
 		_, _, err := runFaroCommand(t, forbidden, func(l *fakeConfigLoader) *cobra.Command {
 			return newGetCommand(l)
@@ -112,9 +112,10 @@ func TestFaroGet_ErrorsAreNotReportedAsMissingApp(t *testing.T) {
 }
 
 func TestFaroGet_Resolution(t *testing.T) {
-	// "Shop-7" and "2024" look like IDs; ID 7 and 2024 do not exist, so they
-	// must fall through to the name lookup.
-	server := newNamedAppServer(t, []string{"App 1", "Shop-7", "2024"})
+	// "Shop-7" and "2024" look like IDs, but no app has ID 7 or 2024, so they
+	// match by name. "probe-1" ends in the ID of App 1 and must still resolve
+	// to itself.
+	server := newNamedAppServer(t, []string{"App 1", "Shop-7", "2024", "probe-1"})
 
 	tests := []struct {
 		name    string
@@ -127,6 +128,8 @@ func TestFaroGet_Resolution(t *testing.T) {
 		{name: "display name", arg: "App 1", wantID: "1"},
 		{name: "slug-shaped name", arg: "Shop-7", wantID: "2"},
 		{name: "numeric-looking name", arg: "2024", wantID: "3"},
+		{name: "name ending in another app's ID", arg: "probe-1", wantID: "4"},
+		{name: "slug-id with another app's slug", arg: "shop-7-1", wantErr: "no app has that slug-id or name"},
 		{name: "unknown", arg: "Nope", wantErr: "no app has that slug-id or name"},
 		{name: "unknown slug-shaped", arg: "nope-99", wantErr: "no app has that slug-id or name"},
 	}
@@ -148,5 +151,5 @@ func TestFaroGet_Resolution(t *testing.T) {
 func TestFaroDelete_HelpDocumentsPermission(t *testing.T) {
 	cmd := newDeleteCommand(&fakeConfigLoader{})
 	assert.Contains(t, cmd.Long, "grafana-kowalski-app.apps:delete")
-	assert.Contains(t, cmd.Long, "Checkout-2024")
+	assert.Contains(t, cmd.Long, "checkout-2")
 }

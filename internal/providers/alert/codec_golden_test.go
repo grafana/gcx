@@ -19,6 +19,7 @@ func TestAlertTableGolden(t *testing.T) {
 		rows  any
 		empty any
 	}{
+		{"GroupsStatus_table", alert.GroupsStatusTable().Codec("table"), []alert.RuleGroup{{Name: "production", LastEvaluation: "2026-09-01T12:00:00Z", Rules: []alert.RuleStatus{{State: alert.StateFiring}, {State: alert.StateFiring}, {State: alert.StatePending}, {State: alert.StateInactive}, {State: "unexpected"}, {}}}, {Name: "new-group", LastEvaluation: "0001-01-01T00:00:00Z"}, {Name: "empty-evaluation"}}, []alert.RuleGroup{}},
 		{"Groups_table", alert.GroupsTable().Codec("table"), []alert.RuleGroup{{Name: "production", FolderUID: "folder-1", Interval: 60, Rules: []alert.RuleStatus{{UID: "r1"}, {UID: "r2"}}}, {}}, []alert.RuleGroup{}},
 		{"Rules_table", alert.RulesTable().Codec("table"), []alert.RuleStatus{{UID: "r1", Name: "High latency", State: "firing", Health: "ok", LastEvaluation: "2026-09-01T12:00:00Z", EvaluationTime: 0.1234, FolderUID: "folder-1", IsPaused: true}, {UID: "r2", LastEvaluation: "0001-01-01T00:00:00Z"}}, []alert.RuleStatus{}},
 		{"Rules_wide", alert.RulesTable().Codec("wide"), []alert.RuleStatus{{UID: "r1", Name: "High latency", State: "firing", Health: "ok", LastEvaluation: "2026-09-01T12:00:00Z", EvaluationTime: 0.1234, FolderUID: "folder-1", IsPaused: true}, {UID: "r2", LastEvaluation: "0001-01-01T00:00:00Z"}}, []alert.RuleStatus{}},

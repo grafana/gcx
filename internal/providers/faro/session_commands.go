@@ -39,7 +39,7 @@ func (o *sessionsGetOpts) setupIO() {
 
 func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 	o.SetupTimeFlags(flags)
-	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id or numeric id (required)")
+	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id, numeric ID or display name (required)")
 	flags.StringVar(&o.AppType, "app-type", "", "web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted")
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Grafana datasource UID (required). Type is inferred (loki or pinot)")
 	flags.StringVar(&o.Save, "save", "", "Write the session dump to this path instead of stdout")
@@ -166,14 +166,11 @@ use the app's stored appType, which older apps may lack or have wrong. Pass
 				return err
 			}
 
-			appID := resolveAppID(opts.App)
-			app, err := faroClient.Get(ctx, appID)
+			target, err := resolveApp(ctx, newAppCRUD(faroClient, cfg.Namespace), opts.App)
 			if err != nil {
 				return err
 			}
-			if app.ID != "" {
-				appID = app.ID
-			}
+			appID := target.Spec.ID
 
 			now := time.Now()
 			start, end, err := opts.ParseTimeRange(now)

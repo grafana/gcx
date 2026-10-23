@@ -161,6 +161,7 @@ Supported components: ` + strings.Join(otelutils.SupportedComponents, ", ") + `.
 Add --fix-plan=local for a deterministic aggregation of the explanation docs
 (offline, no billing), or --fix-plan=assistant for a prioritized plan synthesized
 by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see ` + docs.AssistantPricing + `).
+Use --fix-plan=assistant only when the user requests Grafana Assistant.
 
 Powered by github.com/grafana/otel-checker.`,
 		Args: cobra.MaximumNArgs(1),
