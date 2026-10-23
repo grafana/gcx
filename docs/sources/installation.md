@@ -111,6 +111,21 @@ Install `gcx` from one source only. Two Homebrew formulas with the same name con
 
 Both Homebrew methods avoid the macOS Gatekeeper problem. Homebrew does not set the quarantine attribute on the files that it installs, so you do not need to work around notarisation.
 
+## Install `gcx` with asdf
+
+The [asdf-gcx](https://github.com/grafana/asdf-gcx) plugin installs the prebuilt release binaries for macOS and Linux, on amd64 and arm64.
+
+To install `gcx` with asdf:
+
+```bash
+asdf plugin add gcx https://github.com/grafana/asdf-gcx.git
+asdf install gcx latest
+asdf set -u gcx latest
+gcx --version
+```
+
+On asdf releases before 0.16, use `asdf global gcx latest` instead of `asdf set -u gcx latest`.
+
 ## Install a prebuilt binary
 
 Prebuilt binaries are available for a variety of systems and architectures. 
