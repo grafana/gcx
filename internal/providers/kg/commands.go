@@ -1803,23 +1803,31 @@ func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
 		// nothing on stdout (an advisory note goes to stderr).
 		return nil
 	}
-	rawRules, _ := group["rules"].([]any)
-	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
-	for _, r := range rawRules {
-		rule, _ := r.(map[string]any)
-		if rule == nil {
-			continue
-		}
-		t.Row(
-			stringField(rule["selector"]),
-			stringField(rule["target_label"]),
-			joinStringSlice(rule["join_labels"]),
-			joinStringSlice(rule["ranked_choice"]),
-			stringField(rule["replacement"]),
-			boolField(rule["drop"]),
-		)
+	return relabelRuleTable().Codec(cmdio.FormatTable).Encode(w, group)
+}
+
+func relabelRuleTable() cmdio.TableAdapter[map[string]any, map[string]any] {
+	return cmdio.TableAdapter[map[string]any, map[string]any]{
+		Table: cmdio.Table[map[string]any]{Columns: []cmdio.Column[map[string]any]{
+			{Header: "SELECTOR", Content: func(r map[string]any) string { return stringField(r["selector"]) }},
+			{Header: "TARGET LABEL", Content: func(r map[string]any) string { return stringField(r["target_label"]) }},
+			{Header: "JOIN LABELS", Content: func(r map[string]any) string { return joinStringSlice(r["join_labels"]) }},
+			{Header: "RANKED CHOICE", Content: func(r map[string]any) string { return joinStringSlice(r["ranked_choice"]) }},
+			{Header: "REPLACEMENT", Content: func(r map[string]any) string { return stringField(r["replacement"]) }},
+			{Header: "DROP", Content: func(r map[string]any) string { return boolField(r["drop"]) }},
+		}},
+		Rows: func(group map[string]any) ([]map[string]any, error) {
+			rawRules, _ := group["rules"].([]any)
+			rules := make([]map[string]any, 0, len(rawRules))
+			for _, r := range rawRules {
+				rule, _ := r.(map[string]any)
+				if rule != nil {
+					rules = append(rules, rule)
+				}
+			}
+			return rules, nil
+		},
 	}
-	return t.Render(w)
 }
 
 func (c *RelabelRuleTableCodec) Decode(_ io.Reader, _ any) error {
