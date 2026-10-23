@@ -206,15 +206,16 @@ client := dynamic.NewNamespacedClient(namespace, myDynamicClient)
 
 Embeds `*NamespacedClient` and adds automatic version re-fetching. Grafana
 resources can carry a `status.conversion.storedVersion` field indicating the
-actual stored API version differs from the requested version. When that field is
-present, `VersionedClient` re-fetches the resource using the stored version.
+actual stored API version differs from the requested version. `VersionedClient`
+re-fetches that version only when `status.conversion.failed` is true. Successful
+conversions retain the requested representation, including schema v2 dashboard layouts.
 
 **Flow for a List operation:**
 ```
 1. Call NamespacedClient.List(ctx, desc, opts)      → initial list in requested version
-2. For each item, check status.conversion.storedVersion
-3. Items without storedVersion → kept as-is
-4. Items with storedVersion X  → grouped by new Descriptor{version=X}
+2. For each item, check status.conversion.failed and storedVersion
+3. Successful conversions or items without storedVersion → kept as-is
+4. Failed conversions with storedVersion X → grouped by new Descriptor{version=X}
 5. Call NamespacedClient.GetMultiple for each group  → re-fetch at correct version
 6. Return merged list
 ```
