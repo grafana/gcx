@@ -31,6 +31,7 @@
 /internal/providers/alert/ @grafana/grafana-gcx @grafana/alerting-squad
 /internal/providers/stacks/ @grafana/grafana-gcx @grafana/appcore
 /internal/providers/logs/ @grafana/grafana-gcx @grafana/loki-team
+/internal/providers/logs/archive/ @grafana/grafana-gcx @grafana/adaptive-telemetry
 /internal/providers/metrics/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/providers/profiles/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/providers/traces/ @grafana/grafana-gcx @grafana/tempo
