@@ -107,13 +107,12 @@ func TestClientSearchRejectsTrailingResponseData(t *testing.T) {
 	require.ErrorContains(t, err, "trailing")
 }
 
-func TestClientSearchReportsMissingDefaultsAndUncertainRouteWithoutFallback(t *testing.T) {
+func TestClientSearchPreservesServerErrorsWithoutFallback(t *testing.T) {
 	for _, tc := range []struct {
 		status  int
 		message string
-		want    string
 	}{
-		{status: 422, message: "resources are required", want: "supply --resource"},
+		{status: 422, message: "resources are required"},
 		{status: 404, message: "route unavailable"},
 	} {
 		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
@@ -132,12 +131,8 @@ func TestClientSearchReportsMissingDefaultsAndUncertainRouteWithoutFallback(t *t
 			require.ErrorAs(t, err, &status)
 			require.Equal(t, tc.status, status.Status)
 			require.Equal(t, "trace-1", status.TraceID)
-			if tc.status == http.StatusNotFound {
-				require.Equal(t, tc.message, status.ServerMessage)
-				require.Equal(t, "hybrid search failed: HTTP 404: "+tc.message, status.Message)
-			} else {
-				require.ErrorContains(t, err, tc.want)
-			}
+			require.Equal(t, tc.message, status.ServerMessage)
+			require.Equal(t, "hybrid search failed: HTTP "+strconv.Itoa(tc.status)+": "+tc.message, status.Message)
 			require.Equal(t, 1, calls)
 		})
 	}
