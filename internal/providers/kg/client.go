@@ -59,11 +59,16 @@ const (
 	alertConfigByNameFmt    = alertConfigPath + "/%s"
 	alertConfigsPath        = pluginResourcePath + "/asserts/api-server/v1/config/alerts"
 	alertConfigsCategoryFmt = alertConfigsPath + "/%s"
-	v2ConfigPath            = pluginResourcePath + "/asserts/api-server/v2/config"
-	v2LogConfigPath         = v2ConfigPath + "/log"
-	v2TraceConfigPath       = v2ConfigPath + "/trace"
-	v2ProfileConfigPath     = v2ConfigPath + "/profile"
-	v2RelabelRulesPath      = v2ConfigPath + "/relabel-rules"
+	// Entity KPI-drawer dashboard configs (CustomDashConfigController). Reads use
+	// the collection path or the per-type path; writes are POSTs, including delete.
+	dashboardConfigPath         = pluginResourcePath + "/asserts/api-server/v1/config/dashboard"
+	dashboardConfigByTypeFmt    = dashboardConfigPath + "/%s"
+	dashboardConfigDeleteByType = dashboardConfigPath + "/delete/%s"
+	v2ConfigPath                = pluginResourcePath + "/asserts/api-server/v2/config"
+	v2LogConfigPath             = v2ConfigPath + "/log"
+	v2TraceConfigPath           = v2ConfigPath + "/trace"
+	v2ProfileConfigPath         = v2ConfigPath + "/profile"
+	v2RelabelRulesPath          = v2ConfigPath + "/relabel-rules"
 
 	// KG entity quality reports, proxied through the asserts plugin.
 	qualityBasePath          = pluginResourcePath + "/asserts/kg-quality/v1/entities"
@@ -484,9 +489,11 @@ func (c *Client) ValidatePromRules(ctx context.Context, yamlContent string, skip
 	return c.validateConfig(ctx, path, "application/x-yaml", []byte(yamlContent), "prom rules")
 }
 
-// validateConfig POSTs a payload to a validate-only endpoint and maps the
-// response: nil on 2xx, a *ConfigValidationError on 422 (per-field errors), or a
-// generic *APIError otherwise. kind names the config family for error messages.
+// validateConfig POSTs a payload and maps the response: nil on 2xx, a
+// *ConfigValidationError on 422 (per-field errors), or a generic *APIError
+// otherwise. kind names the config family for error messages. It serves the
+// validate-only endpoints and the single-item writes that report per-field
+// errors, such as dashboard configs.
 func (c *Client) validateConfig(ctx context.Context, path, contentType string, body []byte, kind string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Host()+path, bytes.NewReader(body))
 	if err != nil {
