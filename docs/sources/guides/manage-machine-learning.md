@@ -39,7 +39,7 @@ Use `--json` or `--jq` to select output fields.
 
 ### Configure the number of records in the output
 
-Lists fetch all records from the collection endpoint. Agent output shows all records, while human output shows up to 50 records by default:
+Lists fetch all records from the collection endpoint and show up to 50 records by default:
 
 - Use `--limit 0` to show all records.
 - Use `--limit 10` to show fewer records. A truncation notice appears on `stderr` when records are omitted.

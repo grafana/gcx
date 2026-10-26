@@ -31,11 +31,7 @@ func (o *commandOpts) setup(flags *pflag.FlagSet, verb, subject string) {
 	}
 	o.IO.BindFlags(flags)
 	if verb == "list" {
-		limit := 50
-		if agent.IsAgentMode() {
-			limit = 0
-		}
-		o.IO.BindListLimit(flags, &o.Limit, subject, limit)
+		o.IO.BindListLimit(flags, &o.Limit, subject, 50)
 	}
 	if verb == "create" || verb == "update" {
 		flags.StringVarP(&o.Filename, "filename", "f", "", "JSON or YAML file, or - for stdin")
