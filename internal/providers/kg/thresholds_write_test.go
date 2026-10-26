@@ -281,6 +281,19 @@ func TestThresholdsUpdateFromStdinNeedsForce(t *testing.T) {
 	assert.Len(t, *got, 1)
 }
 
+func TestThresholdsUpdateFromStdinHonoursAutoApprove(t *testing.T) {
+	server, got := recordingServer(t)
+	pinHumanMode(t)
+	t.Setenv("GCX_AUTO_APPROVE", "1")
+	cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetIn(strings.NewReader(bareThresholds))
+	cmd.SetArgs([]string{"update", "-f", "-"})
+	require.NoError(t, cmd.Execute())
+	assert.Len(t, *got, 1)
+}
+
 func TestThresholdsUpdateSendsBareDocumentVerbatim(t *testing.T) {
 	server, got := recordingServer(t)
 	doc := "# keep my comment\ngroups:\n- name: custom_thresholds\n  rules:\n  - record: r\n    expr: \"0.10\"\n"

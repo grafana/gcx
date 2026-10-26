@@ -201,8 +201,14 @@ keys, a second YAML document, and numeric values where a string is expected
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if opts.File == "-" && !opts.Force {
-				return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force, or use a file path")
+			if opts.File == "-" {
+				bypass, err := providers.CheckDestructiveBypass(opts.Force)
+				if err != nil {
+					return err
+				}
+				if !bypass {
+					return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force, or use a file path")
+				}
 			}
 			data, err := readFileOrStdin(cmd, opts.File)
 			if err != nil {
