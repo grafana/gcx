@@ -1,0 +1,3 @@
+ID     USER  IMPORTANT  STEP  WAIT-DELAY  NOTIFY-BY
+row-1  U1    true       0     300.0       -
+row-2  -     false      -     -           -

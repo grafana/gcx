@@ -1,3 +1,16 @@
+---
+title: Manage OnCall notification rules
+labels:
+  products:
+    - cloud
+description: Manage personal OnCall notification rules with a Grafana user login.
+keywords:
+  - gcx
+  - OnCall
+  - notifications
+weight: 8
+---
+
 # OnCall personal notification rules
 
 Use `gcx login` to sign in as a Grafana user. The command uses the shared
@@ -19,6 +32,8 @@ Create rules with `create -f rule.yaml`. Update rules with
 `update <rule-id> -f rule.yaml`. Use `delete <rule-id>` to delete a rule.
 The `user` and `important` fields are fixed at creation. The server ignores
 changes to these fields on update. The server controls `order`.
+The API can also return `notify_device`. gcx preserves this server field in
+exports and updates. It is `null` when the rule has no selected device.
 `step`, `notify_by`, and `wait_delay` use the internal IRM API values.
 Use a string of seconds for `wait_delay`, such as `"300.0"`, or `null`.
 Do not use the public API's `type` or `duration` field names.

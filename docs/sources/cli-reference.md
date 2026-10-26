@@ -15281,11 +15281,11 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx irm oncall personal-notification-rules` {#gcx-irm-oncall-personal-notification-rules}
 
 Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.
+Use a Grafana user login (gcx login); service accounts cannot use this API.
+List includes all users and both priority levels.
+The server checks user settings read, write, and admin permissions.
+
+**Aliases:** `personal-notification-rule`, `pnr`
 
 **Flags**
 
@@ -15300,13 +15300,6 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx irm oncall personal-notification-rules create` {#gcx-irm-oncall-personal-notification-rules-create}
 
 Create a personal notification rule.
-
-Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.
 
 ```shell
 gcx irm oncall personal-notification-rules create [flags]
@@ -15330,13 +15323,6 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Delete a personal notification rule by ID.
 
-Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.
-
 ```shell
 gcx irm oncall personal-notification-rules delete <id> [flags]
 ```
@@ -15359,13 +15345,6 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Get a personal notification rule by ID.
 
-Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.
-
 ```shell
 gcx irm oncall personal-notification-rules get <id> [flags]
 ```
@@ -15387,13 +15366,6 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 List personal notification rules for all users.
 
-Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.
-
 ```shell
 gcx irm oncall personal-notification-rules list [flags]
 ```
@@ -15414,13 +15386,6 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx irm oncall personal-notification-rules update` {#gcx-irm-oncall-personal-notification-rules-update}
 
 Update a personal notification rule by ID.
-
-Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.
 
 ```shell
 gcx irm oncall personal-notification-rules update <id> [flags]

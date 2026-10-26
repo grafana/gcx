@@ -135,6 +135,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := lo.IO.Validate(); err != nil {
 				return err
@@ -694,7 +695,7 @@ func specStr(obj unstructured.Unstructured, key string) string {
 		return ""
 	}
 	v, ok := spec[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	return fmt.Sprint(v)

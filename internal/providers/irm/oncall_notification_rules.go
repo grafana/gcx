@@ -3,14 +3,14 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"net/url"
+	"strconv"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
-
-const notificationPoliciesPath = "notification_policies/"
 
 // PersonalNotificationRule is a user notification policy from the IRM internal API.
 // The public OnCall API exposes the same model as personal_notification_rules.
@@ -34,7 +34,7 @@ func (r *PersonalNotificationRule) SetResourceName(name string) { r.ID = name }
 func (c *OnCallClient) ListPersonalNotificationRules(ctx context.Context) ([]PersonalNotificationRule, error) {
 	// Absent parameters default to the caller and important=false. Empty values
 	// disable both defaults and leave the Django filters inactive.
-	return collectAll(iterResources[PersonalNotificationRule](ctx, c, notificationPoliciesPath+"?user=&important=", "personal notification rule"))
+	return collectAll(iterResources[PersonalNotificationRule](ctx, c, pathWithParams(notificationPoliciesPath, url.Values{"user": {""}, "important": {""}}), "personal notification rule"))
 }
 
 func (c *OnCallClient) GetPersonalNotificationRule(ctx context.Context, id string) (*PersonalNotificationRule, error) {
@@ -69,12 +69,10 @@ func personalNotificationRuleCRUDOpts() []crudOption[PersonalNotificationRule] {
 	}
 }
 func newPersonalNotificationRulesCmd(loader OnCallConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{Use: "personal-notification-rules", Short: "Manage personal notification rules.", Long: `Manage personal notification rules through the IRM plugin proxy.
-Use a Grafana user login (gcx login). Service accounts cannot use this API.
-List returns all users and both important and default rules.
-The server requires user settings read or write permission. Changes to another
-user's rules also require user settings admin permission.
-The user and important fields are set at creation and cannot be updated.`}
+	cmd := &cobra.Command{Use: "personal-notification-rules", Aliases: []string{"personal-notification-rule", "pnr"}, Short: "Manage personal notification rules.", Long: `Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login); service accounts cannot use this API.
+List includes all users and both priority levels.
+The server checks user settings read, write, and admin permissions.`}
 	cmd.AddCommand(
 		newListSubcommand(loader, "personal-notification-rules", "PersonalNotificationRule", "List personal notification rules for all users.", "id", listPersonalNotificationRules, getPersonalNotificationRule),
 		newGetSubcommand(loader, "Get a personal notification rule by ID.", getPersonalNotificationRule),
@@ -82,20 +80,15 @@ The user and important fields are set at creation and cannot be updated.`}
 		newUpdateSubcommand(loader, "Update a personal notification rule by ID.", personalNotificationRuleCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete a personal notification rule by ID.", "PersonalNotificationRule", "personal notification rule", personalNotificationRuleCRUDOpts()),
 	)
-	for _, child := range cmd.Commands() {
-		child.Long = child.Short + "\n\n" + cmd.Long
-		if child.Name() == "list" {
-			child.Args = cobra.NoArgs
-		}
-	}
 	return cmd
 }
 func personalNotificationRuleTable() cmdio.Table[unstructured.Unstructured] {
 	return cmdio.Table[unstructured.Unstructured]{Columns: []cmdio.Column[unstructured.Unstructured]{
 		{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
-		{Header: "USER", Content: func(o unstructured.Unstructured) string { return specStr(o, "user") }},
-		{Header: "IMPORTANT", Content: func(o unstructured.Unstructured) string { return specStr(o, "important") }},
-		{Header: "STEP", Content: func(o unstructured.Unstructured) string { return specStr(o, "step") }},
-		{Header: "NOTIFY-BY", Content: func(o unstructured.Unstructured) string { return specStr(o, "notify_by") }},
+		{Header: "USER", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "user")) }},
+		{Header: "IMPORTANT", Content: func(o unstructured.Unstructured) string { return strconv.FormatBool(specBool(o, "important")) }},
+		{Header: "STEP", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "step")) }},
+		{Header: "WAIT-DELAY", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "wait_delay")) }},
+		{Header: "NOTIFY-BY", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "notify_by")) }},
 	}}
 }

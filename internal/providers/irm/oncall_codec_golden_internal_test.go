@@ -45,6 +45,8 @@ func TestOnCallTableGolden(t *testing.T) {
 		table func(wide bool) format.Codec
 		wide  bool
 	}{
+		{name: "personal_notification_rules", spec: map[string]any{"user": "U1", "important": true, "step": int64(0), "notify_by": nil, "wait_delay": "300.0"}, table: func(bool) format.Codec { return personalNotificationRuleTable().Codec("table") }},
+
 		{
 			name: "integrations",
 			spec: map[string]any{"verbal_name": longText, "integration": "grafana", "team": "sre", "integration_url": "https://example.invalid/hook"},

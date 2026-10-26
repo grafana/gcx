@@ -37,7 +37,7 @@ func TestPersonalNotificationRulesRequests(t *testing.T) {
 							t.Errorf("missing empty filter %q: %s", key, r.URL.RawQuery)
 						}
 					}
-					fmt.Fprint(w, `[{"id":"N1","user":"U1","important":true,"step":0,"notify_by":null,"wait_delay":"60.0"},{"id":"N2","user":"U2","important":false,"step":1,"notify_by":8,"wait_delay":null}]`)
+					fmt.Fprint(w, `[{"id":"N1","user":"U1","important":true,"step":0,"notify_by":null,"wait_delay":"60.0","notify_device":null},{"id":"N2","user":"U2","important":false,"step":1,"notify_by":8,"wait_delay":null}]`)
 					return
 				}
 				if tc.method == http.MethodPost || tc.method == http.MethodPut {
@@ -116,7 +116,7 @@ func TestPersonalNotificationRulesEmptyAndForbidden(t *testing.T) {
 
 func assertNotificationRules(t *testing.T, items []irm.PersonalNotificationRule) {
 	t.Helper()
-	if len(items) != 2 || items[0].User != "U1" || !items[0].Important || items[0].NotifyBy != nil || items[1].User != "U2" || items[1].Important {
+	if len(items) != 2 || items[0].User != "U1" || !items[0].Important || items[0].NotifyBy != nil || string(items[0].NotifyDevice) != "null" || items[1].User != "U2" || items[1].Important {
 		t.Errorf("rules = %#v", items)
 	}
 }

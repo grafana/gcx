@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/client-go/rest"
 )
 
@@ -25,7 +26,8 @@ const (
 	// BasePath is the plugin resources root for the IRM app.
 	BasePath = "/api/plugins/grafana-irm-app/resources"
 
-	integrationsPath = "alert_receive_channels/"
+	notificationPoliciesPath = "notification_policies/"
+	integrationsPath         = "alert_receive_channels/"
 	// integrationTemplatesPath addresses the alert templates of an
 	// integration. The templates live behind their own collection, keyed by
 	// the integration ID, and never travel inside the Integration object.
@@ -220,7 +222,7 @@ func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, reso
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("irm: %s %q not found", resourceType, id)
+		return nil, fmt.Errorf("irm: %s %q %w", resourceType, id, adapter.ErrNotFound)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, providers.HandleErrorResponse(resp)
