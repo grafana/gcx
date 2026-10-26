@@ -15278,6 +15278,168 @@ Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx irm oncall personal-notification-rules` {#gcx-irm-oncall-personal-notification-rules}
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login). Service accounts cannot use this API.
+List returns all users and both important and default rules.
+The server requires user settings read or write permission. Changes to another
+user's rules also require user settings admin permission.
+The user and important fields are set at creation and cannot be updated.
+
+**Flags**
+
+```text
+  -h, --help   help for personal-notification-rules
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules create` {#gcx-irm-oncall-personal-notification-rules-create}
+
+Create a personal notification rule.
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login). Service accounts cannot use this API.
+List returns all users and both important and default rules.
+The server requires user settings read or write permission. Changes to another
+user's rules also require user settings admin permission.
+The user and important fields are set at creation and cannot be updated.
+
+```shell
+gcx irm oncall personal-notification-rules create [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules delete` {#gcx-irm-oncall-personal-notification-rules-delete}
+
+Delete a personal notification rule by ID.
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login). Service accounts cannot use this API.
+List returns all users and both important and default rules.
+The server requires user settings read or write permission. Changes to another
+user's rules also require user settings admin permission.
+The user and important fields are set at creation and cannot be updated.
+
+```shell
+gcx irm oncall personal-notification-rules delete <id> [flags]
+```
+
+**Flags**
+
+```text
+      --force           Skip confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules get` {#gcx-irm-oncall-personal-notification-rules-get}
+
+Get a personal notification rule by ID.
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login). Service accounts cannot use this API.
+List returns all users and both important and default rules.
+The server requires user settings read or write permission. Changes to another
+user's rules also require user settings admin permission.
+The user and important fields are set at creation and cannot be updated.
+
+```shell
+gcx irm oncall personal-notification-rules get <id> [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules list` {#gcx-irm-oncall-personal-notification-rules-list}
+
+List personal notification rules for all users.
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login). Service accounts cannot use this API.
+List returns all users and both important and default rules.
+The server requires user settings read or write permission. Changes to another
+user's rules also require user settings admin permission.
+The user and important fields are set at creation and cannot be updated.
+
+```shell
+gcx irm oncall personal-notification-rules list [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules update` {#gcx-irm-oncall-personal-notification-rules-update}
+
+Update a personal notification rule by ID.
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login). Service accounts cannot use this API.
+List returns all users and both important and default rules.
+The server requires user settings read or write permission. Changes to another
+user's rules also require user settings admin permission.
+The user and important fields are set at creation and cannot be updated.
+
+```shell
+gcx irm oncall personal-notification-rules update <id> [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx irm oncall resolution-notes` {#gcx-irm-oncall-resolution-notes}
 
 Manage resolution notes.

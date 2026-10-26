@@ -36,6 +36,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	// codec; the switch below registers the matching table/wide codecs per
 	// resource type.
 	switch resource {
+	case "personal-notification-rules":
+		cmdio.RegisterTable(&o.IO, personalNotificationRuleTable())
 	case "integrations":
 		cmdio.RegisterTable(&o.IO, integrationTable())
 	case "escalation-chains":

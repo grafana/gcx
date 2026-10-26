@@ -345,6 +345,10 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		shiftSwapCRUDOpts()...,
 	))
 
+	meta = oncallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules")
+	meta.Example = json.RawMessage(`{"step":1,"notify_by":8,"important":false,"user":"<user-id>"}`)
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
+		listPersonalNotificationRules, getPersonalNotificationRule, personalNotificationRuleCRUDOpts()...))
 	return regs
 }
 

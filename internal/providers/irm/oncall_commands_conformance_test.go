@@ -16,15 +16,16 @@ func TestOnCallNounConformance(t *testing.T) {
 	t.Parallel()
 
 	mutable := map[string]bool{
-		"integrations":        true,
-		"escalation-chains":   true,
-		"escalation-policies": true,
-		"schedules":           true,
-		"shifts":              true,
-		"routes":              true,
-		"webhooks":            true,
-		"resolution-notes":    true,
-		"shift-swaps":         true,
+		"personal-notification-rules": true,
+		"integrations":                true,
+		"escalation-chains":           true,
+		"escalation-policies":         true,
+		"schedules":                   true,
+		"shifts":                      true,
+		"routes":                      true,
+		"webhooks":                    true,
+		"resolution-notes":            true,
+		"shift-swaps":                 true,
 	}
 	readOnly := map[string]bool{
 		"users":          true,
