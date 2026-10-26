@@ -1,60 +1,57 @@
 module github.com/grafana/gcx
 
-go 1.26.10
+go 1.27.0
 
 require (
+	charm.land/glamour/v2 v2.0.1
+	charm.land/huh/v2 v2.0.3
+	charm.land/lipgloss/v2 v2.0.6
 	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/NimbleMarkets/ntcharts/v2 v2.8.0
 	github.com/fatih/color v1.19.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/go-logr/logr v1.4.4
+	github.com/go-openapi/runtime v0.33.3
 	github.com/go-openapi/strfmt v0.27.3
 	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.4
+	github.com/gofrs/flock v0.13.1
 	github.com/google/go-cmp v0.7.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
 	github.com/grafana/grafana-app-sdk/logging v0.60.16
 	github.com/grafana/grafana-foundation-sdk/go v0.0.21
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
+	github.com/grafana/mcp-doc-server v1.0.0
+	github.com/grafana/otel-checker v0.4.0
 	github.com/grafana/promql-builder/go v0.0.6
 	github.com/invopop/jsonschema v0.14.0
+	github.com/itchyny/gojq v0.12.19
 	github.com/olekukonko/tablewriter v1.1.5
 	github.com/open-policy-agent/opa v1.21.2
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
+	github.com/prometheus/common v0.72.1
 	github.com/prometheus/prometheus v0.315.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/goldmark v1.8.6
+	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/mod v0.42.0
 	golang.org/x/sync v0.24.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	golang.org/x/tools v0.52.0
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/cli-runtime v0.37.1
 	k8s.io/client-go v0.37.1
 	k8s.io/klog/v2 v2.140.0
-)
-
-require (
-	charm.land/glamour/v2 v2.0.1
-	charm.land/huh/v2 v2.0.3
-	charm.land/lipgloss/v2 v2.0.6
-	github.com/NimbleMarkets/ntcharts/v2 v2.8.0
-	github.com/go-openapi/runtime v0.33.3
-	github.com/gofrs/flock v0.13.1
-	github.com/google/uuid v1.6.0
-	github.com/grafana/mcp-doc-server v1.0.0
-	github.com/grafana/otel-checker v0.4.0
-	github.com/itchyny/gojq v0.12.19
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/prometheus/common v0.72.1
-	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/sys v0.49.0
-	google.golang.org/protobuf v1.36.12
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -89,7 +86,6 @@ require (
 	github.com/dlclark/regexp2/v2 v2.9.1 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/edsrzf/mmap-go v1.2.1-0.20241212181136-fad1cd13edbd // indirect
-	github.com/emicklei/go-restful/v3 v3.14.0 // indirect
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -183,9 +179,10 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/api v0.37.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
+	k8s.io/kube-openapi v0.0.0-20261014044854-ca3452a79603 // indirect
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3 // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v7 v7.0.0 // indirect
 )
