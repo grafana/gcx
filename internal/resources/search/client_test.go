@@ -89,22 +89,50 @@ func TestClientSearchRejectsMalformedResponseAndHonorsCancellation(t *testing.T)
 	client, err := search.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "org-1"})
 	require.NoError(t, err)
 	_, err = client.Search(t.Context(), search.Query{Query: "q", Limit: 50})
-	require.ErrorContains(t, err, "invalid hybrid search response")
+	require.EqualError(t, err, `invalid hybrid search response: expected kind HybridSearchResults, got "Wrong"`)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err = client.Search(ctx, search.Query{Query: "q", Limit: 50})
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-func TestClientSearchRejectsTrailingResponseData(t *testing.T) {
+func TestClientSearchAcceptsHybridResultsWithOptionalEnvelopeFields(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		body           string
+		wantAPIVersion string
+		wantItemsNil   bool
+	}{
+		{name: "null items", body: `{"apiVersion":"search.grafana.app/v0alpha1","kind":"HybridSearchResults","items":null}`, wantAPIVersion: "search.grafana.app/v0alpha1", wantItemsNil: true},
+		{name: "omitted items", body: `{"apiVersion":"search.grafana.app/v0alpha1","kind":"HybridSearchResults"}`, wantAPIVersion: "search.grafana.app/v0alpha1", wantItemsNil: true},
+		{name: "different api version", body: `{"apiVersion":"search.grafana.app/v1","kind":"HybridSearchResults","items":[]}`, wantAPIVersion: "search.grafana.app/v1"},
+		{name: "omitted api version", body: `{"kind":"HybridSearchResults","items":[]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			client, err := search.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "org-1"})
+			require.NoError(t, err)
+			result, err := client.Search(t.Context(), search.Query{Query: "q", Limit: 50})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantAPIVersion, result.APIVersion)
+			require.Equal(t, "HybridSearchResults", result.Kind)
+			require.Equal(t, tc.wantItemsNil, result.Items == nil)
+		})
+	}
+}
+
+func TestClientSearchRejectsInvalidJSONResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"apiVersion":"search.grafana.app/v0alpha1","kind":"HybridSearchResults","items":[]} {"unexpected":true}`))
+		_, _ = w.Write([]byte(`{"kind":`))
 	}))
 	defer server.Close()
 	client, err := search.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "org-1"})
 	require.NoError(t, err)
 	_, err = client.Search(t.Context(), search.Query{Query: "q", Limit: 50})
-	require.ErrorContains(t, err, "trailing")
+	require.ErrorContains(t, err, "decode hybrid search response")
 }
 
 func TestClientSearchPreservesServerErrorsWithoutFallback(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,12 +77,8 @@ func (c *Client) Search(ctx context.Context, query Query) (*Results, error) {
 	if err := decoder.Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode hybrid search response: %w", err)
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return nil, errors.New("invalid hybrid search response: trailing data")
-	}
-	if result.APIVersion != apiVersion || result.Kind != "HybridSearchResults" || result.Items == nil {
-		return nil, errors.New("invalid hybrid search response: expected HybridSearchResults envelope with items")
+	if result.Kind != "HybridSearchResults" {
+		return nil, fmt.Errorf("invalid hybrid search response: expected kind HybridSearchResults, got %q", result.Kind)
 	}
 	return &result, nil
 }
