@@ -2,13 +2,25 @@
 
 ## Overview
 
-gcx has three distinct client paths to Grafana. The primary path uses the
+gcx uses distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
 Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path uses
 the Grafana OpenAPI generated client (`grafana-openapi-client-go`) for
-non-resource operations like health checks and datasource listing. A third path
-uses `rest.HTTPClientFor` directly to execute datasource-specific queries
-(PromQL, LogQL) against Grafana's `/apis` query endpoints.
+non-resource operations like health checks and datasource listing. Direct HTTP
+clients use `rest.HTTPClientFor` for datasource queries and global resource search
+against their respective `/apis` endpoints.
+
+---
+
+## Global Resource Search
+
+Experimental `gcx resources search` uses the selected context's namespace and
+authenticated HTTP transport to call
+`/apis/search.grafana.app/v0alpha1/namespaces/{namespace}/global/search/hybrid`.
+If the caller selects no resource types, Grafana uses its configured defaults.
+The response contains ranked matches with scores and matching text.
+See the [resource exploration guide](../sources/guides/explore-modify-resources.md)
+for usage.
 
 ---
 

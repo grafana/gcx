@@ -585,6 +585,7 @@
  "gcx resources delete": "finite",
  "gcx resources edit": "interactive",
  "gcx resources get": "finite",
+ "gcx resources search": "finite",
  "gcx resources list-examples": "finite",
  "gcx resources list-types": "finite",
  "gcx resources pull": "artifact",

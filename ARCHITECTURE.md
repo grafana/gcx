@@ -44,6 +44,8 @@ group name, for both native resources and provider adapters.
 
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
+Experimental `resources search` uses Grafana's global search API and returns ranked matches instead of resource manifests. See the [client API layer](docs/architecture/client-api-layer.md).
+
 ### 2. Provider System
 
 Pluggable adapters for Grafana Cloud products. Each provider is a self-contained package under `internal/providers/` that contributes CLI commands and optionally bridges into the resources pipeline.
