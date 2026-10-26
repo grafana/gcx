@@ -102,7 +102,7 @@ func searchCmd(loader searchConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "search QUERY",
 		Short:   "[experimental] Search Grafana resources by relevance",
-		Long:    experimentalSearchPreamble + "\n\nFind bounded top matches across configured resource types through Grafana global hybrid search. Results are not an exhaustive inventory. Use --resource to override server defaults or supply types when none are configured; --folder accepts exact UIDs.",
+		Long:    experimentalSearchPreamble + "\n\nFind bounded top matches across configured resource types through Grafana global hybrid search. Results are not an exhaustive inventory. Use --resource to override server defaults or supply types when none are configured; --folder accepts exact UIDs. --limit accepts 1-200; 0 is unsupported because search has no all-results mode.",
 		Example: "  gcx resources search 'kubernetes memory problems'\n  gcx resources search memory --resource dashboards.dashboard.grafana.app --folder team-platform --limit 10\n  gcx resources search memory -o wide",
 		Args:    cobra.ArbitraryArgs,
 		Annotations: map[string]string{

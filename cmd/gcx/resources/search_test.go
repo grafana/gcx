@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,8 +14,10 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/resources/search"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	"k8s.io/client-go/rest"
 )
 
@@ -107,6 +110,44 @@ func TestSearchRendersOrderedMixedResultsInEveryOutput(t *testing.T) {
 		for _, value := range tc.excludes {
 			require.NotContains(t, out.String(), value, "%v", tc.args)
 		}
+	}
+}
+
+func TestSearchRoundsHumanScoresAndPreservesStructuredScoresAndOrder(t *testing.T) {
+	setSearchTestAgentMode(t, "false")
+	const payload = `{"apiVersion":"search.grafana.app/v0alpha1","kind":"HybridSearchResults","items":[{"resource":{"resource":"dashboards","group":"dashboard.grafana.app","name":"first"},"score":0.6000000000000001,"title":"First","folder":"","chunks":[]},{"resource":{"resource":"folders","group":"folder.grafana.app","name":"second"},"score":0.0000001,"title":"Second","folder":"","chunks":[]}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(payload)) }))
+	defer server.Close()
+
+	for _, format := range []string{"table", "wide", "json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			cmd := searchCmd(&searchTestLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "org-1"}})
+			cmd.SetArgs([]string{"memory", "-o=" + format})
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			require.NoError(t, cmd.Execute())
+
+			if format == "table" || format == "wide" {
+				text := out.String()
+				require.Regexp(t, `(?:^|\s)0\.6000(?:\s|$)`, text)
+				require.Regexp(t, `(?:^|\s)0\.0000(?:\s|$)`, text)
+				require.NotContains(t, text, "0.6000000000000001")
+				require.Less(t, strings.Index(text, "first"), strings.Index(text, "second"))
+				return
+			}
+
+			var result search.Results
+			if format == "json" {
+				require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+			} else {
+				require.NoError(t, yaml.Unmarshal(out.Bytes(), &result))
+			}
+			require.Len(t, result.Items, 2)
+			require.Equal(t, "first", result.Items[0].Resource.Name)
+			require.Equal(t, math.Float64bits(0.6000000000000001), math.Float64bits(result.Items[0].Score))
+			require.Equal(t, "second", result.Items[1].Resource.Name)
+			require.Equal(t, math.Float64bits(0.0000001), math.Float64bits(result.Items[1].Score))
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package resources
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -28,7 +29,7 @@ func searchTable() cmdio.TableAdapter[*search.Results, search.Item] {
 					}
 					return safeSearchCell(item.Folder)
 				}},
-				{Header: "SCORE", Content: func(item search.Item) string { return fmt.Sprint(item.Score) }},
+				{Header: "SCORE", Content: func(item search.Item) string { return strconv.FormatFloat(item.Score, 'f', 4, 64) }},
 				{Header: "EXCERPT", Visible: cmdio.WideOnly, Content: func(item search.Item) string {
 					if len(item.Chunks) == 0 {
 						return ""

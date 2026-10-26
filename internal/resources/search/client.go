@@ -42,7 +42,7 @@ func (c *Client) Search(ctx context.Context, query Query) (*Results, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse hybrid search host: %w", err)
 	}
-	const route = "/apis/search.grafana.app/v0alpha1/namespaces/"
+	const route = "/apis/" + apiVersion + "/namespaces/"
 	const tail = "/global/search/hybrid"
 	rawPrefix := strings.TrimSuffix(u.EscapedPath(), "/")
 	u.Path = strings.TrimSuffix(u.Path, "/") + route + c.namespace + tail
