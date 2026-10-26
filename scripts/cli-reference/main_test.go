@@ -206,3 +206,17 @@ func TestRenderConfiguration(t *testing.T) {
 	_, err = renderConfiguration(guide, schema, "v1.2.3")
 	require.ErrorContains(t, err, "missing")
 }
+
+// The schema generator fences everything today, but prose around that fence
+// would reach the configuration page the same way <title> reached this one.
+func TestRenderConfigurationNeverEmitsRawHTML(t *testing.T) {
+	page, err := renderConfiguration("# Configure gcx\n\n"+configurationMarker+"\n", "# Configuration reference\n\nSet --config <path> to override discovery.\n", "v1.2.3")
+	require.NoError(t, err)
+	require.Contains(t, page, "--config &lt;path&gt;")
+	// Skip the handwritten guide and the marker comment that separates it.
+	_, generated, found := strings.Cut(page, configurationMarker)
+	require.True(t, found)
+	var omitted bytes.Buffer
+	require.NoError(t, goldmark.Convert([]byte(generated), &omitted))
+	require.NotContains(t, omitted.String(), "raw HTML omitted")
+}

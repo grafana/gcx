@@ -188,7 +188,8 @@ func renderDescription(description string) string {
 func escapeRawHTML(markdown string) string {
 	source := []byte(markdown)
 	var spans []text.Segment
-	err := ast.Walk(goldmark.DefaultParser().Parse(text.NewReader(source)), func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+	// The walker never fails, so the only error Walk can return is nil.
+	_ = ast.Walk(goldmark.DefaultParser().Parse(text.NewReader(source)), func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
@@ -207,9 +208,6 @@ func escapeRawHTML(markdown string) string {
 		}
 		return ast.WalkContinue, nil
 	})
-	if err != nil {
-		log.Fatal(err)
-	}
 	slices.SortFunc(spans, func(a, b text.Segment) int { return a.Start - b.Start })
 	escaper := strings.NewReplacer("<", "&lt;", ">", "&gt;")
 	var out strings.Builder
