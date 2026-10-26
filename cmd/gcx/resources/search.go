@@ -47,16 +47,10 @@ func (o *searchOpts) Validate(cmd *cobra.Command, args []string) (search.Query, 
 	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
 		return bad("provide exactly one nonblank search query")
 	}
-	if len([]byte(args[0])) > 1000 {
-		return bad("search query must be at most 1000 UTF-8 bytes")
-	}
 	if !utf8.ValidString(args[0]) {
 		return bad("search query must be valid UTF-8")
 	}
-	if o.Limit == 0 {
-		return bad("--limit must be 1-200; search has no all-results mode")
-	}
-	if o.Limit < 0 || o.Limit > 200 {
+	if o.Limit < 1 || o.Limit > 200 {
 		return bad("--limit must be between 1 and 200")
 	}
 	if err := o.IO.Validate(); err != nil {
@@ -78,11 +72,9 @@ func (o *searchOpts) Validate(cmd *cobra.Command, args []string) (search.Query, 
 		seen[value] = true
 		query.Resources = append(query.Resources, search.Resource{Resource: parts[0], Group: parts[1]})
 	}
-	if len(o.Folders) > 1000 {
-		return bad("--folder accepts at most 1000 values")
-	}
 	if len(o.Folders) > 0 {
 		values := make([]string, 0, len(o.Folders))
+		seenFolders := make(map[string]bool, len(o.Folders))
 		for _, folder := range o.Folders {
 			if strings.Contains(folder, "*") {
 				return bad("--folder does not accept wildcards")
@@ -90,6 +82,10 @@ func (o *searchOpts) Validate(cmd *cobra.Command, args []string) (search.Query, 
 			if folder == "general" {
 				folder = ""
 			}
+			if seenFolders[folder] {
+				return bad(fmt.Sprintf("duplicate --folder %q", folder))
+			}
+			seenFolders[folder] = true
 			values = append(values, folder)
 		}
 		query.Filters = []search.Filter{{Field: "folder", Values: values}}
