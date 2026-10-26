@@ -35,6 +35,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Print a Grafana Explore share link for the query
   gcx logs query '{job="varlogs"}' --share-link
 
+  # Log volume over time, colored by level
+  gcx logs query -d abc123 '{job="varlogs"}' -o graph
+
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
 
@@ -88,6 +91,20 @@ func (p *Provider) descriptor() signals.Descriptor {
 
   # Output as JSON
   gcx logs series -d UID --match '{job="varlogs"}' -o json`,
+			},
+			{
+				Build:     dsloki.QueryPatternsCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx logs query-patterns -d abc123 '{job="varlogs"}' --since 1h -o json`,
+				Example: `
+  # Detect patterns using configured default datasource
+  gcx logs query-patterns '{job="varlogs"}'
+
+  # Detect patterns over a specific window
+  gcx logs query-patterns -d UID '{job="varlogs"}' --since 3h
+
+  # Output as JSON
+  gcx logs query-patterns -d UID '{job="varlogs"}' -o json`,
 			},
 		},
 		Adaptive: &signals.AdaptiveSpec{

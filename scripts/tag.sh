@@ -28,7 +28,7 @@ for cmd in claude svu; do
 	if ! command -v "$cmd" >/dev/null 2>&1; then
 		echo "Error: '${cmd}' is required but not found." >&2
 		[[ "$cmd" == "claude" ]] && echo "Install from https://claude.ai/download" >&2
-		[[ "$cmd" == "svu" ]] && echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
+		[[ "$cmd" == "svu" ]] && echo "Install with: mise install" >&2
 		exit 1
 	fi
 done

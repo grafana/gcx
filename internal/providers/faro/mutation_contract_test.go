@@ -51,14 +51,24 @@ func (f *fakeConfigLoader) LoadGrafanaConfig(context.Context) (internalconfig.Na
 	}, nil
 }
 
-func (f *fakeConfigLoader) LoadDirectProviderSnapshot(context.Context, providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error) {
-	return providers.DirectProviderSnapshot{
+// LoadDirectProviderSnapshot leaves GrafanaConfig nil when grafanaURL is
+// empty, as the real loader does for a context with only a Cloud token.
+func (f *fakeConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, _ providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error) {
+	snapshot := providers.DirectProviderSnapshot{
 		ProviderConfig: map[string]string{"faro-api-url": f.faroAPIURL},
 		Namespace:      "stack-1",
 		ResolveCloudConfig: func(context.Context) (providers.CloudRESTConfig, error) {
 			return providers.CloudRESTConfig{Token: "tok", Stack: cloud.StackInfo{ID: 7}}, nil
 		},
-	}, nil
+	}
+	if f.grafanaURL != "" {
+		cfg, err := f.LoadGrafanaConfig(ctx)
+		if err != nil {
+			return providers.DirectProviderSnapshot{}, err
+		}
+		snapshot.GrafanaConfig = &cfg
+	}
+	return snapshot, nil
 }
 
 func (f *fakeConfigLoader) SaveProviderConfig(context.Context, string, string, string) error {
@@ -172,10 +182,10 @@ func faroMutationCases(t *testing.T) []struct {
 			name:       "apps delete",
 			build:      func(l *fakeConfigLoader) *cobra.Command { return newDeleteCommand(l) },
 			args:       []string{"my-app-42"},
-			wantHuman:  "✔ Deleted Frontend Observability app \"my-app-42\"\n",
+			wantHuman:  "✔ Deleted Frontend Observability app \"my-app\" (id=42)\n",
 			wantType:   "gcx.mutation",
 			wantDoc:    map[string]any{"action": "deleted"},
-			wantTarget: map[string]any{"kind": Kind, "name": "my-app-42"},
+			wantTarget: map[string]any{"kind": Kind, "name": "my-app", "id": "42"},
 		},
 		{
 			name:      "apps apply-sourcemap",

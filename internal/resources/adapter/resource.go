@@ -214,6 +214,10 @@ func (r Resource[T]) TypedCRUD(client any, namespace string) *TypedCRUD[T] {
 		namespace = r.Namespace
 	}
 	desc := r.descriptor()
+	// Provider commands can bind typed CRUD without registering the whole provider.
+	if r.NaturalKey != "" {
+		RegisterNaturalKey(desc.GroupVersionKind(), SpecFieldKey(r.NaturalKey))
+	}
 	return newCapabilityCRUD[T](client, capabilityMeta{
 		Descriptor: desc, Namespace: namespace, StripFields: r.StripFields,
 		Example: exampleJSON(r.Example, desc, r.StripFields),

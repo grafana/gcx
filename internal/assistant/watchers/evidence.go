@@ -25,9 +25,12 @@ func (w *Watcher) UnsupportedConfiguration() []string {
 		out = append(out, action.unsupported...)
 		if action.Target != nil {
 			out = append(out, action.Target.unsupported...)
-			if action.Target.Type != "" && action.Target.Type != "channel" || action.Target.UserID != "" || action.Target.TeamID != "" {
-				out = append(out, "notification targeting")
-			}
+		}
+	}
+	if action := w.Actions.MSTeams; action != nil && action.Target != nil {
+		target := action.Target
+		if target.Type != "" && target.Type != "channel" || target.UserID != "" || target.TeamID != "" {
+			out = append(out, "notification targeting")
 		}
 	}
 	if a := w.Actions.Webhook; a != nil {
@@ -41,18 +44,6 @@ func (w *Watcher) UnsupportedConfiguration() []string {
 	}
 	if a := w.Actions.Alerting; a != nil {
 		out = append(out, a.unsupported...)
-		if a.MinSeverity != "" && a.MinSeverity != "warning" {
-			out = append(out, "Alerting severity")
-		}
-		var tree string
-		if a.RoutingTree != nil {
-			tree = *a.RoutingTree
-		} else {
-			tree = w.Labels["__grafana_managed_route__"]
-		}
-		if tree != "" && tree != "default" && tree != "user-defined" {
-			out = append(out, "Alerting routing")
-		}
 	}
 	if a := w.Actions.Investigation; a != nil {
 		out = append(out, a.unsupported...)

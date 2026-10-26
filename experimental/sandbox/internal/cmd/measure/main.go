@@ -83,6 +83,11 @@ func load(wasmPath, cache string) (*sandbox.Runtime, time.Duration, error) {
 		return nil, 0, err
 	}
 	took := time.Since(start)
+	// Compiling without the cache would turn a warm load into a cold one.
+	if err := rt.CacheError(); err != nil {
+		_ = rt.Close(context.Background())
+		return nil, 0, fmt.Errorf("not loaded from the cache: %w", err)
+	}
 	fmt.Fprintf(os.Stdout, "loaded in %v\n", took.Round(time.Millisecond))
 	return rt, took, nil
 }

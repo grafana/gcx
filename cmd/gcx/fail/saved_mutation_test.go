@@ -25,6 +25,7 @@ func TestSavedMutationFailureKeepsPartialStatusWhenReturnedDirectly(t *testing.T
 				err = fmt.Errorf("edit resource: %w", err)
 			}
 			result := fail.ErrorToDetailedError(err)
+			require.Equal(t, gcxerrors.SummaryPartialFailure, result.Summary)
 			require.NotNil(t, result.ExitCode)
 			require.Equal(t, gcxerrors.ExitPartialFailure, *result.ExitCode)
 			require.Contains(t, result.Details, "id=example saved")

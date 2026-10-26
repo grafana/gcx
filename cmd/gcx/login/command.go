@@ -120,7 +120,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // Usage text for the browser OAuth flags that `gcx login` and `gcx signup`
 // share.
 const (
-	oauthCallbackPortUsage = "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser"
+	oauthCallbackPortUsage = "Fixed local port for the OAuth callback server (default: auto-pick an ephemeral port). Useful when only specific ports are forwarded between a remote host and your browser"
 	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
 )
 
@@ -257,6 +257,7 @@ Auth sources (for non-interactive use):
 
 //nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
+	capture.SetLoginStage("preflight")
 	ctx := cmd.Context()
 	// The auto-discovered-config credential rejection below is the earliest gate
 	// that can end a login, and it runs before any config is read — so there is

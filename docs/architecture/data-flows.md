@@ -1,9 +1,5 @@
 # Resource Processing Pipelines
 
-Domain: Data flows — push, pull, delete, and serve pipelines in gcx.
-
----
-
 ## 1. Overview
 
 gcx has five primary data flow pipelines:
@@ -16,16 +12,13 @@ SERVE:  Local disk → watch → FSReader → HTTP proxy → live reload → Bro
 QUERY:  Flags → query client → Grafana datasource API → parse → render
 ```
 
-The first four share the same `Resource`/`Resources` abstraction as the central in-memory
-representation. The `Processor` interface (`remote/remote.go:11`) provides a composable
-transformation stage in push and pull. The QUERY pipeline is independent — it operates
-on time series data and does not use the resource model.
+The first four share the same `Resource`/`Resources` abstraction as the central in-memory representation. The `Processor` interface (`remote/remote.go`) provides a composable transformation stage in push and pull. The QUERY pipeline is independent — it operates on time series data and does not use the resource model.
 
 ---
 
 ## 2. PUSH Pipeline
 
-Entry point: `cmd/gcx/resources/push.go:95` (`RunE` closure in `pushCmd`).
+Entry point: `cmd/gcx/resources/push.go` (`RunE` closure in `pushCmd`).
 
 ```
 User invocation:
@@ -152,23 +145,11 @@ and JSON output (including agent-mode JSON) exposes the same map. Reasons includ
 read-only resources, resources that were not server-verified, and unlistable
 resource types.
 
-Key files:
-- `internal/resources/native_identity.go` — opted-in logical identity and create preparation
-- `cmd/gcx/resources/push.go` — CLI wiring
-- `internal/resources/local/reader.go` — FSReader
-- `internal/resources/remote/pusher.go` — Pusher, upsertResource
-- `internal/resources/remote/conflict_retry.go` — bounded native mutation Conflict retry
-- `internal/resources/remote/dryrun_guard.go` — dryRunGuard (fail-safe client-side dry-run)
-- `internal/resources/remote/dryrun_allowlist.go` — default-deny allowlist of resources known to honor server-side dryRun
-- `internal/resources/process/managerfields.go` — ManagerFieldsAppender
-- `internal/resources/process/namespace.go` — NamespaceOverrider
-- `internal/resources/adapter/router.go` — ResourceClientRouter (routes CRUD to adapter or dynamic client)
-
 ---
 
 ## 3. PULL Pipeline
 
-Selector-free pull (and get through the same puller) counts an unavailable Assistant Watcher or MCP server collection API as skipped via `adapter.ErrUnavailable`; explicit selections and per-item read failures still fail.
+Selector-free pull (and get through the same puller) counts collection APIs marked unavailable as skipped via `adapter.ErrUnavailable`; explicit selections and per-item read failures still fail.
 
 Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
 
@@ -241,12 +222,6 @@ delete selectors always enable read-only filtering. `resources get` leaves it di
 keep inventory complete; `resources edit` fetches the object and rejects a
 read-only result before opening the editor.
 
-Key files:
-- `internal/resources/remote/puller.go` — Puller, concurrent fetch
-- `internal/resources/process/serverfields.go` — ServerFieldsStripper
-- `internal/resources/local/writer.go` — FSWriter
-- `internal/resources/adapter/router.go` — ResourceClientRouter (routes CRUD to adapter or dynamic client)
-
 ---
 
 ## 4. DELETE Pipeline
@@ -283,11 +258,6 @@ CLI args or read from disk by the caller before passing to `Deleter`).
   │    Callers are expected to filter the resource list before deleting.  │
   └──────────────────────────────────────────────────────────────────────┘
 ```
-
-Key files:
-- `internal/resources/remote/deleter.go` — Deleter, delete operations
-- `internal/resources/remote/dryrun_guard.go` — dryRunGuard (fail-safe client-side dry-run, shared with push)
-- `internal/resources/adapter/router.go` — ResourceClientRouter (routes CRUD to adapter or dynamic client)
 
 For TimeInterval/TemplateGroup file inputs, an unnamed writable object fails
 before any client request for that file and points to the dedicated title-based
@@ -339,14 +309,6 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ---
 
-### Assistant Watcher configuration
-
-Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, the Watcher adapter supplies a preflight that checks its visible identity index; the generic puller invokes that check and reports rejected items without knowing their resource kind. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
-
-Configuration push resolves the full local batch before writes and passes each complete envelope to the owned adapter before generic name or natural-key probes. Delete selects minimal identity envelopes before configuration reads or deduplication. The Watcher adapter shares reconciliation with dedicated create/update/delete commands and preserves saved identity on a failed follow-up stage. Kinds without these optional hooks keep their existing pipelines. See [ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md).
-
-Typed list adapters retain items returned alongside an error. Watcher bulk reads expose per-item failures and skips through the adapter partial-read contract, so the generic puller can retain successful configurations and record accurate coverage without importing Watcher types. Collection failures remain fatal; abort mode stops before file processing. Dedicated list discloses incomplete coverage and the affected candidates.
-
 ## 5. QUERY Pipeline
 
 Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.
@@ -362,26 +324,7 @@ generic dispatcher is a separate, conditional decision:
    `QueryCmd` and `ExtraCommands` automatically — no per-kind wiring in the
    command layer. Registered kinds live in `internal/datasources/providers/`;
    read that directory rather than trusting a list here.
-2. **Generic `datasources query` — table-driven, and deliberately not at
-   parity.** The auto-detecting command resolves the datasource type over the API
-   and routes it through two disjoint tables in
-   `cmd/gcx/datasources/query_routes.go`: `dispatch` maps a normalized kind to a
-   handler, for kinds the `<uid> <expr>` form carries honestly; `redirects` maps a
-   kind to a message naming the typed command, for kinds whose query is
-   structured. A kind is in one table, the other, or neither — never both, which
-   the tests assert. Registration does **not** reach these tables and no test
-   enforces parity, because parity is not always the right answer: a kind whose
-   query cannot be expressed as one string does not belong in the generic form.
-   CloudWatch is the redirect case for that reason, pointing at
-   `datasources cloudwatch query` and its structured flags (namespace, metric,
-   dimensions, region, statistic, period). The redirect lookup runs *before*
-   expression resolution and before the dispatch lookup: ordering is
-   load-bearing, because an argument-less call would otherwise fail in
-   `ResolveExpr` and never reach the redirect. Kinds in neither table (athena,
-   infinity, and tempo, whose `query` leaf takes a TraceQL expression and is
-   built in `internal/datasources/tempo/search.go`) fall to the unsupported-kind
-   default, whose message is derived from the tables rather than hand-maintained.
-   Read `newQueryRoutes()` rather than trusting a list here.
+2. **Generic `datasources query` — table-driven, and deliberately not at parity.** The auto-detecting command resolves the datasource type over the API and routes it through two disjoint tables in `cmd/gcx/datasources/query_routes.go`: `dispatch` maps a normalized kind to a handler, for kinds the `<uid> <expr>` form carries honestly; `redirects` maps a kind to a message naming the typed command, for kinds whose query is structured. A kind is in one table, the other, or neither — never both, which the tests assert. Registration does **not** reach these tables and no test enforces parity, because parity is not always the right answer: a kind whose query cannot be expressed as one string does not belong in the generic form. CloudWatch is the redirect case for that reason, pointing at `datasources cloudwatch query` and its structured flags (namespace, metric, dimensions, region, statistic, period). The redirect lookup runs *before* expression resolution and before the dispatch lookup: ordering is load-bearing, because an argument-less call would otherwise fail in `ResolveExpr` and never reach the redirect. Kinds in neither table fall to the unsupported-kind default, whose message is derived from the tables rather than hand-maintained. Read `newQueryRoutes()` for current routing.
 
 ```
 User invocation:
@@ -503,24 +446,7 @@ User invocation:
   └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Key files:
-- `internal/datasources/query/opts.go` + `resolve.go` — shared opts, `ResolveExpr`, `ParseTimes`, `NormalizeKind`, `GetDatasourceType`, `ResolveTypedArgs`, `ValidateDatasourceType`
-- `internal/datasources/provider.go` — the `DatasourceProvider` interface (`Kind`, `QueryCmd`, `ExtraCommands`)
-- `internal/datasources/providers/` — one file per registered kind, each calling `datasources.RegisterProvider()`; the authoritative list of supported kinds
-- `internal/datasources/<kind>/query.go` — per-kind `QueryCmd` constructors (tempo's lives in `search.go`, not `query.go` — the leaf exists, the filename differs)
-- `cmd/gcx/datasources/command.go` — mounts every registered kind's subtree from `datasources.AllProviders()`
-- `cmd/gcx/datasources/query.go` — generic auto-detecting `datasources query`: the options struct and the fixed validate → resolve type → redirect → expression → times → dispatch order
-- `cmd/gcx/datasources/query_routes.go` — the two disjoint routing tables (per-kind dispatch handlers, typed-command redirects) and the derived supported-kind list
-- `internal/datasources/query/codecs.go` — `queryTableCodec`, `queryGraphCodec` (codec registry)
-- `internal/datasources/query/time.go` — time parsing for flag values
-- `internal/config/resolver.go` — `DefaultDatasourceUID(ctx, kind)` — per-kind lookup in the context's datasources map
-- `internal/query/grafanaquery/` — shared HTTP transport for the unified datasource query API (`/apis/query.grafana.app/…` with the `/api/ds/query` fallback); do not re-implement per kind
-- `internal/query/dataframe/` — shared Grafana data-frame wire types
-- `internal/query/<kind>/client.go` — per-kind request construction and response conversion
-- `internal/query/<kind>/formatter.go` — per-kind result rendering (`internal/query/sql/` is shared by the SQL-shaped kinds)
-- `internal/graph/chart.go` — `RenderChart`, `RenderBarChart`, `RenderLineChart`
-- `internal/graph/convert.go` — `FromPrometheusResponse`, `FromLokiResponse`
-- `internal/graph/types.go` — `ChartData`, `Series`, `Point`
+Shared query CLI infrastructure lives in [internal/datasources/query](../../internal/datasources/query/); registered datasource providers contribute per-kind constructors. The auto-detecting command uses disjoint dispatch and typed-redirect routes. Clients using the unified Grafana datasource-query API must reuse [grafanaquery](../../internal/query/grafanaquery/) for POST/fallback/response limits and [dataframe](../../internal/query/dataframe/) for wire types. Rendering belongs in codecs, independently of fetch and routing.
 
 ### Instant vs Range Query
 
@@ -564,12 +490,6 @@ Provider subcommands (`slo definitions status`, `slo reports status`, `synth che
 
 **Concurrency:** Init-phase operations (domain list, probe list, datasource resolution, REST config) run concurrently via `errgroup`. The aggregate queries also execute in parallel; for `synth checks status` a reachability failure is the error case, because reachability is the only input to OK/FAILING; a probe count or latency failure empties only its own column and warns on stderr.
 
-Key files:
-- `internal/providers/slo/definitions/status.go` — `FetchMetrics` (4 parallel queries per datasource group)
-- `internal/providers/synth/checks/status_namedqueries.go` — `fetchStatusMetrics`, `fetchCheckSuccess` (SM named queries)
-- `internal/providers/synth/checks/status.go` — `BuildTimelineQuery` (the one remaining PromQL builder for SM)
-- `internal/providers/synth/smcfg/loader.go` — `StatusLoader` interface (datasource UID resolution + caching)
-
 ---
 
 ## 6. Folder Hierarchy — Why Order Matters
@@ -608,7 +528,7 @@ Concurrency strategy:
   Level 2 → push all concurrently
 ```
 
-The two-phase push in `pusher.go:109-131`:
+The two-phase push in `pusher.go`:
 1. `pushFolders` handles all folders level-by-level (sequential between levels,
    concurrent within a level).
 2. Non-folder resources are pushed concurrently after ALL folders complete.
@@ -715,9 +635,9 @@ a pull-then-push workflow will write back in the same format as the original fil
 
 ## 9. SERVE Pipeline
 
-Entry point: `internal/server/server.go:55` (`Server.Start`).
+Entry point: `internal/server/server.go` (`Server.Start`).
 
-Command: `gcx dev serve [DIR]...` (the serve command moved from `resources serve` to `dev serve` in PR #35; the implementation is unchanged).
+Command: `gcx dev serve [DIR]...`.
 
 ```
 Startup sequence:
@@ -739,7 +659,7 @@ Startup sequence:
   │      GET /api/search → "[]"                              │
   │      GET /api/folders → "[]"                             │
   │      POST /api/frontend-metrics → "[]"                   │
-  │      ... (15+ mock routes, see server.go:163-197)        │
+  │      Other noise-suppression routes are defined by the router. │
   │                                                           │
   │    Resource handlers (DashboardProxy, FoldersProxy):     │
   │      GET /d/{uid}/{slug}          → proxy (HTML iframe)  │
@@ -883,7 +803,7 @@ even on partial failure so callers can report both successes and failures.
 | LiveReload hub | single goroutine, channel-based fan-out | N/A |
 | File watcher | single goroutine reading fsnotify events | N/A |
 
-`ForEachConcurrently` (`resources.go:283`):
+`ForEachConcurrently` (`resources.go`):
 ```go
 func (r *Resources) ForEachConcurrently(ctx context.Context, maxInflight int,
     callback func(context.Context, *Resource) error) error {
@@ -901,7 +821,7 @@ cancels the `errgroup` context, causing other goroutines to exit early via `ctx.
 When `StopOnError=false`, errors are swallowed per-resource and recorded in the summary;
 the goroutine returns `nil` so the errgroup continues.
 
-Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
+Default `MaxConcurrent` = 10 (set in `push.go`, `pull.go`, etc.).
 
 ---
 

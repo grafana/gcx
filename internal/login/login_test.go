@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/login"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,6 +53,76 @@ func configSource(dir string) config.Source {
 func usePlaintextCredentialStorage(t *testing.T) {
 	t.Helper()
 	t.Setenv("GCX_KEYCHAIN", "off")
+}
+
+// The login stage is the last step Run entered, and "complete" is recorded
+// only once the config write succeeded: it is the success signal that an
+// abandoned prompt, which exits 0 too, cannot fake.
+func TestRunRecordsLoginStage(t *testing.T) {
+	oauthResult := &auth.Result{Token: "oauth-token", RefreshToken: "refresh-token", APIEndpoint: "https://grafana.example.invalid"}
+	failingValidate := func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+		return "", errors.New("connection refused")
+	}
+
+	tests := []struct {
+		name      string
+		oauth     bool
+		persist   func() error
+		flow      login.AuthFlow
+		validate  func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error)
+		blockSave bool
+		wantErr   bool
+		wantStage string
+	}{
+		{name: "token login saved", validate: noopValidate, wantStage: "complete"},
+		{name: "oauth login saved", oauth: true, flow: &stubAuthFlow{result: oauthResult}, validate: noopValidate, wantStage: "complete"},
+		{name: "credential store unavailable", oauth: true, persist: func() error { return errors.New("keychain locked") }, wantErr: true, wantStage: "credentials"},
+		{name: "browser login failed", oauth: true, flow: &stubAuthFlow{err: errors.New("callback server error")}, wantErr: true, wantStage: "browser"},
+		{name: "connection check failed", validate: failingValidate, wantErr: true, wantStage: "validate"},
+		{name: "config write failed", validate: noopValidate, blockSave: true, wantErr: true, wantStage: "persist"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			usePlaintextCredentialStorage(t)
+			capture.Reset()
+			t.Cleanup(capture.Reset)
+
+			dir := t.TempDir()
+			source := configSource(dir)
+			if tc.blockSave {
+				blocker := filepath.Join(dir, "blocker")
+				require.NoError(t, os.WriteFile(blocker, nil, 0o600))
+				source = config.ExplicitConfigFile(filepath.Join(blocker, "config.yaml"))
+			}
+			opts := &login.Options{
+				Inputs: login.Inputs{
+					Server:      "https://grafana.example.invalid",
+					ContextName: "default",
+					Target:      login.TargetOnPrem,
+					Yes:         true,
+				},
+				Hooks: login.Hooks{
+					ConfigSource:               source,
+					CheckCredentialPersistence: tc.persist,
+					ValidateFn:                 tc.validate,
+				},
+			}
+			if tc.oauth {
+				opts.UseOAuth = true
+				opts.NewAuthFlow = func(string, auth.Options) login.AuthFlow { return tc.flow }
+			} else {
+				opts.GrafanaToken = "glsa_token"
+			}
+
+			_, err := login.Run(t.Context(), opts)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantStage, capture.CurrentLoginStage())
+		})
+	}
 }
 
 func TestRunRejectsNonTargetLayerChangeDuringAuthentication(t *testing.T) {

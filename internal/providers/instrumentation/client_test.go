@@ -366,7 +366,7 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 // correctly preserves SELECTION_EXCLUDED when the server returns it.
 // This is the symmetric case for SELECTION_INCLUDED tested in TestClient_GetK8SInstrumentation.
 // Theme E (2026-04-30): if the live stack returns "" after clusters remove, the bug
-// is server-side — not in this mapper. See docs/adrs/instrumentation/002-cli-redesign.md § "E — Selection enum hygiene".
+// is server-side — not in this mapper. See docs/rfcs/019-cli-redesign.md § "E — Selection enum hygiene".
 func TestGetK8SInstrumentation_SelectionRoundTrip(t *testing.T) {
 	wireResp := `{"cluster":{"name":"test-cluster","selection":"SELECTION_EXCLUDED","costmetrics":false,"energymetrics":false,"clusterevents":false,"nodelogs":false}}`
 	handler, _ := captureHandler(t, http.StatusOK, wireResp)
@@ -456,6 +456,10 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				var httpErr *fleet.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, "application/json", httpErr.ContentType)
+				assert.Equal(t, tt.respBody, httpErr.Body)
 				return
 			}
 			require.NoError(t, err)

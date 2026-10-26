@@ -278,10 +278,6 @@ func TestContractDeferredSettingsRefuseBeforeSourceResolution(t *testing.T) {
 		name, actions string
 		enrollment    watchers.Enrollment
 	}{
-		{"disabled direct target", `{"slack":{"enabled":false,"target":{"type":"dm","userId":"SECRET-SETTING"}}}`, watchers.Enrollment{}},
-		{"workspace selection", `{"slack":{"target":{"type":"channel","teamId":"SECRET-SETTING"}}}`, watchers.Enrollment{}},
-		{"nonstandard alerting severity", `{"alerting":{"enabled":false,"minSeverity":"critical"}}`, watchers.Enrollment{}},
-		{"routing tree", `{"alerting":{"routingTree":"SECRET-SETTING"}}`, watchers.Enrollment{}},
 		{"new configuration", `{"webhook":{"futureOption":"SECRET-SETTING"}}`, watchers.Enrollment{}},
 		{"scheduled enrollment", `{}`, watchers.Enrollment{ScheduleCron: "0 8 * * 1"}},
 		{"enrollment timezone", `{}`, watchers.Enrollment{ScheduleTimezone: "Europe/Helsinki"}},

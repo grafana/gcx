@@ -1,7 +1,7 @@
 // Package instrumentation provides the top-level "gcx instrumentation" command
 // and its action-verb subcommand tree for managing Grafana Instrumentation Hub.
 //
-// The command tree follows the action-verb design from ADR-018:
+// The command tree follows the action-verb design from RFC 019:
 //
 //	gcx instrumentation
 //	├── setup              — guided onboarding wizard
