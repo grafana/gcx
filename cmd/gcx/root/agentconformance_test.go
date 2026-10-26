@@ -117,7 +117,7 @@ func runGcxStreams(t *testing.T, args ...string) (string, string, int) {
 
 	cmd := exec.CommandContext(context.Background(), bin, args...)
 	cmd.Env = conformanceEnv(t.TempDir())
-	cmd.Stdin = nil
+	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
@@ -496,15 +496,20 @@ func TestAgentConformance_ExplicitOutputOverridesErrors(t *testing.T) {
 		t.Skip("builds the gcx binary; skipped with -short")
 	}
 
-	// No config context exists in the isolated HOME, so this fails fast.
-	for _, format := range []string{"text", "wide", "yaml"} {
-		t.Run("-o "+format, func(t *testing.T) {
-			stdout, stderr, code := runGcxStreams(t, "datasources", "list", "-o", format)
+	// Each command registers the format codec it is given, and fails before
+	// producing a result: a missing config context, or a missing flag.
+	for _, args := range [][]string{
+		{"datasources", "get", "some-uid", "-o", "text"},
+		{"instrumentation", "check", "-o", "wide"},
+		{"resources", "get", "folders", "-o", "yaml"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, args...)
 			if code == 0 {
-				t.Fatalf("expected non-zero exit code without a configured context\nstdout:\n%s", stdout)
+				t.Fatalf("expected a non-zero exit code\nstdout:\n%s", stdout)
 			}
 			if strings.TrimSpace(stdout) != "" {
-				t.Fatalf("explicit -o %s must not write an error document to stdout:\n%s", format, stdout)
+				t.Fatalf("an explicit human -o must not write an error document to stdout:\n%s", stdout)
 			}
 			if !strings.HasPrefix(stderr, "Error:") || strings.Contains(stderr, "gcx.error") {
 				t.Fatalf("expected the human-formatted error on stderr, got:\n%s", stderr)
@@ -512,17 +517,21 @@ func TestAgentConformance_ExplicitOutputOverridesErrors(t *testing.T) {
 		})
 	}
 
+	// -o json, --json and --jq select JSON. For the artifact class -o does not
+	// choose the stdout format: it is the file format (resources pull, -o pprof)
+	// or not a format at all (dev lint new -o <dir>), so stdout stays JSON.
 	for _, args := range [][]string{
-		// Artifact class: -o picks the file format, stdout stays JSON.
-		{"resources", "pull", "-o", "yaml"},
 		{"datasources", "list", "-o", "json"},
 		{"datasources", "list", "--json", "name"},
 		{"datasources", "list", "--jq", "."},
+		{"resources", "pull", "-o", "yaml"},
+		{"datasources", "pyroscope", "query", "-o", "pprof"},
+		{"dev", "lint", "new", "dashboard", "BAD_NAME", "-o", "custom-rules"},
 	} {
-		t.Run(strings.Join(args[2:], " "), func(t *testing.T) {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			stdout, stderr, code := runGcxStreams(t, args...)
 			if code == 0 {
-				t.Fatalf("expected non-zero exit code\nstdout:\n%s", stdout)
+				t.Fatalf("expected a non-zero exit code\nstdout:\n%s", stdout)
 			}
 			obj, ok := assertOneJSONValue(t, stdout).(map[string]any)
 			if !ok || obj["type"] != "gcx.error" {

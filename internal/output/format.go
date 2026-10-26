@@ -45,6 +45,7 @@ type Options struct {
 	defaultFormat       string
 	defaultFormatPinned bool
 	hiddenFormats       map[string]bool // formats removed from the advertised menu (see HideFormat)
+	artifactFormats     []string        // formats whose codec writes a file, not stdout (see MarkArtifactFormat)
 	flags               *pflag.FlagSet
 	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
 	jqQuery             *gojq.Query                 // compiled --jq query; nil when flag not set
@@ -107,11 +108,33 @@ func (opts *Options) HideFormat(name string) {
 	opts.hiddenFormats[name] = true
 }
 
-// PinnedFormatAnnotation marks the output flag of a command whose default
-// format was pinned with PinDefaultFormat. Such commands write their result to
-// disk or an editor buffer and keep stdout for a JSON receipt in agent mode, so
-// an explicit -o there does not choose the stdout format.
-const PinnedFormatAnnotation = "gcx.grafana.com/output-format-pinned"
+// Annotations BindFlags puts on the output flag so code that sees only the
+// parsed flag (the root error reporter) can tell whether an explicit -o chose
+// the stdout format.
+const (
+	// FormatFlagAnnotation marks a -o/--output flag bound by BindFlags as an
+	// output-format selector. A command that binds its own -o (a destination
+	// directory, say) does not carry it.
+	FormatFlagAnnotation = "gcx.grafana.com/output-format-flag"
+
+	// PinnedFormatAnnotation marks the output flag of a command whose default
+	// format was pinned with PinDefaultFormat. Such commands write their result
+	// to disk or an editor buffer and keep stdout for a JSON receipt in agent
+	// mode, so an explicit -o there does not choose the stdout format.
+	PinnedFormatAnnotation = "gcx.grafana.com/output-format-pinned"
+
+	// ArtifactFormatsAnnotation lists the formats (see MarkArtifactFormat)
+	// whose codec writes a file rather than stdout.
+	ArtifactFormatsAnnotation = "gcx.grafana.com/output-artifact-formats"
+)
+
+// MarkArtifactFormat declares that the named format's codec writes a file and
+// leaves stdout to an artifact receipt (see EmitArtifactResult), so selecting
+// it with -o does not choose the stdout format. Call it next to the codec's
+// RegisterCustomCodec, before BindFlags.
+func (opts *Options) MarkArtifactFormat(name string) {
+	opts.artifactFormats = append(opts.artifactFormats, name)
+}
 
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	defaultFormat := "json"
@@ -134,8 +157,12 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	opts.NoTruncate = terminal.NoTruncate()
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
+	_ = flags.SetAnnotation("output", FormatFlagAnnotation, []string{"true"})
 	if opts.defaultFormatPinned {
 		_ = flags.SetAnnotation("output", PinnedFormatAnnotation, []string{"true"})
+	}
+	if len(opts.artifactFormats) > 0 {
+		_ = flags.SetAnnotation("output", ArtifactFormatsAnnotation, opts.artifactFormats)
 	}
 	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
 	flags.String("jq", "", "jq expression to apply to JSON output. Mutually exclusive with --json.")

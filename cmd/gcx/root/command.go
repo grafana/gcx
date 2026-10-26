@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -93,9 +94,10 @@ func IsHumanOutputFlagActive() bool {
 
 // explicitHumanOutput reports whether cmd has an explicitly set -o that selects
 // the stdout format and is neither json nor agents, with no --json/--jq field
-// selection or filtering. It is false for commands where -o does not own
-// stdout: pinned-format commands (resources pull/edit) and the pprof artifact
-// export keep a JSON receipt on stdout whatever -o says.
+// selection or filtering. It is false where -o does not own stdout: a -o that
+// is not an output-format flag (output.FormatFlagAnnotation, e.g. a
+// destination directory), pinned-format commands (resources pull/edit) and
+// artifact formats (-o pprof) keep their JSON receipt on stdout.
 func explicitHumanOutput(cmd *cobra.Command) bool {
 	for _, name := range []string{"json", "jq"} {
 		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
@@ -106,15 +108,17 @@ func explicitHumanOutput(cmd *cobra.Command) bool {
 	if f == nil || !f.Changed {
 		return false
 	}
+	if _, isFormat := f.Annotations[output.FormatFlagAnnotation]; !isFormat {
+		return false
+	}
 	if _, pinned := f.Annotations[output.PinnedFormatAnnotation]; pinned {
 		return false
 	}
-	switch f.Value.String() {
-	case "json", "agents", "pprof":
+	value := f.Value.String()
+	if slices.Contains(f.Annotations[output.ArtifactFormatsAnnotation], value) {
 		return false
-	default:
-		return true
 	}
+	return value != "json" && value != "agents"
 }
 
 func shouldNotifySkills(cmd *cobra.Command) bool {
