@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: mysql:9.7@sha256:c9e48b0c008f1936d4139d1c0dcd5950a9dbe57d4d40f383013cde432fa6d6aa
+    image: mysql:26.10@sha256:f51c9c01c16b0eb5d81bb70ab7e7fcb3b96abc6a54114be3a94e8e569cae7815
     container_name: gcx-mysql
     restart: unless-stopped
     environment:
