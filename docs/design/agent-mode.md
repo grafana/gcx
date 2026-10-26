@@ -102,7 +102,9 @@ Explicit flags override agent mode defaults:
 - `-o json` forces full indented JSON to stdout (no spill)
 - Bare `--jq` disables spill; add `-o agents` for
   [compact/spill handling](output.md#16-jq-transformation)
-- `-o text` or `-o yaml` overrides the agents default
+- `-o text` or `-o yaml` overrides the agents default, for errors too: a
+  failure prints the human-formatted error on stderr instead of the in-band
+  `gcx.error` document ([errors.md § 4.4](errors.md#44-in-band-error-reporting))
 - `-o wide` retains human table output even in agent mode (explicit-override semantics — the
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)

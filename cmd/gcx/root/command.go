@@ -74,6 +74,42 @@ func IsJSONFlagActive() bool {
 	return jsonFlagActive.Load()
 }
 
+// humanOutputFlagActive is set to true in PersistentPreRun when the user
+// explicitly asked for a human-oriented output format (-o text, wide, yaml, ...)
+// on the resolved command. reportError() in main.go uses it to let the explicit
+// format override agent mode for errors, as it already does for results.
+//
+//nolint:gochecknoglobals
+var humanOutputFlagActive atomic.Bool
+
+// IsHumanOutputFlagActive reports whether the user explicitly selected a
+// non-JSON output format with -o on the command that was actually executed.
+// Always false when --json or --jq is set: those keep JSON error documents.
+// Safe for concurrent use.
+func IsHumanOutputFlagActive() bool {
+	return humanOutputFlagActive.Load()
+}
+
+// explicitHumanOutput reports whether cmd has an explicitly set -o whose value
+// is neither json nor agents, with no --json/--jq field selection or filtering.
+func explicitHumanOutput(cmd *cobra.Command) bool {
+	for _, name := range []string{"json", "jq"} {
+		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
+			return false
+		}
+	}
+	f := cmd.Flags().Lookup("output")
+	if f == nil || !f.Changed {
+		return false
+	}
+	switch strings.ToLower(f.Value.String()) {
+	case "json", "agents":
+		return false
+	default:
+		return true
+	}
+}
+
 func shouldNotifySkills(cmd *cobra.Command) bool {
 	if cliOpts, err := internalconfig.LoadCLIOptions(); err == nil && cliOpts.DisableUpdateNotifier != "" {
 		return false
@@ -152,6 +188,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			jsonFlagActive.Store(false)
+			humanOutputFlagActive.Store(explicitHumanOutput(cmd))
 			// Track whether --json was explicitly set on the resolved command.
 			// Only mark active when the command actually declares a --json flag,
 			// preventing false positives for subcommands that don't support it.

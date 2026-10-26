@@ -149,6 +149,12 @@ stream. The stderr fallback appears only if the stdout write itself fails.
 the stderr output; the implementation intentionally converged on
 either/or in `reportError`, `cmd/gcx/main.go`.)
 
+An explicit human-format `-o` (`text`, `wide`, `yaml`, …) overrides agent mode
+for errors as it does for results: the failure is rendered on **stderr** as it
+is with `--agent=false`, and stdout carries no error document. Agent mode
+without `-o`, `-o json`, `-o agents`, `--json` and `--jq` keep the in-band
+document.
+
 The envelope carries collision-resistant discriminators:
 `{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused
 partial-failure envelope uses `"type": "gcx.partial_result"` with `items`

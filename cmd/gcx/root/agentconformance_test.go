@@ -126,6 +126,29 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 	return outBuf.String(), code
 }
 
+// runGcxStreams is runGcx with stdout and stderr returned separately.
+func runGcxStreams(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
+	bin := buildGcx(t)
+
+	cmd := exec.CommandContext(context.Background(), bin, args...)
+	cmd.Env = conformanceEnv(t.TempDir())
+	cmd.Stdin = nil
+
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	code := 0
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		code = exitErr.ExitCode()
+	} else if err != nil {
+		t.Fatalf("running gcx %v: %v", args, err)
+	}
+	return outBuf.String(), errBuf.String(), code
+}
+
 // assertOneJSONValue decodes stdout and fails unless it holds exactly one
 // JSON value followed by EOF.
 func assertOneJSONValue(t *testing.T, stdout string) any {
@@ -478,5 +501,50 @@ func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
 	}
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
 		t.Fatalf("explicit -o yaml produced JSON-shaped output — override not honored:\n%s", stdout)
+	}
+}
+
+// An explicit human-format -o overrides agent mode for errors too: the
+// failure is rendered on stderr and stdout carries no error document. JSON
+// selections keep the in-band gcx.error document.
+func TestAgentConformance_ExplicitOutputOverridesErrors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	// No config context exists in the isolated HOME, so this fails fast.
+	for _, format := range []string{"text", "wide", "yaml"} {
+		t.Run("-o "+format, func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, "datasources", "list", "-o", format)
+			if code == 0 {
+				t.Fatalf("expected non-zero exit code without a configured context\nstdout:\n%s", stdout)
+			}
+			if strings.TrimSpace(stdout) != "" {
+				t.Fatalf("explicit -o %s must not write an error document to stdout:\n%s", format, stdout)
+			}
+			if !strings.HasPrefix(stderr, "Error:") || strings.Contains(stderr, "gcx.error") {
+				t.Fatalf("expected the human-formatted error on stderr, got:\n%s", stderr)
+			}
+		})
+	}
+
+	for _, args := range [][]string{
+		{"datasources", "list", "-o", "json"},
+		{"datasources", "list", "--json", "name"},
+		{"datasources", "list", "--jq", "."},
+	} {
+		t.Run(strings.Join(args[2:], " "), func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, args...)
+			if code == 0 {
+				t.Fatalf("expected non-zero exit code\nstdout:\n%s", stdout)
+			}
+			obj, ok := assertOneJSONValue(t, stdout).(map[string]any)
+			if !ok || obj["type"] != "gcx.error" {
+				t.Fatalf("expected in-band gcx.error on stdout, got:\n%s", stdout)
+			}
+			if strings.TrimSpace(stderr) != "" {
+				t.Fatalf("in-band error must not duplicate on stderr:\n%s", stderr)
+			}
+		})
 	}
 }

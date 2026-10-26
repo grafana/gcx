@@ -268,9 +268,11 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		})
 	}
 
-	if agent.IsAgentMode() || root.IsJSONFlagActive() {
+	if (agent.IsAgentMode() && !root.IsHumanOutputFlagActive()) || root.IsJSONFlagActive() {
 		// Machine consumers get JSON on stdout only — the human-formatted
-		// stderr error is noise for agents and scripts.
+		// stderr error is noise for agents and scripts. An explicit
+		// human-format -o (text, wide, yaml, ...) overrides agent mode, as it
+		// does for results, and falls through to the stderr rendering.
 		if writeErr := detailedErr.WriteJSON(os.Stdout, exitCode); writeErr != nil {
 			fmt.Fprintln(os.Stderr, detailedErr.Error())
 		}
