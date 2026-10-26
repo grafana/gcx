@@ -12,79 +12,6 @@ weight: 2
 
 # Install `gcx`
 
-## Install on Windows
-
-Use Windows 10 or later, or Windows Server 2016 or later, on AMD64 or ARM64.
-Run this command in PowerShell 7 or Windows PowerShell 5.1:
-
-```powershell
-irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
-gcx --version
-```
-
-The script detects AMD64 or ARM64. It downloads the matching Windows ZIP file
-from the latest release. It verifies the SHA-256 checksum before installation.
-It installs `gcx.exe` in `$env:LOCALAPPDATA\gcx\bin` by default. It adds that
-directory to your user `PATH` and to the current PowerShell process.
-
-You can run `gcx` from PowerShell or Command Prompt (`cmd.exe`). Simple command
-hints work in both shells. Hints with quoted arguments use PowerShell syntax.
-Use PowerShell to run those hints.
-
-To upgrade, run the same command again. To install a specific version or use
-another directory, set the environment variables before you run the command:
-
-```powershell
-$env:GCX_VERSION = '0.2.4'
-$env:GCX_INSTALL_DIR = 'C:\Tools\gcx'
-irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
-```
-
-`GCX_VERSION` accepts a release version. `GCX_INSTALL_DIR` sets the directory
-for `gcx.exe`. The script also accepts `VERSION` and `INSTALL_DIR` for
-compatibility. The `GCX_` names take precedence. Remove these environment
-variables to return to the defaults.
-
-To uninstall the default installation, remove the file and its `PATH` entry:
-
-```powershell
-$installDir = Join-Path $env:LOCALAPPDATA 'gcx\bin'
-Remove-Item (Join-Path $installDir 'gcx.exe')
-$key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
-try {
-    $userPath = $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-    $newPath = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $installDir }) -join ';'
-    $key.SetValue('Path', $newPath, [Microsoft.Win32.RegistryValueKind]::ExpandString)
-} finally {
-    $key.Dispose()
-}
-$env:Path = ($env:Path -split ';' | Where-Object { $_ -and $_ -ne $installDir }) -join ';'
-```
-
-If you set `GCX_INSTALL_DIR`, use that directory in the uninstall commands.
-The commands leave other files in the directory in place. Sign out of Windows
-and sign in again to refresh `PATH` in new applications.
-
-### Install a Windows ZIP file manually
-
-Download the `gcx_<version>_windows_amd64.zip` or
-`gcx_<version>_windows_arm64.zip` file from the
-[release page](https://github.com/grafana/gcx/releases/latest). Download the
-matching `gcx_<version>_checksums.txt` file. Compare the ZIP file's SHA-256
-value with the value in that file:
-
-```powershell
-Get-FileHash .\gcx_0.2.4_windows_amd64.zip -Algorithm SHA256
-```
-
-Replace the example version and architecture with the names of the files you
-downloaded. Confirm that the hash matches the checksum file. Extract
-`gcx.exe` from the ZIP file. Put it in a directory on
-your `PATH`. Run `gcx --version` to check it.
-
-These commands install the native Windows program. If you use WSL 2, run the
-Linux install command inside WSL. The Linux installer installs a Linux binary.
-
 ## Quick install using the script
 
 The fastest way to install `gcx` on Linux or macOS is with the script:
@@ -147,6 +74,97 @@ To remove `gcx`, delete the binary:
 ```sh
 rm ~/.local/bin/gcx
 ```
+
+## Install on Windows
+
+`gcx` is compatible with Windows 10+ or Windows Server 2016+, on AMD64 and ARM64 processors.
+
+To install it, run this command in PowerShell 7 or Windows PowerShell 5.1:
+
+```powershell
+irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
+gcx --version
+```
+
+The script: 
+
+1. Detects the type pf processor: AMD64 or ARM64. 
+1. Downloads the matching Windows ZIP file from the latest release. 
+1. Verifies the SHA-256 checksum before installation.
+1. Installs `gcx.exe` in `$env:LOCALAPPDATA\gcx\bin` by default. 
+1. Also adds that directory to your user `PATH` and to the current PowerShell process.
+
+### Run `gcx` in Windows
+
+You can run `gcx` from PowerShell or Command Prompt (`cmd.exe`). 
+
+- Simple command hints work in both shells. 
+- Hints with quoted arguments use PowerShell syntax, so use PowerShell to run them.
+
+### Install a specific version using environment variables
+
+To install a specific version or use another directory, set the environment variables before you run the command:
+
+```powershell
+$env:GCX_VERSION = '0.2.4'
+$env:GCX_INSTALL_DIR = 'C:\Tools\gcx'
+irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
+```
+
+The following environment variables are available:
+
+- Use `GCX_VERSION` to set a release version. 
+- Use `GCX_INSTALL_DIR` to set the directory for `gcx.exe`. 
+- Use `VERSION` and `INSTALL_DIR` for compatibility. The `GCX_` names take precedence. 
+
+Remove these environment variables to return to the defaults.
+
+### Upgrade
+
+To upgrade, run the install command again. 
+
+### Uninstall
+
+> If you set `GCX_INSTALL_DIR`, use that directory in the uninstall commands. 
+
+To uninstall the default installation, remove the file and its `PATH` entry:
+
+```powershell
+$installDir = Join-Path $env:LOCALAPPDATA 'gcx\bin'
+Remove-Item (Join-Path $installDir 'gcx.exe')
+$key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+try {
+    $userPath = $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $newPath = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $installDir }) -join ';'
+    $key.SetValue('Path', $newPath, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+} finally {
+    $key.Dispose()
+}
+$env:Path = ($env:Path -split ';' | Where-Object { $_ -and $_ -ne $installDir }) -join ';'
+```
+
+The commands leave other files in the directory in place. Sign out of Windows and sign in again to refresh `PATH` in new applications.
+
+### Install a Windows ZIP file manually
+
+To install manually:
+
+1. Download the `gcx_<version>_windows_amd64.zip` or `gcx_<version>_windows_arm64.zip` file from the
+[release page](https://github.com/grafana/gcx/releases/latest). 
+1. Download the matching `gcx_<version>_checksums.txt` file. 
+1. Compare the ZIP file's SHA-256 value with the value in that file:
+
+```powershell
+Get-FileHash .\gcx_0.2.4_windows_amd64.zip -Algorithm SHA256
+```
+
+Replace the example version and architecture with the names of the files you downloaded. 
+
+To confirm that the hash matches the checksum file, extract `gcx.exe` from the ZIP file. Put it in a directory on your `PATH`, and run `gcx --version` to check it.
+
+### Install `gcx` in Windows Subsystem for Linux 
+
+If you use Windows Subsystem for Linux, run the Linux install command inside WSL. The Linux installer installs a Linux binary.
 
 ## Install `gcx` with Homebrew (macOS and Linux)
 
