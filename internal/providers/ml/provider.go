@@ -40,10 +40,10 @@ func commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 	cmd := &cobra.Command{Use: "ml", Short: "Manage Machine Learning forecasts, holidays, and outlier detectors.", Long: "Manage Grafana Cloud Machine Learning resources through the ML plugin proxy. Uses the active Grafana credential. Use resources push and resources pull for manifests. Alerts require a parent job or outlier detector ID."}
 	loader.BindFlags(cmd.PersistentFlags())
-	jobCmd := resourceCommands(loader, "jobs", "forecast jobs", jobs())
-	outlierCmd := resourceCommands(loader, "outlier-detectors", "outlier detectors", outliers())
+	jobCmd := resourceCommands(loader, "jobs", "forecast job", "forecast jobs", jobs())
+	outlierCmd := resourceCommands(loader, "outlier-detectors", "outlier detector", "outlier detectors", outliers())
 	addAlertCommands(jobCmd, loader, "jobs")
 	addAlertCommands(outlierCmd, loader, "outliers")
-	cmd.AddCommand(jobCmd, resourceCommands(loader, "holidays", "holidays", holidays()), outlierCmd)
+	cmd.AddCommand(jobCmd, resourceCommands(loader, "holidays", "holiday", "holidays", holidays()), outlierCmd)
 	return []*cobra.Command{cmd}
 }

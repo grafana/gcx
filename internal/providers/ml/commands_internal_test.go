@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -50,7 +53,7 @@ func TestCommandUsesPublicGrafanaURLWithProxyTransport(t *testing.T) {
 			}))
 			defer srv.Close()
 			loader := &testLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, GrafanaURL: "https://stack.example", Namespace: "default"}}
-			cmd := resourceCommands(loader, "jobs", "forecast jobs", jobs())
+			cmd := resourceCommands(loader, "jobs", "forecast job", "forecast jobs", jobs())
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
@@ -70,10 +73,10 @@ func TestCommandUsesPublicGrafanaURLWithProxyTransport(t *testing.T) {
 }
 
 func TestCommandsValidateBeforeConfigLoad(t *testing.T) {
-	for _, args := range [][]string{{"get"}, {"list", "extra"}, {"create"}, {"create", "--filename="}, {"update", "one"}, {"get", "../escape"}} {
+	for _, args := range [][]string{{"get"}, {"list", "extra"}, {"list", "--limit", "-1"}, {"create"}, {"create", "--filename="}, {"update", "one"}, {"get", "../escape"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			loader := &testLoader{}
-			cmd := resourceCommands(loader, "jobs", "forecast jobs", jobs())
+			cmd := resourceCommands(loader, "jobs", "forecast job", "forecast jobs", jobs())
 			cmd.SetArgs(args)
 			cmd.SetOut(&bytes.Buffer{})
 			cmd.SetErr(&bytes.Buffer{})
@@ -87,15 +90,22 @@ func TestDryRunDoesNotLoadConfig(t *testing.T) {
 	for _, args := range [][]string{{"create", "-f", "-", "--dry-run"}, {"update", "one", "-f", "-", "--dry-run"}, {"delete", "one", "--dry-run"}} {
 		t.Run(args[0], func(t *testing.T) {
 			loader := &testLoader{}
-			cmd := resourceCommands(loader, "jobs", "forecast jobs", jobs())
+			cmd := resourceCommands(loader, "jobs", "forecast job", "forecast jobs", jobs())
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
-			cmd.SetIn(strings.NewReader(`{"name":"forecast"}`))
+			cmd.SetIn(strings.NewReader(`{"id":"stale-body-id","name":"forecast"}`))
 			cmd.SetArgs(append(args, "-o", "json"))
 			require.NoError(t, cmd.Execute())
 			require.Zero(t, loader.calls)
-			require.Contains(t, out.String(), `"dry_run": true`)
+			var result cmdio.SingleMutation
+			require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+			require.True(t, result.DryRun)
+			want := "one"
+			if args[0] == "create" {
+				want = "forecast"
+			}
+			require.Equal(t, want, result.Target.Name)
 		})
 	}
 }
@@ -206,7 +216,7 @@ func checkReadParity[T displayResource](t *testing.T, r adapter.Resource[T], pat
 	for _, verb := range []string{"list", "get"} {
 		t.Run(verb, func(t *testing.T) {
 			loader := &testLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, Namespace: "default"}}
-			cmd := resourceCommands(loader, path, path, r)
+			cmd := resourceCommands(loader, path, "resource", path, r)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
@@ -236,7 +246,7 @@ func checkReadParity[T displayResource](t *testing.T, r adapter.Resource[T], pat
 			require.NotContains(t, out.String(), "grafanaUrl")
 			require.NotContains(t, out.String(), "secret")
 			require.NotContains(t, out.String(), "createdBy")
-			tableCmd := resourceCommands(loader, path, path, r)
+			tableCmd := resourceCommands(loader, path, "resource", path, r)
 			out.Reset()
 			tableCmd.SetOut(&out)
 			tableCmd.SetErr(&out)
@@ -244,6 +254,82 @@ func checkReadParity[T displayResource](t *testing.T, r adapter.Resource[T], pat
 			require.NoError(t, tableCmd.Execute())
 			require.Contains(t, out.String(), "one")
 			require.Contains(t, out.String(), "forecast")
+		})
+	}
+}
+
+func TestAlertDryRunTargets(t *testing.T) {
+	for _, verb := range []string{"create", "update", "delete"} {
+		t.Run(verb, func(t *testing.T) {
+			loader := &testLoader{}
+			group := &cobra.Command{Use: "jobs"}
+			addAlertCommands(group, loader, "jobs")
+			args := []string{verb + "-alert", "parent"}
+			if verb != "create" {
+				args = append(args, "target-alert")
+			}
+			if verb != "delete" {
+				args = append(args, "-f", "-")
+			}
+			args = append(args, "--dry-run", "-o", "json")
+			var out bytes.Buffer
+			group.SetOut(&out)
+			group.SetErr(&out)
+			group.SetIn(strings.NewReader(`{"id":"stale-body-id","title":"New alert"}`))
+			group.SetArgs(args)
+			require.NoError(t, group.Execute())
+			require.Zero(t, loader.calls)
+			var result cmdio.SingleMutation
+			require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+			require.True(t, result.DryRun)
+			want := "target-alert"
+			if verb == "create" {
+				want = "New alert"
+			}
+			require.Equal(t, want, result.Target.Name)
+		})
+	}
+}
+
+func TestMutationHumanDefault(t *testing.T) {
+	mode := agent.IsAgentMode()
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(mode) })
+	cmd := resourceCommands(&testLoader{}, "jobs", "forecast job", "forecast jobs", jobs())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"delete", "one", "--dry-run"})
+	require.NoError(t, cmd.Execute())
+	require.Contains(t, out.String(), `Dry run: Job "one"`)
+	require.NotContains(t, out.String(), `"schema_version"`)
+}
+
+func TestListLimitReportsTruncation(t *testing.T) {
+	for _, alert := range []bool{false, true} {
+		t.Run(strconv.FormatBool(alert), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, `{"status":"success","data":[{"id":"one","name":"first","title":"first"},{"id":"two","name":"second","title":"second"}]}`)
+			}))
+			defer srv.Close()
+			loader := &testLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}}}
+			cmd := resourceCommands(loader, "jobs", "forecast job", "forecast jobs", jobs())
+			args := []string{"list", "--limit", "1", "-o", "json"}
+			if alert {
+				cmd = &cobra.Command{Use: "jobs"}
+				addAlertCommands(cmd, loader, "jobs")
+				args = []string{"list-alerts", "parent", "--limit", "1", "-o", "json"}
+			}
+			var out, errOut bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&errOut)
+			cmd.SetArgs(args)
+			require.NoError(t, cmd.Execute())
+			var items []any
+			require.NoError(t, json.Unmarshal(out.Bytes(), &items))
+			require.Len(t, items, 1)
+			require.Contains(t, errOut.String(), "showing first 1 of 2")
+			require.Contains(t, errOut.String(), "--limit 0")
 		})
 	}
 }

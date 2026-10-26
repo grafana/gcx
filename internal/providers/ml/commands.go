@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -21,13 +22,22 @@ type commandOpts struct {
 	Filename string
 	Force    bool
 	DryRun   bool
+	Limit    int
 }
 
 func (o *commandOpts) setup(flags *pflag.FlagSet, verb string) {
 	if verb != "list" && verb != "get" {
-		o.IO.DefaultFormat("json")
+		o.IO.RegisterCustomCodec("text", mutationTextCodec{})
+		o.IO.DefaultFormat("text")
 	}
 	o.IO.BindFlags(flags)
+	if verb == "list" {
+		limit := 50
+		if agent.IsAgentMode() {
+			limit = 0
+		}
+		o.IO.BindListLimit(flags, &o.Limit, "ML resources", limit)
+	}
 	if verb == "create" || verb == "update" {
 		flags.StringVarP(&o.Filename, "filename", "f", "", "JSON or YAML file, or - for stdin")
 	}
@@ -51,12 +61,12 @@ func metadata(verb string) map[string]string {
 	cost, hint := "small", ""
 	if verb == "list" {
 		cost = "large"
-		hint = "Use get with a server ID for one resource. Use --json or --jq to select fields. The list includes all resources."
+		hint = "Use --limit 10 to narrow output or get with a server ID for one resource. Use --limit 0 for all records. Use --json or --jq to select fields."
 	}
 	return map[string]string{agent.AnnotationTokenCost: cost, agent.AnnotationLLMHint: hint, agent.AnnotationAvailability: agent.AvailabilityCloudOnly}
 }
 
-func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, path, label string, r adapter.Resource[T]) *cobra.Command {
+func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, path, singular, label string, r adapter.Resource[T]) *cobra.Command {
 	group := &cobra.Command{Use: path, Short: "Manage Machine Learning " + label + "."}
 	bound := providers.BindGrafanaResource(loader, r)
 	for _, verb := range []string{"list", "get", "create", "update", "delete"} {
@@ -67,7 +77,11 @@ func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, p
 			use += " ID"
 			count = 1
 		}
-		cmd := &cobra.Command{Use: use, Short: strings.ToUpper(verb[:1]) + verb[1:] + " Machine Learning " + label + ".", Example: "  gcx ml " + path + " list\n  gcx ml " + path + " get <id> -o yaml", Args: cobra.ExactArgs(count), Annotations: metadata(verb)}
+		subject := singular
+		if verb == "list" {
+			subject = label
+		}
+		cmd := &cobra.Command{Use: use, Short: strings.ToUpper(verb[:1]) + verb[1:] + " Machine Learning " + subject + ".", Example: commandExample(path, verb, false), Args: cobra.ExactArgs(count), Annotations: metadata(verb)}
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(verb); err != nil {
 				return err
@@ -87,7 +101,7 @@ func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, p
 				}
 			}
 			if opts.DryRun {
-				result := cmdio.NewSingleMutation("skipped", cmdio.MutationTarget{Kind: r.Kind, Name: item.GetResourceName()})
+				result := cmdio.NewSingleMutation("skipped", cmdio.MutationTarget{Kind: r.Kind, Name: dryRunName(verb, args, item.displayName())})
 				result.DryRun = true
 				result.Error = adapter.ErrDryRunUnverified.Error()
 				return opts.IO.Encode(cmd.OutOrStdout(), result)
@@ -119,7 +133,7 @@ func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, p
 					}
 					items = append(items, clean)
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), items)
+				return encodeList(cmd, opts, items)
 			case "get":
 				result, err := crud.Get(cmd.Context(), args[0])
 				if err != nil {
@@ -169,7 +183,7 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 		opts := &commandOpts{}
 		annotations := metadata(verb)
 		if verb == "list" {
-			annotations[agent.AnnotationLLMHint] = "Use get-alert with parent and alert server IDs for one alert. Use --json or --jq to select fields. The list includes all alerts for the parent."
+			annotations[agent.AnnotationLLMHint] = "Use --limit 10 to narrow output or get-alert with parent and alert server IDs for one alert. Use --limit 0 for all alerts. Use --json or --jq to select fields."
 		}
 		count := 1
 		use := verb + "-alerts PARENT_ID"
@@ -180,7 +194,11 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 			use += " ALERT_ID"
 			count = 2
 		}
-		cmd := &cobra.Command{Use: use, Short: strings.ToUpper(verb[:1]) + verb[1:] + " alerts for one ML parent resource.", Args: cobra.ExactArgs(count), Annotations: annotations}
+		subject := "an alert"
+		if verb == "list" {
+			subject = "alerts"
+		}
+		cmd := &cobra.Command{Use: use, Short: strings.ToUpper(verb[:1]) + verb[1:] + " " + subject + " for one ML parent resource.", Example: commandExample(group.Use, verb, true), Args: cobra.ExactArgs(count), Annotations: annotations}
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(verb); err != nil {
 				return err
@@ -200,7 +218,7 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 				}
 			}
 			if opts.DryRun {
-				result := cmdio.NewSingleMutation("skipped", cmdio.MutationTarget{Kind: "Alert", Name: item.ID})
+				result := cmdio.NewSingleMutation("skipped", cmdio.MutationTarget{Kind: "Alert", Name: dryRunName(verb, args, item.Title)})
 				result.DryRun = true
 				result.Error = adapter.ErrDryRunUnverified.Error()
 				return opts.IO.Encode(cmd.OutOrStdout(), result)
@@ -224,7 +242,7 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return encodeList(cmd, opts, result)
 			case "get":
 				result, err := client.Get(cmd.Context(), args[1])
 				if err != nil {
@@ -281,4 +299,53 @@ func registerReadTable[T any](opts *cmdio.Options, verb string, table cmdio.Tabl
 		opts.RegisterCustomCodec("table", single.Codec("table"))
 	}
 	opts.DefaultFormat("table")
+}
+
+func dryRunName(verb string, args []string, name string) string {
+	if verb == "create" {
+		return name
+	}
+	return args[len(args)-1]
+}
+
+func commandExample(path, verb string, alert bool) string {
+	command := "  gcx ml " + path + " " + verb
+	subject := " <id>"
+	if alert {
+		command += "-alert"
+		subject = " <parent-id> <alert-id>"
+		if verb == "list" {
+			return command + "s <parent-id> --limit 10"
+		}
+		if verb == "create" {
+			return command + " <parent-id> -f alert.json"
+		}
+	}
+	switch verb {
+	case "list":
+		return command + " --limit 10"
+	case "get":
+		return command + subject + " -o yaml"
+	case "create":
+		return command + " -f resource.json"
+	case "update":
+		return command + subject + " -f resource.json"
+	case "delete":
+		return command + subject + " --force"
+	}
+	return command
+}
+
+func encodeList[T any](cmd *cobra.Command, opts *commandOpts, items []T) error {
+	limit := opts.Limit
+	if agent.IsAgentMode() && !cmd.Flags().Changed("limit") {
+		limit = 0
+	}
+	items, meta := cmdio.TruncateCompleteList(items, limit)
+	meta = cmdio.AttachListMeta(meta, os.Args)
+	if err := opts.IO.Encode(cmd.OutOrStdout(), items); err != nil {
+		return err
+	}
+	cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+	return nil
 }

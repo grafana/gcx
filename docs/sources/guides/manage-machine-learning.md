@@ -30,7 +30,10 @@ gcx ml outlier-detectors list
 gcx ml jobs get <job-id> -o yaml
 ```
 
-Lists include all records from the collection endpoint.
+Lists fetch all records from the collection endpoint.
+Human output shows up to 50 records by default. Agent output shows all records.
+Use `--limit 10` to show fewer records or `--limit 0` to show all records.
+A truncation notice appears on stderr when records are omitted.
 Use `--json` or `--jq` to select output fields.
 
 ## Apply a resource
@@ -39,15 +42,16 @@ Use a resource example to create a manifest.
 Set the datasource UID and the query for your target stack.
 
 ```shell
-gcx resources list-examples jobs.ml.ext.grafana.app -o yaml > job.yaml
-gcx ml jobs create -f job.yaml --dry-run
-gcx ml jobs create -f job.yaml
-gcx ml jobs update <job-id> -f job.yaml
+gcx resources list-examples jobs.ml.ext.grafana.app --jq '.["ml.ext.grafana.app"].v1alpha1[0].example' -o json > job.json
+gcx ml jobs create -f job.json --dry-run
+gcx ml jobs create -f job.json
+gcx ml jobs update <job-id> -f job.json
 ```
 
 `--dry-run` checks the input without a server mutation.
 The result reports that server validation is not available.
 Delete commands require confirmation or `--force`.
+Creating or updating a forecast job can start model training.
 
 ## Export and push manifests
 
@@ -55,7 +59,8 @@ Jobs, holidays, and outlier detectors use the standard resource pipeline.
 The provider removes server IDs and connection fields from each spec.
 Each write uses the target stack URL.
 `metadata.name` contains the server ID from the source stack.
-If that ID does not exist on the target, the pipeline matches `spec.name`.
+If that ID does not exist on the target, the pipeline matches the normalized value of `spec.name`.
+Matching ignores letter case and punctuation.
 It updates one matching resource or creates a resource when there is no match.
 It rejects multiple matches.
 After a cross-stack push, pull from the target to save its assigned IDs.
@@ -86,4 +91,6 @@ gcx ml outlier-detectors list-alerts <detector-id>
 
 The same alert operations are available under `outlier-detectors`.
 Alert files contain the ML alert object, including its `title`.
+Outlier alerts require a nonzero `window`, such as `5m`.
+Do not set `threshold` or `anomalyCondition` for an outlier alert.
 Use `get-alert` to export an alert object before you edit it.

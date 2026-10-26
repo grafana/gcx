@@ -15,6 +15,15 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
+// The capability seam uses runtime assertions. These guards prevent signature drift.
+var (
+	_ adapter.Lister[Job]  = (*client[Job])(nil)
+	_ adapter.Getter[Job]  = (*client[Job])(nil)
+	_ adapter.Creator[Job] = (*client[Job])(nil)
+	_ adapter.Updater[Job] = (*client[Job])(nil)
+	_ adapter.Deleter[Job] = (*client[Job])(nil)
+)
+
 const basePath = "/api/plugins/grafana-ml-app/resources/manage/api/v1/"
 
 // client uses the configured Grafana transport and the ML plugin proxy.
