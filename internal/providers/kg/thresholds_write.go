@@ -172,7 +172,7 @@ type thresholdsUpdateOpts struct {
 }
 
 func (o *thresholdsUpdateOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin together with --force (required)")
+	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin together with --force or GCX_AUTO_APPROVE (required)")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	o.IO.RegisterCustomCodec("text", singleMutationText(func(w io.Writer, _ cmdio.SingleMutation) {
 		cmdio.Success(w, "Threshold config replaced")
@@ -188,7 +188,7 @@ func newThresholdsUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Replace the whole threshold config from a YAML file.",
 		Long: `Replaces the entire threshold configuration with the file's contents. Anything
 not in the file is removed, so this is destructive and asks for confirmation
-(skip with --force). The file may be the bare PrometheusRules YAML or the
+(skip with --force or GCX_AUTO_APPROVE). The file may be the bare PrometheusRules YAML or the
 "kind: Thresholds" document printed by "thresholds get -o yaml", which allows a
 get, edit, update round trip. The file is decoded strictly: unknown or misspelled
 keys, a second YAML document, and numeric values where a string is expected
@@ -207,7 +207,7 @@ keys, a second YAML document, and numeric values where a string is expected
 					return err
 				}
 				if !bypass {
-					return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force, or use a file path")
+					return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force or set GCX_AUTO_APPROVE, or use a file path")
 				}
 			}
 			data, err := readFileOrStdin(cmd, opts.File)

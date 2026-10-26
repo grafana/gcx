@@ -47,7 +47,8 @@ func runThresholds(t *testing.T, server *httptest.Server, stdin string, args ...
 	return runThresholdsAsIs(t, server, stdin, args...)
 }
 
-// runThresholdsAsIs leaves the agent-mode flag as the caller set it.
+// runThresholdsAsIs leaves the agent-mode flag as the caller set it. It still
+// pins GCX_AUTO_APPROVE=0, so tests of the auto-approve bypass build the command themselves.
 func runThresholdsAsIs(t *testing.T, server *httptest.Server, stdin string, args ...string) (string, error) {
 	t.Helper()
 	t.Setenv("GCX_AUTO_APPROVE", "0")
@@ -286,12 +287,14 @@ func TestThresholdsUpdateFromStdinHonoursAutoApprove(t *testing.T) {
 	pinHumanMode(t)
 	t.Setenv("GCX_AUTO_APPROVE", "1")
 	cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
+	var stderr bytes.Buffer
 	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetErr(&stderr)
 	cmd.SetIn(strings.NewReader(bareThresholds))
 	cmd.SetArgs([]string{"update", "-f", "-"})
 	require.NoError(t, cmd.Execute())
 	assert.Len(t, *got, 1)
+	assert.NotContains(t, stderr.String(), "[y/N]")
 }
 
 func TestThresholdsUpdateSendsBareDocumentVerbatim(t *testing.T) {
