@@ -1,60 +1,57 @@
 module github.com/grafana/gcx
 
-go 1.26.10
-
-require (
-	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/fatih/color v1.19.0
-	github.com/fsnotify/fsnotify v1.10.1
-	github.com/go-chi/chi/v5 v5.5.0
-	github.com/go-logfmt/logfmt v0.6.1
-	github.com/go-logr/logr v1.4.4
-	github.com/go-openapi/strfmt v0.27.3
-	github.com/goccy/go-yaml v1.19.2
-	github.com/godbus/dbus/v5 v5.2.4
-	github.com/google/go-cmp v0.7.0
-	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
-	github.com/grafana/grafana-app-sdk/logging v0.60.16
-	github.com/grafana/grafana-foundation-sdk/go v0.0.21
-	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
-	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
-	github.com/grafana/promql-builder/go v0.0.6
-	github.com/invopop/jsonschema v0.14.0
-	github.com/olekukonko/tablewriter v1.1.5
-	github.com/open-policy-agent/opa v1.21.2
-	github.com/prometheus/prometheus v0.315.0
-	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
-	github.com/stretchr/testify v1.12.1
-	github.com/yuin/goldmark v1.8.6
-	golang.org/x/mod v0.42.0
-	golang.org/x/sync v0.24.0
-	golang.org/x/term v0.47.0
-	golang.org/x/tools v0.52.0
-	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/cli-runtime v0.37.1
-	k8s.io/client-go v0.37.1
-	k8s.io/klog/v2 v2.140.0
-)
+go 1.27.3
 
 require (
 	charm.land/glamour/v2 v2.0.1
 	charm.land/huh/v2 v2.0.3
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/NimbleMarkets/ntcharts/v2 v2.8.0
+	github.com/fatih/color v1.19.0
+	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-chi/chi/v5 v5.5.0
+	github.com/go-logfmt/logfmt v0.6.1
+	github.com/go-logr/logr v1.4.4
 	github.com/go-openapi/runtime v0.33.3
+	github.com/go-openapi/strfmt v0.27.4
+	github.com/goccy/go-yaml v1.19.2
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gofrs/flock v0.13.1
+	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
+	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
+	github.com/grafana/grafana-app-sdk/logging v0.61.0
+	github.com/grafana/grafana-foundation-sdk/go v0.0.21
+	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
+	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
 	github.com/grafana/mcp-doc-server v1.0.0
 	github.com/grafana/otel-checker v0.4.0
+	github.com/grafana/promql-builder/go v0.0.6
+	github.com/invopop/jsonschema v0.14.0
 	github.com/itchyny/gojq v0.12.19
+	github.com/olekukonko/tablewriter v1.1.5
+	github.com/open-policy-agent/opa v1.21.3
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/common v0.72.1
+	github.com/prometheus/prometheus v0.315.1
+	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.10
+	github.com/stretchr/testify v1.12.1
+	github.com/yuin/goldmark v1.8.6
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/mod v0.42.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0
+	golang.org/x/term v0.47.0
+	golang.org/x/tools v0.52.0
 	google.golang.org/protobuf v1.36.12
+	gopkg.in/yaml.v3 v3.0.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/cli-runtime v0.37.1
+	k8s.io/client-go v0.37.1
+	k8s.io/klog/v2 v2.140.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -112,7 +109,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.29.2 // indirect
 	github.com/go-openapi/swag/typeutils v0.29.2 // indirect
 	github.com/go-openapi/swag/yamlutils v0.29.2 // indirect
-	github.com/go-openapi/validate v1.0.0 // indirect
+	github.com/go-openapi/validate v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gobwas/glob v1.0.0 // indirect
 	github.com/goccy/go-json v0.11.2 // indirect
@@ -147,7 +144,7 @@ require (
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.3.0 // indirect
 	github.com/olekukonko/ll v0.1.9 // indirect
-	github.com/pb33f/go-yaml v0.1.0 // indirect
+	github.com/pb33f/go-yaml v0.1.1 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.2 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/prometheus/client_golang v1.25.0 // indirect
@@ -160,7 +157,7 @@ require (
 	github.com/stretchr/objx v0.8.0 // indirect
 	github.com/tchap/go-patricia/v2 v2.3.3 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
-	github.com/vektah/gqlparser/v2 v2.5.63 // indirect
+	github.com/vektah/gqlparser/v2 v2.5.64 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
