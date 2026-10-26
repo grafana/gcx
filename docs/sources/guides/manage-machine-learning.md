@@ -37,7 +37,7 @@ gcx ml jobs get <job-id> -o yaml
 
 Use `--json` or `--jq` to select output fields.
 
-### Configure the amount of record ouptuts
+### Configure the number of records in the output
 
 Lists fetch all records from the collection endpoint. Agent output shows all records, while human output shows up to 50 records by default:
 

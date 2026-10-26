@@ -77,11 +77,7 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 	}
 
 	if matches > 1 && policy.RequireUnique {
-		idType := policy.IDLabel
-		if idType == "" {
-			idType = "server ID"
-		}
-		return nil, false, fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name %s", desc.Kind, localKey, idType)
+		return nil, false, fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name %s", desc.Kind, localKey, policy.IDLabel)
 	}
 	if matches > 1 {
 		return nil, false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)
