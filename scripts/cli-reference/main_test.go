@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 func TestLongHelpShellComments(t *testing.T) {
@@ -108,6 +109,66 @@ func TestFullCommandCoverageAndLinks(t *testing.T) {
 	}
 	check(cmd)
 	require.Equal(t, page, render(cmd, "v1.2.3", "# Env\n\n## `GCX_TEST`\n\nTest variable"))
+}
+
+func TestEscapeRawHTML(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "prose placeholder", input: "Select one exact title with --name <title> and choose yaml.", want: "Select one exact title with --name &lt;title&gt; and choose yaml."},
+		{name: "qualified name", input: `Pass the "<namespace>/<name>" form.`, want: `Pass the "&lt;namespace&gt;/&lt;name&gt;" form.`},
+		{name: "code span", input: "Run `gcx alert time-intervals get <title>`.", want: "Run `gcx alert time-intervals get <title>`."},
+		{name: "fenced block", input: "```shell\ngcx alert time-intervals get <title>\n```", want: "```shell\ngcx alert time-intervals get <title>\n```"},
+		{name: "html block", input: "<title>\n\nTrailing prose.", want: "&lt;title&gt;\n\nTrailing prose."},
+		{name: "comparison", input: "Use when count > 1 and depth < 3.", want: "Use when count > 1 and depth < 3."},
+		{name: "autolink", input: "See <https://grafana.com/docs/>.", want: "See <https://grafana.com/docs/>."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, escapeRawHTML(tc.input))
+		})
+	}
+}
+
+// Hugo renders with raw HTML enabled, so a placeholder such as <title> left in
+// command help becomes an element and the browser drops the rest of the page.
+func TestDescriptionsNeverEmitRawHTML(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	for _, tc := range []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{name: "long", cmd: &cobra.Command{Use: "gcx", Long: "Select one exact title with --name <title> and choose yaml."}},
+		{name: "short", cmd: &cobra.Command{Use: "gcx", Short: "Delete the <title> interval."}},
+		{name: "deprecated", cmd: &cobra.Command{Use: "gcx", Deprecated: "Use gcx alert mute-timings get <title> instead."}},
+		{name: "command tree", cmd: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := tc.cmd
+			if cmd == nil {
+				cmd = root.Command("v1.2.3")
+				cmd.Use = "gcx"
+			}
+			page := render(cmd, "v1.2.3", "# Env\n\n## `GCX_TEST`\n\nUse the <namespace>/<name> form.")
+			// Skip the front matter and the generated-by comment the page emits itself.
+			_, body, found := strings.Cut(page, "\n# CLI reference\n")
+			require.True(t, found)
+			var omitted bytes.Buffer
+			require.NoError(t, goldmark.Convert([]byte(body), &omitted))
+			// Without WithUnsafe, goldmark marks every span it would pass through to Hugo.
+			require.NotContains(t, omitted.String(), "raw HTML omitted", "command metadata reached the page as raw HTML")
+
+			var rendered bytes.Buffer
+			unsafe := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
+			require.NoError(t, unsafe.Convert([]byte(body), &rendered))
+			require.NotContains(t, rendered.String(), "<title>")
+			require.Contains(t, rendered.String(), "<h2>Environment variables</h2>")
+			if tc.name == "command tree" {
+				require.Contains(t, rendered.String(), "--name &lt;title&gt;")
+			}
+		})
+	}
 }
 
 func TestDateDefaults(t *testing.T) {

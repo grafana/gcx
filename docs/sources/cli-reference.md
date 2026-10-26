@@ -14,7 +14,7 @@ Flag defaults below are for human mode. Agent mode changes defaults such as outp
 
 - [Commands](#commands)
 - [Environment variables](#environment-variables)
-- [Configuration reference](/configuration#configuration-reference)
+- [Configuration reference](../configuration/#configuration-reference)
 
 ## Commands
 
@@ -2242,7 +2242,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx agento11y saved-conversations save` {#gcx-agento11y-saved-conversations-save}
 
 Bookmark a live conversation surfaced by gcx agento11y conversations.
-By default the bookmark ID is derived as saved-<conversation-id>, matching the
+By default the bookmark ID is derived as saved-&lt;conversation-id&gt;, matching the
 plugin UI; pass --saved-id to override.
 
 ```shell
@@ -3761,7 +3761,7 @@ Manage time intervals through Grafana's native notifications API. Native
 JSON/YAML manifests also work with generic resources commands. Titles are matched
 exactly and case-sensitively across the complete inventory; API names are opaque.
 For provisioning YAML/JSON/HCL, use gcx alert mute-timings export. Select one
-exact title with --name <title> and choose yaml, json, or hcl with --format.
+exact title with --name &lt;title&gt; and choose yaml, json, or hcl with --format.
 Provisioning exports include only Grafana-managed intervals; imported intervals
 shown by list/get are not exported. Collection exports may be empty or partial,
 and exporting an imported title returns not found. Exported bytes are not native
@@ -4035,7 +4035,7 @@ Show the rate/errors/duration snapshot for one operation (span_name)
 inside one service.
 
 The operation name is the positional argument; the parent service is
-always given via --service (bare name or "<namespace>/<name>"), never as
+always given via --service (bare name or "&lt;namespace&gt;/&lt;name&gt;"), never as
 part of the positional — span names routinely contain "/" (e.g.
 "GET /api/v1/carts"), which would make a slash-composite positional
 ambiguous.
@@ -4221,11 +4221,11 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 Show metadata and a rate/errors/duration snapshot for one service.
 
 The argument is either the bare service name (matching the OTel service.name
-resource attribute) or the canonical "<namespace>/<name>" form. When a bare
+resource attribute) or the canonical "&lt;namespace&gt;/&lt;name&gt;" form. When a bare
 name is given, the namespace is resolved automatically from target_info;
 ambiguity (the same name in multiple namespaces) errors out so the snapshot
 can't accidentally target the wrong service. Pass --namespace or use the
-"<namespace>/<name>" form to disambiguate.
+"&lt;namespace&gt;/&lt;name&gt;" form to disambiguate.
 
 Metadata comes from the same target_info/traces_target_info union used by
 "gcx appo11y services list". RED numbers are computed from span metrics
@@ -4363,15 +4363,15 @@ that "gcx appo11y services get/list-operations --filter/--group-by" can
 operate on — with each label's distinct-value count.
 
 This answers "what can I break this service down by?" without guessing.
-Pass --label <name> to list the distinct values of a single label so you
-know what to feed --filter (e.g. --filter k8s_cluster_name=<value>).
+Pass --label &lt;name&gt; to list the distinct values of a single label so you
+know what to feed --filter (e.g. --filter k8s_cluster_name=&lt;value&gt;).
 
 Labels come from the span-metric calls series (auto-detected metrics-mode),
 which is what the RED commands filter and group on. Note:
 
   - "services map" groups on the Tempo service-graph metric family, whose
     labels may differ (and often omit cluster labels).
-  - "services get <svc> -o json" additionally surfaces the target_info
+  - "services get &lt;svc&gt; -o json" additionally surfaces the target_info
     resource attributes under .service.labels.
 
 ```shell
@@ -4415,7 +4415,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 List the per-operation RED breakdown for one service.
 
 The argument is either the bare service name or the canonical
-"<namespace>/<name>" form; bare names are auto-resolved against
+"&lt;namespace&gt;/&lt;name&gt;" form; bare names are auto-resolved against
 target_info the same way as "gcx appo11y services get".
 
 Rows are sorted by time-share desc — the share of the service's total
@@ -4483,7 +4483,7 @@ Data comes from Tempo's service-graph metric family
 metrics-mode — so there's no --metrics-mode flag here.
 
 The argument is either the bare service name or the canonical
-"<namespace>/<name>" form; bare names are auto-resolved against
+"&lt;namespace&gt;/&lt;name&gt;" form; bare names are auto-resolved against
 target_info the same way "gcx appo11y services get" does.
 
 Latency is direction-aware: callers see the server-side p95
@@ -5885,7 +5885,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 List all organisation memberships returned by the Grafana Cloud.
 
 Returns organisation slugs and membership roles. To list stacks within
-an organisation, use gcx cloud stacks list --org <slug>.
+an organisation, use gcx cloud stacks list --org &lt;slug&gt;.
 
 ```shell
 gcx cloud orgs list [flags]
@@ -5939,12 +5939,12 @@ and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
 Successful creation returns name, orgSlug, slug, status and url.
-Use gcx cloud stacks get <slug> for full details.
+Use gcx cloud stacks get &lt;slug&gt; for full details.
 
 Specify which organisation to create the stack in with --org. Find out which orgs you are in with gcx cloud orgs list. With an access-policy token, supply your organisation slug directly.
 
 Stack slugs may only contain lowercase letters and digits: the slug becomes
-the stack's <slug>.grafana.net subdomain.
+the stack's &lt;slug&gt;.grafana.net subdomain.
 
 ```shell
 gcx cloud stacks create [flags]
@@ -6425,7 +6425,7 @@ Set a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to set. It can either represent a field or a map entry.
 
-Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.&lt;name&gt;.", "cloud.&lt;entry&gt;.", "contexts.&lt;name&gt;.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
 
 PROPERTY_VALUE is the new value to set.
 
@@ -6469,7 +6469,7 @@ Unset a single value in a configuration file.
 
 PROPERTY_NAME is a dot-delimited reference to the value to unset. It can either represent a field or a map entry.
 
-Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.<name>.", "cloud.<entry>.", "contexts.<name>.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
+Paths are literal: they name the exact location in the configuration file, starting from a top-level section ("stacks.&lt;name&gt;.", "cloud.&lt;entry&gt;.", "contexts.&lt;name&gt;.", "resources.", "current-context"). Nothing is resolved against the current context - the path you type is the path you see in "gcx config view".
 
 ```shell
 gcx config unset PROPERTY_NAME [flags]
@@ -8215,7 +8215,7 @@ Note: when no --from/--to/--since flags are provided, the share link encodes
 Cross-account monitoring datasources: if your datasource is configured for
 cross-account monitoring (a "monitoring account"), --dimensions filters scope
 to the datasource's own account by default. To surface dimensions from source
-accounts, pass --account-id <id> (run list-accounts to discover IDs) or
+accounts, pass --account-id &lt;id&gt; (run list-accounts to discover IDs) or
 --account-id all to query all linked accounts.
 
 ```shell
@@ -8271,8 +8271,8 @@ Create a datasource instance from a declarative manifest file.
 
 The manifest is a Kubernetes-style envelope. spec.type is the plugin ID
 (e.g. grafana-sentry-datasource) and selects the API group. Secret values go
-in the top-level secure block via {create: <value>}, {fromEnv: <VAR>}, or
-{fromFile: <path>}; they are never returned on read.
+in the top-level secure block via {create: &lt;value&gt;}, {fromEnv: &lt;VAR&gt;}, or
+{fromFile: &lt;path&gt;}; they are never returned on read.
 
 ```shell
 gcx datasources create [flags]
@@ -11649,7 +11649,7 @@ emitted by the database_observability.postgres Alloy component (job
 "integrations/db-o11y"): one row per monitored database instance, with engine
 and cloud-provider metadata.
 
-Related: "gcx dbo11y instances get <name>" drills into one instance's health,
+Related: "gcx dbo11y instances get &lt;name&gt;" drills into one instance's health,
 connections, wait events, and top queries by time share.
 
 When no instances are found, this command checks whether Database
@@ -12143,7 +12143,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx docs list-products` {#gcx-docs-list-products}
 
-List all product documentation groups in the index with their page counts. Use a product name with 'gcx docs search --product <name>' to scope search results.
+List all product documentation groups in the index with their page counts. Use a product name with 'gcx docs search --product &lt;name&gt;' to scope search results.
 
 ```shell
 gcx docs list-products [flags]
@@ -12684,7 +12684,7 @@ Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
 Admin and Frontend Observability Admin by default). A user with only apps:write
 can create and update apps but cannot delete them.
 
-The argument is a slug-id or numeric ID, not a name. Any trailing "-<digits>"
+The argument is a slug-id or numeric ID, not a name. Any trailing "-&lt;digits&gt;"
 is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
 "gcx frontend apps list" first. There is no confirmation prompt.
 
@@ -13103,7 +13103,7 @@ Commands operate on the declared state stored in Grafana Cloud's
 instrumentation service (GetAppInstrumentation / SetAppInstrumentation).
 The wait command reads observed state from RunK8sDiscovery.
 
-Identity is positional: configure and remove take <cluster> and <namespace> as
+Identity is positional: configure and remove take &lt;cluster&gt; and &lt;namespace&gt; as
 the first two positional arguments.
 
 **Flags**
@@ -13126,11 +13126,11 @@ Two mutually exclusive modes:
       Apply all-on canonical defaults, overwriting current state. Requires --yes.
       Defaults: autoinstrument=true, all signals enabled.
 
-  --<feat>[=true|false] (one or more)
+  --&lt;feat&gt;[=true|false] (one or more)
       Set listed features; unspecified features preserve their current value (RMW).
       Idempotent. No confirmation required.
 
-Combining --use-defaults with any --<feat> flag is an error.
+Combining --use-defaults with any --&lt;feat&gt; flag is an error.
 
 ```shell
 gcx instrumentation clusters apps configure <cluster> <namespace> [flags]
@@ -13273,11 +13273,11 @@ Two mutually exclusive modes:
       Apply canonical defaults, overwriting current state. Requires --yes.
       Defaults: costMetrics=true, clusterEvents=true, energyMetrics=false, nodeLogs=false.
 
-  --<feat>[=true|false] (one or more)
+  --&lt;feat&gt;[=true|false] (one or more)
       Set listed features; unspecified features preserve their current value (RMW).
       Idempotent. No confirmation required.
 
-Combining --use-defaults with any --<feat> flag is an error.
+Combining --use-defaults with any --&lt;feat&gt; flag is an error.
 
 ```shell
 gcx instrumentation clusters configure <cluster> [flags]
@@ -13637,7 +13637,7 @@ Examples:
   gcx instrumentation services get prod-1 checkout frontend -o json
 ```
 
-Workload-level Selection / override state is not surfaced on this command. To inspect a workload's override, run "gcx instrumentation clusters apps list --cluster=<cluster> --namespace=<namespace>".
+Workload-level Selection / override state is not surfaced on this command. To inspect a workload's override, run "gcx instrumentation clusters apps list --cluster=&lt;cluster&gt; --namespace=&lt;namespace&gt;".
 
 ```shell
 gcx instrumentation services get <cluster> <namespace> <service> [flags]
@@ -13728,7 +13728,7 @@ Examples:
   gcx instrumentation services list -o wide
 ```
 
-Workload-level Selection / override state is not surfaced on this command. To inspect a workload's override, run "gcx instrumentation clusters apps list --cluster=<cluster> --namespace=<namespace>".
+Workload-level Selection / override state is not surfaced on this command. To inspect a workload's override, run "gcx instrumentation clusters apps list --cluster=&lt;cluster&gt; --namespace=&lt;namespace&gt;".
 
 ```shell
 gcx instrumentation services list [flags]
@@ -14238,7 +14238,7 @@ Acknowledge alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -14280,7 +14280,7 @@ Delete alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -14445,7 +14445,7 @@ Resolve alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -14487,7 +14487,7 @@ Silence alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -14530,7 +14530,7 @@ Unacknowledge alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -14572,7 +14572,7 @@ Unresolve alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -14614,7 +14614,7 @@ Unsilence alert groups.
 
 Two forms are supported:
 
-  - Single-target: pass a positional <id>.
+  - Single-target: pass a positional &lt;id&gt;.
   - Bulk-by-filter: omit the positional and pass one or more filter flags
     (--team, --state, --integration, --max-age, --mine, --all).
 
@@ -17536,7 +17536,7 @@ Pick the read verb by what you start with:
 
   list       Default for listing and basic lookups: an entity's identity, scope,
              and properties. Filter to one known entity with
-             '--property name=<name>'. Cheap — use this for plain lookups.
+             '--property name=&lt;name&gt;'. Cheap — use this for plain lookups.
   correlate  You have a firing alert (its labels) but not the entity → find
              which entity the alert hangs off. The "I have an alert, which
              entity is it?" entry point.
@@ -17650,7 +17650,7 @@ and the related entities to investigate next. It calls a heavier
 endpoint and can return large output.
 
 Do not use 'inspect' just to read an entity's identity or properties — for that,
-use 'gcx kg entities list' (optionally with '--property name=<exact-name>' to
+use 'gcx kg entities list' (optionally with '--property name=&lt;exact-name&gt;' to
 narrow to one entity), which is cheaper and returns those fields directly.
 
 ```shell
@@ -17693,7 +17693,7 @@ The cheap default for listing entities or looking up basic information about
 one: its identity (name, type, scope), properties (the labels used to build
 PromQL/Loki queries — job, namespace, container, image, etc.), and a small
 snapshot of its current insights. Filter to a single entity with
-'--property name=<exact-name>'.
+'--property name=&lt;exact-name&gt;'.
 
 For an entity's full insight timeline or related entities for root-cause
 analysis, use 'gcx kg entities inspect' instead.
@@ -17754,8 +17754,8 @@ Response shape (not raw Cypher rows — results are aggregated into this envelop
     "entities": [ { "type", "name", "scope", "properties", "insights" }, ... ],
     "edges":    [ { "type", "sourceName", "sourceType", "sourceScope",
                     "destinationName", "destinationType", "destinationScope" }, ... ],
-    "pageNum":  <int>,
-    "lastPage": <bool>
+    "pageNum":  &lt;int&gt;,
+    "lastPage": &lt;bool&gt;
   }
 
 Tips:
@@ -22221,7 +22221,7 @@ A person completes the browser steps. In agent mode gcx prints the URL instead
 of opening the browser, and asks no questions. signup does not save Grafana
 Cloud management credentials. To manage Grafana Cloud products (SLOs,
 Synthetic Monitoring, k6 and more), save a Cloud Access Policy token afterwards
-with gcx cloud login --cloud-token <token>. If signup fails once the browser
+with gcx cloud login --cloud-token &lt;token&gt;. If signup fails once the browser
 step has started, the error shows the gcx login command that finishes the
 connection; do not run signup again, which could start a second account.
 
