@@ -168,6 +168,13 @@
         "github.com/grafana/memberlist"
       ],
       "enabled": false
+    },
+    {
+      "description": "kube-openapi is pinned to the revision k8s.io/apimachinery v0.37.1 requires. Newer revisions pull in structured-merge-diff/v7 and go 1.27, which break the build; see `git fetch origin pull/1367/head && git show 89219148045bf4d7e9e4e6e6baaef025cd111ab2`. Re-enable when k8s.io/apimachinery moves to structured-merge-diff/v7.",
+      "matchPackageNames": [
+        "k8s.io/kube-openapi"
+      ],
+      "enabled": false
     }
   ]
 }
