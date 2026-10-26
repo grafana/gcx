@@ -30,6 +30,10 @@ rules also require `grafana-oncall-app.user-settings:admin`.
 
 Create rules with `create -f rule.yaml`. Update rules with
 `update <rule-id> -f rule.yaml`. Use `delete <rule-id>` to delete a rule.
+The server assigns its own rule ID at creation. Use the returned ID for later
+updates. For resource pushes, pull the created rule and keep that manifest
+before the next push. Its `metadata.name` contains the server ID.
+
 The `user` and `important` fields are fixed at creation. The server ignores
 changes to these fields on update. The server controls `order`.
 The API can also return `notify_device`. gcx preserves this server field in
