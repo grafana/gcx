@@ -21,13 +21,33 @@ Plural form is used in selectors: `dashboards/my-dash`, `folders/`.
 
 ### 9.2 File Naming
 
-Pull operations write files as `{Kind}.{Version}.{Group}/{Name}.{ext}`, grouped by
+Pull operations write files as `{plural}.{version}.{group}/{name}.{ext}`, grouped by
 `GroupResourcesByKind`. Extension matches the source format (`.yaml`, `.json`).
 
-Example: `Dashboard.v1alpha1.dashboard.grafana.app/my-dash.yaml`
+Example: `dashboards.v1alpha1.dashboard.grafana.app/my-dash.yaml`
 
 The versioned directory name makes the API group and version unambiguous, which
 is important when pulling multiple versions of the same resource type.
+
+`gcx resources pull --filename-by=name` is the default and uses `metadata.name`.
+With `--filename-by=title`, the filename uses a slug of `spec.title`: lowercase
+ASCII letters and digits, with other characters replaced by hyphens. Repeated
+hyphens collapse, edge hyphens are removed, and the slug is limited to 100
+characters. Missing, non-string, empty, or entirely stripped titles fall back
+to `metadata.name`. A literal title of `Resource` remains `resource`.
+
+Title mode plans the entire batch before writing. Paths are compared without
+case sensitivity within each directory. Every colliding filename gets a
+`-<name>` suffix, including collisions with fallback names. Windows device names
+(`con`, `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`) also get this suffix.
+The suffix is sanitized as an ASCII slug and limited to 100 characters; the base
+is also limited to 100 characters when adding a suffix. If paths still collide,
+deterministic numeric suffixes are added, avoiding every other planned path.
+Resource contents and identity are unchanged.
+
+Pull does not remove old files. Title changes, changes to the selected collision
+group, or switching naming modes can leave stale files; use a clean destination
+or remove stale files before pushing.
 
 ### 9.3 Config Key Naming
 

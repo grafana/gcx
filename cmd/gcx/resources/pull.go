@@ -2,6 +2,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
@@ -27,6 +28,7 @@ type pullOpts struct {
 	IncludeManaged bool
 	SkipReadOnly   bool
 	Path           string
+	FilenameBy     string
 
 	// flags is the bound flag set, kept so Validate can reject flags that
 	// cannot round-trip as on-disk resource files (--json, --jq).
@@ -57,6 +59,7 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
+	flags.StringVar(&opts.FilenameBy, "filename-by", "name", "Name files by 'name' (metadata.name) or 'title' (slug of spec.title, falling back to metadata.name)")
 	flags.BoolVar(&opts.SkipReadOnly, "skip-read-only", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
 	flags.BoolVar(
 		&opts.IncludeManaged,
@@ -67,6 +70,10 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (opts *pullOpts) Validate() error {
+	if opts.FilenameBy != "name" && opts.FilenameBy != "title" {
+		return &fail.UsageError{Message: fmt.Sprintf("invalid --filename-by %q: must be 'name' or 'title'. Use gcx resources pull --filename-by=title", opts.FilenameBy)}
+	}
+
 	// The pull-specific typed rejections run BEFORE the shared IO.Validate:
 	// the shared errors are untyped (exit 1 today, repo-wide), so a mixed
 	// invocation like `pull -o yaml --json x` must hit the typed exit-2
@@ -123,6 +130,10 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	gcx resources pull dashboards
 	gcx resources pull dashboards folders
+
+	# Name dashboard files by title:
+
+	gcx resources pull dashboards --filename-by=title
 
 	# Single resource kind, one or more resource instances:
 
@@ -203,9 +214,14 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 			written := map[string]*dirGroup{}
 			var writeFailures []cmdio.MutationFailure
+			plurals := local.PluralsFromFilters(res.Filters)
+			namer := local.GroupResourcesByKind(opts.IO.OutputFormat, plurals)
+			if opts.FilenameBy == "title" {
+				namer = local.GroupResourcesByKindTitle(opts.IO.OutputFormat, plurals, res.Resources.AsList())
+			}
 			writer := local.FSWriter{
 				Path:        opts.Path,
-				Namer:       local.GroupResourcesByKind(opts.IO.OutputFormat, local.PluralsFromFilters(res.Filters)),
+				Namer:       namer,
 				Encoder:     codec,
 				StopOnError: opts.OnError.StopOnError(),
 				OnWritten: func(path string, resource *resources.Resource) {

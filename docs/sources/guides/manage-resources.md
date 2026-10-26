@@ -39,6 +39,35 @@ Configure this path with the `--path`/`-p` flags.
     Resources are pulled and pushed from the `./resources` directory by default.
     Configure this path with the `--path`/`-p` flags.
 
+## Name pulled files by title
+
+By default, `gcx resources pull` names each file using the resource's
+`metadata.name` (usually its UID). Use `--filename-by=title` for readable filenames:
+
+```shell
+gcx resources pull dashboards --filename-by=title --path ./dashboard-backup
+```
+
+For example, a dashboard titled `Ventas Overview` becomes `ventas-overview.json`
+inside its usual resource-type directory. Titles become lowercase ASCII slugs:
+spaces, punctuation, and non-ASCII characters become hyphens, repeated hyphens
+collapse, and slugs are trimmed to 100 characters. `Página Ventas` becomes
+`p-gina-ventas.json`. If the title is missing or produces an empty slug (for
+example, a title containing only CJK characters), the filename uses
+`metadata.name` instead.
+
+If multiple resources produce the same filename in a directory, ignoring case,
+every colliding file gets a resource-name suffix, such as `ventas-<uid>.json`.
+Windows reserved filenames also get a suffix. Additional numeric suffixes resolve
+any remaining collisions. The resource contents retain their original identity,
+so push, validate, and serve use these files normally.
+
+Pull writes new files and overwrites matching paths; it does not remove old
+files. Renaming a dashboard, changing which resources collide, or switching
+between `--filename-by=name` and `--filename-by=title` can leave multiple files
+for the same resource. Pull into a clean directory or remove stale files (for
+example, with `git rm`) before pushing.
+
 ## Back up and restore resources
 
 Follow this workflow to back up all Grafana resources from one instance and later restore them. This can be useful to replicate a configuration or perform disaster recovery.

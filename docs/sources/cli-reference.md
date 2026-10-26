@@ -21967,6 +21967,10 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
 	gcx resources pull dashboards
 	gcx resources pull dashboards folders
 
+	# Name dashboard files by title:
+
+	gcx resources pull dashboards --filename-by=title
+
 	# Single resource kind, one or more resource instances:
 
 	gcx resources pull dashboards/foo
@@ -22009,15 +22013,16 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
 **Flags**
 
 ```text
-  -h, --help              help for pull
-      --include-managed   Include resources managed by tools other than gcx
-      --on-error string   How to handle errors during resource operations:
-                            ignore — continue processing all resources and exit 0
-                            fail   — continue processing all resources and exit 4 (partial failure) if any failed (default)
-                            abort  — stop on the first error and exit non-zero (default "fail")
-  -o, --output string     Output format. One of: json, yaml (default "json")
-  -p, --path string       Path on disk in which the resources will be written (default "./resources")
-      --skip-read-only    Skip read-only native alerting resources; include them by default for backup, audit, and diffing
+      --filename-by string   Name files by 'name' (metadata.name) or 'title' (slug of spec.title, falling back to metadata.name) (default "name")
+  -h, --help                 help for pull
+      --include-managed      Include resources managed by tools other than gcx
+      --on-error string      How to handle errors during resource operations:
+                               ignore — continue processing all resources and exit 0
+                               fail   — continue processing all resources and exit 4 (partial failure) if any failed (default)
+                               abort  — stop on the first error and exit non-zero (default "fail")
+  -o, --output string        Output format. One of: json, yaml (default "json")
+  -p, --path string          Path on disk in which the resources will be written (default "./resources")
+      --skip-read-only       Skip read-only native alerting resources; include them by default for backup, audit, and diffing
 ```
 
 Inherits `--config`, `--context` from [`gcx resources`](#gcx-resources-flags).

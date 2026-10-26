@@ -33,16 +33,18 @@ func GroupResourcesByKind(extension string, plurals map[string]string) FileNamer
 			return "", errors.New("resource has no name")
 		}
 
-		gvk := resource.GroupVersionKind()
-		plural := plurals[gvk.String()]
-		if plural == "" {
-			// Fallback: lowercase kind + "s" (matches K8s convention for most resources).
-			plural = strings.ToLower(gvk.Kind) + "s"
-		}
-
-		dir := plural + "." + gvk.Version + "." + gvk.Group
-		return filepath.Join(dir, resource.Name()+"."+extension), nil
+		return filepath.Join(kindDir(resource, plurals), resource.Name()+"."+extension), nil
 	}
+}
+
+func kindDir(resource *resources.Resource, plurals map[string]string) string {
+	gvk := resource.GroupVersionKind()
+	plural := plurals[gvk.String()]
+	if plural == "" {
+		// Fallback: lowercase kind + "s" (matches K8s convention for most resources).
+		plural = strings.ToLower(gvk.Kind) + "s"
+	}
+	return plural + "." + gvk.Version + "." + gvk.Group
 }
 
 // PluralsFromFilters builds a GVK→plural mapping from resource filters.
