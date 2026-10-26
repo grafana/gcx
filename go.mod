@@ -18,7 +18,7 @@ require (
 	github.com/grafana/grafana-app-sdk/logging v0.60.16
 	github.com/grafana/grafana-foundation-sdk/go v0.0.21
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
-	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
+	github.com/grafana/grafana/pkg/apimachinery/v13 v13.2.4
 	github.com/grafana/promql-builder/go v0.0.6
 	github.com/invopop/jsonschema v0.14.0
 	github.com/olekukonko/tablewriter v1.1.5
