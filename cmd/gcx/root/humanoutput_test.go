@@ -1,8 +1,9 @@
-package root
+package root_test
 
 import (
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,13 +37,13 @@ func TestExplicitHumanOutput(t *testing.T) {
 			cmd.SetArgs(tc.args)
 			require.NoError(t, cmd.Execute())
 
-			assert.Equal(t, tc.want, explicitHumanOutput(cmd))
+			assert.Equal(t, tc.want, root.ExplicitHumanOutputForTest(cmd))
 		})
 	}
 
 	t.Run("command without an output flag", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "x", Run: func(*cobra.Command, []string) {}}
 		require.NoError(t, cmd.Execute())
-		assert.False(t, explicitHumanOutput(cmd))
+		assert.False(t, root.ExplicitHumanOutputForTest(cmd))
 	})
 }
