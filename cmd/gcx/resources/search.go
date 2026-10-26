@@ -65,6 +65,9 @@ func (o *searchOpts) Validate(cmd *cobra.Command, args []string) (search.Query, 
 	query := search.Query{Query: args[0], Limit: o.Limit}
 	seen := map[string]bool{}
 	for _, value := range o.Resources {
+		// A resource.group selector uses a DNS label for the resource (dashboards)
+		// and a DNS subdomain for the group (dashboard.grafana.app), so split only
+		// at the first dot. These validators return an empty slice for valid names.
 		parts := strings.SplitN(value, ".", 2)
 		if len(parts) != 2 || len(validation.IsDNS1035Label(parts[0])) != 0 || len(validation.IsDNS1123Subdomain(parts[1])) != 0 {
 			return bad(fmt.Sprintf("invalid --resource %q: expected resource.group (for example dashboards.dashboard.grafana.app)", value))
