@@ -105,28 +105,12 @@ func conformanceEnv(home string) []string {
 // exit code; stderr is captured only to keep it out of stdout.
 func runGcx(t *testing.T, args ...string) (string, int) {
 	t.Helper()
-	bin := buildGcx(t)
-
-	home := t.TempDir()
-	cmd := exec.CommandContext(context.Background(), bin, args...)
-	cmd.Env = conformanceEnv(home)
-	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
-
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-	err := cmd.Run()
-	code := 0
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		code = exitErr.ExitCode()
-	} else if err != nil {
-		t.Fatalf("running gcx %v: %v", args, err)
-	}
-	return outBuf.String(), code
+	stdout, _, code := runGcxStreams(t, args...)
+	return stdout, code
 }
 
-// runGcxStreams is runGcx with stdout and stderr returned separately.
+// runGcxStreams runs runGcx's isolated binary and returns stdout and stderr
+// separately along with the exit code.
 func runGcxStreams(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
 	bin := buildGcx(t)
@@ -529,6 +513,8 @@ func TestAgentConformance_ExplicitOutputOverridesErrors(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
+		// Artifact class: -o picks the file format, stdout stays JSON.
+		{"resources", "pull", "-o", "yaml"},
 		{"datasources", "list", "-o", "json"},
 		{"datasources", "list", "--json", "name"},
 		{"datasources", "list", "--jq", "."},

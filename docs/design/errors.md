@@ -153,7 +153,11 @@ An explicit human-format `-o` (`text`, `wide`, `yaml`, …) overrides agent mode
 for errors as it does for results: the failure is rendered on **stderr** as it
 is with `--agent=false`, and stdout carries no error document. Agent mode
 without `-o`, `-o json`, `-o agents`, `--json` and `--jq` keep the in-band
-document.
+document. So do artifact commands whose `-o` selects the file format rather
+than the stdout format (`resources pull`, `resources edit`, `-o pprof`): stdout
+stays JSON there. Failures before the command runs (an unknown flag, invalid
+arguments) keep the in-band document too, because the explicit format is
+recorded only once flag parsing has succeeded.
 
 The envelope carries collision-resistant discriminators:
 `{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused

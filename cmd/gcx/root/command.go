@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/notifier"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/agento11y"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"           // Provider registrations — blank imports trigger init() self-registration.
@@ -90,8 +91,11 @@ func IsHumanOutputFlagActive() bool {
 	return humanOutputFlagActive.Load()
 }
 
-// explicitHumanOutput reports whether cmd has an explicitly set -o whose value
-// is neither json nor agents, with no --json/--jq field selection or filtering.
+// explicitHumanOutput reports whether cmd has an explicitly set -o that selects
+// the stdout format and is neither json nor agents, with no --json/--jq field
+// selection or filtering. It is false for commands where -o does not own
+// stdout: pinned-format commands (resources pull/edit) and the pprof artifact
+// export keep a JSON receipt on stdout whatever -o says.
 func explicitHumanOutput(cmd *cobra.Command) bool {
 	for _, name := range []string{"json", "jq"} {
 		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
@@ -102,8 +106,11 @@ func explicitHumanOutput(cmd *cobra.Command) bool {
 	if f == nil || !f.Changed {
 		return false
 	}
-	switch strings.ToLower(f.Value.String()) {
-	case "json", "agents":
+	if _, pinned := f.Annotations[output.PinnedFormatAnnotation]; pinned {
+		return false
+	}
+	switch f.Value.String() {
+	case "json", "agents", "pprof":
 		return false
 	default:
 		return true

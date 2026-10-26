@@ -84,6 +84,9 @@ func (opts *Options) DefaultFormat(name string) {
 // write `<name>.agents` files — and, for payloads above the spill threshold,
 // write a spill-summary envelope instead of the resource content. An explicit
 // -o flag from the user still wins over the pinned default.
+//
+// A pinned command's -o selects the file or buffer format, not the stdout
+// protocol, so BindFlags marks its output flag with PinnedFormatAnnotation.
 func (opts *Options) PinDefaultFormat(name string) {
 	opts.defaultFormat = name
 	opts.defaultFormatPinned = true
@@ -103,6 +106,12 @@ func (opts *Options) HideFormat(name string) {
 	}
 	opts.hiddenFormats[name] = true
 }
+
+// PinnedFormatAnnotation marks the output flag of a command whose default
+// format was pinned with PinDefaultFormat. Such commands write their result to
+// disk or an editor buffer and keep stdout for a JSON receipt in agent mode, so
+// an explicit -o there does not choose the stdout format.
+const PinnedFormatAnnotation = "gcx.grafana.com/output-format-pinned"
 
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	defaultFormat := "json"
@@ -125,6 +134,9 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	opts.NoTruncate = terminal.NoTruncate()
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
+	if opts.defaultFormatPinned {
+		_ = flags.SetAnnotation("output", PinnedFormatAnnotation, []string{"true"})
+	}
 	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
 	flags.String("jq", "", "jq expression to apply to JSON output. Mutually exclusive with --json.")
 
