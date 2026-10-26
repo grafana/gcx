@@ -75,6 +75,8 @@ Provider (internal/providers/slo/)
 
 Machine Learning uses the Grafana ML plugin proxy. Its jobs, holidays, and outlier detectors share typed adapters with the resource pipeline. Alerts require a parent ID and use parent-scoped commands. ML writes use `ClientDeps.GrafanaURL` for the public stack URL and `BaseURL` for transport, including OAuth proxy routing.
 
+Resource declarations can require unique natural-key matches and name the explicit identifier used in recovery messages. The generic matcher reads that policy from the adapter registry.
+
 **Deep-dive:** [resource and provider patterns](docs/architecture/patterns.md). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers

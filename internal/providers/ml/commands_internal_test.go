@@ -39,6 +39,10 @@ func TestCommandUsesPublicGrafanaURLWithProxyTransport(t *testing.T) {
 		t.Run(verb, func(t *testing.T) {
 			var calls int
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/datasources/uid/prom-uid" {
+					fmt.Fprint(w, `{"id":42,"uid":"prom-uid"}`)
+					return
+				}
 				calls++
 				assert.Equal(t, http.MethodPost, r.Method)
 				path := basePath + "jobs"
@@ -58,7 +62,7 @@ func TestCommandUsesPublicGrafanaURLWithProxyTransport(t *testing.T) {
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&out)
-			cmd.SetIn(strings.NewReader(`{"apiVersion":"ml.ext.grafana.app/v1alpha1","kind":"Job","metadata":{"name":"source"},"spec":{"name":"forecast","metric":"requests","grafanaUrl":"https://old.example"}}`))
+			cmd.SetIn(strings.NewReader(`{"apiVersion":"ml.ext.grafana.app/v1alpha1","kind":"Job","metadata":{"name":"source"},"spec":{"name":"forecast","metric":"requests","datasourceUid":"prom-uid","grafanaUrl":"https://old.example"}}`))
 			args := []string{verb}
 			if verb == "update" {
 				args = append(args, "one")

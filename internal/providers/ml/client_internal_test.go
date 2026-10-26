@@ -18,6 +18,10 @@ func TestClientCRUD(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			var methods []string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/datasources/uid/prom-uid" {
+					fmt.Fprint(w, `{"id":42,"uid":"prom-uid"}`)
+					return
+				}
 				methods = append(methods, r.Method+" "+r.URL.Path)
 				assert.Equal(t, "Bearer test", r.Header.Get("Authorization"))
 				if r.Method == http.MethodPost {
@@ -26,6 +30,7 @@ func TestClientCRUD(t *testing.T) {
 					assert.NotContains(t, payload, "id")
 					assert.Equal(t, "https://public.example", payload["grafanaUrl"])
 					assert.Equal(t, "forecast", payload["name"])
+					assert.EqualValues(t, 42, payload["datasourceId"])
 				}
 				if r.Method == http.MethodDelete {
 					w.WriteHeader(http.StatusNoContent)
@@ -52,7 +57,7 @@ func TestClientCRUD(t *testing.T) {
 			require.NotContains(t, string(raw), "createdBy")
 			_, err = c.Get(ctx, "one")
 			require.NoError(t, err)
-			input := Job{ID: "source-id", Name: "forecast", GrafanaURL: "https://source.example"}
+			input := Job{ID: "source-id", Name: "forecast", GrafanaURL: "https://source.example", DatasourceUID: "prom-uid", DatasourceID: 777}
 			_, err = c.Create(ctx, &input)
 			require.NoError(t, err)
 			_, err = c.Update(ctx, "one", &input)
@@ -108,6 +113,32 @@ func TestInvalidIDDoesNotSendRequest(t *testing.T) {
 			_, err = c.Update(context.Background(), id, &Job{})
 			require.Error(t, err)
 			require.Error(t, c.Delete(context.Background(), id))
+		})
+	}
+}
+
+func TestWriteStopsWhenDatasourceIDCannotResolve(t *testing.T) {
+	for _, verb := range []string{"create", "update"} {
+		t.Run(verb, func(t *testing.T) {
+			writes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost {
+					writes++
+				}
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprint(w, `{"message":"missing datasource"}`)
+			}))
+			defer srv.Close()
+			c := &client[Job]{deps: adapter.ClientDeps{HTTP: srv.Client(), BaseURL: srv.URL}, path: "jobs"}
+			item := Job{Name: "forecast", DatasourceUID: "prom", DatasourceID: 777}
+			var err error
+			if verb == "create" {
+				_, err = c.Create(t.Context(), &item)
+			} else {
+				_, err = c.Update(t.Context(), "one", &item)
+			}
+			require.ErrorContains(t, err, "resolve ML datasource")
+			require.Zero(t, writes)
 		})
 	}
 }

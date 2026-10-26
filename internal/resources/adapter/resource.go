@@ -80,6 +80,9 @@ type Resource[T ResourceNamer] struct {
 	// init() calling RegisterNaturalKey directly).
 	NaturalKey string
 
+	// NaturalKeyPolicy controls ambiguous matches for this resource type.
+	NaturalKeyPolicy NaturalKeyPolicy
+
 	// URLTemplate, when set, is carried on the Registration; providers.Register
 	// already folds every Registration.URLTemplate into
 	// deeplink.RegisterPattern, so no separate init() is needed for it either.
@@ -111,7 +114,7 @@ func (r Resource[T]) registration(loadDeps DepsLoader) Registration {
 	gvk := desc.GroupVersionKind()
 
 	if r.NaturalKey != "" {
-		RegisterNaturalKey(gvk, SpecFieldKey(r.NaturalKey))
+		RegisterNaturalKeyWithPolicy(gvk, SpecFieldKey(r.NaturalKey), r.NaturalKeyPolicy)
 	}
 
 	example := exampleJSON(r.Example, desc, r.StripFields)
@@ -219,7 +222,7 @@ func (r Resource[T]) TypedCRUD(client any, namespace string) *TypedCRUD[T] {
 	desc := r.descriptor()
 	// Provider commands can bind typed CRUD without registering the whole provider.
 	if r.NaturalKey != "" {
-		RegisterNaturalKey(desc.GroupVersionKind(), SpecFieldKey(r.NaturalKey))
+		RegisterNaturalKeyWithPolicy(desc.GroupVersionKind(), SpecFieldKey(r.NaturalKey), r.NaturalKeyPolicy)
 	}
 	return newCapabilityCRUD[T](client, capabilityMeta{
 		Descriptor: desc, Namespace: namespace, StripFields: r.StripFields,

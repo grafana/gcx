@@ -17,8 +17,9 @@ func init() { //nolint:gochecknoinits // Providers register once at startup.
 func resource[T adapter.ResourceNamer](kind, plural, path string, example T) adapter.Resource[T] {
 	return adapter.Resource[T]{
 		Group: "ml.ext.grafana.app", Version: "v1alpha1", Kind: kind, Plural: plural,
-		NaturalKey:  "name",
-		StripFields: []string{"id", "grafanaUrl", "datasourceId"}, Example: &example,
+		NaturalKey:       "name",
+		NaturalKeyPolicy: adapter.NaturalKeyPolicy{RequireUnique: true, IDLabel: "server ID"},
+		StripFields:      []string{"id", "grafanaUrl", "datasourceId"}, Example: &example,
 		NewClient: func(_ context.Context, deps adapter.ClientDeps) (any, error) {
 			return &client[T]{deps: deps, path: path}, nil
 		},

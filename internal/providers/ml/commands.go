@@ -24,7 +24,7 @@ type commandOpts struct {
 	Limit    int
 }
 
-func (o *commandOpts) setup(flags *pflag.FlagSet, verb string) {
+func (o *commandOpts) setup(flags *pflag.FlagSet, verb, subject string) {
 	if verb != "list" && verb != "get" {
 		o.IO.RegisterCustomCodec("text", mutationTextCodec{})
 		o.IO.DefaultFormat("text")
@@ -35,7 +35,7 @@ func (o *commandOpts) setup(flags *pflag.FlagSet, verb string) {
 		if agent.IsAgentMode() {
 			limit = 0
 		}
-		o.IO.BindListLimit(flags, &o.Limit, "ML resources", limit)
+		o.IO.BindListLimit(flags, &o.Limit, subject, limit)
 	}
 	if verb == "create" || verb == "update" {
 		flags.StringVarP(&o.Filename, "filename", "f", "", "JSON or YAML file, or - for stdin")
@@ -62,7 +62,11 @@ func metadata(verb string) map[string]string {
 		cost = "large"
 		hint = "Use --limit 10 to narrow output or get with a server ID for one resource. Use --limit 0 for all records. Use --json or --jq to select fields."
 	}
-	return map[string]string{agent.AnnotationTokenCost: cost, agent.AnnotationLLMHint: hint, agent.AnnotationAvailability: agent.AvailabilityCloudOnly}
+	result := map[string]string{agent.AnnotationTokenCost: cost}
+	if hint != "" {
+		result[agent.AnnotationLLMHint] = hint
+	}
+	return result
 }
 
 func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, path, singular, label string, r adapter.Resource[T]) *cobra.Command {
@@ -170,7 +174,7 @@ func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, p
 				return name
 			}},
 		}})
-		opts.setup(cmd.Flags(), verb)
+		opts.setup(cmd.Flags(), verb, label)
 		group.AddCommand(cmd)
 	}
 	return group
@@ -271,7 +275,7 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 			{Header: "ID", Content: func(o Alert) string { return o.ID }},
 			{Header: "TITLE", Content: func(o Alert) string { return o.Title }},
 		}})
-		opts.setup(cmd.Flags(), verb)
+		opts.setup(cmd.Flags(), verb, "alerts")
 		group.AddCommand(cmd)
 	}
 }

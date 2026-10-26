@@ -43,6 +43,10 @@ func TestPushMatchesTargetIDsAndRejectsAmbiguousNames(t *testing.T) {
 				}
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
+					if r.URL.Path == "/api/datasources/uid/prom-uid" {
+						fmt.Fprint(w, `{"id":42,"uid":"prom-uid"}`)
+						return
+					}
 					switch r.Method {
 					case http.MethodGet:
 						if strings.HasSuffix(r.URL.Path, "/source-id") {
@@ -70,7 +74,7 @@ func TestPushMatchesTargetIDsAndRejectsAmbiguousNames(t *testing.T) {
 				defer srv.Close()
 				baseURL = srv.URL
 				router := adapter.NewResourceClientRouter(nil, map[schema.GroupVersionKind]adapter.Factory{reg.GVK: reg.Factory})
-				input := resources.MustFromObject(map[string]any{"apiVersion": reg.GVK.GroupVersion().String(), "kind": reg.GVK.Kind, "metadata": map[string]any{"name": "source-id", "namespace": "default"}, "spec": map[string]any{"name": "forecast", "metric": "requests"}}, resources.SourceInfo{})
+				input := resources.MustFromObject(map[string]any{"apiVersion": reg.GVK.GroupVersion().String(), "kind": reg.GVK.Kind, "metadata": map[string]any{"name": "source-id", "namespace": "default"}, "spec": map[string]any{"name": "forecast", "metric": "requests", "datasourceUid": "prom-uid"}}, resources.SourceInfo{})
 				for range 2 {
 					summary, err := remote.NewPusher(router, testRegistry{reg.Descriptor}).Push(t.Context(), remote.PushRequest{Resources: resources.NewResources(input), MaxConcurrency: 1, IncludeManaged: true, StopOnError: true, NoPushFailureLog: true})
 					if mode == "ambiguous" {

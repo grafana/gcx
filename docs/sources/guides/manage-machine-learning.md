@@ -71,9 +71,12 @@ Jobs, holidays, and outlier detectors use the standard resource pipeline. The pr
 
 Each write uses the target stack URL. The server ID from the source stack is stored in `metadata.name`. If that ID doesn't exist on the target, the pipeline matches the normalized value of `spec.name`. 
 
+Each write resolves the numeric datasource ID from the UID on the target stack.
+Writes need read access to the selected datasource.
+
 Matching: 
 
-- Ignores letter case and punctuation.
+- Converts names to lowercase slugs.
 - Updates one matching resource or creates a resource when there is no match.
 - Multiple matches are rejected.
 

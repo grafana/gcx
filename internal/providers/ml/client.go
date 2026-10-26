@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -141,6 +142,19 @@ func (c *client[T]) write(ctx context.Context, id string, item *T) (*T, error) {
 			target = c.deps.BaseURL
 		}
 		payload["grafanaUrl"] = target
+	}
+	// Numeric datasource IDs belong to one stack. Resolve the target ID from
+	// the portable UID instead of sending a stripped zero or a source-stack ID.
+	if value, ok := payload["datasourceUid"]; ok {
+		uid, _ := value.(string)
+		if strings.TrimSpace(uid) == "" {
+			return nil, errors.New("datasourceUid is required for ML jobs and outlier detectors")
+		}
+		id, err := datasources.NewClientWithHTTP(c.deps.BaseURL, c.deps.HTTP).NumericIDByUID(ctx, uid)
+		if err != nil {
+			return nil, fmt.Errorf("resolve ML datasource %q: %w", uid, err)
+		}
+		payload["datasourceId"] = id
 	}
 	var result T
 	suffix := ""
