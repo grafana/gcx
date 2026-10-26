@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,11 +43,12 @@ func (l *searchTestLoader) LoadGrafanaConfig(context.Context) (config.Namespaced
 func TestSearchRejectsInvalidInputBeforeLoadingConfig(t *testing.T) {
 	setSearchTestAgentMode(t, "false")
 	cases := [][]string{
-		{}, {""}, {"  "}, {strings.Repeat("é", 501)}, {string([]byte{0xff})}, {"x", "y"},
-		{"x", "--limit=0"}, {"x", "--limit=201"},
+		{}, {""}, {"  "}, {string([]byte{0xff})}, {"x", "y"},
+		{"x", "--limit=-1"}, {"x", "--limit=0"}, {"x", "--limit=201"},
 		{"x", "--resource=dashboard"}, {"x", "--resource=*.grafana.app"},
 		{"x", "--resource=dashboards.dashboard.grafana.app", "--resource=dashboards.dashboard.grafana.app"},
-		{"x", "--folder=*"},
+		{"x", "--folder=*"}, {"x", "--folder=team", "--folder=team"},
+		{"x", "--folder=", "--folder="}, {"x", "--folder=general", "--folder="},
 	}
 	for _, args := range cases {
 		loader := &searchTestLoader{}
@@ -58,6 +60,44 @@ func TestSearchRejectsInvalidInputBeforeLoadingConfig(t *testing.T) {
 		var usage *gcxerrors.UsageError
 		require.ErrorAs(t, err, &usage, "%v: %v", args, err)
 		require.Zero(t, loader.calls, "%v", args)
+	}
+}
+
+func TestSearchUsesOneLimitErrorBeforeLoadingConfig(t *testing.T) {
+	for _, limit := range []string{"-1", "0", "201"} {
+		loader := &searchTestLoader{}
+		cmd := searchCmd(loader)
+		cmd.SetArgs([]string{"q", "--limit=" + limit})
+		err := cmd.Execute()
+		var usage *gcxerrors.UsageError
+		require.ErrorAs(t, err, &usage)
+		require.ErrorContains(t, err, "--limit must be between 1 and 200")
+		require.Zero(t, loader.calls)
+	}
+}
+
+func TestSearchRejectsNormalizedDuplicateFoldersBeforeLoadingConfig(t *testing.T) {
+	for _, tc := range []struct {
+		folders []string
+		value   string
+	}{
+		{folders: []string{"team", "team"}, value: "team"},
+		{folders: []string{"", ""}, value: ""},
+		{folders: []string{"general", ""}, value: ""},
+	} {
+		loader := &searchTestLoader{}
+		cmd := searchCmd(loader)
+		args := make([]string, 0, 1+len(tc.folders))
+		args = append(args, "q")
+		for _, folder := range tc.folders {
+			args = append(args, "--folder="+folder)
+		}
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		var usage *gcxerrors.UsageError
+		require.ErrorAs(t, err, &usage)
+		require.ErrorContains(t, err, "duplicate --folder "+strconv.Quote(tc.value))
+		require.Zero(t, loader.calls)
 	}
 }
 
@@ -151,19 +191,25 @@ func TestSearchRoundsHumanScoresAndPreservesStructuredScoresAndOrder(t *testing.
 	}
 }
 
-func TestSearchAcceptsMaximumLimitAndFolderCount(t *testing.T) {
+func TestSearchPassesQueryAndFoldersBeyondFormerLocalCaps(t *testing.T) {
 	setSearchTestAgentMode(t, "false")
+	longQuery := strings.Repeat("é", 501)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Limit   int `json:"limit"`
+			Query   string `json:"query"`
+			Limit   int    `json:"limit"`
 			Filters []struct {
 				Values []string `json:"values"`
 			} `json:"filters"`
 		}
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, longQuery, body.Query)
 		assert.Equal(t, 200, body.Limit)
 		if assert.Len(t, body.Filters, 1) {
-			assert.Len(t, body.Filters[0].Values, 1000)
+			if assert.Len(t, body.Filters[0].Values, 1001) {
+				assert.Equal(t, "team-0", body.Filters[0].Values[0])
+				assert.Equal(t, "team-1000", body.Filters[0].Values[1000])
+			}
 		}
 		_, _ = w.Write([]byte(`{"apiVersion":"search.grafana.app/v0alpha1","kind":"HybridSearchResults","items":[]}`))
 	}))
@@ -171,17 +217,13 @@ func TestSearchAcceptsMaximumLimitAndFolderCount(t *testing.T) {
 	loader := &searchTestLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "org-1"}}
 	cmd := searchCmd(loader)
 	args := make([]string, 0, 1003)
-	args = append(args, "q", "--limit=200")
-	for range 1000 {
-		args = append(args, "--folder=team")
+	args = append(args, longQuery, "--limit=200")
+	for i := range 1001 {
+		args = append(args, "--folder=team-"+strconv.Itoa(i))
 	}
 	cmd.SetArgs(args)
 	cmd.SetOut(&bytes.Buffer{})
 	require.NoError(t, cmd.Execute())
-	cmd = searchCmd(&searchTestLoader{})
-	cmd.SetArgs(append(args, "--folder=one-too-many"))
-	var usage *gcxerrors.UsageError
-	require.ErrorAs(t, cmd.Execute(), &usage)
 }
 
 func TestSearchHelpDeclaresExperimentalContract(t *testing.T) {
