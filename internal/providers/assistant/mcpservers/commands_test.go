@@ -434,6 +434,87 @@ func TestApplyUpdateAcceptsMatchingIdentity(t *testing.T) {
 	assert.Equal(t, "user", desired.Scope)
 }
 
+func TestBuildInputPDCNetwork(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want *string
+	}{
+		{"unset", nil, nil},
+		{"set", []string{"--pdc-network", " net-1 "}, new("net-1")},
+		{"cleared", []string{"--pdc-network", ""}, new("")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &updateOpts{}
+			flags := pflag.NewFlagSet("update", pflag.ContinueOnError)
+			opts.setup(flags)
+			require.NoError(t, flags.Parse(tt.args))
+
+			input, err := opts.buildInput()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, input.PDCNetwork)
+		})
+	}
+}
+
+func TestManifestFromInputSetsPDCNetwork(t *testing.T) {
+	m := manifestFromInput(assistantmcp.ServerInput{
+		Name: "Docs", URL: "https://mcp.example.com/mcp", PDCNetwork: new("net-1"),
+	})
+	assert.Equal(t, map[string]any{assistantmcp.ConfigKeyPDCNetwork: "net-1"}, m.Config)
+}
+
+// TestApplyUpdatePDCNetworkKeepsOtherConfig covers that --pdc-network merges
+// into the stored configuration: the backend replaces the whole configuration
+// object on update, so dropping keys here would wipe tool preferences.
+func TestApplyUpdatePDCNetworkKeepsOtherConfig(t *testing.T) {
+	prefs := map[string]any{"search": "disabled"}
+	tests := []struct {
+		name    string
+		current map[string]any
+		network *string
+		want    map[string]any
+	}{
+		{
+			name:    "unset preserves config",
+			current: map[string]any{"toolPreferences": prefs, assistantmcp.ConfigKeyPDCNetwork: "net-1"},
+			want:    map[string]any{"toolPreferences": prefs, assistantmcp.ConfigKeyPDCNetwork: "net-1"},
+		},
+		{
+			name:    "set merges",
+			current: map[string]any{"toolPreferences": prefs},
+			network: new("net-2"),
+			want:    map[string]any{"toolPreferences": prefs, assistantmcp.ConfigKeyPDCNetwork: "net-2"},
+		},
+		{
+			name:    "set on empty config",
+			network: new("net-2"),
+			want:    map[string]any{assistantmcp.ConfigKeyPDCNetwork: "net-2"},
+		},
+		{
+			name:    "empty clears",
+			current: map[string]any{"toolPreferences": prefs, assistantmcp.ConfigKeyPDCNetwork: "net-1"},
+			network: new(""),
+			want:    map[string]any{"toolPreferences": prefs},
+		},
+		{
+			name:    "clearing the only key drops config",
+			current: map[string]any{assistantmcp.ConfigKeyPDCNetwork: "net-1"},
+			network: new(""),
+			want:    nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			current := mcpserver.MCPServer{Name: "Docs", Scope: "user", URL: "https://mcp.example.com/mcp", Config: tt.current}
+			desired, err := applyUpdate(current, assistantmcp.ServerInput{PDCNetwork: tt.network})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, desired.Config)
+		})
+	}
+}
+
 // TestResolveServerRefByIDNameAndAmbiguity covers the crud.List-backed
 // <id-or-name> resolution used by update/delete: exact ID match, display-name
 // match, and an ambiguous name (two servers sharing scope+name) erroring
