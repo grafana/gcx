@@ -73,6 +73,8 @@ Provider (internal/providers/slo/)
 
 **Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see RFC 026 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
 
+Machine Learning uses the Grafana ML plugin proxy. Its jobs, holidays, and outlier detectors share typed adapters with the resource pipeline. Alerts require a parent ID and use parent-scoped commands. ML writes use `ClientDeps.GrafanaURL` for the public stack URL and `BaseURL` for transport, including OAuth proxy routing.
+
 **Deep-dive:** [resource and provider patterns](docs/architecture/patterns.md). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers

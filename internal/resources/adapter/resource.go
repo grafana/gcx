@@ -25,6 +25,9 @@ type ClientDeps struct {
 	// BaseURL is the resolved Grafana (or product API) base URL.
 	BaseURL string
 
+	// GrafanaURL is the public Grafana URL before OAuth proxy routing.
+	GrafanaURL string
+
 	// Namespace is the loaded config's namespace, stamped on every produced
 	// envelope unless overridden by Resource.Namespace.
 	Namespace string

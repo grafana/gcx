@@ -31,7 +31,7 @@ func loadGrafanaDeps(ctx context.Context, loader GrafanaConfigLoader) (adapter.C
 	if err != nil {
 		return adapter.ClientDeps{}, cfg, fmt.Errorf("failed to create Grafana HTTP client: %w", err)
 	}
-	return adapter.ClientDeps{HTTP: client, BaseURL: cfg.Host, Namespace: cfg.Namespace}, cfg, nil
+	return adapter.ClientDeps{HTTP: client, BaseURL: cfg.Host, GrafanaURL: cfg.GrafanaURL, Namespace: cfg.Namespace}, cfg, nil
 }
 
 // BoundResource binds a declaration to a configuration loader without doing I/O.

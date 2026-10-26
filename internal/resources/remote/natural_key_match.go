@@ -63,13 +63,14 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		return nil, false, nil
 	}
 
-	// SLO names must be unique to avoid silently updating an arbitrary definition or report.
+	// SLO and ML names must match one resource to prevent an arbitrary update.
 	sloPolicy := desc.GroupVersion.Group == "slo.ext.grafana.app" && (desc.Kind == "SLO" || desc.Kind == "Report")
+	uniquePolicy := sloPolicy || desc.GroupVersion.Group == "ml.ext.grafana.app"
 	matches := 0
 	for i := range remoteList.Items {
 		remoteKey, ok := extractor(&remoteList.Items[i])
 		if ok && remoteKey == localKey {
-			if !nativePolicy && !sloPolicy {
+			if !nativePolicy && !uniquePolicy {
 				return remoteList.Items[i].DeepCopy(), true, nil
 			}
 			matches++
@@ -77,8 +78,12 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		}
 	}
 
-	if matches > 1 && sloPolicy {
-		return nil, false, fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name UUID", desc.Kind, localKey)
+	if matches > 1 && uniquePolicy {
+		idType := "UUID"
+		if desc.GroupVersion.Group == "ml.ext.grafana.app" {
+			idType = "server ID"
+		}
+		return nil, false, fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name %s", desc.Kind, localKey, idType)
 	}
 	if matches > 1 {
 		return nil, false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)
