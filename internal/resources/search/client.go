@@ -74,9 +74,6 @@ func (c *Client) Search(ctx context.Context, query Query) (*Results, error) {
 		if resp.StatusCode == http.StatusUnprocessableEntity && len(query.Resources) == 0 {
 			message += "; supply --resource or ask the operator to configure hybrid search default resources"
 		}
-		if resp.StatusCode == http.StatusNotFound {
-			message += "; check deployment support and default resource configuration"
-		}
 		return nil, &gcxerrors.HTTPStatusError{Status: resp.StatusCode, Message: fmt.Sprintf("hybrid search failed: HTTP %d: %s", resp.StatusCode, message), ServerMessage: message, TraceID: status.TraceID, ContentType: resp.Header.Get("Content-Type")}
 	}
 	var result Results

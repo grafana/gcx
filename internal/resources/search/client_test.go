@@ -114,7 +114,7 @@ func TestClientSearchReportsMissingDefaultsAndUncertainRouteWithoutFallback(t *t
 		want    string
 	}{
 		{status: 422, message: "resources are required", want: "supply --resource"},
-		{status: 404, message: "route unavailable", want: "check deployment support"},
+		{status: 404, message: "route unavailable"},
 	} {
 		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
 			calls := 0
@@ -132,7 +132,12 @@ func TestClientSearchReportsMissingDefaultsAndUncertainRouteWithoutFallback(t *t
 			require.ErrorAs(t, err, &status)
 			require.Equal(t, tc.status, status.Status)
 			require.Equal(t, "trace-1", status.TraceID)
-			require.ErrorContains(t, err, tc.want)
+			if tc.status == http.StatusNotFound {
+				require.Equal(t, tc.message, status.ServerMessage)
+				require.Equal(t, "hybrid search failed: HTTP 404: "+tc.message, status.Message)
+			} else {
+				require.ErrorContains(t, err, tc.want)
+			}
 			require.Equal(t, 1, calls)
 		})
 	}
