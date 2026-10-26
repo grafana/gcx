@@ -1,9 +1,13 @@
 package resources //nolint:testpackage // Exercise pull command wiring using the shared discovery/API fixture.
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
@@ -65,9 +69,71 @@ func TestPull_FilenameByRejectsInvalidBeforeIO(t *testing.T) {
 			err := cmd.ExecuteContext(t.Context())
 			var usageErr *fail.UsageError
 			require.ErrorAs(t, err, &usageErr)
-			require.Contains(t, err.Error(), "--filename-by")
-			require.Contains(t, err.Error(), "'name' or 'title'")
+			require.EqualError(t, err, fmt.Sprintf("invalid --filename-by %q: must be 'name' or 'title'", value))
 			require.Equal(t, gcxerrors.ExitUsageError, *fail.ErrorToDetailedError(err).ExitCode)
 		})
+	}
+}
+
+func TestPull_FilenameByExistingFiles(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		mode     string
+		oldPath  string
+		oldName  string
+		wantPath string
+		warn     bool
+		preserve bool
+	}{
+		{name: "title collision", mode: "title", oldPath: "sales-overview.json", oldName: "other", wantPath: "sales-overview-read-only.json", preserve: true},
+		{name: "title rename", mode: "title", oldPath: "old-title.json", oldName: "read-only", wantPath: "sales-overview.json", warn: true, preserve: true},
+		{name: "switch to title", mode: "title", oldPath: "read-only.json", oldName: "read-only", wantPath: "sales-overview.json", warn: true, preserve: true},
+		{name: "name mode unchanged", mode: "name", oldPath: "read-only.json", oldName: "other", wantPath: "read-only.json"},
+	} {
+		for _, agentMode := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/agent=%t", tt.name, agentMode), func(t *testing.T) {
+				f := newReadOnlyCommandFixture(t, "TemplateGroup")
+				t.Setenv("GCX_AGENT_MODE", strconv.FormatBool(agentMode))
+				agent.ResetForTesting()
+				require.NoError(t, unstructured.SetNestedField(f.readOnly.Object, "Sales Overview", "spec", "title"))
+				old := f.readOnly.DeepCopy()
+				old.SetName(tt.oldName)
+				destination := t.TempDir()
+				dir := filepath.Join(destination, f.groupDir)
+				require.NoError(t, os.MkdirAll(dir, 0o755))
+				original, err := json.Marshal(old)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(filepath.Join(dir, tt.oldPath), original, 0o600))
+				var stdout, stderr bytes.Buffer
+				cmd := pullCmd(f.config)
+				cmd.SetOut(&stdout)
+				cmd.SetErr(&stderr)
+				cmd.SetArgs([]string{f.plural, "--path", destination, "--filename-by", tt.mode})
+				require.NoError(t, cmd.ExecuteContext(t.Context()))
+				require.FileExists(t, filepath.Join(dir, tt.wantPath))
+				current, err := os.ReadFile(filepath.Join(dir, tt.oldPath))
+				require.NoError(t, err)
+				if tt.preserve {
+					require.Equal(t, original, current)
+				} else {
+					var refreshed unstructured.Unstructured
+					require.NoError(t, json.Unmarshal(current, &refreshed))
+					require.Equal(t, "read-only", refreshed.GetName())
+				}
+				require.NotContains(t, stdout.String(), "stale file")
+				if tt.warn {
+					require.Contains(t, stderr.String(), "stale file")
+					require.Contains(t, stderr.String(), tt.oldPath)
+					require.Contains(t, stderr.String(), tt.wantPath)
+					if agentMode {
+						require.Contains(t, stderr.String(), `"class":"warning"`)
+					} else {
+						require.Contains(t, stderr.String(), "warn:")
+					}
+				} else {
+					require.Empty(t, stderr.String())
+				}
+			})
+		}
 	}
 }

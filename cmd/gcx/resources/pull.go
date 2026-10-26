@@ -2,7 +2,6 @@ package resources
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
@@ -28,7 +27,7 @@ type pullOpts struct {
 	IncludeManaged bool
 	SkipReadOnly   bool
 	Path           string
-	FilenameBy     string
+	FilenameBy     FilenameByMode
 
 	// flags is the bound flag set, kept so Validate can reject flags that
 	// cannot round-trip as on-disk resource files (--json, --jq).
@@ -59,7 +58,7 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
-	flags.StringVar(&opts.FilenameBy, "filename-by", "name", "Name files by 'name' (metadata.name) or 'title' (slug of spec.title, falling back to metadata.name)")
+	flags.StringVar((*string)(&opts.FilenameBy), "filename-by", string(FilenameByName), "Name files by 'name' (metadata.name) or 'title' (slug of spec.title, falling back to metadata.name)")
 	flags.BoolVar(&opts.SkipReadOnly, "skip-read-only", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
 	flags.BoolVar(
 		&opts.IncludeManaged,
@@ -70,8 +69,8 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (opts *pullOpts) Validate() error {
-	if opts.FilenameBy != "name" && opts.FilenameBy != "title" {
-		return &fail.UsageError{Message: fmt.Sprintf("invalid --filename-by %q: must be 'name' or 'title'. Use gcx resources pull --filename-by=title", opts.FilenameBy)}
+	if err := opts.FilenameBy.Validate(); err != nil {
+		return &fail.UsageError{Message: err.Error()}
 	}
 
 	// The pull-specific typed rejections run BEFORE the shared IO.Validate:
@@ -216,8 +215,11 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			var writeFailures []cmdio.MutationFailure
 			plurals := local.PluralsFromFilters(res.Filters)
 			namer := local.GroupResourcesByKind(opts.IO.OutputFormat, plurals)
-			if opts.FilenameBy == "title" {
-				namer = local.GroupResourcesByKindTitle(opts.IO.OutputFormat, plurals, res.Resources.AsList())
+			if opts.FilenameBy == FilenameByTitle {
+				namer, err = local.GroupResourcesByKindTitle(opts.Path, opts.IO.OutputFormat, plurals, res.Resources.AsList(), cmd.ErrOrStderr())
+				if err != nil {
+					return err
+				}
 			}
 			writer := local.FSWriter{
 				Path:        opts.Path,

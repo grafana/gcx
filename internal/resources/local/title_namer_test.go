@@ -1,6 +1,8 @@
 package local_test
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -58,7 +60,7 @@ func TestGroupResourcesByKindTitle_Sanitization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resource := titledResource("uid", tt.title)
 			for _, ext := range []string{"json", "yaml"} {
-				namer := local.GroupResourcesByKindTitle(ext, nil, []*resources.Resource{resource})
+				namer := titleNamer(t, ext, nil, []*resources.Resource{resource})
 				path, err := namer(resource)
 				require.NoError(t, err)
 				require.Equal(t, filepath.Join("dashboards.v1.dashboard.grafana.app", tt.want+"."+ext), path)
@@ -82,8 +84,8 @@ func TestGroupResourcesByKindTitle_CollisionsRoundTrip(t *testing.T) {
 		{name: "fallback collision", input: []*resources.Resource{titledResource("a", "CPU"), titledResource("cpu", nil)}, want: []string{"cpu-a", "cpu-cpu"}},
 		{name: "secondary collision", input: []*resources.Resource{titledResource("a", "CPU"), titledResource("b", "CPU"), titledResource("c", "CPU-a"), titledResource("d", "CPU-a-1")}, want: []string{"cpu-a-2", "cpu-b", "cpu-a-3", "cpu-a-1"}},
 		{name: "reserved collision", input: []*resources.Resource{titledResource("a", "CON"), titledResource("b", "CON-a")}, want: []string{"con-a-1", "con-a-2"}},
-		{name: "reserved fallback", input: []*resources.Resource{titledResource("CON", nil)}, want: []string{"con-con"}},
-		{name: "reserved dotted fallback", input: []*resources.Resource{titledResource("CON.backup", nil)}, want: []string{"con-backup-con-backup"}},
+		{name: "reserved fallback", input: []*resources.Resource{titledResource("CON", nil)}, want: []string{"CON"}},
+		{name: "reserved dotted fallback", input: []*resources.Resource{titledResource("CON.backup", nil)}, want: []string{"CON.backup"}},
 		{name: "truncation collision", input: []*resources.Resource{titledResource("a", strings.Repeat("a", 101)), titledResource("b", strings.Repeat("a", 102))}, want: []string{strings.Repeat("a", 100) + "-a", strings.Repeat("a", 100) + "-b"}},
 		{name: "name suffix truncation", input: []*resources.Resource{titledResource(strings.Repeat("a", 150)+"b", "CPU"), titledResource(strings.Repeat("a", 150)+"c", "CPU")}, want: []string{"cpu-" + strings.Repeat("a", 100) + "-1", "cpu-" + strings.Repeat("a", 100) + "-2"}},
 		{name: "case-only names", input: []*resources.Resource{titledResource("A", "CPU"), titledResource("a", "CPU")}, want: []string{"cpu-a-1", "cpu-a-2"}},
@@ -96,7 +98,7 @@ func TestGroupResourcesByKindTitle_CollisionsRoundTrip(t *testing.T) {
 						slices.Reverse(input)
 					}
 					plurals := map[string]string{input[0].GroupVersionKind().String(): "discovered-dashboards"}
-					namer := local.GroupResourcesByKindTitle(ext, plurals, input)
+					namer := titleNamer(t, ext, plurals, input)
 					codecs := format.Codecs()
 					writer := local.FSWriter{Path: t.TempDir(), Encoder: codecs[format.Format(ext)], Namer: namer, StopOnError: true}
 					require.NoError(t, writer.Write(t.Context(), resources.NewResources(input...)))
@@ -122,7 +124,7 @@ func TestGroupResourcesByKindTitle_CollisionsRoundTrip(t *testing.T) {
 func TestGroupResourcesByKindTitle_SeparateDirectories(t *testing.T) {
 	a, b := titledResource("a", "CPU"), titledResource("b", "CPU")
 	b.Object.SetAPIVersion("dashboard.grafana.app/v2beta1")
-	namer := local.GroupResourcesByKindTitle("json", nil, []*resources.Resource{a, b})
+	namer := titleNamer(t, "json", nil, []*resources.Resource{a, b})
 	for _, resource := range []*resources.Resource{a, b} {
 		path, err := namer(resource)
 		require.NoError(t, err)
@@ -136,7 +138,7 @@ func TestGroupResourcesByKindTitle_SeparateDirectories(t *testing.T) {
 
 func TestGroupResourcesByKindTitle_MissingName(t *testing.T) {
 	resource := titledResource("", "Title")
-	namer := local.GroupResourcesByKindTitle("json", nil, []*resources.Resource{resource})
+	namer := titleNamer(t, "json", nil, []*resources.Resource{resource})
 	_, err := namer(resource)
 	require.EqualError(t, err, "resource has no name")
 }
@@ -148,7 +150,7 @@ func TestFSWriter_TitleNamesPreserveWriteErrors(t *testing.T) {
 			failures := 0
 			writer := local.FSWriter{
 				Path: t.TempDir(), Encoder: format.NewJSONCodec(), StopOnError: abort,
-				Namer: local.GroupResourcesByKindTitle("json", nil, input.AsList()),
+				Namer: titleNamer(t, "json", nil, input.AsList()),
 				OnWriteError: func(_ *resources.Resource, _ error) {
 					failures++
 				},
@@ -164,6 +166,179 @@ func TestFSWriter_TitleNamesPreserveWriteErrors(t *testing.T) {
 				require.FileExists(t, path)
 				require.Equal(t, 1, failures)
 			}
+		})
+	}
+}
+
+func titleNamer(t *testing.T, extension string, plurals map[string]string, all []*resources.Resource) local.FileNamer {
+	t.Helper()
+	namer, err := local.GroupResourcesByKindTitle(t.TempDir(), extension, plurals, all, nil)
+	require.NoError(t, err)
+	return namer
+}
+
+func writeManifest(t *testing.T, root, path string, resource *resources.Resource) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	codec := format.Codecs()[format.Format(strings.TrimPrefix(filepath.Ext(path), "."))]
+	require.NoError(t, codec.Encode(&data, &resource.Object))
+	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, path), data.Bytes(), 0o600))
+	return data.Bytes()
+}
+
+func TestTitleNames_SuccessivePulls(t *testing.T) {
+	for _, ext := range []string{"json", "yaml"} {
+		t.Run(ext, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "backup")
+			pull := func(input ...*resources.Resource) {
+				t.Helper()
+				namer, err := local.GroupResourcesByKindTitle(root, ext, nil, input, nil)
+				require.NoError(t, err)
+				writer := local.FSWriter{Path: root, Namer: namer, Encoder: format.Codecs()[format.Format(ext)], StopOnError: true}
+				require.NoError(t, writer.Write(t.Context(), resources.NewResources(input...)))
+			}
+			pull(titledResource("aaa", "CPU"))
+			originalPath := filepath.Join(root, "dashboards.v1.dashboard.grafana.app", "cpu."+ext)
+			original, err := os.ReadFile(originalPath)
+			require.NoError(t, err)
+			pull(titledResource("bbb", "CPU"))
+			pull(titledResource("bbb", "CPU")) // Repeat the narrower pull without growing the backup.
+			unchanged, err := os.ReadFile(originalPath)
+			require.NoError(t, err)
+			require.Equal(t, original, unchanged)
+			reader := local.FSReader{Decoders: format.Codecs(), StopOnError: true}
+			read := resources.NewResources()
+			require.NoError(t, reader.Read(t.Context(), read, nil, []string{root}))
+			require.Equal(t, 2, read.Len())
+			entries, err := os.ReadDir(filepath.Dir(originalPath))
+			require.NoError(t, err)
+			require.Len(t, entries, 2)
+			require.FileExists(t, filepath.Join(filepath.Dir(originalPath), "cpu-bbb."+ext))
+		})
+	}
+}
+
+func TestTitleNames_ExistingIdentity(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		change func(*resources.Resource)
+		want   string
+	}{
+		{name: "same identity", change: func(r *resources.Resource) { r.Object.Object["spec"] = map[string]any{"title": "old content"} }, want: "cpu"},
+		{name: "different name", change: func(r *resources.Resource) { r.Object.SetName("other") }, want: "cpu-uid"},
+		{name: "different namespace", change: func(r *resources.Resource) { r.Object.SetNamespace("other") }, want: "cpu-uid"},
+		{name: "different kind", change: func(r *resources.Resource) { r.Object.SetKind("Folder") }, want: "cpu-uid"},
+		{name: "different apiVersion", change: func(r *resources.Resource) { r.Object.SetAPIVersion("dashboard.grafana.app/v2beta1") }, want: "cpu-uid"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := "dashboards.v1.dashboard.grafana.app"
+			old := titledResource("uid", "CPU")
+			tt.change(old)
+			original := writeManifest(t, root, filepath.Join(dir, "cpu.json"), old)
+			incoming := titledResource("uid", "CPU")
+			namer, err := local.GroupResourcesByKindTitle(root, "json", nil, []*resources.Resource{incoming}, nil)
+			require.NoError(t, err)
+			path, err := namer(incoming)
+			require.NoError(t, err)
+			require.Equal(t, filepath.Join(dir, tt.want+".json"), path)
+			writer := local.FSWriter{Path: root, Namer: namer, Encoder: format.NewJSONCodec(), StopOnError: true}
+			require.NoError(t, writer.Write(t.Context(), resources.NewResources(incoming)))
+			current, err := os.ReadFile(filepath.Join(root, dir, "cpu.json"))
+			require.NoError(t, err)
+			if tt.want == "cpu" {
+				require.NotEqual(t, original, current, "same identity must refresh its content")
+			} else {
+				require.Equal(t, original, current, "different identity must keep its content")
+			}
+		})
+	}
+}
+
+func TestTitleNames_ExistingSecondaryCollisions(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(map[bool]string{false: "forward", true: "reversed"}[reverse], func(t *testing.T) {
+			root := t.TempDir()
+			dir := "dashboards.v1.dashboard.grafana.app"
+			for _, stem := range []string{"CPU", "cpu-b", "cpu-b-1"} {
+				writeManifest(t, root, filepath.Join(dir, stem+".json"), titledResource("existing-"+stem, "CPU"))
+			}
+			// Reserve undecodable files too, so they cannot be silently truncated.
+			require.NoError(t, os.WriteFile(filepath.Join(root, dir, "cpu-b-2.json"), []byte("invalid json"), 0o600))
+			input := []*resources.Resource{titledResource("b", "CPU"), titledResource("c", "CPU-b-3")}
+			if reverse {
+				slices.Reverse(input)
+			}
+			namer, err := local.GroupResourcesByKindTitle(root, "json", nil, input, nil)
+			require.NoError(t, err)
+			path, err := namer(titledResource("b", "CPU"))
+			require.NoError(t, err)
+			require.Equal(t, filepath.Join(dir, "cpu-b-4.json"), path)
+		})
+	}
+}
+
+func TestTitleNames_StaleWarnings(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		path string
+		warn bool
+	}{
+		{name: "rename", path: "old-title.json", warn: true},
+		{name: "mode switch", path: "uid.json", warn: true},
+		{name: "format switch", path: "cpu.yaml", warn: true},
+		{name: "same path", path: "cpu.json"},
+		{name: "same path different case", path: "CPU.json"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := "dashboards.v1.dashboard.grafana.app"
+			resource := titledResource("uid", "CPU")
+			writeManifest(t, root, filepath.Join(dir, tt.path), resource)
+			var warnings bytes.Buffer
+			namer, err := local.GroupResourcesByKindTitle(root, "json", nil, []*resources.Resource{resource}, &warnings)
+			require.NoError(t, err)
+			path, err := namer(resource)
+			require.NoError(t, err)
+			if tt.warn {
+				require.Contains(t, warnings.String(), "stale file")
+				require.Contains(t, warnings.String(), tt.path)
+				require.Contains(t, warnings.String(), "cpu.json")
+				require.Contains(t, warnings.String(), "remove stale files before pushing")
+			} else {
+				require.Empty(t, warnings.String())
+				require.Equal(t, filepath.Join(dir, tt.path), path)
+			}
+		})
+	}
+}
+
+func TestTitleNames_SymlinkedDirectories(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(map[bool]string{false: "root", true: "nested"}[nested], func(t *testing.T) {
+			root, target := t.TempDir(), t.TempDir()
+			dir := "dashboards.v1.dashboard.grafana.app"
+			original := writeManifest(t, target, filepath.Join(dir, "cpu.json"), titledResource("aaa", "CPU"))
+			if nested {
+				require.NoError(t, os.Symlink(filepath.Join(target, dir), filepath.Join(root, dir)))
+			} else {
+				root = filepath.Join(root, "link")
+				require.NoError(t, os.Symlink(target, root))
+			}
+			incoming := titledResource("bbb", "CPU")
+			namer, err := local.GroupResourcesByKindTitle(root, "json", nil, []*resources.Resource{incoming}, nil)
+			if nested {
+				require.ErrorContains(t, err, "cannot inventory symlinked destination directory")
+			} else {
+				require.NoError(t, err)
+				path, err := namer(incoming)
+				require.NoError(t, err)
+				require.Equal(t, filepath.Join(dir, "cpu-bbb.json"), path)
+			}
+			current, err := os.ReadFile(filepath.Join(target, dir, "cpu.json"))
+			require.NoError(t, err)
+			require.Equal(t, original, current)
 		})
 	}
 }

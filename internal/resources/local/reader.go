@@ -56,7 +56,7 @@ type FSReader struct {
 	// MaxConcurrentReads is the maximum number of concurrent file reads.
 	// If not set, the default is 1.
 	MaxConcurrentReads int
-	// Warn receives deprecation diagnostics; nil suppresses them.
+	// Warn receives deprecation and duplicate-identity diagnostics; nil uses logging for duplicates.
 	Warn io.Writer
 }
 
@@ -189,7 +189,7 @@ func (reader *FSReader) Read(
 
 	// Read all results in parallel.
 	gr.Go(func() error {
-		idx := make(map[objIdx]resources.Resource)
+		idx := make(map[resources.ResourceRef]string)
 		warned := make(map[schema.GroupVersion]bool)
 
 		for res := range resCh {
@@ -206,18 +206,16 @@ func (reader *FSReader) Read(
 				continue
 			}
 
-			if _, ok := idx[objIdx{
-				gvk:  obj.Raw.GetGroupVersionKind(),
-				name: obj.Name(),
-			}]; ok {
-				logger.Info("skipping duplicate object",
-					"gvk", obj.Raw.GetGroupVersionKind(),
-					"name", obj.Name(),
-					"path", res.Path,
-				)
-
+			if previous, ok := idx[obj.Ref()]; ok {
+				message := fmt.Sprintf("skipping duplicate object %q: same resource identity as %q; remove stale files before pushing", res.Path, previous)
+				if reader.Warn != nil {
+					output.EmitWarn(reader.Warn, message)
+				} else {
+					logger.Warn(message)
+				}
 				continue
 			}
+			idx[obj.Ref()] = res.Path
 
 			logger.Debug("adding object",
 				"gvk", obj.Raw.GetGroupVersionKind(),
@@ -325,11 +323,6 @@ func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) {
 	default:
 		return nil, UnrecognisedFormatError{Format: input}
 	}
-}
-
-type objIdx struct {
-	gvk  schema.GroupVersionKind
-	name string
 }
 
 type readResult struct {
