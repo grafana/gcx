@@ -3,18 +3,17 @@ package ml
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/rest"
 )
 
 type commandOpts struct {
@@ -112,7 +111,7 @@ func resourceCommands[T displayResource](loader providers.GrafanaConfigLoader, p
 					return err
 				}
 				if !yes {
-					return context.Canceled
+					return &gcxerrors.DetailedError{Summary: "delete cancelled", ExitCode: new(gcxerrors.ExitCancelled)}
 				}
 			}
 			crud, _, err := bound.Load(cmd.Context())
@@ -229,7 +228,7 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 					return err
 				}
 				if !yes {
-					return context.Canceled
+					return &gcxerrors.DetailedError{Summary: "delete cancelled", ExitCode: new(gcxerrors.ExitCancelled)}
 				}
 			}
 			client, err := loadAlerts(cmd.Context(), loader, parent, args[0])
@@ -278,22 +277,20 @@ func addAlertCommands(group *cobra.Command, loader providers.GrafanaConfigLoader
 }
 
 func loadAlerts(ctx context.Context, loader providers.GrafanaConfigLoader, parent, id string) (*client[Alert], error) {
-	cfg, err := loader.LoadGrafanaConfig(ctx)
+	deps, _, err := providers.LoadGrafanaDepsWithLoader(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
-	if err != nil {
-		return nil, fmt.Errorf("create Grafana HTTP client: %w", err)
-	}
-	return &client[Alert]{deps: adapter.ClientDeps{HTTP: httpClient, BaseURL: cfg.Host, Namespace: cfg.Namespace}, path: parent + "/" + id + "/alerts"}, nil
+	return &client[Alert]{deps: deps, path: parent + "/" + id + "/alerts"}, nil
 }
 
 func registerReadTable[T any](opts *cmdio.Options, verb string, table cmdio.Table[T]) {
 	if verb != "list" && verb != "get" {
 		return
 	}
-	cmdio.RegisterTable(opts, table)
+	if verb == "list" {
+		cmdio.RegisterTable(opts, table)
+	}
 	if verb == "get" {
 		single := cmdio.TableAdapter[*T, T]{Table: table, Rows: func(o *T) ([]T, error) { return []T{*o}, nil }}
 		opts.RegisterCustomCodec("table", single.Codec("table"))
@@ -337,11 +334,7 @@ func commandExample(path, verb string, alert bool) string {
 }
 
 func encodeList[T any](cmd *cobra.Command, opts *commandOpts, items []T) error {
-	limit := opts.Limit
-	if agent.IsAgentMode() && !cmd.Flags().Changed("limit") {
-		limit = 0
-	}
-	items, meta := cmdio.TruncateCompleteList(items, limit)
+	items, meta := cmdio.TruncateCompleteList(items, opts.Limit)
 	meta = cmdio.AttachListMeta(meta, os.Args)
 	if err := opts.IO.Encode(cmd.OutOrStdout(), items); err != nil {
 		return err

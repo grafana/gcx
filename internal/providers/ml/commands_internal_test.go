@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -332,4 +333,52 @@ func TestListLimitReportsTruncation(t *testing.T) {
 			require.Contains(t, errOut.String(), "--limit 0")
 		})
 	}
+}
+
+func TestDeclinedDeleteReportsCancellation(t *testing.T) {
+	mode := agent.IsAgentMode()
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(mode) })
+	t.Setenv("GCX_AUTO_APPROVE", "false")
+	for _, alert := range []bool{false, true} {
+		t.Run(strconv.FormatBool(alert), func(t *testing.T) {
+			loader := &testLoader{}
+			cmd := resourceCommands(loader, "jobs", "forecast job", "forecast jobs", jobs())
+			args := []string{"delete", "one"}
+			if alert {
+				cmd = &cobra.Command{Use: "jobs"}
+				addAlertCommands(cmd, loader, "jobs")
+				args = []string{"delete-alert", "parent", "one"}
+			}
+			cmd.SetArgs(args)
+			cmd.SetIn(strings.NewReader("n\n"))
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			err := cmd.Execute()
+			var detail *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detail)
+			require.Equal(t, "delete cancelled", detail.Summary)
+			require.NotNil(t, detail.ExitCode)
+			require.Equal(t, gcxerrors.ExitCancelled, *detail.ExitCode)
+			require.Zero(t, loader.calls)
+		})
+	}
+}
+
+func TestLoadAlertsUsesSharedConnection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, basePath+"jobs/parent/alerts", r.URL.Path)
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		fmt.Fprint(w, `{"status":"success","data":[]}`)
+	}))
+	defer srv.Close()
+	loader := &testLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL, BearerToken: "test-token"}, GrafanaURL: "https://stack.example", Namespace: "selected"}}
+	c, err := loadAlerts(t.Context(), loader, "jobs", "parent")
+	require.NoError(t, err)
+	require.Equal(t, 1, loader.calls)
+	require.Equal(t, "https://stack.example", c.deps.GrafanaURL)
+	require.Equal(t, "selected", c.deps.Namespace)
+	_, err = c.List(t.Context(), adapter.ListOptions{})
+	require.NoError(t, err)
 }

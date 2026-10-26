@@ -34,7 +34,7 @@ type client[T adapter.ResourceNamer] struct {
 
 func validID(id string) error {
 	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, "/\\?#%") {
-		return errors.New("invalid ML resource ID: use a server ID without path separators")
+		return fmt.Errorf("invalid ML resource ID %q: use a server ID without path separators", id)
 	}
 	return nil
 }
@@ -119,7 +119,7 @@ func (c *client[T]) Get(ctx context.Context, id string) (*T, error) {
 		return nil, err
 	}
 	if item.GetResourceName() != id {
-		return nil, errors.New("ml response ID does not match the requested ID")
+		return nil, fmt.Errorf("ml response ID %q does not match the requested ID %q", item.GetResourceName(), id)
 	}
 	return &item, nil
 }

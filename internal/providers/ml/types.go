@@ -182,4 +182,3 @@ type displayResource interface {
 func (r Job) displayName() string             { return r.Name }
 func (r Holiday) displayName() string         { return r.Name }
 func (r OutlierDetector) displayName() string { return r.Name }
-func (r Alert) displayName() string           { return r.Title }

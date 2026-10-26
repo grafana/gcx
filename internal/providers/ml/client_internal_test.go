@@ -104,7 +104,7 @@ func TestInvalidIDDoesNotSendRequest(t *testing.T) {
 		t.Run(id, func(t *testing.T) {
 			c := &client[Job]{}
 			_, err := c.Get(context.Background(), id)
-			require.Error(t, err)
+			require.ErrorContains(t, err, fmt.Sprintf("%q", id))
 			_, err = c.Update(context.Background(), id, &Job{})
 			require.Error(t, err)
 			require.Error(t, c.Delete(context.Background(), id))
