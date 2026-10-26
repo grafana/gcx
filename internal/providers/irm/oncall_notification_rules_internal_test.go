@@ -125,7 +125,8 @@ func TestPersonalNotificationRuleExampleCreateAfterNotFound(t *testing.T) {
 			}
 			var rule PersonalNotificationRule
 			if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			if rule.ID != "my-wait-rule" || rule.WaitDelay == nil || *rule.WaitDelay != "300.0" {
 				t.Errorf("POST body = %#v", rule)
@@ -167,4 +168,32 @@ func TestPersonalNotificationRuleExampleCreateAfterNotFound(t *testing.T) {
 		return
 	}
 	t.Fatal("personal notification rule registration not found")
+}
+
+func TestOnCallAdapterNotFoundScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) }))
+	defer srv.Close()
+	loader := &fakeLoader{client: &OnCallClient{Host: srv.URL, HTTPClient: srv.Client()}}
+	for _, tc := range []struct {
+		kind          string
+		typedNotFound bool
+	}{{"PersonalNotificationRule", true}, {"Route", false}} {
+		t.Run(tc.kind, func(t *testing.T) {
+			for _, reg := range buildOnCallRegistrations(loader) {
+				if reg.GVK.Kind != tc.kind {
+					continue
+				}
+				a, err := reg.Factory(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = a.Get(t.Context(), "missing", metav1.GetOptions{})
+				if err == nil || apierrors.IsNotFound(err) != tc.typedNotFound {
+					t.Fatalf("Get error = %v, want typed NotFound %t", err, tc.typedNotFound)
+				}
+				return
+			}
+			t.Fatalf("registration %s not found", tc.kind)
+		})
+	}
 }

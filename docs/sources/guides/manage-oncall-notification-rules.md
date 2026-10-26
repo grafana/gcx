@@ -52,3 +52,36 @@ The internal route defaults to the current user and `important=false` when
 query parameters are absent. gcx sends `?user=&important=` to disable these
 defaults. The backend then returns the full collection. The resource adapter
 uses the same client methods as the provider commands.
+
+## Select a step and notification channel
+
+Use these internal API values for `step`:
+
+| Value | Step |
+|-------|------|
+| `0` | Wait for `wait_delay` seconds |
+| `1` | Notify through `notify_by` |
+
+Notification channels depend on the stack and its integrations. Read the live
+catalog to get the available values and display names:
+
+```bash
+gcx api /api/plugins/grafana-irm-app/resources/notification_policies/notify_by_options/
+```
+
+Common `notify_by` values are:
+
+| Value | Channel |
+|-------|---------|
+| `0` | Slack mentions |
+| `1` | SMS |
+| `2` | Phone call |
+| `3` | Telegram |
+| `5` | Mobile push |
+| `6` | Mobile push important |
+| `7` | Microsoft Teams |
+| `8` | Email |
+| `11` | Webhook |
+
+A wait step returns `notify_by: null`. The default table shows a dash for that
+value and shows the wait duration in `WAIT-DELAY`.

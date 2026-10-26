@@ -3,6 +3,7 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -38,7 +39,8 @@ func (c *OnCallClient) ListPersonalNotificationRules(ctx context.Context) ([]Per
 }
 
 func (c *OnCallClient) GetPersonalNotificationRule(ctx context.Context, id string) (*PersonalNotificationRule, error) {
-	return getResource[PersonalNotificationRule](ctx, c, notificationPoliciesPath, id, "personal notification rule")
+	return getResourceWithNotFound[PersonalNotificationRule](ctx, c, notificationPoliciesPath, id, "personal notification rule",
+		fmt.Errorf("irm: personal notification rule %q %w", id, adapter.ErrNotFound))
 }
 func (c *OnCallClient) CreatePersonalNotificationRule(ctx context.Context, r PersonalNotificationRule) (*PersonalNotificationRule, error) {
 	return createResource[PersonalNotificationRule, PersonalNotificationRule](ctx, c, notificationPoliciesPath, r, "personal notification rule")

@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/client-go/rest"
 )
 
@@ -215,6 +214,12 @@ func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 }
 
 func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string) (*T, error) {
+	return getResourceWithNotFound[T](ctx, c, basePath, id, resourceType,
+		fmt.Errorf("irm: %s %q not found", resourceType, id))
+}
+
+// getResourceWithNotFound lets a resource opt in to a typed missing-object error.
+func getResourceWithNotFound[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string, notFound error) (*T, error) {
 	resp, err := c.DoRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: get %s: %w", resourceType, err)
@@ -222,7 +227,7 @@ func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, reso
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("irm: %s %q %w", resourceType, id, adapter.ErrNotFound)
+		return nil, notFound
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, providers.HandleErrorResponse(resp)
