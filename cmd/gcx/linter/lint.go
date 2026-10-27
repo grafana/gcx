@@ -208,10 +208,10 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 			violation.Rule = "syntax-error"
 		}
 
+		// Do not return `local.UnrecognisedFormatError` as violations.
 		unrecognizedFormatErr := local.UnrecognisedFormatError{}
 		if errors.As(err, &unrecognizedFormatErr) {
-			violation.Rule = "unrecognized-format"
-			violation.Severity = "warning"
+			return
 		}
 
 		engine.RecordViolation(violation)
