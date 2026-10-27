@@ -95,6 +95,35 @@ func (e *APIError) IsParseError() bool {
 	return strings.Contains(msg, "parse error") || strings.Contains(msg, "syntax error")
 }
 
+// IsPermissionError reports whether the message describes a permission denial
+// from the datasource or the provider behind it, rather than a problem with the
+// query itself.
+//
+// It exists because a datasource that proxies a cloud provider tunnels that
+// provider's authorization failure through the body of an HTTP 200 or 400:
+// BigQuery answers an unauthorized project with "googleapi: Error 403: Access
+// Denied: ... accessDenied" inside a 400, so classifying on StatusCode alone
+// reports a permission problem as a malformed query.
+func (e *APIError) IsPermissionError() bool {
+	msg := strings.ToLower(e.Message)
+	for _, marker := range []string{
+		"access denied",
+		"accessdenied",
+		"permission denied",
+		"permission_denied",
+		"insufficient permission",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+
+	// GCP's long form, e.g. "User does not have bigquery.jobs.create
+	// permission in project X". Both halves are required so an ordinary
+	// message mentioning a permission by name is not misread.
+	return strings.Contains(msg, "does not have") && strings.Contains(msg, "permission")
+}
+
 type grafanaQueryEnvelope struct {
 	Results map[string]grafanaQueryResult `json:"results"`
 }

@@ -494,11 +494,19 @@ func convertQueryErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Suggestions: queryErrorSuggestions(apiErr),
 	}
 
-	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
+	switch {
+	case apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden:
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 		detailedErr.DocsLink = docs.ServiceAccounts
-	} else if link := queryErrorDocsLink(apiErr); link != "" {
-		detailedErr.DocsLink = link
+	case apiErr.IsPermissionError():
+		// The denial came from the provider behind the datasource, so the
+		// exit code must still say "authorization", but the Grafana
+		// service-account docs would send the reader to the wrong credential.
+		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
+	default:
+		if link := queryErrorDocsLink(apiErr); link != "" {
+			detailedErr.DocsLink = link
+		}
 	}
 
 	return detailedErr, true
@@ -522,9 +530,20 @@ func queryErrorDocsLink(apiErr *queryerror.APIError) string {
 }
 
 func queryErrorSummary(apiErr *queryerror.APIError) string {
-	switch apiErr.StatusCode {
-	case http.StatusUnauthorized:
+	// A credential the endpoint rejected outright is an authentication
+	// failure whatever the body says, so 401 is settled before the message
+	// is consulted.
+	if apiErr.StatusCode == http.StatusUnauthorized {
 		return gcxerrors.SummaryAuthenticationFailed
+	}
+	// A permission denial tunneled through a non-403 status (see
+	// APIError.IsPermissionError) would otherwise be reported as an invalid
+	// query or a generic API error.
+	if apiErr.IsPermissionError() {
+		return gcxerrors.SummaryAuthorizationFailed
+	}
+
+	switch apiErr.StatusCode {
 	case http.StatusForbidden:
 		return gcxerrors.SummaryAuthorizationFailed
 	case http.StatusBadRequest:
@@ -542,6 +561,13 @@ func queryErrorSummary(apiErr *queryerror.APIError) string {
 func queryErrorContext(apiErr *queryerror.APIError) string {
 	if language := queryErrorLanguage(apiErr); apiErr.StatusCode == http.StatusBadRequest && apiErr.IsParseError() && language != "" {
 		return fmt.Sprintf("Invalid %s query (HTTP %d)", language, apiErr.StatusCode)
+	}
+
+	// Name the real cause rather than the HTTP status the provider's denial
+	// arrived under, which is what made this read as a syntax problem.
+	if apiErr.IsPermissionError() && apiErr.StatusCode != http.StatusForbidden {
+		return fmt.Sprintf("%s denied the request (HTTP %d, permission denied upstream)",
+			queryErrorDatasourceName(apiErr.Datasource), apiErr.StatusCode)
 	}
 
 	subject := queryErrorDatasourceName(apiErr.Datasource) + " request"
@@ -565,6 +591,20 @@ func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 		return grafanaAuthSuggestions(apiErr.StatusCode)
 	}
 
+	// Point at the datasource's own credential, not the Grafana one: the
+	// upstream message above already names the permission that is missing.
+	if apiErr.IsPermissionError() {
+		suggestions := []string{
+			"The datasource's own credential was denied upstream — your Grafana credential is not the problem",
+			"Grant the datasource's service account the permission named above",
+		}
+		if apiErr.Datasource == "bigquery" {
+			suggestions = append(suggestions,
+				"BigQuery needs roles/bigquery.jobUser to run queries, plus roles/bigquery.metadataViewer on the project to list datasets, tables and columns")
+		}
+		return suggestions
+	}
+
 	suggestions := []string{}
 	if apiErr.IsParseError() && strings.Contains(strings.ToLower(apiErr.Message), "expecting string") {
 		if example := queryErrorStringLiteralExample(apiErr); example != "" {
@@ -581,6 +621,8 @@ func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 
 func queryErrorDatasourceName(datasource string) string {
 	switch datasource {
+	case "bigquery":
+		return "BigQuery"
 	case "loki":
 		return "Loki"
 	case "prometheus":

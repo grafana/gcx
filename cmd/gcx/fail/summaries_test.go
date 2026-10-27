@@ -67,6 +67,28 @@ func TestConverterBranches(t *testing.T) {
 		{"query parse error", queryerror.New("prometheus", "query", 400, "parse error: unexpected", ""), gcxerrors.SummaryInvalidQuery, gcxerrors.ExitGeneralError},
 		{"query 400 with operation", queryerror.New("loki", "labels query", 400, "bad request", ""), gcxerrors.SummaryInvalidQuery, gcxerrors.ExitGeneralError},
 		{"query 400 without operation", queryerror.New("loki", "", 400, "bad request", ""), gcxerrors.SummaryInvalidQuery, gcxerrors.ExitGeneralError},
+		// BigQuery answers an unauthorized project with googleapi's 403 inside
+		// an HTTP 400 body. Reported as "Invalid query" + exit 1 before this,
+		// which read as a syntax problem and was indistinguishable from one by
+		// exit code.
+		{
+			"bigquery permission denied tunneled through a 400",
+			queryerror.New("bigquery", "query", 400,
+				"googleapi: Error 403: Access Denied: Project p: User does not have bigquery.jobs.create permission in project p., accessDenied", "downstream"),
+			gcxerrors.SummaryAuthorizationFailed, gcxerrors.ExitAuthFailure,
+		},
+		{
+			"permission denial tunneled through a 500",
+			queryerror.New("bigquery", "query", 500, "PERMISSION_DENIED: caller lacks access", ""),
+			gcxerrors.SummaryAuthorizationFailed, gcxerrors.ExitAuthFailure,
+		},
+		{
+			// A 401 is the credential being rejected outright, so it stays an
+			// authentication failure even when the body talks about permissions.
+			"401 stays authentication failed despite a permission message",
+			queryerror.New("bigquery", "query", 401, "access denied", ""),
+			gcxerrors.SummaryAuthenticationFailed, gcxerrors.ExitAuthFailure,
+		},
 		{"query trace 404", queryerror.New("tempo", "get trace", 404, "trace not found", ""), gcxerrors.SummaryResourceNotFound, gcxerrors.ExitGeneralError},
 		{"query 404", queryerror.New("loki", "query", 404, "not found", ""), gcxerrors.SummaryResourceNotFound, gcxerrors.ExitGeneralError},
 		{"query 500 with operation", queryerror.New("loki", "query", 500, "boom", ""), gcxerrors.SummaryAPIError, gcxerrors.ExitGeneralError},
