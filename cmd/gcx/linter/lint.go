@@ -184,7 +184,8 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 	// (and other errors) are not silenced.
 	resourceReader.AddErrorListener(func(err error, path string) {
 		violation := linter.Violation{
-			ResourceType: "unknown",
+			ResourceType: "file",
+			Category:     "reader",
 			Severity:     "error",
 			Location:     linter.Location{File: path},
 			Details:      err.Error(),
