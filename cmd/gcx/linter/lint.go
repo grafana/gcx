@@ -144,6 +144,7 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 		linter.WithCustomRules(opts.rules),
 		linter.MaxConcurrency(opts.maxConcurrent),
 		linter.ResourceReader(resourceReader),
+		linter.ExternalRules(externalRules()),
 	}
 
 	if opts.disableAll {
@@ -183,40 +184,12 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 	// Record reader errors as linter violations: this makes sure parse errors
 	// (and other errors) are not silenced.
 	resourceReader.AddErrorListener(func(err error, path string) {
-		violation := linter.Violation{
-			ResourceType: "file",
-			Category:     "reader",
-			Severity:     "fatal",
-			Location:     linter.Location{File: path},
-			Details:      err.Error(),
-			Description:  err.Error(),
-		}
-
-		deprecatedErr := resources.DeprecatedResourceError{}
-		if errors.As(err, &deprecatedErr) {
-			violation.ResourceType = strings.Split(deprecatedErr.Used.Group, ".")[0]
-			violation.Severity = "warning"
-			violation.Rule = "deprecated-resource"
-		}
-
-		duplicatedErr := resources.DuplicatedResourceError{}
-		if errors.As(err, &duplicatedErr) {
-			violation.Rule = "duplicated-resource"
-			violation.Severity = "error"
-		}
-
-		parseErr := local.ParseError{}
-		if errors.As(err, &parseErr) {
-			violation.Rule = "syntax-error"
-		}
-
-		// Do not return `local.UnrecognisedFormatError` as violations.
-		unrecognizedFormatErr := local.UnrecognisedFormatError{}
-		if errors.As(err, &unrecognizedFormatErr) {
+		violation := errorToViolation(err, path)
+		if violation == nil {
 			return
 		}
 
-		engine.RecordViolation(violation)
+		engine.RecordViolation(*violation)
 	})
 
 	report, err := engine.Lint(cmd.Context())
@@ -238,6 +211,81 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 	}
 
 	return nil
+}
+
+func errorToViolation(err error, path string) *linter.Violation {
+	violation := &linter.Violation{
+		Rule:         "reader-error",
+		ResourceType: "file",
+		Category:     "reader",
+		Severity:     "fatal",
+		Location:     linter.Location{File: path},
+		Details:      err.Error(),
+		Description:  err.Error(),
+	}
+
+	deprecatedErr := resources.DeprecatedResourceError{}
+	if errors.As(err, &deprecatedErr) {
+		violation.ResourceType = strings.Split(deprecatedErr.Used.Group, ".")[0]
+		violation.Severity = "warning"
+		violation.Rule = "deprecated-resource"
+	}
+
+	duplicatedErr := resources.DuplicatedResourceError{}
+	if errors.As(err, &duplicatedErr) {
+		violation.Rule = "duplicated-resource"
+		violation.Severity = "error"
+	}
+
+	parseErr := local.ParseError{}
+	if errors.As(err, &parseErr) {
+		violation.Rule = "syntax-error"
+	}
+
+	// Do not return `local.UnrecognisedFormatError` as violations.
+	unrecognizedFormatErr := local.UnrecognisedFormatError{}
+	if errors.As(err, &unrecognizedFormatErr) {
+		return nil
+	}
+
+	return violation
+}
+
+func externalRules() []linter.Rule {
+	return []linter.Rule{
+		{
+			Resource:    "file",
+			Category:    "reader",
+			Name:        "syntax-error",
+			Description: "Resources should not contain syntax errors.",
+			Severity:    "fatal",
+			Builtin:     true,
+		},
+		{
+			Resource:    "file",
+			Category:    "reader",
+			Name:        "reader-error",
+			Description: "Resources should be readable on the filesystem.",
+			Severity:    "fatal",
+			Builtin:     true,
+		},
+		{
+			Resource:    "file",
+			Category:    "reader",
+			Name:        "deprecated-resource",
+			Description: "Deprecated resources should not be used.",
+			Severity:    "warning",
+			Builtin:     true,
+		},
+		{
+			Resource:    "file",
+			Category:    "reader",
+			Name:        "duplicated-resource",
+			Description: "Resources should not be duplicated.",
+			Severity:    "error",
+			Builtin:     true,
+		},
+	}
 }
 
 type reporterCodec struct {

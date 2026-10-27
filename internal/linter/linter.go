@@ -121,6 +121,13 @@ func ResourceReader(reader resourceReader) Option {
 	}
 }
 
+func ExternalRules(rules []Rule) Option {
+	return func(l *Linter) error {
+		l.externalRules = append(l.externalRules, rules...)
+		return nil
+	}
+}
+
 type resourceReader interface {
 	Read(ctx context.Context, dst *resources.Resources, filters resources.Filters, paths []string) error
 }
@@ -133,6 +140,7 @@ type Linter struct {
 	customRulesPaths []string
 	maxConcurrency   int
 
+	externalRules           []Rule
 	externalViolations      []Violation
 	externalViolationsMutex sync.RWMutex
 
@@ -268,7 +276,7 @@ func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
 		rules = append(rules, rule)
 	}
 
-	return rules, nil
+	return append(rules, linter.externalRules...), nil
 }
 
 // restrictedCapabilities returns an OPA capabilities set with network-access
