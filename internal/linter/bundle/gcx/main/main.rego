@@ -1,6 +1,6 @@
 package gcx.main
 
-import data.gcx.result
+import data.gcx.rules
 
 lint.violations = report
 
@@ -19,7 +19,7 @@ report contains violation if {
 report contains violation if {
     some resource, category, rule
 
-    not result.rule_disabled(resource, category, rule)
+    not rules.rule_disabled(resource, category, rule)
 
     some violation in data.gcx.rules[resource][category][rule].report
 }
@@ -28,7 +28,7 @@ report contains violation if {
 report contains violation if {
     some resource, category, rule
 
-    not result.rule_disabled(resource, category, rule)
+    not rules.rule_disabled(resource, category, rule)
 
     some violation in data.custom.gcx.rules[resource][category][rule].report
 }

@@ -1,6 +1,6 @@
 package gcx.external
 
-import data.gcx.result
+import data.gcx.rules
 
 lint.violations = report
 
@@ -8,6 +8,6 @@ lint.violations = report
 report contains violation if {
     some violation in input.externalViolations
 
-    not result.rule_disabled(violation.resource_type, violation.category, violation.rule)
+    not rules.rule_disabled(violation.resource_type, violation.category, violation.rule)
 }
 

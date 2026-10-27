@@ -1,4 +1,4 @@
-package gcx.result
+package gcx.rules
 
 # Enabled/disabled rules
 rule_disabled(resource, _, _) if {

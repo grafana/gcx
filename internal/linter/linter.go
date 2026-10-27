@@ -361,7 +361,7 @@ func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 		return Report{}, err
 	}
 
-	// Matches the report-generation statement in `./bundle/gcx/external/main.rego`
+	// Matches the report-generation statement in `./bundle/gcx/external/external.rego`
 	externalViolationsQuery, err := linter.prepare(ctx, "lint := data.gcx.external.lint")
 	if err != nil {
 		return Report{}, err
