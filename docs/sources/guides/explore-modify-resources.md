@@ -27,13 +27,20 @@ Use the experimental `gcx resources search` command to find ranked matches from 
 ```shell
 gcx resources search "kubernetes memory problems"
 ```
+Search returns top matches, without pagination or an exhaustive resource inventory. Scores rank matches in the response. 
 
-This command requires Grafana's global hybrid search endpoint to be enabled.
-On supported Grafana Cloud stacks, it can combine text and semantic matching.
-On-premises deployments with the endpoint use text matching only; semantic matching isn't available on-premises.
+### Prerequisites
+
+You need to enable the Grafana global hybrid search endpoint to use `gcx resources search`.
+
+- On supported Grafana Cloud stacks, `gcx resources search` can combine text and semantic matching.
+- On self-managed deployments with the endpoint, only use text matching. Semantic matching isn't available on-premises.
+
 Your deployment must have default resource types, or you must select types with `--resource`.
 
-Select resource types and exact folder UIDs when you need a narrower search:
+### Search for specific resources
+
+Select resource types and exact folder UIDs for a narrower search:
 
 ```shell
 gcx resources search "memory" \
@@ -45,9 +52,8 @@ gcx resources search "memory" --folder general
 ```
 
 Repeat `--resource` to search your selected types instead of the server defaults.
-Repeat `--folder` to match any listed folder UID.
-Folders match exactly, without descendants; `general` or `--folder ''` selects the root folder.
-The default limit is 50, and the maximum is 200.
+
+Repeat `--folder` to match any listed folder UID. Folders match exactly, without descendants; `general` or `--folder ''` selects the root folder. The default limit is 50, and the maximum is 200.
 
 Use `-o wide` to see matching text, or `-o json` or `-o yaml` for the full response:
 
@@ -55,9 +61,6 @@ Use `-o wide` to see matching text, or `-o json` or `-o yaml` for the full respo
 gcx resources search "memory" -o wide
 gcx resources search "memory" -o json
 ```
-
-Scores rank matches in the response; they aren't percentages.
-Search returns top matches, without pagination or an exhaustive resource inventory.
 
 ## Find and delete dashboards using incorrect data sources
 
