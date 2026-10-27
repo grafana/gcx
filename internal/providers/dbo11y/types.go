@@ -1,9 +1,14 @@
 package dbo11y
 
-// The API's own field names and nesting are confined to the api wire types
-// in this file; everything the commands print or encode uses the output
-// types below, so a change in the API's shape does not reach the output
-// contract.
+// The API's own field names and nesting live in the api wire types in this
+// file, and the commands print and encode the output types below.
+//
+// The separation is not total: apiInstance decodes the metrics object straight
+// into Metrics, the output type, so a rename of qps, avg_latency_ms,
+// error_rate or cpu_percent on the API side would reach the output contract
+// for those four keys. Giving Metrics a wire twin would close that, at the
+// cost of a conversion whose only job is to copy four fields that have always
+// matched.
 
 // apiInstance is the wire shape of GET /instances and GET
 // /instances/{server_id}. It exists only to decode the response; everything
