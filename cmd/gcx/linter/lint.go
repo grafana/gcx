@@ -186,7 +186,7 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 		violation := linter.Violation{
 			ResourceType: "file",
 			Category:     "reader",
-			Severity:     "error",
+			Severity:     "fatal",
 			Location:     linter.Location{File: path},
 			Details:      err.Error(),
 			Description:  err.Error(),
@@ -202,6 +202,7 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 		duplicatedErr := resources.DuplicatedResourceError{}
 		if errors.As(err, &duplicatedErr) {
 			violation.Rule = "duplicated-resource"
+			violation.Severity = "error"
 		}
 
 		parseErr := local.ParseError{}
