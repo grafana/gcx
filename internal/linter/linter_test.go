@@ -82,7 +82,7 @@ func TestLinter_Lint_fileInputs_withExternalViolation(t *testing.T) {
 		linter.Debug(t.Output()),
 		linter.ResourceReader(resourceReader),
 		linter.InputPaths([]string{
-			"./testdata/dashboards/syntax-error.json",
+			"./testdata/dashboards-with-syntax-error/syntax-error.json",
 		}),
 	)
 	req.NoError(err)
@@ -116,9 +116,9 @@ func TestLinter_Lint_fileInputs_withExternalViolation(t *testing.T) {
 	req.Equal("file", violation.ResourceType)
 	req.Equal("reader", violation.Category)
 	req.Equal("fatal", violation.Severity)
-	req.Equal("./testdata/dashboards/syntax-error.json", violation.Location.File)
-	req.Equal("parse error in './testdata/dashboards/syntax-error.json': invalid character '\"' after object key:value pair", violation.Details)
-	req.Equal("parse error in './testdata/dashboards/syntax-error.json': invalid character '\"' after object key:value pair", violation.Description)
+	req.Equal("./testdata/dashboards-with-syntax-error/syntax-error.json", violation.Location.File)
+	req.Equal("parse error in './testdata/dashboards-with-syntax-error/syntax-error.json': invalid character '\"' after object key:value pair", violation.Details)
+	req.Equal("parse error in './testdata/dashboards-with-syntax-error/syntax-error.json': invalid character '\"' after object key:value pair", violation.Description)
 }
 
 func TestLinter_Lint_directoryInputs(t *testing.T) {
