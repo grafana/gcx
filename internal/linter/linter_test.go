@@ -2,10 +2,13 @@ package linter_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,6 +68,57 @@ func TestLinter_Lint_fileInputs(t *testing.T) {
 			Reference:   "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/dashboard/panel-title-description.md",
 		},
 	}, violation.RelatedResources)
+}
+
+func TestLinter_Lint_fileInputs_withExternalViolation(t *testing.T) {
+	req := require.New(t)
+
+	resourceReader := &local.FSReader{
+		Decoders:    format.Codecs(),
+		StopOnError: false,
+	}
+
+	engine, err := linter.New(
+		linter.Debug(t.Output()),
+		linter.ResourceReader(resourceReader),
+		linter.InputPaths([]string{
+			"./testdata/dashboards/syntax-error.json",
+		}),
+	)
+	req.NoError(err)
+
+	resourceReader.AddErrorListener(func(err error, path string) {
+		violation := linter.Violation{
+			ResourceType: "file",
+			Category:     "reader",
+			Severity:     "fatal",
+			Location:     linter.Location{File: path},
+			Details:      err.Error(),
+			Description:  err.Error(),
+		}
+
+		parseErr := local.ParseError{}
+		if errors.As(err, &parseErr) {
+			violation.Rule = "syntax-error"
+		}
+
+		engine.RecordViolation(violation)
+	})
+
+	report, err := engine.Lint(context.TODO())
+	req.NoError(err)
+
+	req.Len(report.Violations, 1)
+
+	violation := report.Violations[0]
+
+	req.Equal("syntax-error", violation.Rule)
+	req.Equal("file", violation.ResourceType)
+	req.Equal("reader", violation.Category)
+	req.Equal("fatal", violation.Severity)
+	req.Equal("./testdata/dashboards/syntax-error.json", violation.Location.File)
+	req.Equal("parse error in './testdata/dashboards/syntax-error.json': invalid character '\"' after object key:value pair", violation.Details)
+	req.Equal("parse error in './testdata/dashboards/syntax-error.json': invalid character '\"' after object key:value pair", violation.Description)
 }
 
 func TestLinter_Lint_directoryInputs(t *testing.T) {
@@ -157,6 +211,34 @@ func TestLinter_Lint_disableAll(t *testing.T) {
 	req.NoError(err)
 
 	req.Empty(report.Violations)
+}
+
+func TestLinter_Lint_disableAll_withFatalViolation(t *testing.T) {
+	req := require.New(t)
+
+	engine, err := linter.New(
+		linter.Debug(t.Output()),
+		linter.InputPaths([]string{}),
+		linter.DisableAll(),
+	)
+	req.NoError(err)
+
+	fatalViolation := linter.Violation{
+		Rule:         "rule-name",
+		ResourceType: "file",
+		Category:     "reader",
+		Severity:     "fatal",
+		Location:     linter.Location{File: "file.json"},
+		Description:  "description",
+		Details:      "details",
+	}
+
+	engine.RecordViolation(fatalViolation)
+
+	report, err := engine.Lint(context.TODO())
+	req.NoError(err)
+
+	req.Equal([]linter.Violation{fatalViolation}, report.Violations)
 }
 
 func TestLinter_Lint_disableAll_enableRule(t *testing.T) {
