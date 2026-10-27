@@ -27,7 +27,7 @@ func (opts *listDatasetsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")
 	flags.StringVar(&opts.Project, "project", "", "GCP project ID (default: the datasource's default project)")
 	flags.StringVar(&opts.Filter, "filter", "", "Only list datasets whose name contains this text (case-insensitive)")
-	flags.IntVar(&opts.Limit, "limit", bigquery.MetadataRowLimit, "Max datasets to return; more matches are dropped with a warning (0 for no cap)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "datasets", bigquery.MetadataRowLimit)
 }
 
 func (opts *listDatasetsOpts) Validate() error {
@@ -70,9 +70,6 @@ project with --filter, or pass --limit 0 to return every dataset.`,
 			}
 
 			if err := bigquery.ValidateProject(opts.Project); err != nil {
-				return err
-			}
-			if err := validateMetadataLimit(opts.Limit); err != nil {
 				return err
 			}
 

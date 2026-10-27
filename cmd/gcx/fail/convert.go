@@ -564,8 +564,13 @@ func queryErrorContext(apiErr *queryerror.APIError) string {
 	}
 
 	// Name the real cause rather than the HTTP status the provider's denial
-	// arrived under, which is what made this read as a syntax problem.
-	if apiErr.IsPermissionError() && apiErr.StatusCode != http.StatusForbidden {
+	// arrived under, which is what made this read as a syntax problem. 401 is
+	// excluded alongside 403: queryErrorSummary settles it as an
+	// authentication failure before reading the message, so naming an upstream
+	// permission denial here would contradict the summary.
+	if apiErr.IsPermissionError() &&
+		apiErr.StatusCode != http.StatusForbidden &&
+		apiErr.StatusCode != http.StatusUnauthorized {
 		return fmt.Sprintf("%s denied the request (HTTP %d, permission denied upstream)",
 			queryErrorDatasourceName(apiErr.Datasource), apiErr.StatusCode)
 	}
@@ -595,6 +600,7 @@ func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 	// upstream message above already names the permission that is missing.
 	if apiErr.IsPermissionError() {
 		suggestions := []string{
+			"Inspect the datasource's configured identity: gcx datasources get <uid> -o json",
 			"The datasource's own credential was denied upstream — your Grafana credential is not the problem",
 			"Grant the datasource's service account the permission named above",
 		}

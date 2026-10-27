@@ -2095,3 +2095,37 @@ func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
 
 	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
 }
+
+// TestErrorToDetailedError_TunneledPermissionDenial pins the whole shape of a
+// provider's permission denial that arrives under a non-403 status, and the
+// 401 boundary: a credential rejected outright must not pick up a details line
+// claiming the denial happened upstream, because the summary and the
+// suggestions both say the caller's own credential failed.
+func TestErrorToDetailedError_TunneledPermissionDenial(t *testing.T) {
+	const accessDenied = "googleapi: Error 403: Access Denied: Project p: User does not have bigquery.jobs.create permission in project p., accessDenied"
+
+	t.Run("400 names the upstream denial and exits 3", func(t *testing.T) {
+		got := toDetailedError(t, queryerror.New("bigquery", "query", 400, accessDenied, "downstream"))
+
+		require.NotNil(t, got)
+		assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, got.Summary)
+		require.NotNil(t, got.ExitCode)
+		assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+		assert.Contains(t, got.Details, "permission denied upstream")
+		// errors.md 4.2: at least one suggestion must be runnable.
+		require.NotEmpty(t, got.Suggestions)
+		assert.Equal(t, "Inspect the datasource's configured identity: gcx datasources get <uid> -o json", got.Suggestions[0])
+		// The Grafana service-account page would point at the wrong credential.
+		assert.Empty(t, got.DocsLink)
+	})
+
+	t.Run("401 stays an authentication failure without an upstream details line", func(t *testing.T) {
+		got := toDetailedError(t, queryerror.New("bigquery", "query", 401, "access denied", ""))
+
+		require.NotNil(t, got)
+		assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, got.Summary)
+		assert.NotContains(t, got.Details, "permission denied upstream",
+			"a 401 summary says the caller's credential failed; the details must not blame an upstream denial")
+		assert.Contains(t, got.Suggestions, "Review your Grafana credentials: gcx config view")
+	})
+}

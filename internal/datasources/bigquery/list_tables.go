@@ -30,7 +30,7 @@ func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Project, "project", "", "GCP project ID (default: the datasource's default project)")
 	flags.StringVar(&opts.Dataset, "dataset", "", "Dataset to list tables from (required)")
 	flags.StringVar(&opts.Filter, "filter", "", "Only list tables whose name contains this text (case-insensitive)")
-	flags.IntVar(&opts.Limit, "limit", bigquery.MetadataRowLimit, "Max tables to return; more matches are dropped with a warning (0 for no cap)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "tables", bigquery.MetadataRowLimit)
 }
 
 func (opts *listTablesOpts) Validate() error {
@@ -80,9 +80,6 @@ with --filter, or pass --limit 0 to return every table.`,
 				return err
 			}
 			if err := bigquery.ValidateName(opts.Dataset, "dataset"); err != nil {
-				return err
-			}
-			if err := validateMetadataLimit(opts.Limit); err != nil {
 				return err
 			}
 

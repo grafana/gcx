@@ -31,9 +31,9 @@ func TestListTablesCmd_ValidationErrors(t *testing.T) {
 			wantErr: "invalid dataset",
 		},
 		{
-			name:    "negative --limit rejected before any config/datasource I/O",
+			name:    "negative --limit rejected by the shared binder before any config/datasource I/O",
 			args:    []string{"--dataset", "d", "--limit", "-1"},
-			wantErr: "--limit must be >= 0",
+			wantErr: "invalid --limit -1: must be >= 0",
 		},
 	}
 

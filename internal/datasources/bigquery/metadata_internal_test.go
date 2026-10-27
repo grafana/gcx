@@ -73,9 +73,3 @@ func TestWarnIfMetadataTruncated(t *testing.T) {
 		assert.Contains(t, stderr.String(), "more columns match")
 	})
 }
-
-func TestValidateMetadataLimit(t *testing.T) {
-	assert.NoError(t, validateMetadataLimit(0), "0 means unbounded, not invalid")
-	assert.NoError(t, validateMetadataLimit(1))
-	assert.ErrorContains(t, validateMetadataLimit(-1), "--limit must be >= 0")
-}
