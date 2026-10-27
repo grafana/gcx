@@ -48,6 +48,15 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 }
 ```
 
+**Redirected to a file** — spilling is skipped and the full payload is written
+inline, however large it is, when stdout is a **regular file on disk** (the
+`gcx ... > out.json` case). The threshold exists to protect an agent's context
+window; a caller who named a destination file has already said where the bytes
+belong, and a receipt pointing at a different temp file is never what they
+asked for. A pipe, a terminal and `/dev/null` are not regular files, so a
+harness capturing stdout — as `os/exec` does for any non-`*os.File` writer —
+keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
+
 | Field | Always present | Description |
 |-------|---------------|-------------|
 | `type` | yes | Fixed discriminator `gcx.spill_reference` — the receipt shape differs from the domain result, so consumers dispatch on this marker instead of heuristics |

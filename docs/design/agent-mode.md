@@ -59,7 +59,9 @@ When agent mode is active:
    `io.Options.BindFlags()`, overriding `DefaultFormat()` unless the command
    pins its format with `PinDefaultFormat` (see § 6.4). The `agents`
    codec emits compact JSON when the payload is ≤ 100 KiB and spills to a
-   temp file otherwise — see [output.md § Agents Codec](output.md#111-agents-codec)
+   temp file otherwise, unless stdout is a regular file on disk (a
+   `> out.json` redirect), which is always written in full — see
+   [output.md § Agents Codec](output.md#111-agents-codec)
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
    regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection))
@@ -110,6 +112,9 @@ Explicit flags override agent mode defaults:
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 - `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400); `0` disables spilling
+- Redirecting stdout to a file (`gcx ... > out.json`) disables spilling for that
+  run: the named file receives the full payload, while a harness capturing
+  stdout through a pipe keeps the spill
 
 ### 6.4 Output Protocol Classes
 
