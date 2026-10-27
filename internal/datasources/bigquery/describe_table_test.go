@@ -40,6 +40,11 @@ func TestDescribeTableCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"events", "--dataset", "bad; DROP TABLE x"},
 			wantErr: "invalid dataset",
 		},
+		{
+			name:    "negative --limit rejected before any config/datasource I/O",
+			args:    []string{"events", "--dataset", "d", "--limit", "-1"},
+			wantErr: "--limit must be >= 0",
+		},
 	}
 
 	for _, tt := range tests {

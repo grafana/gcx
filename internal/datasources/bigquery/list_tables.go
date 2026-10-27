@@ -18,6 +18,8 @@ type listTablesOpts struct {
 	Datasource string
 	Project    string
 	Dataset    string
+	Filter     string
+	Limit      int
 }
 
 func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
@@ -27,6 +29,8 @@ func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")
 	flags.StringVar(&opts.Project, "project", "", "GCP project ID (default: the datasource's default project)")
 	flags.StringVar(&opts.Dataset, "dataset", "", "Dataset to list tables from (required)")
+	flags.StringVar(&opts.Filter, "filter", "", "Only list tables whose name contains this text (case-insensitive)")
+	flags.IntVar(&opts.Limit, "limit", bigquery.MetadataRowLimit, "Max tables to return; more matches are dropped with a warning (0 for no cap)")
 }
 
 func (opts *listTablesOpts) Validate() error {
@@ -45,14 +49,21 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 --dataset is required. When --project is omitted, the datasource's default
 project is used. Run 'list-datasets' to discover available datasets.
 
-At most 1000 tables are returned; if more match, a warning is printed on
-stderr rather than silently truncating.`,
+At most --limit tables are returned (1000 by default); if more match, a warning
+is printed on stderr rather than silently truncating. Narrow a large dataset
+with --filter, or pass --limit 0 to return every table.`,
 		Example: `
   # List tables in a dataset (default project)
   gcx datasources bigquery list-tables --dataset my_dataset
 
   # List tables in a dataset in a specific project
   gcx datasources bigquery list-tables --project my-project --dataset my_dataset
+
+  # Find tables by name in a dataset with thousands of them
+  gcx datasources bigquery list-tables --dataset my_dataset --filter events
+
+  # Return every table, however many match
+  gcx datasources bigquery list-tables --dataset my_dataset --limit 0
 
   # Output as JSON
   gcx datasources bigquery list-tables --dataset my_dataset -o json`,
@@ -71,6 +82,9 @@ stderr rather than silently truncating.`,
 			if err := bigquery.ValidateName(opts.Dataset, "dataset"); err != nil {
 				return err
 			}
+			if err := validateMetadataLimit(opts.Limit); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 
@@ -85,10 +99,11 @@ stderr rather than silently truncating.`,
 				return err
 			}
 
-			sql := fmt.Sprintf(
-				"SELECT table_name, table_type FROM %s.TABLES ORDER BY table_name LIMIT %d",
-				bigquery.InfoSchemaPrefix(opts.Project, opts.Dataset),
-				bigquery.MetadataRowLimit+1,
+			sql := bigquery.MetadataQuery(
+				fmt.Sprintf("SELECT table_name, table_type FROM %s.TABLES", bigquery.InfoSchemaPrefix(opts.Project, opts.Dataset)),
+				[]string{bigquery.MetadataFilterClause("table_name", opts.Filter)},
+				"table_name",
+				opts.Limit,
 			)
 
 			client, err := bigquery.NewClient(cfg)
@@ -101,7 +116,7 @@ stderr rather than silently truncating.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "tables")
+			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "tables", opts.Limit)
 
 			tables := bigquery.ParseTableInfoRows(resp)
 			return opts.IO.Encode(cmd.OutOrStdout(), tables)
@@ -110,7 +125,7 @@ stderr rather than silently truncating.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources bigquery list-tables --dataset DATASET -d UID -o json",
+		agent.AnnotationLLMHint:   "gcx datasources bigquery list-tables --dataset DATASET --filter SUBSTRING -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())

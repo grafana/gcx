@@ -20,6 +20,11 @@ func TestListDatasetsCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"--project", "bad; DROP TABLE x"},
 			wantErr: "invalid project",
 		},
+		{
+			name:    "negative --limit rejected before any config/datasource I/O",
+			args:    []string{"--limit", "-1"},
+			wantErr: "--limit must be >= 0",
+		},
 	}
 
 	for _, tt := range tests {

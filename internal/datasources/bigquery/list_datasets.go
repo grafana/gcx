@@ -16,6 +16,8 @@ type listDatasetsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Project    string
+	Filter     string
+	Limit      int
 }
 
 func (opts *listDatasetsOpts) setup(flags *pflag.FlagSet) {
@@ -24,6 +26,8 @@ func (opts *listDatasetsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")
 	flags.StringVar(&opts.Project, "project", "", "GCP project ID (default: the datasource's default project)")
+	flags.StringVar(&opts.Filter, "filter", "", "Only list datasets whose name contains this text (case-insensitive)")
+	flags.IntVar(&opts.Limit, "limit", bigquery.MetadataRowLimit, "Max datasets to return; more matches are dropped with a warning (0 for no cap)")
 }
 
 func (opts *listDatasetsOpts) Validate() error {
@@ -41,14 +45,21 @@ func ListDatasetsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 When --project is omitted, the datasource's default project is queried.
 
-At most 1000 datasets are returned; if more match, a warning is printed on
-stderr rather than silently truncating.`,
+At most --limit datasets are returned (1000 by default); if more match, a
+warning is printed on stderr rather than silently truncating. Narrow a large
+project with --filter, or pass --limit 0 to return every dataset.`,
 		Example: `
   # List datasets in the default project
   gcx datasources bigquery list-datasets
 
   # List datasets in a specific project
   gcx datasources bigquery list-datasets --project my-project
+
+  # Find datasets by name in a project with thousands of them
+  gcx datasources bigquery list-datasets --filter analytics
+
+  # Return every dataset, however many match
+  gcx datasources bigquery list-datasets --limit 0
 
   # Output as JSON
   gcx datasources bigquery list-datasets -o json`,
@@ -59,6 +70,9 @@ stderr rather than silently truncating.`,
 			}
 
 			if err := bigquery.ValidateProject(opts.Project); err != nil {
+				return err
+			}
+			if err := validateMetadataLimit(opts.Limit); err != nil {
 				return err
 			}
 
@@ -75,10 +89,11 @@ stderr rather than silently truncating.`,
 				return err
 			}
 
-			sql := fmt.Sprintf(
-				"SELECT schema_name FROM %s.SCHEMATA ORDER BY schema_name LIMIT %d",
-				bigquery.InfoSchemaPrefix(opts.Project, ""),
-				bigquery.MetadataRowLimit+1,
+			sql := bigquery.MetadataQuery(
+				fmt.Sprintf("SELECT schema_name FROM %s.SCHEMATA", bigquery.InfoSchemaPrefix(opts.Project, "")),
+				[]string{bigquery.MetadataFilterClause("schema_name", opts.Filter)},
+				"schema_name",
+				opts.Limit,
 			)
 
 			client, err := bigquery.NewClient(cfg)
@@ -91,7 +106,7 @@ stderr rather than silently truncating.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "datasets")
+			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "datasets", opts.Limit)
 
 			datasets := bigquery.ParseStringColumn(resp)
 			return opts.IO.Encode(cmd.OutOrStdout(), bigquery.StringList{Items: datasets, Header: "DATASET"})
@@ -100,7 +115,7 @@ stderr rather than silently truncating.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources bigquery list-datasets -d UID -o json",
+		agent.AnnotationLLMHint:   "gcx datasources bigquery list-datasets --filter SUBSTRING -d UID -o json",
 	}
 
 	opts.setup(cmd.Flags())
