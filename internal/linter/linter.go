@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/linter/builtins"
@@ -125,13 +126,15 @@ type resourceReader interface {
 }
 
 type Linter struct {
-	debugStream        io.Writer
-	resourceReader     resourceReader
-	externalViolations []Violation
-	inputPaths         []string
-	ruleBundles        []*bundle.Bundle
-	customRulesPaths   []string
-	maxConcurrency     int
+	debugStream      io.Writer
+	resourceReader   resourceReader
+	inputPaths       []string
+	ruleBundles      []*bundle.Bundle
+	customRulesPaths []string
+	maxConcurrency   int
+
+	externalViolations      []Violation
+	externalViolationsMutex sync.RWMutex
 
 	disableAll         bool
 	disabledResources  []string
@@ -173,6 +176,9 @@ func New(opts ...Option) (*Linter, error) {
 }
 
 func (linter *Linter) RecordViolation(violation Violation) {
+	linter.externalViolationsMutex.Lock()
+	defer linter.externalViolationsMutex.Unlock()
+
 	linter.externalViolations = append(linter.externalViolations, violation)
 }
 
@@ -349,8 +355,6 @@ func (linter *Linter) createDataBundle() *bundle.Bundle {
 }
 
 func (linter *Linter) Lint(ctx context.Context) (Report, error) {
-	linter.externalViolations = nil
-
 	// Matches the report-generation statement in `./bundle/gcx/main/main.rego`
 	violationsQuery, err := linter.prepare(ctx, "lint := data.gcx.main.lint")
 	if err != nil {
@@ -374,9 +378,11 @@ func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 	g.SetLimit(linter.maxConcurrency)
 
 	// Add external violations
+	linter.externalViolationsMutex.RLock()
 	resultSet, err := externalViolationsQuery.Eval(ctx, rego.EvalInput(map[string]any{
 		"externalViolations": linter.externalViolations,
 	}))
+	linter.externalViolationsMutex.RUnlock()
 	if err != nil {
 		return Report{}, fmt.Errorf("could not evaluate external violations: %w", err)
 	}
