@@ -36,7 +36,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to instances matching label=value, label!=value, label=~regex or label!~regex, e.g. --filter engine=~post.* (repeatable, ANDed). Regexes are anchored. name and host both match the instance endpoint; filter on service_name to match the NAME column")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to instances matching label=value, label!=value, label=~regex or label!~regex, e.g. --filter engine=~post.* (repeatable, ANDed). Matches any label the monitored instances carry, including ones not reported as fields such as cluster or deployment_environment. Regexes are anchored and all matching is case sensitive. name and host both match the instance endpoint; filter on service_name to match the NAME column. Only = is applied by the API; the others are applied to its response, so a request using one fetches the fleet and narrows it here")
 	flags.IntVar(&o.Limit, "limit", instancesListDefaultLimit, "Limit the number of instances returned (0 = unlimited)")
 }
 

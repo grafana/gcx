@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/prometheus/common/model"
 	"k8s.io/client-go/rest"
 )
@@ -76,7 +76,10 @@ func apiGet[Resp any](ctx context.Context, c *apiClient, path string, query url.
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Bounded, like every other client in the tree: a 100-row /queries page
+	// carries each statement's SQL text, so the body is caller-influenced and
+	// an unbounded read would let the server decide how much memory to take.
+	body, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return zero, fmt.Errorf("failed to read response: %w", err)
 	}

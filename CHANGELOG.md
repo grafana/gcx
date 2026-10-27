@@ -1,5 +1,78 @@
 ## Unreleased
 
+### Breaking changes
+
+- `gcx dbo11y instances list` and `get` read the Database Observability API
+  instead of building their own PromQL. Both shipped in v1.2.0 and are not
+  marked experimental, so the output and flag changes below break a released
+  surface. The API path is what lets these commands see instances the old
+  job-and-metric convention missed entirely, and cover MySQL and SQL Server
+  rather than Postgres with fragments of MySQL; the exporter metrics the old
+  queries read are not on it.
+- `gcx dbo11y instances get -o json` drops `health.has_up`,
+  `health.scrape_error`, `health.has_scrape_error`,
+  `health.scrape_duration_seconds` and `health.has_scrape_duration`, and the
+  table drops `Scrape error` and `Scrape duration`. They read
+  `postgres_exporter` scrape metrics that the API path does not carry.
+  `health.up` remains but now means "present in the Database Observability
+  inventory", so it is true whenever the command succeeds; the table row is
+  renamed from `Up` to `Reporting` and prints `yes`/`no` rather than
+  `true`/`false`. The collector stops publishing an instance it cannot reach
+  after about three minutes, so absence is the down signal.
+- `gcx dbo11y instances get -o json` replaces top-level `connections[]` (rows
+  of `{state, count}`), `longest_tx_seconds` and `has_longest_tx` with
+  `sessions{total, max_connections, by_state{}, longest_transaction_seconds}`.
+  `by_state` is a map keyed by state where `connections` was a list, and
+  `max_connections` is new — counts were previously reported with nothing to
+  compare them against.
+- `gcx dbo11y instances get -o json` changes `wait_events[]`. Rows keep `type`
+  and `event` and gain `wait_seconds` and `occurrences`; `count` is replaced
+  by `waiting_sessions`. Two shifts matter for a script: `type` now holds the
+  collector's categories (`IO Wait`, `Lock Wait`, `Network Wait`, …) where it
+  held raw `pg_stat_activity` types (`IO`, `Lock`, `LWLock`, `Client`), and
+  `waiting_sessions` is Postgres-only and appears only on rows that recorded
+  measurable wait in the window, where `count` was always present. The
+  categories are many-to-one over the raw types, so the old values cannot be
+  reconstructed.
+- `gcx dbo11y instances get -o json` changes what `top_queries[].rows_per_call`
+  measures: rows **examined** per call, from the API's `rows_examined`, where
+  it was rows **returned** per call from `pg_stat_statements`. The key and type
+  are unchanged, so a script tracking it will see a step change rather than an
+  error — on a sequential scan the two differ by orders of magnitude.
+- `gcx dbo11y instances get --top 0` returns the API maximum of 100 statements
+  rather than every one. The queries route caps `limit` at 100 and offers no
+  pagination.
+- `gcx dbo11y instances get --filter` accepts only `database`, `datname`,
+  `schema`, `query_id` and `digest`; any other label, including `queryid` and
+  `engine`, exits 2. The queries route ignores filters, so gcx applies them to
+  the rows it gets back, which limits them to the fields those rows carry — and
+  they apply after the API's top-100 ranking, so a quiet database outside it
+  reports nothing.
+- `gcx dbo11y instances` rejects two `=` filters on one label with exit 2 on
+  both commands. The API keeps the first and drops the rest silently, so a
+  result would otherwise read as though both had applied.
+- `gcx dbo11y instances list` orders rows by name then `server_id`, where it
+  ordered by namespace then name. `--limit` clips after that ordering, so
+  which rows survive the default limit of 50 changes.
+
+### New commands and improvements
+
+- `gcx dbo11y instances get` reports the instance's session state under
+  `sessions`, where it is waiting under `wait_events` across every query, and
+  `health.up` as presence in the inventory. `instances list` reports the
+  collector's labels under `labels`, with `namespace` and `environment` lifted
+  out of that map, and each instance's `server_id` — shown under `-o wide`,
+  and accepted by `instances get` as well as the name.
+- `--filter` takes `!=`, `=~` and `!~` on both commands. The API matches exact
+  values only, so `=` is forwarded to it and the others are applied to its
+  response — a request using one fetches the fleet and narrows it locally.
+  Regexes are anchored, as in Prometheus, and an absent label compares as the
+  empty string.
+- `gcx dbo11y instances get` adds a RED rollup under `instance.metrics`, the
+  statement's own SQL text, rows examined and a per-query error rate.
+- `sessions` and `wait_events` are omitted rather than failing the command when
+  a stack's plugin predates those routes, since stacks upgrade on their own
+  schedule. The rest of the result still stands.
 - Anonymous usage statistics for `gcx signup` now record the last step it
   reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
   `gcx signup` reports its HTTP status. The one-time telemetry notice is shown
