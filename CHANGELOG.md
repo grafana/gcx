@@ -51,6 +51,11 @@
 - `gcx dbo11y instances` rejects two `=` filters on one label with exit 2 on
   both commands. The API keeps the first and drops the rest silently, so a
   result would otherwise read as though both had applied.
+- `gcx dbo11y instances` reports `labels` without the keys it lifts into
+  fields of their own. `service_name`, `service_namespace` and
+  `deployment_environment` appear as `name`, `namespace` and `environment` and
+  no longer appear in the map as well, which is how v1.2.0 reported them. They
+  stay matchable by `--filter`.
 - `gcx dbo11y instances list` orders rows by name then `server_id`, where it
   ordered by namespace then name. `--limit` clips after that ordering, so
   which rows survive the default limit of 50 changes.
@@ -63,11 +68,13 @@
   collector's labels under `labels`, with `namespace` and `environment` lifted
   out of that map, and each instance's `server_id` — shown under `-o wide`,
   and accepted by `instances get` as well as the name.
-- `--filter` takes `!=`, `=~` and `!~` on both commands. The API matches exact
-  values only, so `=` is forwarded to it and the others are applied to its
-  response — a request using one fetches the fleet and narrows it locally.
-  Regexes are anchored, as in Prometheus, and an absent label compares as the
-  empty string.
+- `--filter` keeps `!=`, `=~` and `!~` on both commands, as before. They are
+  now applied differently: the API matches exact values only, so `=` is
+  forwarded to it and the others are evaluated against its response, which
+  means a request using one fetches the fleet and narrows it locally. An
+  operator on a label the API matches but does not report — `dsn`, `job` and
+  the `asserts_*`/`exported_*` families — is a usage error rather than a
+  silently empty result; an exact match on those still works.
 - `gcx dbo11y instances get` adds a RED rollup under `instance.metrics`, the
   statement's own SQL text, rows examined and a per-query error rate.
 - `sessions` and `wait_events` are omitted rather than failing the command when

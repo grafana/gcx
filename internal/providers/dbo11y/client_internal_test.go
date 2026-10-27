@@ -181,6 +181,42 @@ func TestFetchInstances(t *testing.T) {
 	}
 }
 
+// `labels` reports what is not already a field of its own, as it did before
+// this command read the API. The promoted keys stay matchable, though, so a
+// --filter on them still works.
+func TestFetchInstances_LabelsExcludeThePromotedKeys(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"success","data":[{"server_id":"s1","instance":"db-1","labels":{` + //nolint:errcheck // test helper
+			`"service_name":"payments","service_namespace":"team-a","deployment_environment":"prod","cluster":"eu-1"}}]}`))
+	})
+	got, err := fetchInstances(context.Background(), client, "prom-uid", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("rows = %d, want 1", len(got))
+	}
+	// Reported as fields, so not repeated in the map.
+	if !reflect.DeepEqual(got[0].Labels, map[string]string{"cluster": "eu-1"}) {
+		t.Errorf("labels = %v, want only the unpromoted keys", got[0].Labels)
+	}
+	for _, want := range []struct{ field, value string }{
+		{got[0].Name, "payments"}, {got[0].Namespace, "team-a"}, {got[0].Environment, "prod"},
+	} {
+		if want.field != want.value {
+			t.Errorf("promoted field = %q, want %q", want.field, want.value)
+		}
+	}
+	// Still matchable: filterInstances reads the unpruned map.
+	filters, err := parseFilters([]string{"service_name=~pay.*"})
+	if err != nil {
+		t.Fatalf("parseFilters() err = %v", err)
+	}
+	if kept := filterInstances(got, filters); len(kept) != 1 {
+		t.Errorf("filtering on a promoted key kept %d rows, want 1", len(kept))
+	}
+}
+
 func TestFetchInstances_SortsRows(t *testing.T) {
 	// The route neither orders its rows nor takes a limit, and `instances
 	// list` clips to --limit, so without an order here which rows survive the

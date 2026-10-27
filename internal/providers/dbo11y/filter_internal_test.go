@@ -119,6 +119,26 @@ func TestParseFilters_Rejects(t *testing.T) {
 	}
 }
 
+// An operator on a label the API withholds would compare every row against the
+// empty string: =~ discards the whole fleet, != keeps it, and neither says so.
+// The exact-match form is fine, because that one travels to the API.
+func TestParseFilters_RejectsOperatorsOnUnreportedLabels(t *testing.T) {
+	for _, label := range []string{"dsn", "job", "__name__", "asserts_env", "exported_job"} {
+		for _, op := range []string{"!=", "=~", "!~"} {
+			raw := label + op + "x"
+			if _, err := parseFilters([]string{raw}); err == nil {
+				t.Errorf("parseFilters(%q) = nil error, want a usage error", raw)
+			} else if !strings.Contains(err.Error(), "does not report") {
+				t.Errorf("parseFilters(%q) error = %v, want it to say the label is not reported", raw, err)
+			}
+		}
+		// The exact match is pushed to the API, which does match these.
+		if _, err := parseFilters([]string{label + "=x"}); err != nil {
+			t.Errorf("parseFilters(%q=x) err = %v, want it accepted", label, err)
+		}
+	}
+}
+
 func TestParseFilters_RejectsConflictingExactMatches(t *testing.T) {
 	// Two exact matches on one label cannot both hold, and the API keeps the
 	// first and drops the rest without saying so.

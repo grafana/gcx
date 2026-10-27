@@ -98,6 +98,40 @@ func splitFilter(s string) (string, filterOp, string, bool) {
 	return "", "", "", false
 }
 
+// unreportedLabels are labels the API matches on but does not return. An exact
+// match on one is fine — it travels to the API — but an operator has to be
+// evaluated here, against a row that cannot carry the label, so every
+// comparison would be against the empty string: `dsn=~postgres.*` would
+// discard the whole fleet and `dsn!=x` would keep it, both silently.
+//
+// Mirrors the app's hiddenLabels, minus the ones instanceFilterFields puts back
+// from Instance's typed fields.
+func unreportedLabels() map[string]struct{} {
+	return map[string]struct{}{
+		"__name__": {},
+		"job":      {},
+		"dsn":      {},
+	}
+}
+
+// unreportedPrefixes are the label families the API drops wholesale:
+// `asserts_*` is injected by the Asserts pipeline and `exported_*` duplicates
+// the provider labels under their real names.
+func unreportedPrefixes() []string { return []string{"asserts_", "exported_"} }
+
+// unreported reports whether the API withholds this label from its responses.
+func unreported(label string) bool {
+	if _, hit := unreportedLabels()[label]; hit {
+		return true
+	}
+	for _, p := range unreportedPrefixes() {
+		if strings.HasPrefix(label, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // parseFilter parses one `label<op>value` flag, resolving the label to the
 // name the telemetry carries.
 func parseFilter(s string) (filter, error) {
@@ -120,6 +154,10 @@ func parseFilter(s string) (filter, error) {
 	}
 	if aliased, ok := filterLabelAliases()[label]; ok {
 		label = aliased
+	}
+
+	if !op.pushable() && unreported(label) {
+		return filter{}, fmt.Errorf("invalid --filter %q: the API matches %s but does not report it, so only an exact match can be applied; use %s=<value>", s, label, label)
 	}
 
 	f := filter{label: label, op: op, value: value, raw: s}
@@ -215,8 +253,14 @@ func matchFilters(fields map[string]string, filters []filter) bool {
 // included, so any label the API could have filtered on is also one the
 // operators can.
 func instanceFilterFields(i Instance) map[string]string {
-	fields := make(map[string]string, len(i.Labels)+8)
-	maps.Copy(fields, i.Labels)
+	// The unpruned map where it survived decoding, so a filter still matches
+	// the promoted keys that Labels no longer reports.
+	labels := i.apiLabels
+	if labels == nil {
+		labels = i.Labels
+	}
+	fields := make(map[string]string, len(labels)+8)
+	maps.Copy(fields, labels)
 	fields["instance"] = i.Host
 	fields["engine"] = i.Engine
 	fields["engine_version"] = i.EngineVersion

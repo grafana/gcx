@@ -160,6 +160,11 @@ type Instance struct {
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
 	Metrics *Metrics `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+
+	// apiLabels is the API's label map before the promoted keys were pruned
+	// out of Labels. Unexported, so it never reaches the output; --filter
+	// matches against it so an operator on service_name still works.
+	apiLabels map[string]string
 }
 
 // toInstance converts the API's wire shape into the output contract.
@@ -186,9 +191,41 @@ func (a apiInstance) toInstance() Instance {
 		ServerID:           a.ServerID,
 		Namespace:          a.Labels["service_namespace"],
 		Environment:        a.Labels["deployment_environment"],
-		Labels:             a.Labels,
+		Labels:             reportedLabels(a.Labels),
+		apiLabels:          a.Labels,
 		Metrics:            a.Metrics,
 	}
+}
+
+// promotedLabels are the labels this command lifts into typed fields, and so
+// keeps out of Labels — the three the API passes through that gcx reports
+// itself. Ported from v1.2.0's connectionInfoPromotedLabels, minus the eight
+// the API now withholds from its responses anyway.
+func promotedLabels() map[string]struct{} {
+	return map[string]struct{}{
+		"service_name":           {},
+		"service_namespace":      {},
+		"deployment_environment": {},
+	}
+}
+
+// reportedLabels drops the promoted keys, so `labels` reports what is not
+// already a field of its own, as it did before this command read the API.
+// Returns nil for an empty result so the field is omitted rather than printed
+// as an empty object.
+func reportedLabels(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	promoted := promotedLabels()
+	for k, v := range in {
+		if _, skip := promoted[k]; skip {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // apiSessions is the wire shape of GET /instances/{server_id}/sessions.

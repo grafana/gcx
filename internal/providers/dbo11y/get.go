@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,7 +55,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVar(&o.Since, "since", defaultQueryWindow, "Window the top-queries and wait-event figures cover (e.g. 1m, 5m, 1h). Does not apply to instance.metrics, which the API reports over a fixed five minutes")
 	flags.IntVar(&o.Top, "top", defaultTopQueriesLimit, fmt.Sprintf("Limit the number of top queries returned (0 = the API maximum; values above %d are clamped to it)", maxTopQueries))
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict the top-queries view with label=value, label!=value, label=~regex or label!~regex, e.g. --filter datname=~payments.* (repeatable, ANDed). Accepts datname, schema, database, query_id and digest; regexes are anchored and all matching is case sensitive. The queries route ignores filters, so these are applied after ranking, and a quiet database outside the busiest 100 reports nothing")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict the top-queries view with label=value, label!=value, label=~regex or label!~regex, e.g. --filter datname=~payments.* (repeatable, ANDed). Accepts datname, schema, database, query_id and digest, where schema and database are aliases for the database name rather than a Postgres schema; regexes are anchored and all matching is case sensitive. The queries route ignores filters, so these are applied after ranking, and a quiet database outside the busiest 100 reports nothing")
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -435,8 +437,11 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 	writeRow("Reporting", boolYesNo(detail.Health.Up))
 	writeRow("Engine", orDash(inst.Engine))
 	writeRow("Version", orDash(inst.EngineVersion))
+	// Environment narrow and Namespace wide, as v1.2.0 placed them.
+	writeRow("Environment", orDash(inst.Environment))
 	writeRow("Provider", orDash(inst.ProviderName))
 	if c.Wide {
+		writeRow("Namespace", orDash(inst.Namespace))
 		writeRow("Host", orDash(inst.Host))
 		writeRow("Identifier", orDash(inst.InstanceIdentifier))
 		writeRow("Region", orDash(inst.ProviderRegion))
@@ -468,6 +473,22 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 		return err
 	}
 
+	// v1.2.0 printed this as a STATE/COUNT table and the long help still says
+	// the breakdown is reported, so the total-against-limit row above does not
+	// replace it.
+	if detail.Sessions != nil && len(detail.Sessions.ByState) > 0 {
+		fmt.Fprintln(w, "Connections by state:")
+		stw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		states := slices.Sorted(maps.Keys(detail.Sessions.ByState))
+		for _, state := range states {
+			fmt.Fprintf(stw, "  %s:\t%.0f\n", state, detail.Sessions.ByState[state])
+		}
+		if err := stw.Flush(); err != nil {
+			return err
+		}
+		fmt.Fprintln(w)
+	}
+
 	if len(detail.WaitEvents) > 0 {
 		fmt.Fprintln(w, "Waiting on:")
 		wtw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -482,14 +503,14 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 			// Occurrences and blocked sessions answer different questions from
 			// the seconds, so the narrow view carries all three: time, how many
 			// waits made it up, and what is stuck on it now.
-			detail := formatSeconds(e.WaitSeconds, true)
+			figures := formatSeconds(e.WaitSeconds, true)
 			if e.Occurrences > 0 {
-				detail += fmt.Sprintf(" over %.0f", e.Occurrences)
+				figures += fmt.Sprintf(" over %.0f", e.Occurrences)
 			}
 			if e.WaitingSessions != nil {
-				detail += fmt.Sprintf(", %.0f waiting now", *e.WaitingSessions)
+				figures += fmt.Sprintf(", %.0f waiting now", *e.WaitingSessions)
 			}
-			fmt.Fprintf(wtw, "  %s:\t%s\n", label, detail)
+			fmt.Fprintf(wtw, "  %s:\t%s\n", label, figures)
 		}
 		if err := wtw.Flush(); err != nil {
 			return err

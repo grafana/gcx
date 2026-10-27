@@ -169,6 +169,55 @@ func TestInstanceDetailCodec_Encode(t *testing.T) {
 	}
 }
 
+// v1.2.0's table printed Environment, Namespace and a per-state connections
+// breakdown. All three went missing in the API switch and none was covered.
+func TestInstanceDetailCodec_Encode_RestoredRows(t *testing.T) {
+	total, limit := 25.0, 429.0
+	detail := &InstanceDetail{
+		Instance: Instance{
+			Name: "dev-postgres", Engine: "postgres",
+			Environment: "production", Namespace: "payments",
+		},
+		Window: "5m",
+		Sessions: &Sessions{
+			Total: &total, MaxConnections: &limit,
+			ByState: map[string]float64{"idle": 16, "active": 9},
+		},
+	}
+
+	for _, c := range []struct {
+		name string
+		wide bool
+		want []string
+		not  []string
+	}{
+		{"narrow", false,
+			[]string{"Environment:", "production", "Connections by state:", "idle:", "16", "active:", "9"},
+			[]string{"Namespace:", "payments"}},
+		{"wide", true,
+			[]string{"Environment:", "production", "Namespace:", "payments", "Connections by state:"},
+			nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := (&instanceDetailCodec{Wide: c.wide}).Encode(&buf, detail); err != nil {
+				t.Fatalf("Encode() err = %v", err)
+			}
+			out := buf.String()
+			for _, want := range c.want {
+				if !strings.Contains(out, want) {
+					t.Errorf("output missing %q\n---\n%s", want, out)
+				}
+			}
+			for _, not := range c.not {
+				if strings.Contains(out, not) {
+					t.Errorf("narrow view should not show %q:\n%s", not, out)
+				}
+			}
+		})
+	}
+}
+
 // The "Waiting on:" block composes a label from the category and the event and
 // appends two optional figures, none of which was covered before.
 func TestInstanceDetailCodec_Encode_WaitEvents(t *testing.T) {
