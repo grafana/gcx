@@ -74,6 +74,7 @@ canonical portable skill bundle.
 | `import-dashboards` | Import existing Grafana dashboards into Go builder code |
 | `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
+| `assistant-pages` | Edit Grafana Assistant Pages: pull a page's source, change it locally, build it on the stack and publish the next version |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
 | `debug-with-grafana` | Investigate with metrics, logs, and traces; use baseline candidates and trace diff to localize request regressions |
