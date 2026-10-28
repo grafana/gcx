@@ -73,6 +73,8 @@ Access to the Assistant app requires `plugins.app:access` scoped to `plugins:id:
 
 If `gcx assistant investigations list` returns HTTP 403, `gcx` reports `Authorization failed` with exit code 3 and names `grafana-assistant-app.investigations:read` as the required action.
 
+For other Assistant operations, including investigation mutations and MCP server calls, `gcx` gives general permission guidance rather than naming the investigation read action.
+
 A `plugin proxy route access denied` response identifies a route permission refusal; a backend denial identifies an operation permission failure.
 
 Inspect your allowed actions with:
@@ -83,6 +85,8 @@ gcx api /api/access-control/user/actions
 
 Ask your Grafana administrator to check your roles for the required action.  Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
 for role assignment guidance.
+
+`gcx setup status` doesn't check Assistant access.
 
 ### Grafana Cloud product API 
 
