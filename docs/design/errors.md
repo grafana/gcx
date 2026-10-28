@@ -102,7 +102,8 @@ unchanged. `gcx api` retains its complete raw body.
 Assistant investigations HTTP 403 errors use Assistant-specific permission suggestions
 and the roles-and-permissions documentation (exit 3). These identify
 `plugins.app:access` and, for reading investigations,
-`grafana-assistant-app.investigations:read`; they do not direct users to
+`grafana-assistant-app.investigations:read`. The runnable diagnostic is
+`gcx api /api/access-control/user/actions`; they do not direct users to
 `gcx setup status`, which does not check Assistant access.
 
 Synthetic Monitoring token discovery is classified by cause: missing Cloud

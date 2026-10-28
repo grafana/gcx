@@ -1379,9 +1379,9 @@ func convertAssistantForbiddenErrors(err error) (*gcxerrors.DetailedError, bool)
 	}
 	detailed, _ := convertHTTPStatusErrors(err)
 	detailed.Suggestions = []string{
-		"Grafana Assistant access needs the plugins.app:access permission on this stack",
-		"Reading investigations also needs the grafana-assistant-app.investigations:read permission",
-		"Ask a Grafana admin to grant a role that includes these permissions, or use a user login that has them",
+		"Inspect your allowed actions: gcx api /api/access-control/user/actions",
+		"Ask a Grafana admin to grant plugins.app:access for grafana-assistant-app",
+		"Reading investigations also requires a role granting grafana-assistant-app.investigations:read",
 	}
 	detailed.DocsLink = docs.RolesAndPermissions
 	return detailed, true

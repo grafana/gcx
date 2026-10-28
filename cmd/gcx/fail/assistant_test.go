@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +37,7 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 		{name: "legacy fallback", listPath: "/api/v1/investigations/summary", fallback: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("GCX_AGENT_MODE", "false")
+			testutils.SandboxConfigEnv(t)
 			t.Setenv("GCX_ASSISTANT_API_VERSION", tc.mode)
 			calls := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -86,9 +87,9 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 			require.NotNil(t, detailed.ExitCode)
 			assert.Equal(t, 3, *detailed.ExitCode)
 			assert.Equal(t, []string{
-				"Grafana Assistant access needs the plugins.app:access permission on this stack",
-				"Reading investigations also needs the grafana-assistant-app.investigations:read permission",
-				"Ask a Grafana admin to grant a role that includes these permissions, or use a user login that has them",
+				"Inspect your allowed actions: gcx api /api/access-control/user/actions",
+				"Ask a Grafana admin to grant plugins.app:access for grafana-assistant-app",
+				"Reading investigations also requires a role granting grafana-assistant-app.investigations:read",
 			}, detailed.Suggestions)
 			assert.Equal(t, docs.RolesAndPermissions, detailed.DocsLink)
 			assert.Contains(t, detailed.Details, "insufficient permissions")
@@ -116,25 +117,51 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 }
 
 func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			err := assistanthttp.HandleErrorResponse(&http.Response{
-				StatusCode: status,
-				Body:       io.NopCloser(strings.NewReader("server explanation")),
-			})
+	for _, tc := range []struct {
+		status      int
+		other       bool
+		summary     string
+		exitCode    *int
+		suggestions []string
+	}{
+		{
+			status:      http.StatusUnauthorized,
+			summary:     gcxerrors.SummaryAuthenticationFailed,
+			exitCode:    new(gcxerrors.ExitAuthFailure),
+			suggestions: []string{"Re-authenticate if needed: gcx login", "Verify the configured token is valid and has not expired"},
+		},
+		{status: http.StatusNotFound, summary: gcxerrors.SummaryResourceNotFound},
+		{status: http.StatusInternalServerError, summary: gcxerrors.SummaryAPIError},
+		{
+			status:   http.StatusForbidden,
+			other:    true,
+			summary:  gcxerrors.SummaryAuthorizationFailed,
+			exitCode: new(gcxerrors.ExitAuthFailure),
+			suggestions: []string{
+				"Check your roles and access-policy scopes",
+				"Check your permissions: gcx setup status",
+			},
+		},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			var err error
+			if tc.other {
+				err = &gcxerrors.HTTPStatusError{Status: tc.status, Message: "server explanation"}
+			} else {
+				err = assistanthttp.HandleErrorResponse(&http.Response{
+					StatusCode: tc.status,
+					Body:       io.NopCloser(strings.NewReader("server explanation")),
+				})
+			}
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
-			assert.Equal(t, fail.ErrorToDetailedError(statusErr), fail.ErrorToDetailedError(err))
+			detailed := fail.ErrorToDetailedError(err)
+			require.NotNil(t, detailed)
+			assert.Equal(t, tc.summary, detailed.Summary)
+			assert.Equal(t, tc.exitCode, detailed.ExitCode)
+			assert.Equal(t, tc.suggestions, detailed.Suggestions)
+			assert.Contains(t, detailed.Details, "server explanation")
+			assert.Empty(t, detailed.DocsLink)
 		})
 	}
-
-	err := &gcxerrors.HTTPStatusError{Status: http.StatusForbidden, Message: "permission denied"}
-	detailed := fail.ErrorToDetailedError(err)
-	assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, detailed.Summary)
-	assert.Equal(t, 3, *detailed.ExitCode)
-	assert.Equal(t, []string{
-		"Check your roles and access-policy scopes",
-		"Check your permissions: gcx setup status",
-	}, detailed.Suggestions)
-	assert.Empty(t, detailed.DocsLink)
 }

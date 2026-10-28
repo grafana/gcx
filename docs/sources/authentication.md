@@ -67,6 +67,23 @@ The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `g
 
 If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, update the Grafana Assistant application to a version that includes it.
 
+### Assistant investigation permissions
+
+If `gcx assistant investigations list` returns HTTP 403, gcx reports
+`Authorization failed` with exit code 3 and names the required permissions.
+Inspect your allowed actions with:
+
+```bash
+gcx api /api/access-control/user/actions
+```
+
+Ask your Grafana administrator to grant a role with `plugins.app:access` scoped
+to `plugins:id:grafana-assistant-app` and
+`grafana-assistant-app.investigations:read` for reading investigations.
+`gcx setup status` does not check Assistant access. Refer to
+[roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
+for role assignment guidance.
+
 ### Grafana Cloud product API 
 
 Grafana Cloud platform APIs use a separate credential stored in a named Cloud entry in addition to the Grafana instance auth. 
