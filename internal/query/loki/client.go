@@ -277,6 +277,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 // given time range; Loki rejects pipeline stages and metric expressions. step
 // (a duration like "15s" or a float number of seconds) is optional; pass "" to
 // let Loki choose a bucket size.
+// Returned patterns carry a gcx-derived totalCount and sort by total descending, then pattern text, rather than backend order.
 //
 // The result is what the backend retained, not a complete inventory: Loki
 // prunes low-volume patterns and caps results, and retention varies by
@@ -329,11 +330,11 @@ func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, star
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	result.Data = summarizePatterns(result.Data)
+	summarizePatterns(result.Data)
 	return &result, nil
 }
 
-func summarizePatterns(patterns []Pattern) []Pattern {
+func summarizePatterns(patterns []Pattern) {
 	for i := range patterns {
 		var total int64
 		for _, sample := range patterns[i].Samples {
@@ -350,7 +351,6 @@ func summarizePatterns(patterns []Pattern) []Pattern {
 		// Break ties by text so backend ordering cannot make identical results awkward to diff.
 		return patterns[i].Pattern < patterns[j].Pattern
 	})
-	return patterns
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {
