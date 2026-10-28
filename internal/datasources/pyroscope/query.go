@@ -284,10 +284,10 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Use --drilldown-link or
---open-drilldown for the equivalent Grafana Profiles Drilldown URL (falls
-back to the Explore URL for --profile-id/--stacktrace-selector, which have no
-Drilldown equivalent). --trace-id has no representation in either, so no
-link is built for it.`,
+--open-drilldown for the equivalent Grafana Profiles Drilldown URL. A single
+--profile-id opens its scoped flame graph; multiple profile IDs, a stacktrace
+selector, or label selectors the app cannot represent fall back to Explore.
+--trace-id has no representation in either, so no link is built for it.`,
 		Example: `
   # Profile query with explicit datasource UID
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \

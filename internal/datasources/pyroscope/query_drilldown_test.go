@@ -1,11 +1,9 @@
 package pyroscope_test
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,8 +11,6 @@ import (
 	"time"
 
 	dspyroscope "github.com/grafana/gcx/internal/datasources/pyroscope"
-	"github.com/grafana/gcx/internal/providers"
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,39 +39,10 @@ func TestQueryCmd_ExploreAndDrilldownLinks(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	f, err := os.CreateTemp(t.TempDir(), "gcx-pyro-config-*.yaml")
-	require.NoError(t, err)
-	_, err = f.WriteString(`
-contexts:
-  default:
-    grafana:
-      server: "` + srv.URL + `"
-      token: "test-token"
-      org-id: 1
-      tls:
-        insecure-skip-verify: true
-current-context: default
-`)
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-
-	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(f.Name())
-
+	run := profileCommandRunner(t, srv.URL, 1, dspyroscope.QueryCmd)
 	exec := func(selector string, args ...string) (string, string, error) {
-		cmd := dspyroscope.QueryCmd(loader)
-		root := &cobra.Command{Use: "test"}
-		root.AddCommand(cmd)
-		var stdout, stderr bytes.Buffer
-		root.SetOut(&stdout)
-		root.SetErr(&stderr)
-		root.SetArgs(append([]string{
-			"query", "-d", "pyro-uid", "-o", "json",
-			"--profile-type", "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-			selector,
-		}, args...))
-		err := root.Execute()
-		return stdout.String(), stderr.String(), err
+		return run(append([]string{"-d", "pyro-uid", "-o", "json",
+			"--profile-type", "process_cpu:cpu:nanoseconds:cpu:nanoseconds", selector}, args...)...)
 	}
 
 	t.Run("pprof export warns that links are skipped", func(t *testing.T) {
@@ -98,6 +65,28 @@ current-context: default
 		require.NoError(t, err)
 		assert.Contains(t, stderr, "Profiles Drilldown link: ")
 		assert.Contains(t, stderr, "/a/grafana-pyroscope-app/explore")
+	})
+
+	t.Run("single profile ID opens a scoped flamegraph", func(t *testing.T) {
+		id := "550e8400-e29b-41d4-a716-446655440000"
+		_, stderr, err := exec(`{service_name="frontend",env="prod"}`, "--drilldown-link", "--profile-id", id)
+		require.NoError(t, err)
+		u, err := url.Parse(linkAfter(t, stderr, "Profiles Drilldown link: "))
+		require.NoError(t, err)
+		assert.Equal(t, "flame-graph", u.Query().Get("explorationType"))
+		assert.Equal(t, id, u.Query().Get("var-profileIdSelector"))
+		assert.Equal(t, "env|=|prod", u.Query().Get("var-filters"))
+	})
+
+	t.Run("escaped service preserves the profile ID in Explore fallback", func(t *testing.T) {
+		id := "550e8400-e29b-41d4-a716-446655440000"
+		selector := `{service_name="front\"end"}`
+		_, stderr, err := exec(selector, "--drilldown-link", "--profile-id", id)
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "Profiles Drilldown link:")
+		panes, _ := decodeExplorePanes(t, linkAfter(t, stderr, "Explore link: "))
+		assert.Equal(t, selector, panes["gcx"].Queries[0].Selector)
+		assert.Equal(t, []string{id}, panes["gcx"].Queries[0].ProfileIDs)
 	})
 
 	t.Run("builds no link when --trace-id is set, with one explanation", func(t *testing.T) {

@@ -31,6 +31,11 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery, profileType string
 
 	from, to := dsquery.ShortExploreRange(query.From, query.To)
 
+	return dsquery.BuildExploreURL(host, query.OrgID, dsquery.SinglePane(query.DatasourceUID,
+		[]any{profileExplorePayload(query, profileType, spanIDs, profileIDs, stacktraceSelector, maxNodes)}, from, to, nil), nil)
+}
+
+func profileExplorePayload(query dsquery.ExploreQuery, profileType string, spanIDs, profileIDs, stacktraceSelector []string, maxNodes int64) map[string]any {
 	q := map[string]any{
 		"refId":         "A",
 		"datasource":    dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
@@ -52,5 +57,5 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery, profileType string
 		q["maxNodes"] = maxNodes
 	}
 
-	return dsquery.BuildExploreURL(host, query.OrgID, dsquery.SinglePane(query.DatasourceUID, []any{q}, from, to, nil), nil)
+	return q
 }
