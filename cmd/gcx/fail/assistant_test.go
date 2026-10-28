@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/assistant/investigations"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestAssistantInvestigationsListForbidden(t *testing.T) {
@@ -130,6 +132,93 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 	}
 }
 
+func TestAssistantInvestigationReadForbidden(t *testing.T) {
+	const readAction = "grafana-assistant-app.investigations:read"
+	const systemReadAction = "grafana-assistant-app.investigations.system:read"
+	for _, operation := range []struct {
+		name, path string
+		call       func(*investigations.Client) error
+	}{
+		{"v1 get", "/api/v1/investigations/inv-1", func(c *investigations.Client) error {
+			_, err := c.Get(t.Context(), "inv-1")
+			return err
+		}},
+		{"v2 resolve", "/api/v2/investigations/inv-1", func(c *investigations.Client) error {
+			_, _, err := c.ResolveByID(t.Context(), "inv-1")
+			return err
+		}},
+		{"snapshot", "/api/v2/investigations/inv-1/snapshot", func(c *investigations.Client) error {
+			_, err := c.GetState(t.Context(), "inv-1")
+			return err
+		}},
+		{"evidence", "/api/v2/investigations/inv-1/evidence", func(c *investigations.Client) error {
+			_, err := c.Evidence(t.Context(), "inv-1")
+			return err
+		}},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			for _, tc := range []struct {
+				name, body, action string
+				routeDenied        bool
+			}{
+				{"details action", `{"name":"forbidden","message":"viewing system-created investigations requires the investigations.system:read permission","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction, false},
+				{"error envelope", `{"status":"error","error":"insufficient permissions","name":"forbidden","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction, false},
+				{"top-level action", `{"requiredPermission":"` + systemReadAction + `"}`, systemReadAction, false},
+				{"details precedence", `{"requiredPermission":"` + readAction + `","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction, false},
+				{"absent action", `{"message":"insufficient permissions"}`, readAction, false},
+				{"empty action", `{"details":{"requiredPermission":""}}`, readAction, false},
+				{"non-string action", `{"details":{"requiredPermission":123}}`, readAction, false},
+				{"null action", `{"requiredPermission":null}`, readAction, false},
+				{"whitespace action", `{"details":{"requiredPermission":"investigations: read"}}`, readAction, false},
+				{"newline action", `{"requiredPermission":"investigations:read\n"}`, readAction, false},
+				{"unicode whitespace", `{"requiredPermission":"investigations:\u00a0read"}`, readAction, false},
+				{"invalid action", `{"requiredPermission":"permission"}`, readAction, false},
+				{"punctuation", `{"requiredPermission":"investigations:read;"}`, readAction, false},
+				{"action at limit", `{"requiredPermission":"` + strings.Repeat("a", 251) + `:read"}`, strings.Repeat("a", 251) + ":read", false},
+				{"action too long", `{"requiredPermission":"` + strings.Repeat("a", 252) + `:read"}`, readAction, false},
+				{"malformed JSON", `{"details":{"requiredPermission":"` + systemReadAction + `"}`, readAction, false},
+				{"non-JSON", "insufficient permissions", readAction, false},
+				{"route denied precedence", `{"message":"plugin proxy route access denied","details":{"requiredPermission":"` + systemReadAction + `"}}`, "", true},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					calls := 0
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						calls++
+						assert.Equal(t, http.MethodGet, r.Method)
+						assert.Equal(t, "/api/plugins/grafana-assistant-app/resources"+operation.path, r.URL.Path)
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusForbidden)
+						_, _ = io.WriteString(w, tc.body)
+					}))
+					t.Cleanup(server.Close)
+					base, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+					require.NoError(t, err)
+					err = operation.call(investigations.NewClient(base))
+					require.Error(t, err)
+					assert.Equal(t, 1, calls)
+					detailed := fail.ErrorToDetailedError(err)
+					require.NotNil(t, detailed)
+					assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, detailed.Summary)
+					require.NotNil(t, detailed.ExitCode)
+					assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
+					suggestions := []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions"}
+					if tc.action != "" {
+						suggestions = append(suggestions, "Ask a Grafana admin to grant a role that includes "+tc.action)
+					}
+					assert.Equal(t, suggestions, detailed.Suggestions)
+					assert.Contains(t, detailed.Details, tc.body)
+					if tc.action == systemReadAction {
+						assert.NotContains(t, strings.Join(detailed.Suggestions, "\n"), readAction)
+					}
+					if tc.routeDenied {
+						assert.Contains(t, detailed.Details, "Ask a Grafana admin to check the permission required by this Assistant plugin route")
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
 	for _, tc := range []struct {
 		status      int
@@ -181,9 +270,10 @@ func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
 }
 
 func TestAssistantMCPCreateForbidden(t *testing.T) {
-	for _, tc := range []struct{ name, body, routeGuidance string }{
-		{"backend", `{"message":"insufficient permissions"}`, ""},
-		{"proxy route", `{"message":"plugin proxy route access denied"}`, "Ask a Grafana admin to check the permission required by this Assistant plugin route"},
+	for _, tc := range []struct{ name, body, routeGuidance, action string }{
+		{"backend", `{"message":"insufficient permissions"}`, "", ""},
+		{"proxy route", `{"message":"plugin proxy route access denied"}`, "Ask a Grafana admin to check the permission required by this Assistant plugin route", ""},
+		{"backend action", `{"details":{"requiredPermission":"grafana-assistant-app.mcp-servers:write"}}`, "", "grafana-assistant-app.mcp-servers:write"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testutils.SandboxConfigEnv(t)
@@ -222,7 +312,11 @@ func TestAssistantMCPCreateForbidden(t *testing.T) {
 			require.NotNil(t, detailed.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
 			assert.Contains(t, detailed.Details, tc.body)
-			assert.Equal(t, []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions"}, detailed.Suggestions)
+			suggestions := []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions"}
+			if tc.action != "" {
+				suggestions = append(suggestions, "Ask a Grafana admin to grant a role that includes "+tc.action)
+			}
+			assert.Equal(t, suggestions, detailed.Suggestions)
 			if tc.routeGuidance != "" {
 				assert.Contains(t, detailed.Details, tc.routeGuidance)
 			}

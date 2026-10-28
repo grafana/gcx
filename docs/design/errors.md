@@ -102,7 +102,9 @@ unchanged. `gcx api` retains its complete raw body.
 Assistant plugin HTTP 403 errors use Assistant-specific permission suggestions
 and the roles-and-permissions documentation (exit 3). Calling clients supply a
 known required action: investigation read operations name
-`grafana-assistant-app.investigations:read`; other operations get general
+`grafana-assistant-app.investigations:read`. A valid `details.requiredPermission`
+or top-level `requiredPermission` in the response body takes precedence over the
+caller-supplied action. Operations without a known action get general
 permission guidance. Route refusals use the Assistant converter's
 plugin-route-denied branch before operation-specific guidance. The shared
 `PluginRouteDeniedError` conversion requires a known action and role, which the

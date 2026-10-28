@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -109,6 +110,26 @@ type ForbiddenError struct {
 }
 
 func (e *ForbiddenError) Unwrap() error { return e.HTTPStatusError }
+
+var rbacActionPattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.*-]+$`)
+
+// RequiredPermission prefers the backend's required action over the caller's fallback.
+func (e *ForbiddenError) RequiredPermission() string {
+	var body struct {
+		RequiredPermission any `json:"requiredPermission"`
+		Details            struct {
+			RequiredPermission any `json:"requiredPermission"`
+		} `json:"details"`
+	}
+	if err := json.Unmarshal([]byte(e.ServerMessage), &body); err == nil {
+		for _, value := range []any{body.Details.RequiredPermission, body.RequiredPermission} {
+			if action, ok := value.(string); ok && len(action) <= 256 && rbacActionPattern.MatchString(action) {
+				return action
+			}
+		}
+	}
+	return e.Permission
+}
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
 func HandleErrorResponse(resp *http.Response) error {
