@@ -429,12 +429,34 @@ func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 	}
 
 	finalReport.Summary = Summary{
-		FilesScanned:  inputs.Len(),
+		FilesScanned:  countUniqueFiles(inputs, finalReport.Violations),
 		FilesFailed:   len(finalReport.ViolationsFileCount()),
 		NumViolations: len(finalReport.Violations),
 	}
 
 	return finalReport, nil
+}
+
+func countUniqueFiles(inputs *resources.Resources, violations []Violation) int {
+	count := 0
+	seen := map[string]struct{}{}
+
+	_ = inputs.ForEach(func(r *resources.Resource) error {
+		if _, ok := seen[r.Source.Path]; !ok {
+			seen[r.Source.Path] = struct{}{}
+			count += 1
+		}
+		return nil
+	})
+
+	for _, violation := range violations {
+		if _, ok := seen[violation.Location.File]; !ok {
+			seen[violation.Location.File] = struct{}{}
+			count += 1
+		}
+	}
+
+	return count
 }
 
 func (linter *Linter) parseInputs(ctx context.Context) (*resources.Resources, error) {
