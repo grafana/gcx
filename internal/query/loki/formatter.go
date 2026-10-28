@@ -211,34 +211,9 @@ func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 		return nil
 	}
 
-	type row struct {
-		pattern string
-		total   int64
-	}
-	rows := make([]row, 0, len(resp.Data))
-	for _, p := range resp.Data {
-		var total int64
-		for _, sample := range p.Samples {
-			if len(sample) >= 2 {
-				total += sample[1]
-			}
-		}
-		rows = append(rows, row{pattern: p.Pattern, total: total})
-	}
-	// Break ties on total by pattern text so the row order is fully
-	// deterministic — sort.Slice alone leaves equal-total patterns in an
-	// unspecified relative order, which can flip between otherwise-identical
-	// runs and make table output flaky to diff.
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].total != rows[j].total {
-			return rows[i].total > rows[j].total
-		}
-		return rows[i].pattern < rows[j].pattern
-	})
-
 	t := style.NewTable("PATTERN", "SAMPLES")
-	for _, r := range rows {
-		t.Row(r.pattern, strconv.FormatInt(r.total, 10))
+	for _, p := range SummarizePatterns(resp.Data) {
+		t.Row(p.Pattern, strconv.FormatInt(p.TotalCount, 10))
 	}
 	return t.Render(w)
 }

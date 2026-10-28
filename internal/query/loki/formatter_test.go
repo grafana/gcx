@@ -46,7 +46,7 @@ func TestFormatPatternsTable_SortsByTotalSamplesDescending(t *testing.T) {
 	resp := &loki.PatternsResponse{
 		Data: []loki.Pattern{
 			{Pattern: "rare pattern", Samples: [][]int64{{1, 2}}},
-			{Pattern: "frequent pattern", Samples: [][]int64{{1, 10}, {2, 15}}},
+			{Pattern: "frequent pattern", Samples: [][]int64{nil, {}, {1}, {1, 10}, {2, 15}}},
 			{Pattern: "medium pattern", Samples: [][]int64{{1, 5}}},
 		},
 	}

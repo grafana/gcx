@@ -103,9 +103,10 @@ type PatternsResponse struct {
 // the timestamp in Unix seconds — unlike the nanosecond-epoch start/end
 // request params this endpoint takes.
 type Pattern struct {
-	Pattern string    `json:"pattern"`
-	Level   string    `json:"level,omitempty"`
-	Samples [][]int64 `json:"samples"`
+	Pattern    string    `json:"pattern"`
+	Level      string    `json:"level,omitempty"`
+	Samples    [][]int64 `json:"samples"`
+	TotalCount int64     `json:"totalCount"`
 }
 
 // MetricQueryResponse represents the response from a metric LogQL query.

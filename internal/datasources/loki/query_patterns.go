@@ -77,6 +77,10 @@ range, not a complete inventory: Loki prunes low-volume patterns and caps the
 number returned, and retention depends on the deployment, so a long --since
 does not guarantee complete coverage of that window.
 
+Patterns are sorted by total sample count descending, then by pattern text.
+JSON/YAML include totalCount (the sum of sample counts) alongside each pattern's
+raw samples and level.
+
 Default time range is the last hour when no time flags are given. --step is
 optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 (e.g., 1.5); when omitted, Loki chooses the bucket size.`,
@@ -147,6 +151,7 @@ optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 				return fmt.Errorf("failed to get patterns: %w", err)
 			}
 
+			resp.Data = loki.SummarizePatterns(resp.Data)
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}

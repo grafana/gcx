@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func writePatternsTestConfig(t *testing.T, content string) string {
@@ -39,7 +40,12 @@ func execQueryPatternsCmd(t *testing.T, args []string) (map[string]url.Values, s
 		}
 		captured[r.URL.Path] = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{"status":"success","data":[{"pattern":"<_> level=error <_>","samples":[[1711839260,1],[1711839270,2]]}]}`))
+		_, err := w.Write([]byte(`{"status":"success","data":[
+{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},
+{"pattern":"zebra <_>","level":"info","samples":[[1711839260,5]]},
+{"pattern":"empty <_>","samples":[[],[1711839260]]},
+{"pattern":"alpha <_>","samples":[[1711839260,2],[1711839270,3]]}
+]}`))
 		assert.NoError(t, err)
 	}))
 	defer srv.Close()
@@ -90,11 +96,25 @@ func TestQueryPatternsCmd_TableOutput(t *testing.T) {
 	assert.Contains(t, stdout, "3") // 1 + 2
 }
 
-func TestQueryPatternsCmd_JSONOutput(t *testing.T) {
-	_, stdout, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "json"})
-	require.NoError(t, err)
-	assert.Contains(t, stdout, `"pattern"`)
-	assert.Contains(t, stdout, `"samples"`)
+func TestQueryPatternsCmd_StructuredOutput(t *testing.T) {
+	want := `{"status":"success","data":[
+{"pattern":"alpha <_>","samples":[[1711839260,2],[1711839270,3]],"totalCount":5},
+{"pattern":"zebra <_>","level":"info","samples":[[1711839260,5]],"totalCount":5},
+{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]],"totalCount":3},
+{"pattern":"empty <_>","samples":[[],[1711839260]],"totalCount":0}
+]}`
+	for _, output := range []string{"json", "yaml"} {
+		t.Run(output, func(t *testing.T) {
+			_, stdout, err := execQueryPatternsCmd(t, []string{`{job="app"}`, "--since", "30m", "-o", output})
+			require.NoError(t, err)
+			if output == "yaml" {
+				converted, err := yaml.YAMLToJSON([]byte(stdout))
+				require.NoError(t, err)
+				stdout = string(converted)
+			}
+			assert.JSONEq(t, want, stdout)
+		})
+	}
 }
 
 func TestQueryPatternsCmd_DefaultsToOneHourWindowWhenNoTimeFlagsGiven(t *testing.T) {
