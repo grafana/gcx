@@ -67,28 +67,21 @@ The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `g
 
 If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, update the Grafana Assistant application to a version that includes it.
 
-### Assistant investigation permissions
+### Permissions to use Assistant investigation 
 
-If `gcx assistant investigations list` returns HTTP 403, gcx reports
-`Authorization failed` with exit code 3 and names
-`grafana-assistant-app.investigations:read` as the required action.
+Access to the Assistant app requires `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`. A backend 403 such as `insufficient permissions` doesn't mean that app access is missing. 
+
+If `gcx assistant investigations list` returns HTTP 403, `gcx` reports `Authorization failed` with exit code 3 and names `grafana-assistant-app.investigations:read` as the required action.
+
+A `plugin proxy route access denied` response identifies a route permission refusal; a backend denial identifies an operation permission failure.
+
 Inspect your allowed actions with:
 
 ```bash
 gcx api /api/access-control/user/actions
 ```
 
-Ask your Grafana administrator to check your roles for the required action.
-Access to the Assistant app also requires `plugins.app:access` scoped to
-`plugins:id:grafana-assistant-app`, but a backend 403 such as
-`insufficient permissions` does not mean that app access is missing.
-
-For other Assistant operations, including investigation mutations and MCP server
-calls, gcx gives general permission guidance rather than naming the investigation
-read action. A `plugin proxy route access denied` response identifies a route
-permission refusal; a backend denial identifies an operation permission failure.
-`gcx setup status` does not check Assistant access. Refer to
-[roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
+Ask your Grafana administrator to check your roles for the required action.  Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
 for role assignment guidance.
 
 ### Grafana Cloud product API 
