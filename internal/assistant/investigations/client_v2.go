@@ -27,7 +27,7 @@ const (
 
 // CreateLodestone starts a new investigation against /api/v2/investigations.
 func (c *Client) CreateLodestone(ctx context.Context, req CreateLodestoneRequest) (*CreateLodestoneResponse, error) {
-	return assistanthttp.DoEnvelopeRequest[CreateLodestoneResponse](c.base, ctx, http.MethodPost, v2InvestigationsBase, req, "create investigation")
+	return assistanthttp.DoEnvelopeRequest[CreateLodestoneResponse](c.base, ctx, http.MethodPost, v2InvestigationsBase, req, "create investigation", "")
 }
 
 // ListLodestone returns the v2 investigation collection: rich summaries plus
@@ -85,7 +85,7 @@ func (c *Client) ListLodestone(ctx context.Context, opts ListLodestoneOptions) (
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, readPermission)
 	}
 	var envelope struct {
 		Data LodestoneList `json:"data"`
@@ -116,7 +116,7 @@ func (c *Client) ResolveByID(ctx context.Context, id string) (ResolveByIDRespons
 		return ResolveByIDResponse{}, http.StatusNotFound, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return ResolveByIDResponse{}, resp.StatusCode, assistanthttp.HandleErrorResponse(resp)
+		return ResolveByIDResponse{}, resp.StatusCode, assistanthttp.HandleErrorResponse(resp, readPermission)
 	}
 	var envelope struct {
 		Data ResolveByIDResponse `json:"data"`
@@ -131,7 +131,7 @@ func (c *Client) ResolveByID(ctx context.Context, id string) (ResolveByIDRespons
 // the /api/v2 /snapshot endpoint.
 func (c *Client) GetState(ctx context.Context, id string) (LodestoneState, error) {
 	path := fmt.Sprintf(v2SnapshotFmt, url.PathEscape(id))
-	state, err := assistanthttp.DoEnvelopeRequest[LodestoneState](c.base, ctx, http.MethodGet, path, nil, "get investigation state")
+	state, err := assistanthttp.DoEnvelopeRequest[LodestoneState](c.base, ctx, http.MethodGet, path, nil, "get investigation state", readPermission)
 	if err != nil {
 		return nil, err
 	}
@@ -141,13 +141,13 @@ func (c *Client) GetState(ctx context.Context, id string) (LodestoneState, error
 // Pause pauses a running investigation (non-terminal).
 func (c *Client) Pause(ctx context.Context, id string) (*Message, error) {
 	path := fmt.Sprintf(v2PauseFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[Message](c.base, ctx, http.MethodPost, path, nil, "pause investigation")
+	return assistanthttp.DoEnvelopeRequest[Message](c.base, ctx, http.MethodPost, path, nil, "pause investigation", "")
 }
 
 // Resume resumes a paused (or terminal) investigation.
 func (c *Client) Resume(ctx context.Context, id string) (*Message, error) {
 	path := fmt.Sprintf(v2ResumeFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[Message](c.base, ctx, http.MethodPost, path, nil, "resume investigation")
+	return assistanthttp.DoEnvelopeRequest[Message](c.base, ctx, http.MethodPost, path, nil, "resume investigation", "")
 }
 
 // Evidence returns the panel evidence index for an investigation — the
@@ -155,18 +155,18 @@ func (c *Client) Resume(ctx context.Context, id string) (*Message, error) {
 // query that produced each panel.
 func (c *Client) Evidence(ctx context.Context, id string) (*EvidenceResponse, error) {
 	path := fmt.Sprintf(v2EvidenceFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[EvidenceResponse](c.base, ctx, http.MethodGet, path, nil, "get investigation evidence")
+	return assistanthttp.DoEnvelopeRequest[EvidenceResponse](c.base, ctx, http.MethodGet, path, nil, "get investigation evidence", readPermission)
 }
 
 // SetMode changes the autonomy mode of a running investigation.
 func (c *Client) SetMode(ctx context.Context, id, mode string) (*ModeResponse, error) {
 	path := fmt.Sprintf(v2ModeFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[ModeResponse](c.base, ctx, http.MethodPut, path, ModeRequest{Mode: mode}, "set investigation mode")
+	return assistanthttp.DoEnvelopeRequest[ModeResponse](c.base, ctx, http.MethodPut, path, ModeRequest{Mode: mode}, "set investigation mode", "")
 }
 
 // Scope shares an investigation with additional teams (one-way, additive)
 // via /api/v2 /share.
 func (c *Client) Scope(ctx context.Context, id string, teamNames []string) (*ScopeResponse, error) {
 	path := fmt.Sprintf(v2ShareFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[ScopeResponse](c.base, ctx, http.MethodPost, path, ScopeRequest{TeamNames: teamNames}, "share investigation")
+	return assistanthttp.DoEnvelopeRequest[ScopeResponse](c.base, ctx, http.MethodPost, path, ScopeRequest{TeamNames: teamNames}, "share investigation", "")
 }

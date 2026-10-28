@@ -70,7 +70,8 @@ func (c *Client) DoRequestWithHeaders(ctx context.Context, method, path string, 
 // DoEnvelopeRequest runs an HTTP call against the Assistant plugin API and
 // decodes the {"data": T} envelope used by the v2 surface. Pass nil for req
 // when the request has no body. Accepts 200 OK or 201 Created.
-func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path string, req any, op string) (*T, error) {
+// permission is passed to HandleErrorResponse for permission guidance.
+func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path string, req any, op, permission string) (*T, error) {
 	var body io.Reader
 	if req != nil {
 		data, err := json.Marshal(req)
@@ -85,7 +86,7 @@ func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path strin
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, HandleErrorResponse(resp)
+		return nil, HandleErrorResponse(resp, permission)
 	}
 	var envelope struct {
 		Data T `json:"data"`
@@ -100,12 +101,16 @@ func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path strin
 // It preserves the transport error for status classification and body rendering.
 type ForbiddenError struct {
 	*gcxerrors.HTTPStatusError
+
+	// Permission is the action required by the calling operation, when known.
+	Permission string
 }
 
 func (e *ForbiddenError) Unwrap() error { return e.HTTPStatusError }
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
-func HandleErrorResponse(resp *http.Response) error {
+// permission names the calling operation's required action; pass "" when unknown.
+func HandleErrorResponse(resp *http.Response, permission string) error {
 	statusErr := &gcxerrors.HTTPStatusError{
 		Status:      resp.StatusCode,
 		ContentType: resp.Header.Get("Content-Type"),
@@ -120,7 +125,7 @@ func HandleErrorResponse(resp *http.Response) error {
 		statusErr.ServerMessage = string(body)
 	}
 	if resp.StatusCode == http.StatusForbidden {
-		return &ForbiddenError{HTTPStatusError: statusErr}
+		return &ForbiddenError{HTTPStatusError: statusErr, Permission: permission}
 	}
 	return statusErr
 }

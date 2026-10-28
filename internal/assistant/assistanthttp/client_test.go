@@ -96,7 +96,7 @@ func TestHandleErrorResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 			}
-			err := assistanthttp.HandleErrorResponse(resp)
+			err := assistanthttp.HandleErrorResponse(resp, "assistant.test:read")
 			require.EqualError(t, err, tt.want)
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
@@ -106,6 +106,9 @@ func TestHandleErrorResponse(t *testing.T) {
 			assert.Empty(t, statusErr.TraceID, "Assistant preserves the raw body without parsing JSON")
 			var forbidden *assistanthttp.ForbiddenError
 			assert.Equal(t, tt.status == http.StatusForbidden, errors.As(err, &forbidden))
+			if forbidden != nil {
+				assert.Equal(t, "assistant.test:read", forbidden.Permission)
+			}
 			require.NoError(t, errors.Unwrap(statusErr))
 		})
 	}
@@ -120,7 +123,7 @@ func TestHandleErrorResponse_ReadFailure(t *testing.T) {
 				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 				Body:       io.NopCloser(failingReader{err: readErr}),
 			}
-			err := assistanthttp.HandleErrorResponse(resp)
+			err := assistanthttp.HandleErrorResponse(resp, "assistant.test:read")
 			require.EqualError(t, err, fmt.Sprintf("request failed with status %d (could not read body: body read failed)", status))
 			require.ErrorIs(t, err, readErr)
 			var statusErr *gcxerrors.HTTPStatusError
@@ -131,6 +134,9 @@ func TestHandleErrorResponse_ReadFailure(t *testing.T) {
 			assert.Empty(t, statusErr.TraceID)
 			var forbidden *assistanthttp.ForbiddenError
 			assert.Equal(t, status == http.StatusForbidden, errors.As(err, &forbidden))
+			if forbidden != nil {
+				assert.Equal(t, "assistant.test:read", forbidden.Permission)
+			}
 		})
 	}
 }
@@ -163,7 +169,7 @@ func (b failingResponseBody) Close() error             { return nil }
 func TestHandleErrorResponse_BodyReadFailure(t *testing.T) {
 	cause := errors.New("body read failed")
 	resp := &http.Response{StatusCode: http.StatusBadGateway, Body: failingResponseBody{err: cause}}
-	err := assistanthttp.HandleErrorResponse(resp)
+	err := assistanthttp.HandleErrorResponse(resp, "")
 	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
 	var statusErr *gcxerrors.HTTPStatusError
 	require.ErrorAs(t, err, &statusErr)

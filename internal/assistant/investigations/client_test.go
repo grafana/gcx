@@ -294,3 +294,34 @@ func TestList_NullResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, summaries)
 }
+
+func TestForbiddenPermissionByOperation(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, permission string
+		call                           func(*investigations.Client) error
+	}{
+		{"v1 read", http.MethodGet, "/api/v1/investigations/inv-1", "grafana-assistant-app.investigations:read", func(c *investigations.Client) error { _, err := c.Get(t.Context(), "inv-1"); return err }},
+		{"v1 create", http.MethodPost, "/api/v1/investigations", "", func(c *investigations.Client) error {
+			_, err := c.Create(t.Context(), investigations.CreateRequest{})
+			return err
+		}},
+		{"v2 snapshot", http.MethodGet, "/api/v2/investigations/inv-1/snapshot", "grafana-assistant-app.investigations:read", func(c *investigations.Client) error { _, err := c.GetState(t.Context(), "inv-1"); return err }},
+		{"v2 create", http.MethodPost, "/api/v2/investigations", "", func(c *investigations.Client) error {
+			_, err := c.CreateLodestone(t.Context(), investigations.CreateLodestoneRequest{})
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tc.method, r.Method)
+				assert.Equal(t, "/api/plugins/grafana-assistant-app/resources"+tc.path, r.URL.Path)
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"message":"insufficient permissions"}`)
+			}))
+			err := tc.call(client)
+			var forbidden *assistanthttp.ForbiddenError
+			require.ErrorAs(t, err, &forbidden)
+			assert.Equal(t, tc.permission, forbidden.Permission)
+		})
+	}
+}

@@ -60,7 +60,7 @@ func (c *Client) fetchPage(ctx context.Context, opts ListOptions) ([]rawIntegrat
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, assistanthttp.HandleErrorResponse(resp)
+		return nil, 0, assistanthttp.HandleErrorResponse(resp, "")
 	}
 
 	var envelope struct {
@@ -183,7 +183,7 @@ func (c *Client) Get(ctx context.Context, ref string) (*Server, error) {
 		return server, nil
 	}
 	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusNotFound {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, "")
 	}
 
 	servers, err := c.List(ctx, ListOptions{})
@@ -229,7 +229,7 @@ func (c *Client) Create(ctx context.Context, input ServerInput) (*MutationResult
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, "")
 	}
 
 	result, err := decodeMutation(resp.Body)
@@ -316,7 +316,7 @@ func (c *Client) Update(ctx context.Context, ref string, input ServerInput) (*Mu
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, "")
 	}
 
 	result, err := decodeMutation(resp.Body)
@@ -346,7 +346,7 @@ func (c *Client) Delete(ctx context.Context, ref string) (*MutationResult, error
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, "")
 	}
 	return &MutationResult{Operation: "deleted", Server: current}, nil
 }
@@ -369,7 +369,7 @@ func (c *Client) ValidateByID(ctx context.Context, id string) (*ValidationResult
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, "")
 	}
 
 	var envelope struct {
@@ -412,7 +412,7 @@ func (c *Client) InitiateOAuthByID(ctx context.Context, id, scope string) (*OAut
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, assistanthttp.HandleErrorResponse(resp, "")
 	}
 
 	var envelope struct {

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
+	mcpcommands "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,9 +31,11 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 		mode     string
 		listPath string
 		fallback bool
+		proxy    bool
 	}{
 		{name: "access check", listPath: "/api/v2/investigations"},
 		{name: "v2 list", mode: "v2", listPath: "/api/v2/investigations"},
+		{name: "proxy route access check", listPath: "/api/v2/investigations", proxy: true},
 		{name: "legacy list", mode: "v1", listPath: "/api/v1/investigations/summary"},
 		{name: "legacy fallback", listPath: "/api/v1/investigations/summary", fallback: true},
 	} {
@@ -40,6 +43,10 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 			testutils.SandboxConfigEnv(t)
 			t.Setenv("GCX_ASSISTANT_API_VERSION", tc.mode)
 			calls := 0
+			serverMessage := "insufficient permissions"
+			if tc.proxy {
+				serverMessage = "plugin proxy route access denied"
+			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				assert.Equal(t, http.MethodGet, r.Method)
@@ -57,7 +64,7 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 				assert.Equal(t, limit, r.URL.Query().Get("limit"))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				_, _ = io.WriteString(w, `{"message":"insufficient permissions"}`)
+				_, _ = fmt.Fprintf(w, `{"message":%q}`, serverMessage)
 			}))
 			t.Cleanup(server.Close)
 			cfgFile := filepath.Join(t.TempDir(), "config.yaml")
@@ -88,11 +95,10 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 			assert.Equal(t, 3, *detailed.ExitCode)
 			assert.Equal(t, []string{
 				"Inspect your allowed actions: gcx api /api/access-control/user/actions",
-				"Ask a Grafana admin to grant plugins.app:access for grafana-assistant-app",
-				"Reading investigations also requires a role granting grafana-assistant-app.investigations:read",
+				"Ask a Grafana admin to grant a role with grafana-assistant-app.investigations:read",
 			}, detailed.Suggestions)
 			assert.Equal(t, docs.RolesAndPermissions, detailed.DocsLink)
-			assert.Contains(t, detailed.Details, "insufficient permissions")
+			assert.Contains(t, detailed.Details, serverMessage)
 			if tc.mode == "" && !tc.fallback {
 				assert.Contains(t, detailed.Details, "check Grafana Assistant investigations access:")
 			}
@@ -151,7 +157,7 @@ func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
 				err = assistanthttp.HandleErrorResponse(&http.Response{
 					StatusCode: tc.status,
 					Body:       io.NopCloser(strings.NewReader("server explanation")),
-				})
+				}, "")
 			}
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
@@ -162,6 +168,58 @@ func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
 			assert.Equal(t, tc.suggestions, detailed.Suggestions)
 			assert.Contains(t, detailed.Details, "server explanation")
 			assert.Empty(t, detailed.DocsLink)
+		})
+	}
+}
+
+func TestAssistantMCPCreateForbidden(t *testing.T) {
+	for _, tc := range []struct{ name, body, suggestion string }{
+		{"backend", `{"message":"insufficient permissions"}`, "Ask a Grafana admin to check your permissions for this Assistant operation"},
+		{"proxy route", `{"message":"plugin proxy route access denied"}`, "Ask a Grafana admin to check the permission required by this Assistant plugin route"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutils.SandboxConfigEnv(t)
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, "/api/plugins/grafana-assistant-app/resources/api/v1/integrations", r.URL.Path)
+				if r.Method == http.MethodGet {
+					_, _ = io.WriteString(w, `{"data":{"integrations":[],"total":0}}`)
+					return
+				}
+				assert.Equal(t, http.MethodPost, r.Method)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			t.Cleanup(server.Close)
+			cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+			cfg := fmt.Sprintf("version: 1\nstacks:\n  default:\n    grafana:\n      server: %s\n      stack-id: 12345\ncontexts:\n  default:\n    stack: default\ncurrent-context: default\n", server.URL)
+			require.NoError(t, os.WriteFile(cfgFile, []byte(cfg), 0o600))
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(cfgFile)
+			cmd := mcpcommands.Commands(loader)
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"create", "--name", "Tools", "--url", "https://mcp.example.com/mcp", "-o", "json"})
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Equal(t, 3, calls)
+			assert.Empty(t, out.String())
+			detailed := fail.ErrorToDetailedError(err)
+			assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, detailed.Summary)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
+			assert.Contains(t, detailed.Details, tc.body)
+			assert.Equal(t, []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions", tc.suggestion}, detailed.Suggestions)
+			assert.Equal(t, docs.RolesAndPermissions, detailed.DocsLink)
+			require.NoError(t, detailed.WriteJSON(&out, *detailed.ExitCode))
+			assert.NotContains(t, out.String(), "investigations:read")
+			assert.NotContains(t, out.String(), "plugins.app:access")
+			assert.NotContains(t, out.String(), "gcx setup status")
 		})
 	}
 }

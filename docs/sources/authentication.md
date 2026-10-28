@@ -70,16 +70,23 @@ If `gcx login` fails with a `Permission Required` error naming the **gcx User** 
 ### Assistant investigation permissions
 
 If `gcx assistant investigations list` returns HTTP 403, gcx reports
-`Authorization failed` with exit code 3 and names the required permissions.
+`Authorization failed` with exit code 3 and names
+`grafana-assistant-app.investigations:read` as the required action.
 Inspect your allowed actions with:
 
 ```bash
 gcx api /api/access-control/user/actions
 ```
 
-Ask your Grafana administrator to grant a role with `plugins.app:access` scoped
-to `plugins:id:grafana-assistant-app` and
-`grafana-assistant-app.investigations:read` for reading investigations.
+Ask your Grafana administrator to check your roles for the required action.
+Access to the Assistant app also requires `plugins.app:access` scoped to
+`plugins:id:grafana-assistant-app`, but a backend 403 such as
+`insufficient permissions` does not mean that app access is missing.
+
+For other Assistant operations, including investigation mutations and MCP server
+calls, gcx gives general permission guidance rather than naming the investigation
+read action. A `plugin proxy route access denied` response identifies a route
+permission refusal; a backend denial identifies an operation permission failure.
 `gcx setup status` does not check Assistant access. Refer to
 [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
 for role assignment guidance.
