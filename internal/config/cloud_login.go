@@ -230,18 +230,6 @@ func (config *Config) availableCloudEntryName(base string, desired *CloudEntry) 
 	}
 }
 
-// ResolveContextName picks the context to operate on: the explicit override when
-// set, otherwise the config's current context, falling back to the default.
-func ResolveContextName(override string, cfg Config) string {
-	if override != "" {
-		return override
-	}
-	if cfg.CurrentContext != "" {
-		return cfg.CurrentContext
-	}
-	return DefaultContextName
-}
-
 // SaveCloudConfig writes cloud credentials into a named cloud entry and binds
 // it to the resolved context (see ResolveContextName), creating the context
 // if it doesn't exist. The entry is the one the context already references,
@@ -288,7 +276,10 @@ func SaveCloudConfigGuarded(
 	// Keep the source-absent revision marker returned by Load. Write uses it to
 	// avoid replacing a config another process creates while login is running.
 
-	contextName := ResolveContextName(contextOverride, cfg)
+	contextName, err := ResolveContextName(contextOverride, cfg)
+	if err != nil {
+		return "", "", err
+	}
 
 	if !cfg.HasContext(contextName) {
 		cfg.SetContext(contextName, true, Context{})

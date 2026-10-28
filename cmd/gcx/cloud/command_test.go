@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/credentials"
@@ -21,6 +22,8 @@ func (f gcomOAuthFlowFunc) Run(ctx context.Context) (*auth.GCOMResult, error) {
 }
 
 func TestMain(m *testing.M) {
+	// Strict context mode would refuse the contexts these tests inherit.
+	_ = os.Unsetenv("GCX_REQUIRE_CONTEXT")
 	previous, wasSet := os.LookupEnv("GCX_KEYCHAIN")
 	if err := os.Setenv("GCX_KEYCHAIN", "off"); err != nil {
 		panic(err)
@@ -525,6 +528,22 @@ func TestCloudLoginRejectsUnsupportedConfigBeforeStartingOAuth(t *testing.T) {
 	assert.False(t, started, "OAuth flow must not start before config preflight succeeds")
 }
 
+// In strict context mode, a file with contexts but no current-context selects
+// nothing. The env override then creates "default", and currentCloudConfig
+// must return it instead of refusing a context the file never selected.
+func TestCurrentCloudConfigStrictNoCurrentContext(t *testing.T) {
+	isolateCloudConfigEnv(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncontexts:\n  other: {}\n"), 0o600))
+
+	opts := &cmdconfig.Options{ConfigFile: path}
+	_, _, name, err := currentCloudConfig(t.Context(), opts)
+	require.NoError(t, err)
+	assert.Equal(t, config.DefaultContextName, name)
+}
+
 func isolateCloudConfigEnv(t *testing.T) (string, string) {
 	t.Helper()
 	userDir := t.TempDir()
@@ -535,6 +554,7 @@ func isolateCloudConfigEnv(t *testing.T) (string, string) {
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
+	t.Setenv(config.RequireContextEnvVar, "")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "")
 	t.Chdir(workDir)
 	return userDir, workDir

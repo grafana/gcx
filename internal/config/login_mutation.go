@@ -350,7 +350,11 @@ func (config *Config) PlanLoginMutation(contextName string, intent LoginMutation
 	}
 
 	if contextName == "" {
-		contextName = ResolveContextName("", *config)
+		resolved, err := ResolveContextName("", *config)
+		if err != nil {
+			return ConfigSource{}, err
+		}
+		contextName = resolved
 	}
 	ctx := config.Contexts[contextName]
 	if ctx == nil {

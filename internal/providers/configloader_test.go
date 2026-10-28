@@ -1670,3 +1670,97 @@ current-context: default
 	assert.Equal(t, want.Namespace, got.Namespace)
 	assert.Equal(t, "stacks-11111", got.Namespace)
 }
+
+const strictTwoContextConfig = `
+version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.example.com
+      token: a-token
+      org-id: 1
+  b:
+    grafana:
+      server: https://b.example.com
+      token: b-token
+      org-id: 1
+contexts:
+  a:
+    stack: a
+  b:
+    stack: b
+current-context: a
+`
+
+func TestConfigLoader_StrictRefusesInheritedContext(t *testing.T) {
+	loads := map[string]func(*providers.ConfigLoader) error{
+		"LoadGrafanaConfig": func(l *providers.ConfigLoader) error {
+			_, err := l.LoadGrafanaConfig(context.Background())
+			return err
+		},
+		"LoadCloudTokenConfig": func(l *providers.ConfigLoader) error {
+			_, err := l.LoadCloudTokenConfig(context.Background())
+			return err
+		},
+		"LoadProviderConfig": func(l *providers.ConfigLoader) error {
+			_, _, err := l.LoadProviderConfig(context.Background(), "synth")
+			return err
+		},
+		"LoadDirectProviderSnapshot": func(l *providers.ConfigLoader) error {
+			_, err := l.LoadDirectProviderSnapshot(context.Background(), providers.DirectProviderPolicy{ProviderName: "synth"})
+			return err
+		},
+		"LoadConfigTolerant": func(l *providers.ConfigLoader) error {
+			_, err := l.LoadConfigTolerant(context.Background())
+			return err
+		},
+		"LoadFullConfig": func(l *providers.ConfigLoader) error {
+			_, err := l.LoadFullConfig(context.Background())
+			return err
+		},
+	}
+
+	for name, load := range loads {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+			cfgFile := writeConfigFile(t, strictTwoContextConfig)
+
+			unnamed := &providers.ConfigLoader{}
+			unnamed.SetConfigFile(cfgFile)
+			require.ErrorIs(t, load(unnamed), internalconfig.ErrContextRequired)
+
+			named := &providers.ConfigLoader{}
+			named.SetConfigFile(cfgFile)
+			named.SetContextName("b")
+			namedErr := load(named)
+			require.NotErrorIs(t, namedErr, internalconfig.ErrContextRequired)
+			require.NotErrorIs(t, namedErr, internalconfig.ErrContextSelectionUndeclared)
+		})
+	}
+}
+
+func TestSaveProviderConfig_StrictDoesNotWriteCurrentContext(t *testing.T) {
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	cfgFile := writeConfigFile(t, `
+version: 1
+contexts:
+  a: {}
+  b: {}
+current-context: a
+`)
+	before, err := os.ReadFile(cfgFile)
+	require.NoError(t, err)
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	err = loader.SaveProviderConfig(context.Background(), "synth", "sm-metrics-datasource-uid", "abc123")
+	require.ErrorIs(t, err, internalconfig.ErrContextRequired)
+
+	err = loader.SaveDatasourceUID(context.Background(), "prometheus", "uid-1")
+	require.ErrorIs(t, err, internalconfig.ErrContextRequired)
+
+	after, err := os.ReadFile(cfgFile)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after))
+}

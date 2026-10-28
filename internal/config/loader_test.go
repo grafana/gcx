@@ -804,6 +804,7 @@ func isolatedLoaderEnv(t *testing.T) (string, string) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("GCX_CONFIG", "")
+	t.Setenv(config.RequireContextEnvVar, "")
 
 	t.Chdir(workDir)
 	return userDir, workDir

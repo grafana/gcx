@@ -984,12 +984,15 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	// an unnamed GRAFANA_SERVER to the current context first can reject that
 	// context's stored credential (or make it appear to be the mutation target)
 	// before we have inferred the server-derived context the user actually chose.
-	cfg, err := config.LoadLayered(ctx, flags.Config.ConfigFile)
+	cfg, err := config.LoadLayered(ctx, flags.Config.ConfigFile, config.FileScope)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return config.Config{}, nil, contextName, err
 	}
 	selectionServer := requestedLoginServer(flags.Server, nil)
-	sourceCtx, resolvedName := resolveSourceContext(cfg, contextName, selectionServer)
+	sourceCtx, resolvedName, err := resolveSourceContext(cfg, contextName, selectionServer, loginCommandName(flags.signup))
+	if err != nil {
+		return config.Config{}, nil, contextName, err
+	}
 	if sourceCtx == nil {
 		// No configured context describes the requested server, so the reload
 		// below is skipped and the telemetry kind captured by the load above
@@ -1846,23 +1849,40 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 	}
 }
 
+// loginCommandName names the command that a loginOpts serves. Refusals use it
+// because the remedy differs between gcx login and gcx signup.
+func loginCommandName(signup bool) string {
+	if signup {
+		return "signup"
+	}
+	return "login"
+}
+
 // resolveSourceContext picks which context this login targets, returning it
 // alongside its (possibly-derived) name. A nil context signals new-context
 // creation to downstream code.
 //
 // When no name is given, the name is derived from --server so that
 // `gcx login --server <new>` doesn't clobber the unrelated current context.
-// With neither name nor server, falls back to the current context.
-func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string) {
+// With neither name nor server, it falls back to the current context. Strict
+// context mode refuses that fallback. command ("login" or "signup") labels the
+// refusal.
+func resolveSourceContext(cfg config.Config, contextName, server, command string) (*config.Context, string, error) {
 	server = login.NormalizeServerURL(server)
 	switch {
 	case contextName != "":
-		return cfg.Contexts[contextName], contextName
+		return cfg.Contexts[contextName], contextName, nil
 	case server != "":
 		name := config.ContextNameFromServerURL(server)
-		return cfg.Contexts[name], name
+		return cfg.Contexts[name], name, nil
 	default:
-		return cfg.GetCurrentContext(), cfg.CurrentContext
+		if config.StrictContextEnabled() && cfg.CurrentContext != "" {
+			// The pre-load captured the inherited context's target kind; a
+			// refused login must report none.
+			config.ClearCapturedTargetKind()
+			return nil, "", &config.ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames(), Command: command}
+		}
+		return cfg.GetCurrentContext(), cfg.CurrentContext, nil
 	}
 }
 

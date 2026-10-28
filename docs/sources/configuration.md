@@ -131,6 +131,35 @@ Switch to a different context:
 gcx config use-context staging
 ```
 
+Every process that reads the same config file shares `current-context`. If you
+keep many contexts on one machine, or run `gcx` from coding agents, set
+`GCX_REQUIRE_CONTEXT`. Then a command cannot inherit the context that another
+session selected last. In strict context mode, a command that would use the
+current context must pass `--context <name>` or set `GCX_CONTEXT`. If it does
+not, it exits with code 2.
+
+`GRAFANA_SERVER` and `--config` do not name a context. `GRAFANA_SERVER`
+overrides only the server URL of the selected context. On a first run, or if
+you configure gcx only with `GRAFANA_SERVER` and `GRAFANA_TOKEN`, pass
+`--context default`.
+
+`gcx login` and `gcx signup` ignore `GCX_CONTEXT`. Give them a context name
+argument or `--context`. `gcx login` also accepts `--server` or
+`GRAFANA_SERVER`, which then names the login target.
+
+Strict context mode does not refuse commands that only read or edit the config
+file: `gcx config view`, `current-context`, `list-contexts`, `path`,
+`use-context`, `set` and `unset`. `gcx config check` without `--context` or
+`GCX_CONTEXT` checks every configured context, the current context included,
+and names each one. A command that asks for confirmation before it loads the
+config shows the prompt first. Then strict context mode refuses it, and no
+request goes to the current context.
+
+```shell
+export GCX_REQUIRE_CONTEXT=true
+gcx --context staging resources get dashboards
+```
+
 See the entire configuration:
 
 ```shell

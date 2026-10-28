@@ -560,3 +560,36 @@ func TestSignupConflictSuggestionNamesSignup(t *testing.T) {
 	require.ErrorAs(t, err, &det)
 	assert.Equal(t, []string{"Drop --context and use the positional form: gcx signup mine"}, det.Suggestions)
 }
+
+func strictSignupSeed(t *testing.T) string {
+	t.Helper()
+	var seed config.Config
+	seed.SetStack("a", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://a.invalid", OrgID: 1}})
+	seed.SetContext("a", true, config.Context{Stack: "a"})
+	return writeSignupConfig(t, seed)
+}
+
+func TestSignup_StrictBareRefused(t *testing.T) {
+	signupEnvironment(t, "true")
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	browser := stubSignupBrowser(t, nil)
+	path := strictSignupSeed(t)
+
+	_, err := runSignup(t, "--config", path)
+	require.ErrorIs(t, err, config.ErrContextRequired)
+	var reqErr *config.ContextRequiredError
+	require.ErrorAs(t, err, &reqErr)
+	assert.Equal(t, "signup", reqErr.Command)
+	assert.Zero(t, browser.started())
+}
+
+func TestSignup_StrictNamedTargetAccepted(t *testing.T) {
+	signupEnvironment(t, "true")
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	stubSignupBrowser(t, nil)
+	path := strictSignupSeed(t)
+
+	_, err := runSignup(t, "newname", "--config", path)
+	require.NotErrorIs(t, err, config.ErrContextRequired)
+	require.NotErrorIs(t, err, config.ErrContextSelectionUndeclared)
+}

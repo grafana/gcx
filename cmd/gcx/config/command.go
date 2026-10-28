@@ -61,21 +61,27 @@ func (opts *Options) EffectiveContext() string {
 // This function should only be used by config-related commands, to allow the
 // user to iterate on the configuration until it becomes valid.
 func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
-	var overrides []config.Override
+	return config.LoadLayered(ctx, opts.ConfigFile, opts.tolerantOverrides(nil, extraOverrides)...)
+}
 
+// LoadConfigFileScoped is LoadConfigTolerant for commands that inspect the
+// config file itself (view, current-context, list-contexts, and check without
+// --context). Strict context mode does not apply to them. FileScope runs
+// first. The loader stops at the first failing override, and a later env parse
+// error must not hide that scope.
+func (opts *Options) LoadConfigFileScoped(ctx context.Context) (config.Config, error) {
+	return config.LoadLayered(ctx, opts.ConfigFile, opts.tolerantOverrides([]config.Override{config.FileScope}, nil)...)
+}
+
+// tolerantOverrides builds the shared override chain in this order: leading
+// overrides, context selection, the environment override, then extras.
+func (opts *Options) tolerantOverrides(leading, extraOverrides []config.Override) []config.Override {
 	// Select the target context before applying context-scoped environment
 	// variables. Otherwise --context switches only after env values have already
-	// been written into the context named by current-context.
-	if contextName := opts.EffectiveContext(); contextName != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(contextName) {
-				return config.ContextNotFound(contextName, cfg.ContextNames())
-			}
-
-			cfg.CurrentContext = contextName
-			return nil
-		})
-	}
+	// been written into the context named by current-context. The selection is
+	// always declared, even when empty, so strict context mode can tell an
+	// inherited current-context from a named one.
+	overrides := append(append([]config.Override{}, leading...), config.SelectContext(opts.EffectiveContext()))
 
 	overrides = append(overrides,
 		// If Grafana-related env variables are set, use them to configure the
@@ -135,9 +141,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 			return nil
 		},
 	)
-	overrides = append(overrides, extraOverrides...)
-
-	return config.LoadLayered(ctx, opts.ConfigFile, overrides...)
+	return append(overrides, extraOverrides...)
 }
 
 // LoadConfig loads the configuration file (default, or explicitly set via flags) and validates it.
@@ -185,7 +189,7 @@ func (opts *Options) LoadGrafanaConfigWithContext(ctx context.Context) (config.N
 // This function should only be used by config-related commands, to allow the
 // user to iterate on the configuration until it becomes valid.
 func (opts *Options) loadConfigTolerantLayered(ctx context.Context) (config.Config, error) {
-	return config.LoadLayered(ctx, opts.ConfigFile)
+	return config.LoadLayered(ctx, opts.ConfigFile, config.FileScope)
 }
 
 func (opts *Options) ConfigSource() config.Source {
@@ -342,7 +346,7 @@ func viewCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			cfg, err := configOpts.LoadConfigFileScoped(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -435,7 +439,7 @@ func currentContextCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			cfg, err := configOpts.LoadConfigFileScoped(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -510,7 +514,7 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			cfg, err := configOpts.LoadConfigFileScoped(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -553,7 +557,15 @@ Without --context, checks every configured context. With --context, checks only 
 	gcx config check
 	gcx config check --context production`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			// Without --context, check reports every context by name. It does
+			// not use the inherited current-context as one target.
+			var cfg config.Config
+			var err error
+			if configOpts.EffectiveContext() == "" {
+				cfg, err = configOpts.LoadConfigFileScoped(cmd.Context())
+			} else {
+				cfg, err = configOpts.LoadConfigTolerant(cmd.Context())
+			}
 			if err != nil {
 				return err
 			}
@@ -851,7 +863,7 @@ user config), use --file to choose which layer to update.`,
 			// Cross-layer load: a context defined only in the user layer is
 			// still a valid target when --file local is specified, and the
 			// interactive picker needs the merged view.
-			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
+			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile, config.FileScope)
 			if err != nil {
 				return err
 			}

@@ -44,6 +44,9 @@ var (
 // cannot own it (see buildGcx), and without this every test run would leak
 // a full gcx binary in TMPDIR.
 func TestMain(m *testing.M) {
+	// Strict context mode would refuse the contexts these tests inherit, in
+	// process and in the built binary.
+	_ = os.Unsetenv("GCX_REQUIRE_CONTEXT")
 	code := m.Run()
 	if buildPath != "" {
 		_ = os.RemoveAll(filepath.Dir(buildPath))
