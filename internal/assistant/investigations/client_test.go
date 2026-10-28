@@ -306,6 +306,14 @@ func TestForbiddenPermissionByOperation(t *testing.T) {
 			return err
 		}},
 		{"v2 snapshot", http.MethodGet, "/api/v2/investigations/inv-1/snapshot", "grafana-assistant-app.investigations:read", func(c *investigations.Client) error { _, err := c.GetState(t.Context(), "inv-1"); return err }},
+		{"v2 resolve", http.MethodGet, "/api/v2/investigations/inv-1", "grafana-assistant-app.investigations:read", func(c *investigations.Client) error {
+			_, _, err := c.ResolveByID(t.Context(), "inv-1")
+			return err
+		}},
+		{"v2 evidence", http.MethodGet, "/api/v2/investigations/inv-1/evidence", "grafana-assistant-app.investigations:read", func(c *investigations.Client) error {
+			_, err := c.Evidence(t.Context(), "inv-1")
+			return err
+		}},
 		{"v2 create", http.MethodPost, "/api/v2/investigations", "", func(c *investigations.Client) error {
 			_, err := c.CreateLodestone(t.Context(), investigations.CreateLodestoneRequest{})
 			return err

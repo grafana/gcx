@@ -96,7 +96,7 @@ func TestHandleErrorResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 			}
-			err := assistanthttp.HandleErrorResponse(resp, "assistant.test:read")
+			err := assistanthttp.HandleErrorResponse(resp)
 			require.EqualError(t, err, tt.want)
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
@@ -107,7 +107,7 @@ func TestHandleErrorResponse(t *testing.T) {
 			var forbidden *assistanthttp.ForbiddenError
 			assert.Equal(t, tt.status == http.StatusForbidden, errors.As(err, &forbidden))
 			if forbidden != nil {
-				assert.Equal(t, "assistant.test:read", forbidden.Permission)
+				assert.Empty(t, forbidden.Permission)
 			}
 			require.NoError(t, errors.Unwrap(statusErr))
 		})
@@ -123,7 +123,7 @@ func TestHandleErrorResponse_ReadFailure(t *testing.T) {
 				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 				Body:       io.NopCloser(failingReader{err: readErr}),
 			}
-			err := assistanthttp.HandleErrorResponse(resp, "assistant.test:read")
+			err := assistanthttp.HandleErrorResponse(resp)
 			require.EqualError(t, err, fmt.Sprintf("request failed with status %d (could not read body: body read failed)", status))
 			require.ErrorIs(t, err, readErr)
 			var statusErr *gcxerrors.HTTPStatusError
@@ -135,7 +135,7 @@ func TestHandleErrorResponse_ReadFailure(t *testing.T) {
 			var forbidden *assistanthttp.ForbiddenError
 			assert.Equal(t, status == http.StatusForbidden, errors.As(err, &forbidden))
 			if forbidden != nil {
-				assert.Equal(t, "assistant.test:read", forbidden.Permission)
+				assert.Empty(t, forbidden.Permission)
 			}
 		})
 	}
@@ -161,6 +161,28 @@ func TestFormatTime(t *testing.T) {
 	}
 }
 
+func TestHandleErrorResponse_BodyLimit(t *testing.T) {
+	const limit = 1 << 20
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{name: "below limit", size: limit - 1},
+		{name: "at limit", size: limit},
+		{name: "above limit", size: limit + 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.NewReader(strings.Repeat("x", tc.size))
+			resp := &http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(body)}
+			err := assistanthttp.HandleErrorResponse(resp)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Len(t, statusErr.ServerMessage, min(tc.size, limit))
+			assert.Equal(t, max(0, tc.size-limit), body.Len(), "must not read beyond the limit")
+		})
+	}
+}
+
 type failingResponseBody struct{ err error }
 
 func (b failingResponseBody) Read([]byte) (int, error) { return 0, b.err }
@@ -169,7 +191,7 @@ func (b failingResponseBody) Close() error             { return nil }
 func TestHandleErrorResponse_BodyReadFailure(t *testing.T) {
 	cause := errors.New("body read failed")
 	resp := &http.Response{StatusCode: http.StatusBadGateway, Body: failingResponseBody{err: cause}}
-	err := assistanthttp.HandleErrorResponse(resp, "")
+	err := assistanthttp.HandleErrorResponse(resp)
 	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
 	var statusErr *gcxerrors.HTTPStatusError
 	require.ErrorAs(t, err, &statusErr)

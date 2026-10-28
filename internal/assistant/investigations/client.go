@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,6 +14,14 @@ import (
 )
 
 const readPermission = "grafana-assistant-app.investigations:read"
+
+func withReadPermission(err error) error {
+	var forbidden *assistanthttp.ForbiddenError
+	if errors.As(err, &forbidden) {
+		forbidden.Permission = readPermission
+	}
+	return err
+}
 
 // v1 investigation endpoint paths. All v1 routes live under the plugin's
 // /api/v1 surface; the assistanthttp base only contributes the plugin prefix.
@@ -65,7 +74,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]InvestigationSum
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp, readPermission)
+		return nil, withReadPermission(assistanthttp.HandleErrorResponse(resp))
 	}
 
 	var envelope struct {
@@ -91,7 +100,7 @@ func (c *Client) Get(ctx context.Context, id string) (*Investigation, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp, readPermission)
+		return nil, withReadPermission(assistanthttp.HandleErrorResponse(resp))
 	}
 
 	var envelope struct {
@@ -117,7 +126,7 @@ func (c *Client) Create(ctx context.Context, req CreateRequest) (*CreateResponse
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, assistanthttp.HandleErrorResponse(resp, "")
+		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
 	var envelope struct {
@@ -138,7 +147,7 @@ func (c *Client) Cancel(ctx context.Context, id string) (*CancelResponse, error)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp, "")
+		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 
 	var envelope struct {

@@ -36,6 +36,8 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 		{name: "access check", listPath: "/api/v2/investigations"},
 		{name: "v2 list", mode: "v2", listPath: "/api/v2/investigations"},
 		{name: "proxy route access check", listPath: "/api/v2/investigations", proxy: true},
+		{name: "proxy route v2 list", mode: "v2", listPath: "/api/v2/investigations", proxy: true},
+		{name: "proxy route legacy list", mode: "v1", listPath: "/api/v1/investigations/summary", proxy: true},
 		{name: "legacy list", mode: "v1", listPath: "/api/v1/investigations/summary"},
 		{name: "legacy fallback", listPath: "/api/v1/investigations/summary", fallback: true},
 	} {
@@ -93,10 +95,13 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 			assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, detailed.Summary)
 			require.NotNil(t, detailed.ExitCode)
 			assert.Equal(t, 3, *detailed.ExitCode)
-			assert.Equal(t, []string{
-				"Inspect your allowed actions: gcx api /api/access-control/user/actions",
-				"Ask a Grafana admin to grant a role with grafana-assistant-app.investigations:read",
-			}, detailed.Suggestions)
+			suggestions := []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions"}
+			if tc.proxy {
+				assert.Contains(t, detailed.Details, "Ask a Grafana admin to check the permission required by this Assistant plugin route")
+			} else {
+				suggestions = append(suggestions, "Ask a Grafana admin to grant a role that includes grafana-assistant-app.investigations:read")
+			}
+			assert.Equal(t, suggestions, detailed.Suggestions)
 			assert.Equal(t, docs.RolesAndPermissions, detailed.DocsLink)
 			assert.Contains(t, detailed.Details, serverMessage)
 			if tc.mode == "" && !tc.fallback {
@@ -118,6 +123,9 @@ func TestAssistantInvestigationsListForbidden(t *testing.T) {
 			assert.Equal(t, 3, result.Error.ExitCode)
 			assert.Subset(t, result.Error.Suggestions, detailed.Suggestions)
 			assert.NotContains(t, out.String(), "gcx setup status")
+			if tc.proxy {
+				assert.NotContains(t, out.String(), "investigations:read")
+			}
 		})
 	}
 }
@@ -157,7 +165,7 @@ func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
 				err = assistanthttp.HandleErrorResponse(&http.Response{
 					StatusCode: tc.status,
 					Body:       io.NopCloser(strings.NewReader("server explanation")),
-				}, "")
+				})
 			}
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
@@ -173,8 +181,8 @@ func TestAssistantNonForbiddenAndOtherForbiddenUnchanged(t *testing.T) {
 }
 
 func TestAssistantMCPCreateForbidden(t *testing.T) {
-	for _, tc := range []struct{ name, body, suggestion string }{
-		{"backend", `{"message":"insufficient permissions"}`, "Ask a Grafana admin to check your permissions for this Assistant operation"},
+	for _, tc := range []struct{ name, body, routeGuidance string }{
+		{"backend", `{"message":"insufficient permissions"}`, ""},
 		{"proxy route", `{"message":"plugin proxy route access denied"}`, "Ask a Grafana admin to check the permission required by this Assistant plugin route"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -214,7 +222,10 @@ func TestAssistantMCPCreateForbidden(t *testing.T) {
 			require.NotNil(t, detailed.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
 			assert.Contains(t, detailed.Details, tc.body)
-			assert.Equal(t, []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions", tc.suggestion}, detailed.Suggestions)
+			assert.Equal(t, []string{"Inspect your allowed actions: gcx api /api/access-control/user/actions"}, detailed.Suggestions)
+			if tc.routeGuidance != "" {
+				assert.Contains(t, detailed.Details, tc.routeGuidance)
+			}
 			assert.Equal(t, docs.RolesAndPermissions, detailed.DocsLink)
 			require.NoError(t, detailed.WriteJSON(&out, *detailed.ExitCode))
 			assert.NotContains(t, out.String(), "investigations:read")

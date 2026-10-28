@@ -66,7 +66,7 @@ func (c *Client) GetChatThread(ctx context.Context, chatID string) ([]ChatThread
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp, "")
+		return nil, assistanthttp.HandleErrorResponse(resp)
 	}
 	var envelope struct {
 		Data struct {

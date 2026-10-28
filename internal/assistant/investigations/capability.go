@@ -103,7 +103,7 @@ func probeOK(ctx context.Context, base *assistanthttp.Client, path string) (bool
 	case http.StatusNotFound:
 		return false, nil
 	default:
-		return false, assistanthttp.HandleErrorResponse(resp, readPermission)
+		return false, withReadPermission(assistanthttp.HandleErrorResponse(resp))
 	}
 }
 

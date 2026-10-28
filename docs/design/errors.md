@@ -101,14 +101,13 @@ unchanged. `gcx api` retains its complete raw body.
 
 Assistant plugin HTTP 403 errors use Assistant-specific permission suggestions
 and the roles-and-permissions documentation (exit 3). Calling clients supply a
-known required action: investigation list, get, resolve, snapshot, evidence, and
-API access checks name `grafana-assistant-app.investigations:read`. Other
-operations, including investigation mutations and MCP server calls, give general
-permission guidance. When the required action is unknown, the response body
-`plugin proxy route access denied` selects guidance about the refused route's
-permission; backend denials select guidance about the operation's permissions.
-A 403 alone does not identify `plugins.app:access` as missing. The runnable
-diagnostic is `gcx api /api/access-control/user/actions`; suggestions do not
+known required action: investigation read operations name
+`grafana-assistant-app.investigations:read`; other operations get general
+permission guidance. Route refusals use the Assistant converter's
+plugin-route-denied branch before operation-specific guidance. The shared
+`PluginRouteDeniedError` conversion requires a known action and role, which the
+Assistant client does not have for refused routes. A 403 alone does not identify
+`plugins.app:access` as missing. The runnable diagnostic is `gcx api /api/access-control/user/actions`; suggestions do not
 direct users to `gcx setup status`, which does not check Assistant access.
 
 Synthetic Monitoring token discovery is classified by cause: missing Cloud

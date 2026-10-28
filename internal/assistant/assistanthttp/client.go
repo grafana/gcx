@@ -20,6 +20,9 @@ import (
 // the v1 and v2 surfaces.
 const pluginBasePath = "/api/plugins/grafana-assistant-app/resources"
 
+// maxErrorBodyBytes matches the provider HTTP error-body limit.
+const maxErrorBodyBytes = 1 << 20 // 1 MiB
+
 // Client is a base HTTP client for the Grafana Assistant plugin API.
 type Client struct {
 	restConfig config.NamespacedRESTConfig
@@ -70,8 +73,7 @@ func (c *Client) DoRequestWithHeaders(ctx context.Context, method, path string, 
 // DoEnvelopeRequest runs an HTTP call against the Assistant plugin API and
 // decodes the {"data": T} envelope used by the v2 surface. Pass nil for req
 // when the request has no body. Accepts 200 OK or 201 Created.
-// permission is passed to HandleErrorResponse for permission guidance.
-func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path string, req any, op, permission string) (*T, error) {
+func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path string, req any, op string) (*T, error) {
 	var body io.Reader
 	if req != nil {
 		data, err := json.Marshal(req)
@@ -86,7 +88,7 @@ func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path strin
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, HandleErrorResponse(resp, permission)
+		return nil, HandleErrorResponse(resp)
 	}
 	var envelope struct {
 		Data T `json:"data"`
@@ -109,14 +111,13 @@ type ForbiddenError struct {
 func (e *ForbiddenError) Unwrap() error { return e.HTTPStatusError }
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
-// permission names the calling operation's required action; pass "" when unknown.
-func HandleErrorResponse(resp *http.Response, permission string) error {
+func HandleErrorResponse(resp *http.Response) error {
 	statusErr := &gcxerrors.HTTPStatusError{
 		Status:      resp.StatusCode,
 		ContentType: resp.Header.Get("Content-Type"),
 		Message:     fmt.Sprintf("request failed with status %d", resp.StatusCode),
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
 		statusErr.Message = fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err)
 		statusErr.Cause = err
@@ -125,7 +126,7 @@ func HandleErrorResponse(resp *http.Response, permission string) error {
 		statusErr.ServerMessage = string(body)
 	}
 	if resp.StatusCode == http.StatusForbidden {
-		return &ForbiddenError{HTTPStatusError: statusErr, Permission: permission}
+		return &ForbiddenError{HTTPStatusError: statusErr}
 	}
 	return statusErr
 }
