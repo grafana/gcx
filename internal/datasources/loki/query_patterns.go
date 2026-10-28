@@ -78,11 +78,8 @@ number returned, and retention depends on the deployment, so a long --since
 does not guarantee complete coverage of that window.
 
 Patterns are sorted by total sample count descending, then by pattern text.
-JSON/YAML return a status and a data array. Each pattern includes pattern text
-(with <_> placeholders for variable parts), an optional level, raw samples as
-[timestamp, count] tuples (timestamps in Unix seconds), and totalCount (the sum
-of sample counts). Samples with fewer than two values are ignored in the total;
-no valid counts means zero. Table and wide output show this total in SAMPLES.
+JSON and YAML add totalCount, the sum of each pattern's sample counts.
+Table and wide output show this total in SAMPLES.
 The total describes the returned samples, not all logs in the window.
 
 Default time range is the last hour when no time flags are given. --step is
