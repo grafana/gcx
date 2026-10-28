@@ -330,7 +330,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// Note: Provider adapter factories are registered by providers.Register()
 	// in each provider's init(), which consumes Provider.TypedRegistrations()
 	// (no separate adapter.Register() calls exist outside it — see
-	// CONSTITUTION.md § Architecture Invariants). The discovery.Registry picks
+	// ARCHITECTURE.md § Rules, "Registration is atomic"). The discovery.Registry picks
 	// them up via adapter.RegisterAll() when resource commands create a
 	// registry instance.
 

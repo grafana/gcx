@@ -27,7 +27,7 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 // ---------------------------------------------------------------------------
 // Per-resource CRUD wiring, shared between the resource adapters (push/pull)
 // and the noun-command verbs (create/update/delete). A single source of truth
-// keeps both access paths identical (dual-CRUD invariant in CONSTITUTION.md).
+// keeps both access paths identical (ARCHITECTURE.md § Rules, "Provider CRUD ... goes through its adapter").
 // ---------------------------------------------------------------------------
 
 func integrationCRUDOpts() []crudOption[Integration] {

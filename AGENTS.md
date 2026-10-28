@@ -10,15 +10,17 @@
 
 | File | Purpose |
 |------|---------|
-| [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
-| [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System boundaries, extension points, and pipeline diagrams |
-| [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
+| [VISION.md](VISION.md) | Product fit: goals, core beliefs, product surface |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview and architecture rules: layers, resource pipeline, providers, transport |
+| [DESIGN.md](DESIGN.md) | CLI and agent-facing rules: command grammar, output contract, exit codes, safety |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution workflow, code conventions, dev setup, test environment |
+| [README.md](README.md) | Product tour for gcx users |
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
 | [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
 | [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and open questions |
-| [docs/reference/](docs/reference/) | Handwritten provider guides and contributor references |
+| [docs/sources/](docs/sources/) | Public user documentation, published to the Grafana website |
+| [docs/contributing/](docs/contributing/) | Contributor guides, including [documentation maintenance](docs/contributing/doc-maintenance.md) |
+| [docs/reference/](docs/reference/) | Provider guides and references being re-homed into `docs/sources/` and `docs/contributing/`; add nothing new here |
 
 ## Architecture at a Glance
 
@@ -26,21 +28,12 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 
 ## Key Conventions
 
-> Authoritative source: [CONSTITUTION.md](CONSTITUTION.md) (invariants) and [DESIGN.md](DESIGN.md) (UX rules). This is the quick-reference summary.
+The rules live in [ARCHITECTURE.md § Rules](ARCHITECTURE.md#rules), [DESIGN.md](DESIGN.md) and [CONTRIBUTING.md § Rules and code conventions](CONTRIBUTING.md#rules-and-code-conventions). Read the relevant one before writing code. The conventions below are specific to agents.
 
-- **Options pattern**: Every command uses `opts struct` + `setup(flags)` + `Validate()` + constructor
-- **Processor pipeline**: `Processor.Process(*Resource) error` — composable transformations for push/pull
-- **errgroup concurrency**: Bounded parallelism (default 10) for all batch I/O operations
-- **Folder-before-dashboard**: Push pipeline does topological sort — folders pushed level-by-level before other resources
-- **Config = kubectl kubeconfig**: Named contexts with server/auth/namespace, env var overrides
-- **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
-- **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
-- **Datasource query reuse**: Datasource clients that call Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`, with `/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP transport and `internal/query/dataframe` for Grafana data frame wire types. Do not duplicate POST/fallback/response-limit logic or `GrafanaQueryResponse`/`DataFrame` structs in each datasource package.
-- **Explore links are required on query commands**: Every query-class datasource leaf command must build a Grafana Explore URL in `internal/datasources/{kind}/explore.go` and expose it via `--share-link`/`--open` through `dsquery.ExploreLinkOpts` + `dsquery.EncodeAndHandleExplore`. See [Step 1c: Explore link](.agents/skills/contribute/references/datasource-implementation.md#step-1c-explore-link-required) for the rules.
-- **Agent skill placement follows its audience**: Portable workflows for people using gcx live under `claude-plugin/skills/`; repository-only contributor workflows live under `.agents/skills/`. `.claude/skills` is a relative symlink to that canonical tree; edit the source files rather than creating copies. Distributable gcx skills belong in the embedded `claude-plugin/skills/` bundle. `mise run validate-skills` checks that Git tracks `.claude/skills` as a symlink to exactly `../.agents/skills`. Both skill trees are gated: `TestSkillsGcxInvocationsMatchCommandTree` (`cmd/gcx/root/skillsdrift_test.go`) validates every `gcx` invocation in `claude-plugin/skills/` **and** repo-local `.agents/skills/` against the real command tree, failing CI on unknown commands or flags, and `mise run validate-skills` parses the front matter of both.
-
-- **Skill lifecycle metadata lives in `claude-plugin/skills-catalog.yaml`**: Register every bundled skill as active or deprecated and append its name to `internal/skills/testdata/shipped_skills.txt`. This snapshot is append-only. When removing content, retain the catalog entry as retired indefinitely so old installations remain removable; `TestBundledCatalog` checks retention against the snapshot. See [skill lifecycle](claude-plugin/README.md#skill-lifecycle).
-- **wasip1 variants**: gcx is also built for `GOOS=wasip1` to run embedded in a WebAssembly sandbox. A `*_wasip1.go` file paired with a `//go:build !wasip1` file replaces a host-only piece: there are no outbound sockets (HTTP goes to the host via `httputils.WireTransport`), no terminal UIs, and `gcx dev` and `instrumentation check/explain/list-explanations` are left out. When you change a function with a wasip1 variant, change both; `mise run vet:wasip1` (part of `gate`) compiles the packages that build without third-party stubs. The full wasip1 build lives in `experimental/sandbox` (`build.sh`, checked by the Sandbox CI job): when a dependency change breaks it, fix the stubs in `experimental/sandbox/patches/`.
+- **Skill placement follows the audience.** Portable workflows for people using gcx live in `claude-plugin/skills/` and ship in the binary; repository-only contributor workflows live in `.agents/skills/`. A contributor-only workflow in the bundle ships to every gcx user.
+- **`.claude/skills` is a Git-tracked relative symlink to `../.agents/skills`.** Edit the files in `.agents/skills/`; a copy in place of the symlink lets the two trees drift. `mise run validate-skills` checks the link.
+- **Skills only reference commands and flags that exist.** CI checks every `gcx` invocation in both skill trees against the real command tree.
+- **Bundled skills are registered for their whole lifecycle.** Register each one in `claude-plugin/skills-catalog.yaml` and append it to `internal/skills/testdata/shipped_skills.txt`. Never delete a name from either file: retired skills stay in the catalog so old installations can remove them, and the test does not catch a name deleted from both. See [skill lifecycle](claude-plugin/README.md#skill-lifecycle).
 
 ## Essential Commands
 
@@ -48,8 +41,8 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 mise run build       # Build to bin/gcx
 mise run tests       # Run all tests with race detection
 mise run lint        # Run golangci-lint
-mise run gate        # lint + tests + build (no docs) — fast pre-push gate for code changes
-mise run all         # lint + tests + build + docker:build + docs
+mise run gate        # fast pre-push gate for code changes; no Docker needed
+mise run all         # every local check, including Docker image and docs
 mise run docs        # Build Grafana website docs (requires Docker)
 ```
 
@@ -59,7 +52,7 @@ mise run docs        # Build Grafana website docs (requires Docker)
 
 ## Testing
 
-Prefer table-driven tests. See existing `_test.go` files for patterns.
+New behavior ships with tests; prefer table-driven tests. See [CONTRIBUTING.md § Rules and code conventions](CONTRIBUTING.md#rules-and-code-conventions).
 
 ## Source navigation
 
@@ -78,25 +71,25 @@ Start with [project structure](docs/architecture/project-structure.md) for modul
 | **Creating or revising an RFC** | [RFC conventions](docs/rfcs/README.md), repo-local [create-rfc](.agents/skills/create-rfc/SKILL.md) | Use [update-rfc](.agents/skills/update-rfc/SKILL.md) when explicitly asked to reconcile verified implementation evidence |
 | **Reviewing an RFC** | Repo-local [review-rfc](.agents/skills/review-rfc/SKILL.md), the originating request and [RFC conventions](docs/rfcs/README.md) | Check claims, scope, repository rules, consistency and unresolved questions before sharing or acceptance |
 | **Planning work before implementation** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) and the [contribution workflow](CONTRIBUTING.md#contributing-code) | Load the proposal or RFC specialist only when the selected route needs it; keep restricted research outside the checkout |
-| **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
+| **Planning a new feature** | [VISION.md](VISION.md) (does it belong?) | [DESIGN.md](DESIGN.md) and [ARCHITECTURE.md § Rules](ARCHITECTURE.md#rules) (can we build it within the rules?) |
 | **Adding, extending, or reviewing a gcx capability (domain teams)** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) — necessity, placement, readiness, contract, implementation references, and self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
-| **Reviewing someone else's PR** | The repo-local [`review-pr`](.agents/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check all 4 levels in order |
+| **Reviewing someone else's PR** | The repo-local [`review-pr`](.agents/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check every level in order |
 
 ## Compliance Hierarchy
 
-Check work against these docs during planning, design, and implementation — in order of strictness.
+Check work against these documents while planning, designing and implementing, in this order.
 
 | # | Doc | Strictness | What to check | If violated |
 |---|-----|-----------|---------------|-------------|
-| 1 | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive. |
-| 2 | [VISION.md](VISION.md) | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface? | Pause. Confirm direction with a human before investing more effort. |
-| 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules in [docs/design/](docs/design/) | Fix. New code must comply. |
-| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or RFC). |
+| 1 | [VISION.md](VISION.md) | **Product fit** — violation is wasted work | Does this belong in gcx? Does it serve the core beliefs? | Pause. Confirm direction with a human before investing more effort. |
+| 2 | [ARCHITECTURE.md § Rules](ARCHITECTURE.md#rules) and [DESIGN.md](DESIGN.md) | **Rules** — violation is a bug | Layering, pipeline, provider registration, transport, command grammar, output contract, exit codes, safety | Fix before proceeding. Existing violations are tracked debt, not precedent. Waiving a rule needs maintainer approval in the PR. |
+| 3 | [CONTRIBUTING.md](CONTRIBUTING.md#rules-and-code-conventions) | **Code conventions** — violation is a review defect | Options pattern, tests, dependencies, linter suppressions, commit titles | Fix. |
+| 4 | [docs/architecture/](docs/architecture/README.md) and [docs/design/](docs/design/) | **Mechanics** — how to follow the rules | Patterns, codec and error implementation, provider checklists | Prefer compliance. A deviation needs its rationale in the PR or an RFC. |
 
 **When to check:**
-- **Planning/design**: Check VISION (2) and CONSTITUTION (1) — are we building the right thing, and can we build it within the rules?
-- **Implementation**: Check DESIGN (3) and ARCHITECTURE (4) — does the code follow UX rules and structural patterns?
-- **Pre-flight** (below): Final sweep across all four before pushing.
+- **Planning/design**: VISION (1) and the rules (2) — are we building the right thing, and can we build it within the rules?
+- **Implementation**: the rules (2), conventions (3) and mechanics (4).
+- **Pre-flight** (below): a final sweep across all four before pushing.
 
 ## Releasing
 
@@ -106,17 +99,18 @@ Release steps live in the `release` skill ([.agents/skills/release/SKILL.md](.ag
 
 You MUST run this checklist when creating a PR or updating an existing PR with new work (addressing PR reviews or fixing bugs). This is distinct from the Mandatory Pre-Commit Checklist below — `mise run all` in step 3 subsumes the individual pre-commit steps; do not substitute the pre-commit checklist here.
 
-1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. CONSTITUTION and DESIGN violations must be fixed. VISION misalignment must be flagged. ARCHITECTURE deviations must be documented.
+1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. Rule and convention violations must be fixed. VISION misalignment must be flagged. Deviations from the mechanics must be documented.
 2. **Sync with base branch**
    ```bash
    git fetch origin main && git rebase origin/main
    ```
 3. **Quality gates pass** (Docker is required for the Grafana docs build):
    ```bash
-   GCX_AGENT_MODE=false mise run all
+   mise run all
    ```
 4. **Doc maintenance gate** — follow [documentation maintenance](docs/contributing/doc-maintenance.md). Update guidance affected by changed behavior, architectural boundaries, or contributor workflows; do not mirror package lists or proposal inventories.
-5. **Push**
+5. **PR body follows the [template](.github/pull_request_template.md)** — the sections `### What`, `### Why`, `### How it was tested` and `### PR checklist`, in that order, with every checklist item answered. The title follows [Conventional Commits](CONTRIBUTING.md#rules-and-code-conventions).
+6. **Push**
    ```bash
    git push
    git status   # must show "up to date with origin"

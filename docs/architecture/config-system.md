@@ -448,8 +448,9 @@ A context is selected in this priority order (evaluated at load time):
 
 ```
 1. --context <name> CLI flag     (returns ContextNotFound if name absent)
-2. current-context field in file
-3. "default" (hardcoded fallback if file has no current-context)
+2. GCX_CONTEXT environment variable (same error if name absent)
+3. current-context field in file
+4. "default" (hardcoded fallback if file has no current-context)
 ```
 
 Implementation in `loadConfigTolerant` (`command.go`):

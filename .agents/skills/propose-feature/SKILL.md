@@ -15,7 +15,7 @@ The repository is public. Follow the anonymization rules in the GitHub Issues se
 
 Establish the concrete user problem and investigate enough context to make the direction credible:
 
-- Check [VISION.md](../../../VISION.md) for product fit and [CONSTITUTION.md](../../../CONSTITUTION.md) for invariants.
+- Check [VISION.md](../../../VISION.md) for product fit, and [ARCHITECTURE.md § Rules](../../../ARCHITECTURE.md#rules) and [DESIGN.md](../../../DESIGN.md) for the rules a design must follow.
 - Read relevant code and existing command help to understand the current behavior and nearby capabilities.
 - Search existing issues and PRs for duplicates or decisions to reuse.
 - Investigate relevant public APIs or dependencies where they affect feasibility. Scale research to the proposal; state unknown API readiness, permissions, data availability or other feasibility gaps explicitly.

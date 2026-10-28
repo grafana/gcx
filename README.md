@@ -110,7 +110,7 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 ### Install `gcx`
 
-> For other installation options such as the binary or Go install, refer to the main [Installation](/docs/sources/installation) doc.
+> For other installation options such as the binary or Go install, refer to the main [Installation](docs/sources/installation.md) doc.
 
 The quickest way to install `gcx` in Linux or macOS is with the script, which downloads the latest release, verifies the SHA-256 checksum, and installs to `~/.local/bin`.
 
@@ -180,7 +180,7 @@ gcx login
 
 `login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premise and adjusts the prompt accordingly. 
 
-Refer to [Authentication](/docs/sources/authentication) for the available paths and options to authenticate.
+Refer to [Authentication](docs/sources/authentication.md) for the available paths and options to authenticate.
 
 ## Use with your AI agent
 
@@ -474,7 +474,7 @@ for the runtimes and an example manifest, and
 
 ### Manage Assistant Watchers (experimental)
 
-Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/sources/guides/manage-assistant-watchers).
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/sources/guides/manage-assistant-watchers.md).
 
 Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
 

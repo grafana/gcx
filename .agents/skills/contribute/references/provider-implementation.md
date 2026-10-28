@@ -17,8 +17,7 @@ Answer each decision from the guide, grounded in research findings:
 3. **Adapter-backed or commands-only?** — plain provider commands are valid on
    their own; register a `ResourceAdapter` (via `TypedRegistrations()`) only when
    the resource genuinely belongs in the `gcx resources` push/pull pipeline. Never
-   create an adapter merely to unlock a CRUD verb (CONSTITUTION § Provider
-   Architecture).
+   create an adapter merely to unlock a CRUD verb (ARCHITECTURE.md § Rules).
 4. **Envelope mapping** *(adapter-backed resources only)* — how do API objects map to the K8s envelope?
 5. **Command surface** — which verbs are actually implemented (CRUD subset + beyond-CRUD)?
 6. **Package layout** — flat or subpackaged?
@@ -129,7 +128,7 @@ against `"medium"`/`"large"`, so a qualified cost like `small (large with --all)
 evades it. Write the hint regardless — the rule is the worst case, not the
 spelling.
 
-**Build**: `GCX_AGENT_MODE=false mise run all` once, then `bin/gcx providers list` lists it and `bin/gcx config view` redacts its secrets.
+**Build**: `mise run all` once, then `bin/gcx providers list` lists it and `bin/gcx config view` redacts its secrets.
 
 ### Update Architecture Docs
 

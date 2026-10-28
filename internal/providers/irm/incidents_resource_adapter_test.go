@@ -349,7 +349,7 @@ func TestResourceAdapter_PullDropsSeverityID(t *testing.T) {
 // TestBothAccessPathsEmitTheSameSpecKeys proves that the two access paths
 // describe one incident with one key set. `gcx irm incidents get|create|update`
 // converts with ToResource, and `gcx resources get|list|pull` converts through
-// the adapter. CONSTITUTION.md requires the two outputs to be identical, so a
+// the adapter. DESIGN.md § Output Model requires the two outputs to be identical, so a
 // `--jq .spec.severityID` caller gets one answer, whichever command produced
 // the manifest.
 func TestBothAccessPathsEmitTheSameSpecKeys(t *testing.T) {

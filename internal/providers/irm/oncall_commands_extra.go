@@ -1077,7 +1077,7 @@ type alertGroupGetRichOpts struct {
 func (o *alertGroupGetRichOpts) setup(flags *pflag.FlagSet) {
 	// Register the table codec so `get` renders the same
 	// single-row layout as `list` and call DefaultFormat("table") — uniform
-	// with the CRUD-data-command default model in CONSTITUTION/DESIGN.
+	// with the CRUD-data-command default model in DESIGN.md.
 	// The codec.Encode method accepts a single `alertGroupEnvelope` value as
 	// well as the list envelope shapes (see alertGroupTableCodec.Encode).
 	o.IO.RegisterCustomCodec("table", &alertGroupTableCodec{})
@@ -1089,7 +1089,7 @@ func (o *alertGroupGetRichOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.IncludeRaw, "include-raw", false, "Include the unprocessed Alertmanager-shape payload under status.raw (hidden by default; the curated status.{target,links,...} blocks are the promoted view of the same data)")
 }
 
-// Validate is a stub to satisfy the CONSTITUTION-required
+// Validate is a stub to satisfy the CONTRIBUTING.md options-pattern
 // opts/setup/Validate/constructor quartet. The flag set has no cross-field
 // invariants beyond what opts.IO.Validate() already enforces.
 func (o *alertGroupGetRichOpts) Validate() error { return nil }
@@ -1166,7 +1166,7 @@ func (o *alertGroupListAlertsOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.History, "history", false, "Opt out of collapse: emit every stored Alert as its own row with status.occurrences=1 (default behaviour collapses re-fires by alert label set)")
 }
 
-// Validate is a stub to satisfy the CONSTITUTION-required
+// Validate is a stub to satisfy the CONTRIBUTING.md options-pattern
 // opts/setup/Validate/constructor quartet. The flag set has no cross-field
 // invariants beyond what opts.IO.Validate() already enforces.
 func (o *alertGroupListAlertsOpts) Validate() error { return nil }

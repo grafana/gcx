@@ -2,8 +2,9 @@
 
 > Shared vocabulary for how gcx commands look and feel — for developers and agents implementing new commands or providers.
 >
-> This file covers philosophy and intent. Prescriptive implementation rules are in [docs/design/](docs/design/).
-> Enforceable invariants (things that cannot change without explicit human approval) are in [CONSTITUTION.md](CONSTITUTION.md).
+> This file states the CLI and agent-facing rules and why they exist. The documents in [docs/design/](docs/design/) hold the mechanics of following them.
+>
+> The rules apply to all new code. Where a shipped command breaks one, the violation is tracked migration debt, in a test allowlist or under [#1694](https://github.com/grafana/gcx/issues/1694); it does not license a second one. Waiving a rule needs maintainer approval in the PR.
 
 ## Philosophy
 
@@ -15,8 +16,6 @@ gcx is a dual-purpose tool. Every command serves both human operators and AI age
 
 ## CLI Grammar
 
-Command structure follows `$AREA $NOUN $VERB`:
-
 ```
 gcx slo definitions list
 gcx resources push ./dashboards/
@@ -24,11 +23,53 @@ gcx logs query --from=1h
 gcx irm oncall schedules get my-schedule
 ```
 
-See [CONSTITUTION.md § CLI Grammar](CONSTITUTION.md#cli-grammar) for the authoritative rules (positional arguments, flags, extension commands, verb constraints).
+- **Resource and provider commands read `gcx $AREA $NOUN $VERB`.** An area with
+  no meaningful noun, such as `config` or `dev`, may use `$AREA $VERB`. A command
+  outside the grammar cannot be guessed, and agents cannot find it from its
+  neighbors. Verbs and placement: [command-naming.md](docs/design/command-naming.md).
+- **Bare top-level verbs are a closed list.** Only bootstrapping commands that
+  come before any area (`signup`, `login`, `setup`) and commands about the binary
+  itself (`version`, `help`, `completion`) may be a single token. A new top-level
+  command uses an area; nothing qualifies by analogy.
+- **Extension commands nest under their resource type.** Domain operations such
+  as `status`, `timeline` or `acknowledge` sit next to the CRUD verbs. An
+  extension never duplicates a CRUD verb: two ways to create a resource means
+  two code paths and two output shapes.
+- **Operations describe behavior.** A real read-one is `get` and a real
+  enumeration is `list`, whether or not an adapter backs the resource. Anything
+  else uses an honest domain verb or an `<operation>-<subject>` compound such as
+  `list-profile-types`. A command that dresses an action up as CRUD lies about
+  what it does.
+- **Sub-resources nest under their parent.** A resource that cannot be listed or
+  addressed without a parent ID is exposed as `$PARENT $VERB-$CHILD $PARENT_ID`
+  (`alert-groups list-alerts <id>`), never as a standalone adapter whose list
+  ignores the parent and returns an unscoped dump.
+- **Positional arguments name the subject; flags modify.** Selectors, UIDs,
+  expressions and paths are positional. Format, concurrency, dry-run and filters
+  are flags. A subject passed as a flag breaks completion and every skill that
+  composes commands positionally.
+- **The command surface is stable within a major version.** From v1.0.0,
+  command paths, aliases, flags and positional syntax keep working until the
+  next major release, including invocations that predate these rules. A grammar
+  rule never justifies renaming a released command: add the preferred form and
+  keep the old one working. A command marked experimental before release is
+  exempt; see [experimental-commands.md](docs/design/experimental-commands.md).
 
 ## Dual-Purpose Design
 
-Every command works identically for humans and agents. Agent mode changes defaults, not behavior.
+Every command serves both humans and agents.
+
+- **Agent mode changes defaults and never removes a capability.** It switches to
+  JSON output, no color, no truncation and plain ASCII. An interaction that
+  cannot be automated, such as a confirmation, an editor or a picker, becomes a
+  required input instead: a flag the agent passes. Every such case is listed in
+  [agent-mode.md](docs/design/agent-mode.md).
+- **Explicit flags beat agent-mode defaults.** `-o yaml` means YAML in agent
+  mode too. The non-format defaults apply to every format, so no codec puts
+  escape codes or box characters in front of an agent.
+- **Commands that write a file format pin their default** with
+  `PinDefaultFormat`. Agent mode would otherwise switch the files on disk to its
+  own output format. Mechanics: [agent-mode.md § 6.4](docs/design/agent-mode.md).
 
 | Aspect | Human mode | Agent mode |
 |--------|-----------|------------|
@@ -42,18 +83,55 @@ agent marker or a supported explicit identity. See the
 [agent environment reference](docs/design/environment-variables.md#agent-mode-variables).
 An explicitly passed `--agent`/`--agent=false` overrides environment detection
 in both directions; see [agent-mode.md § 6.1](docs/design/agent-mode.md#61-detection).
-Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
-See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.
+### The agent output contract
+
+When agent mode supplies the default (no explicit `--output`, `--json` or
+`--jq`):
+
+- **A finite command emits exactly one JSON value on stdout**, its result or a
+  fused error, and the exit code agrees with that outcome. A second value, or a
+  success code on an error document, breaks every agent parsing the output.
+- **A stream emits typed, versioned JSONL through the shared event writer**,
+  ending in a terminal success or error event. Without that event a consumer
+  cannot tell a finished stream from a dropped connection.
+- **Every other command declares its protocol class** in
+  `cmd/gcx/root/testdata/output_classes.json`: artifact, interactive, server,
+  raw, shell or prose. CI fails on a command with no class.
+- **gcx-owned envelopes carry `type` and `schema_version`**, so a consumer can
+  route a document it has not seen before. Envelopes that shipped before the
+  contract keep their form; see [output.md](docs/design/output.md).
+
+Class definitions, detection and opt-out: [agent-mode.md](docs/design/agent-mode.md).
 
 ## Output Model
 
-**STDOUT** = the result. **STDERR** = diagnostics.
-
-- Resource data and operation summaries → stdout
-- Progress feedback, warnings, detailed error messages → stderr
-- Primary output follows the declared protocol through the shared output system; finite commands do not emit ad-hoc prose (see [CONSTITUTION.md § Dual-Purpose Design](CONSTITUTION.md#dual-purpose-design))
-- Data fetching is **format-agnostic**: commands fetch all available data; codecs control presentation
+- **stdout carries the result; stderr carries advisory diagnostics only.**
+  Resource data, operation summaries and failure details that a structured
+  result needs go to stdout. Progress, warnings and hints go to stderr through
+  the shared output and logging helpers. A result on stderr makes
+  `gcx ... | jq` return nothing, and a direct write to `os.Stderr` escapes the
+  agent-mode framing.
+- **Primary output goes through the shared output system.** Finite commands
+  encode through codecs, with no ad-hoc prose on stdout. Artifact commands
+  encode file contents with codecs and finish with an `EmitArtifactResult`
+  receipt. A hand-written print bypasses `-o`, `--json`, `--jq` and agent mode at
+  once.
+- **Output shapes data and never affects it.** `-o` chooses how the fetched data
+  is presented; it never changes what is fetched. A different payload, such as a
+  raw profile instead of a flame graph, is a different command. Otherwise JSON
+  silently loses fields that only one format asked for. Mechanics:
+  [patterns.md § 13](docs/architecture/patterns.md#13-format-agnostic-data-fetching).
+- **Provider commands and `gcx resources` return the same JSON and YAML** for the
+  same resource. Tables may differ: provider tables show domain columns. A
+  skill written against one path must work on the other.
+- **Batch results count successes and skips, and list failures.** Listing 5,000
+  successes fills an agent's context; listing failures tells the caller what to
+  act on. Mechanics: [output.md § 12](docs/design/output.md#12-mutation-command-output).
+- **Query commands link to Grafana Explore.** Every query-class datasource
+  command builds an Explore URL and supports `--share-link` and `--open`, so a
+  user can see the same query in Grafana. Mechanics:
+  [datasource implementation](.agents/skills/contribute/references/datasource-implementation.md#step-1c-explore-link-required).
 
 Default formats by command type:
 
@@ -158,10 +236,6 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.
-
-## Taste Rules
-
-Code taste rules (options pattern, error messages, test style, commit format) live in [ARCHITECTURE.md § Taste Rules](ARCHITECTURE.md#taste-rules). Authoritative source: [CONSTITUTION.md § Taste Rules](CONSTITUTION.md#taste-rules).
 
 ## Implementation Guides
 

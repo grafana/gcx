@@ -10,6 +10,7 @@ For discussions, join `#gcx` on [Grafana Community Slack](https://grafana.slack.
 - [Reporting bugs](#reporting-bugs)
 - [Proposing new functionality](#proposing-new-functionality)
 - [Contributing code](#contributing-code)
+  - [Rules and code conventions](#rules-and-code-conventions)
   - [Submitting a pull request](#submitting-a-pull-request)
   - [Using AI to contribute](#using-ai-to-contribute)
   - [Code ownership](#code-ownership)
@@ -46,14 +47,30 @@ For other code contributions, please start with an issue accepted by the team. L
 
 For new features, please submit an RFC as a PR using the [RFC template](.agents/skills/create-rfc/references/rfc-template.md) before you start coding. This gives us a chance to agree on the design and how it fits with the rest of the project. See the [RFC guide](docs/rfcs/README.md) for details and [Code ownership](#code-ownership) for the product-team exception.
 
+### Rules and code conventions
+
+Three documents hold the project's rules. Check a change against them while you plan it:
+
+- [VISION.md](VISION.md) — whether the change belongs in gcx.
+- [ARCHITECTURE.md](ARCHITECTURE.md#rules) — layering, the resource pipeline, providers, configuration and transport.
+- [DESIGN.md](DESIGN.md) — command grammar, output and agent mode.
+
+Code conventions:
+
+- **Commands use the options pattern:** an `opts` struct, `setup(flags)`, `Validate()`, and a constructor that wires them. Validation inside `RunE` reports errors after side effects have started and cannot be unit-tested.
+- **New behavior ships with tests.** Prefer [table-driven tests](https://go.dev/wiki/TableDrivenTests).
+- **Prefer the standard library over a small dependency.** Don't add a `go.mod` dependency when the part you use is small enough to write yourself, roughly 100 lines or less.
+- **Every linter suppression says why.** A `//nolint` directive carries a comment explaining the exception.
+- **Commit messages and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/):** `type(scope): subject`, for example `fix(traces): handle empty results`. PRs are squash-merged, so the PR title becomes the commit on `main`, and the release changelog is generated from those commit subjects.
+
 ### Submitting a pull request
 
 To help us review your PR, please:
 
 1. Add or update tests and documentation for the behavior you changed. [Documentation maintenance](docs/contributing/doc-maintenance.md) says which document to update.
-2. Run `GCX_AGENT_MODE=false mise run all` to check skills, lint, tests, the build, the Docker image, and documentation. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
+2. Run `mise run all`; it needs Docker. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
 3. Sign your commits. See Grafana's [signed-commit requirement](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
-4. Use a descriptive PR title such as `fix(traces): handle empty results` or `docs: clarify setup` and the repository's [PR template](.github/pull_request_template.md).
+4. Use a Conventional Commits title such as `fix(traces): handle empty results` or `docs: clarify setup`, and fill in the repository's [PR template](.github/pull_request_template.md).
 
 Before we can merge your PR, the required CI checks need to pass and a code owner needs to approve it. Please work through actionable feedback from automated review and human reviewers, and ask if anything is unclear. If you are contributing from a fork, a maintainer may need to approve the CI runs.
 
@@ -96,7 +113,7 @@ Some mise commands for local development:
 $ mise run build           # build to bin/gcx
 $ mise run lint            # run golangci-lint
 $ mise run tests           # run all tests
-$ mise run all             # lint + tests + build + docker:build + docs
+$ mise run all             # every local check, including Docker image and docs
 $ mise tasks               # list all available tasks
 ```
 

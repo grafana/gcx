@@ -41,7 +41,7 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*assistantmc
 }
 
 // newCRUDAndClient builds the shared TypedCRUD[MCPServer] the create/update/
-// delete commands route their data access through (CONSTITUTION §37-41), plus
+// delete commands route their data access through (ARCHITECTURE.md § Rules, "Provider CRUD ... goes through its adapter"), plus
 // the raw client retained only for the non-CRUD OAuth validate/initiate step.
 // Both share one resolved config so no extra round trip is spent.
 func newCRUDAndClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*adapter.TypedCRUD[mcpserver.MCPServer], *assistantmcp.Client, error) {

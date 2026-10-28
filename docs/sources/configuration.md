@@ -99,6 +99,15 @@ gcx config set contexts.staging.stack staging
 
 Note that in these examples, `default` and `staging` are the context and stack names.
 
+Each command picks its context in this order:
+
+1. The `--context` flag.
+2. The `GCX_CONTEXT` environment variable.
+3. The `current-context` field in the configuration file.
+4. The `default` context.
+
+Environment variables such as `GRAFANA_SERVER` then override individual fields of the selected context for that invocation only.
+
 ## Useful commands
 
 Use these commands to check the configuration:
