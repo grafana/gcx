@@ -82,7 +82,7 @@ func detectAPIModeWith(ctx context.Context, loader *providers.ConfigLoader, base
 // with limit=1 keeps the probe cheap.
 func probeAPIMode(ctx context.Context, base *assistanthttp.Client) (APIMode, error) {
 	if ok, err := probeOK(ctx, base, v2ListPath+"?limit=1"); err != nil {
-		return "", fmt.Errorf("probe v2 investigations: %w", err)
+		return "", fmt.Errorf("check Grafana Assistant investigations access: %w", err)
 	} else if ok {
 		return APIModeV2Standard, nil
 	}

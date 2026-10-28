@@ -96,32 +96,33 @@ func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path strin
 	return &envelope.Data, nil
 }
 
+// ForbiddenError identifies permission failures from the Assistant plugin API.
+// It preserves the transport error for status classification and body rendering.
+type ForbiddenError struct {
+	*gcxerrors.HTTPStatusError
+}
+
+func (e *ForbiddenError) Unwrap() error { return e.HTTPStatusError }
+
 // HandleErrorResponse reads an error response body and returns a formatted error.
 func HandleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return &gcxerrors.HTTPStatusError{
-			Status:      resp.StatusCode,
-			ContentType: resp.Header.Get("Content-Type"),
-			Message:     fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err),
-			Cause:       err,
-		}
-	}
-
-	if len(body) > 0 {
-		return &gcxerrors.HTTPStatusError{
-			Status:        resp.StatusCode,
-			ContentType:   resp.Header.Get("Content-Type"),
-			Message:       fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(body)),
-			ServerMessage: string(body),
-		}
-	}
-
-	return &gcxerrors.HTTPStatusError{
+	statusErr := &gcxerrors.HTTPStatusError{
 		Status:      resp.StatusCode,
 		ContentType: resp.Header.Get("Content-Type"),
 		Message:     fmt.Sprintf("request failed with status %d", resp.StatusCode),
 	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		statusErr.Message = fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err)
+		statusErr.Cause = err
+	} else if len(body) > 0 {
+		statusErr.Message = fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(body))
+		statusErr.ServerMessage = string(body)
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return &ForbiddenError{HTTPStatusError: statusErr}
+	}
+	return statusErr
 }
 
 // FormatTime formats a time for table display, returning "-" for zero values.

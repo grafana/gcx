@@ -3,6 +3,7 @@ package assistanthttp_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -84,6 +85,7 @@ func TestHandleErrorResponse(t *testing.T) {
 	}{
 		{"plain text", http.StatusNotFound, "investigation not found", "request failed with status 404: investigation not found"},
 		{"empty body", http.StatusInternalServerError, "", "request failed with status 500"},
+		{"forbidden without body", http.StatusForbidden, "", "request failed with status 403"},
 		{"json remains raw", http.StatusForbidden, `{"message":"forbidden","traceID":"abc123"}`, `request failed with status 403: {"message":"forbidden","traceID":"abc123"}`},
 		{"HTML remains raw", http.StatusUnauthorized, "<html>login</html>", "request failed with status 401: <html>login</html>"},
 	}
@@ -102,27 +104,35 @@ func TestHandleErrorResponse(t *testing.T) {
 			assert.Equal(t, tt.body, statusErr.ServerMessage)
 			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
 			assert.Empty(t, statusErr.TraceID, "Assistant preserves the raw body without parsing JSON")
-			require.NoError(t, errors.Unwrap(err))
+			var forbidden *assistanthttp.ForbiddenError
+			assert.Equal(t, tt.status == http.StatusForbidden, errors.As(err, &forbidden))
+			require.NoError(t, errors.Unwrap(statusErr))
 		})
 	}
 }
 
 func TestHandleErrorResponse_ReadFailure(t *testing.T) {
-	readErr := errors.New("body read failed")
-	resp := &http.Response{
-		StatusCode: http.StatusBadGateway,
-		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
-		Body:       io.NopCloser(failingReader{err: readErr}),
+	for _, status := range []int{http.StatusBadGateway, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			readErr := errors.New("body read failed")
+			resp := &http.Response{
+				StatusCode: status,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(failingReader{err: readErr}),
+			}
+			err := assistanthttp.HandleErrorResponse(resp)
+			require.EqualError(t, err, fmt.Sprintf("request failed with status %d (could not read body: body read failed)", status))
+			require.ErrorIs(t, err, readErr)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, status, statusErr.HTTPStatusCode())
+			assert.Empty(t, statusErr.ServerMessage)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+			assert.Empty(t, statusErr.TraceID)
+			var forbidden *assistanthttp.ForbiddenError
+			assert.Equal(t, status == http.StatusForbidden, errors.As(err, &forbidden))
+		})
 	}
-	err := assistanthttp.HandleErrorResponse(resp)
-	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
-	require.ErrorIs(t, err, readErr)
-	var statusErr *gcxerrors.HTTPStatusError
-	require.ErrorAs(t, err, &statusErr)
-	assert.Equal(t, http.StatusBadGateway, statusErr.HTTPStatusCode())
-	assert.Empty(t, statusErr.ServerMessage)
-	assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
-	assert.Empty(t, statusErr.TraceID)
 }
 
 type failingReader struct{ err error }

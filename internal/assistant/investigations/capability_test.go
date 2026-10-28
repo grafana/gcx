@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -91,14 +92,26 @@ func TestDetectAPIMode_Probe(t *testing.T) {
 	}
 }
 
-func TestDetectAPIMode_ProbeTransportError(t *testing.T) {
-	t.Setenv("GCX_ASSISTANT_API_VERSION", "")
-	client := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	loader := newCapabilityLoader(t)
-	_, err := investigations.DetectAPIMode(context.Background(), loader, client)
-	require.Error(t, err)
+func TestDetectAPIMode_ProbeError(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Setenv("GCX_ASSISTANT_API_VERSION", "")
+			calls := 0
+			client := newCapabilityClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				w.WriteHeader(status)
+			}))
+			loader := newCapabilityLoader(t)
+			_, err := investigations.DetectAPIMode(context.Background(), loader, client)
+			require.ErrorContains(t, err, "check Grafana Assistant investigations access:")
+			assert.NotContains(t, err.Error(), "probe")
+			assert.NotContains(t, err.Error(), "v2")
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, status, statusErr.Status)
+			assert.Equal(t, 1, calls, "permission and server failures must not fall back to legacy")
+		})
+	}
 }
 
 func TestDetectAPIMode_Cached(t *testing.T) {

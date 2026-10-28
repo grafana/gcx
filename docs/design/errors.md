@@ -99,6 +99,12 @@ mean `API error` (exit 1). Parsed server messages and trace IDs appear once in
 details, with caller context. Transport `Message` text and the method set stay
 unchanged. `gcx api` retains its complete raw body.
 
+Assistant investigations HTTP 403 errors use Assistant-specific permission suggestions
+and the roles-and-permissions documentation (exit 3). These identify
+`plugins.app:access` and, for reading investigations,
+`grafana-assistant-app.investigations:read`; they do not direct users to
+`gcx setup status`, which does not check Assistant access.
+
 Synthetic Monitoring token discovery is classified by cause: missing Cloud
 credentials or stack configuration is authentication failure, register/install
 permission denial is authorization failure, and service/network outages remain
