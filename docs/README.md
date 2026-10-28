@@ -29,4 +29,4 @@ To build the Grafana.com-style docs locally:
 
 Follow the [contribution guide](../CONTRIBUTING.md#contributing-code) for when an [RFC](rfcs/README.md) is required. Developers choose their own implementation and planning tools. Keep design decisions and terminology in the RFC; keep current user-facing behavior in the relevant guide.
 
-See [documentation maintenance](reference/doc-maintenance.md) for what to update when behavior or architecture changes. Browse the directories for available documents instead of maintaining duplicate inventories.
+See [documentation maintenance](contributing/doc-maintenance.md) for what to update when behavior or architecture changes. Browse the directories for available documents instead of maintaining duplicate inventories.

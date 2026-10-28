@@ -244,4 +244,4 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   removing packages under `internal/` or `cmd/`, introducing new patterns,
   changing core abstractions, or adding a provider — update `docs/architecture/`
   using the structural checks in
-  [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md).
+  [docs/contributing/doc-maintenance.md](docs/contributing/doc-maintenance.md).

@@ -50,7 +50,7 @@ For new features, please submit an RFC as a PR using the [RFC template](.agents/
 
 To help us review your PR, please:
 
-1. Add or update tests and documentation for the behavior you changed.
+1. Add or update tests and documentation for the behavior you changed. [Documentation maintenance](docs/contributing/doc-maintenance.md) says which document to update.
 2. Run `GCX_AGENT_MODE=false mise run all` to check skills, lint, tests, the build, the Docker image, and documentation. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
 3. Sign your commits. See Grafana's [signed-commit requirement](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
 4. Use a descriptive PR title such as `fix(traces): handle empty results` or `docs: clarify setup` and the repository's [PR template](.github/pull_request_template.md).

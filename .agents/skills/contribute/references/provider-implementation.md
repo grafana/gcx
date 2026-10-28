@@ -133,9 +133,9 @@ spelling.
 
 ### Update Architecture Docs
 
-Follow `docs/reference/doc-maintenance.md` structural checks — a new provider
-adds packages to `internal/` and commands to `cmd/`, so architecture docs
-need updating.
+Follow [documentation maintenance](../../../../docs/contributing/doc-maintenance.md).
+A new provider's packages alone need no architecture update; a new pattern or
+a changed extension point does.
 
 ### Checkpoint: Verified
 

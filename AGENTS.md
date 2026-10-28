@@ -115,7 +115,7 @@ You MUST run this checklist when creating a PR or updating an existing PR with n
    ```bash
    GCX_AGENT_MODE=false mise run all
    ```
-4. **Doc maintenance gate** — follow [documentation maintenance](docs/reference/doc-maintenance.md). Update guidance affected by changed behavior, architectural boundaries, or contributor workflows; do not mirror package lists or proposal inventories.
+4. **Doc maintenance gate** — follow [documentation maintenance](docs/contributing/doc-maintenance.md). Update guidance affected by changed behavior, architectural boundaries, or contributor workflows; do not mirror package lists or proposal inventories.
 5. **Push**
    ```bash
    git push
