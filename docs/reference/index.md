@@ -5,5 +5,4 @@
 - [Assistant MCP servers](assistant-mcp-servers.md)
 - [Keychain credential storage](configuration/keychain.md)
 - [Linter rules](linter-rules/index.md)
-- [Loki query patterns](loki-patterns.md)
 - [Costs and billing](costs.md)

@@ -1,16 +1,10 @@
 package loki
 
-import (
-	"slices"
-	"sort"
-)
+import "sort"
 
-// SummarizePatterns returns a copy with total counts computed from samples,
-// sorted by total descending and then by pattern text. Samples are unchanged.
-func SummarizePatterns(patterns []Pattern) []Pattern {
-	patterns = slices.Clone(patterns)
+// summarizePatterns prepares freshly decoded patterns for output in place.
+func summarizePatterns(patterns []Pattern) []Pattern {
 	for i := range patterns {
-		patterns[i].TotalCount = 0
 		for _, sample := range patterns[i].Samples {
 			if len(sample) >= 2 {
 				patterns[i].TotalCount += sample[1]

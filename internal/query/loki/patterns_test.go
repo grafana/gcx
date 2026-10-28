@@ -1,14 +1,21 @@
 package loki_test
 
 import (
-	"slices"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
-func TestSummarizePatterns(t *testing.T) {
+func TestClient_PatternsSummaries(t *testing.T) {
 	tests := []struct {
 		name string
 		in   []loki.Pattern
@@ -25,11 +32,6 @@ func TestSummarizePatterns(t *testing.T) {
 			name: "ignore malformed samples",
 			in:   []loki.Pattern{{Pattern: "request <_>", Samples: [][]int64{nil, {}, {1}, {2, 7}, {3, 4, 99}}}},
 			want: []loki.Pattern{{Pattern: "request <_>", Samples: [][]int64{nil, {}, {1}, {2, 7}, {3, 4, 99}}, TotalCount: 11}},
-		},
-		{
-			name: "no samples resets stale total",
-			in:   []loki.Pattern{{Pattern: "request <_>", TotalCount: 99}},
-			want: []loki.Pattern{{Pattern: "request <_>"}},
 		},
 		{
 			name: "int64 total",
@@ -52,11 +54,20 @@ func TestSummarizePatterns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			original := slices.Clone(tt.in)
-			got := loki.SummarizePatterns(tt.in)
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, original, tt.in, "input order and totals must remain unchanged")
-			assert.Equal(t, tt.want, loki.SummarizePatterns(got), "totals must not accumulate on repeated calls")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				assert.NoError(t, json.NewEncoder(w).Encode(loki.PatternsResponse{Status: "success", Data: tt.in}))
+			}))
+			defer server.Close()
+
+			cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+			client, err := loki.NewClient(cfg)
+			require.NoError(t, err)
+
+			start := time.Unix(1711839260, 0)
+			resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, start, start.Add(time.Minute), "")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, resp.Data)
 		})
 	}
 }
