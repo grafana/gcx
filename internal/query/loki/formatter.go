@@ -202,9 +202,7 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 }
 
 // FormatPatternsTable formats a PatternsResponse as a table with PATTERN and
-// SAMPLES columns, sorted by total sample count descending (the most frequent
-// pattern first). The API has no sum field, so the total is computed
-// client-side from each pattern's samples.
+// SAMPLES columns, preserving the order and totals prepared by Client.Patterns.
 func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 	if len(resp.Data) == 0 {
 		fmt.Fprintln(w, "No patterns returned for this selector and range (the backend may prune low-volume patterns or hold no pattern data for it)")
@@ -212,7 +210,7 @@ func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 	}
 
 	t := style.NewTable("PATTERN", "SAMPLES")
-	for _, p := range SummarizePatterns(resp.Data) {
+	for _, p := range resp.Data {
 		t.Row(p.Pattern, strconv.FormatInt(p.TotalCount, 10))
 	}
 	return t.Render(w)

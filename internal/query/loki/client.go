@@ -276,6 +276,8 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 // given time range; Loki rejects pipeline stages and metric expressions. step
 // (a duration like "15s" or a float number of seconds) is optional; pass "" to
 // let Loki choose a bucket size.
+// Counts are summed from the returned samples and patterns are sorted by total
+// descending, then by pattern text, before the response is returned.
 //
 // The result is what the backend retained, not a complete inventory: Loki
 // prunes low-volume patterns and caps results, and retention varies by
@@ -328,6 +330,7 @@ func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, star
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	result.Data = SummarizePatterns(result.Data)
 	return &result, nil
 }
 

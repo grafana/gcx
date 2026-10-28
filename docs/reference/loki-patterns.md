@@ -7,10 +7,8 @@ to detect recurring log patterns for a bare LogQL stream selector:
 gcx datasources loki query-patterns -d UID '{job="app"}' --since 1h -o json
 ```
 
-The endpoint requires Loki's patterns API with the pattern ingester and querier
-enabled. Results reflect the patterns and samples retained by the backend,
-which prunes low-volume patterns and caps the number returned; they are not a
-complete inventory of logs in the requested window.
+See `gcx datasources loki query-patterns --help` for backend requirements and
+coverage limits.
 
 JSON and YAML return a `status` and a `data` array. Each pattern includes:
 

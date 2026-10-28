@@ -21,6 +21,7 @@ func SummarizePatterns(patterns []Pattern) []Pattern {
 		if patterns[i].TotalCount != patterns[j].TotalCount {
 			return patterns[i].TotalCount > patterns[j].TotalCount
 		}
+		// Break ties by text so backend ordering cannot make identical results awkward to diff.
 		return patterns[i].Pattern < patterns[j].Pattern
 	})
 	return patterns

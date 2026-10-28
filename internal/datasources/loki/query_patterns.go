@@ -151,7 +151,6 @@ optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 				return fmt.Errorf("failed to get patterns: %w", err)
 			}
 
-			resp.Data = loki.SummarizePatterns(resp.Data)
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}

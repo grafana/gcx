@@ -10,71 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Patterns with an equal total must sort deterministically (by pattern text)
-// rather than in whatever order sort.Slice happens to leave ties in, which
-// can otherwise flip between identical runs and make table output flaky.
-func TestFormatPatternsTable_TiedTotalsSortDeterministically(t *testing.T) {
-	resp := &loki.PatternsResponse{
-		Data: []loki.Pattern{
-			{Pattern: "zebra pattern", Samples: [][]int64{{1, 5}}},
-			{Pattern: "alpha pattern", Samples: [][]int64{{1, 5}}},
-			{Pattern: "mid pattern", Samples: [][]int64{{1, 5}}},
-		},
-	}
-
-	var buf bytes.Buffer
-	require.NoError(t, loki.FormatPatternsTable(&buf, resp))
-	first := buf.String()
-
-	alphaIdx := strings.Index(first, "alpha pattern")
-	midIdx := strings.Index(first, "mid pattern")
-	zebraIdx := strings.Index(first, "zebra pattern")
-	require.NotEqual(t, -1, alphaIdx)
-	require.NotEqual(t, -1, midIdx)
-	require.NotEqual(t, -1, zebraIdx)
-	assert.Less(t, alphaIdx, midIdx, "ties should break alphabetically by pattern text")
-	assert.Less(t, midIdx, zebraIdx, "ties should break alphabetically by pattern text")
-}
-
 func TestFormatPatternsTable_EmptyResponse(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, loki.FormatPatternsTable(&buf, &loki.PatternsResponse{}))
 	assert.Contains(t, buf.String(), "No patterns returned for this selector and range")
 }
 
-func TestFormatPatternsTable_SortsByTotalSamplesDescending(t *testing.T) {
-	tests := []struct {
-		name    string
-		samples [][]int64
-	}{
-		{name: "valid samples", samples: [][]int64{{1, 10}, {2, 15}}},
-		{name: "malformed samples", samples: [][]int64{nil, {}, {1}, {1, 10}, {2, 15}}},
+func TestFormatPatternsTable_RendersSummarizedPatterns(t *testing.T) {
+	resp := &loki.PatternsResponse{
+		Data: []loki.Pattern{
+			{Pattern: "frequent pattern", TotalCount: 25},
+			{Pattern: "medium pattern", TotalCount: 5},
+			{Pattern: "rare pattern", TotalCount: 2},
+		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp := &loki.PatternsResponse{
-				Data: []loki.Pattern{
-					{Pattern: "rare pattern", Samples: [][]int64{{1, 2}}},
-					{Pattern: "frequent pattern", Samples: tt.samples},
-					{Pattern: "medium pattern", Samples: [][]int64{{1, 5}}},
-				},
-			}
 
-			var buf bytes.Buffer
-			require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatPatternsTable(&buf, resp))
 
-			out := buf.String()
-			frequentIdx := strings.Index(out, "frequent pattern")
-			mediumIdx := strings.Index(out, "medium pattern")
-			rareIdx := strings.Index(out, "rare pattern")
-			require.NotEqual(t, -1, frequentIdx)
-			require.NotEqual(t, -1, mediumIdx)
-			require.NotEqual(t, -1, rareIdx)
-			assert.Less(t, frequentIdx, mediumIdx, "highest total should render first")
-			assert.Less(t, mediumIdx, rareIdx, "lowest total should render last")
-			assert.Contains(t, out, "25") // 10 + 15
-		})
-	}
+	rows := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, rows, 4)
+	assert.Equal(t, []string{"PATTERN", "SAMPLES"}, strings.Fields(rows[0]))
+	assert.Equal(t, []string{"frequent", "pattern", "25"}, strings.Fields(rows[1]))
+	assert.Equal(t, []string{"medium", "pattern", "5"}, strings.Fields(rows[2]))
+	assert.Equal(t, []string{"rare", "pattern", "2"}, strings.Fields(rows[3]))
 }
 
 func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {
