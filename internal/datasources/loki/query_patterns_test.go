@@ -13,6 +13,7 @@ import (
 
 	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,6 +32,7 @@ func writePatternsTestConfig(t *testing.T, content string) string {
 
 func execQueryPatternsCmd(t *testing.T, args []string) (map[string]url.Values, string, error) {
 	t.Helper()
+	testutils.SetAgentMode(t, false)
 
 	captured := map[string]url.Values{}
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

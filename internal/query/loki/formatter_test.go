@@ -43,27 +43,38 @@ func TestFormatPatternsTable_EmptyResponse(t *testing.T) {
 }
 
 func TestFormatPatternsTable_SortsByTotalSamplesDescending(t *testing.T) {
-	resp := &loki.PatternsResponse{
-		Data: []loki.Pattern{
-			{Pattern: "rare pattern", Samples: [][]int64{{1, 2}}},
-			{Pattern: "frequent pattern", Samples: [][]int64{nil, {}, {1}, {1, 10}, {2, 15}}},
-			{Pattern: "medium pattern", Samples: [][]int64{{1, 5}}},
-		},
+	tests := []struct {
+		name    string
+		samples [][]int64
+	}{
+		{name: "valid samples", samples: [][]int64{{1, 10}, {2, 15}}},
+		{name: "malformed samples", samples: [][]int64{nil, {}, {1}, {1, 10}, {2, 15}}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &loki.PatternsResponse{
+				Data: []loki.Pattern{
+					{Pattern: "rare pattern", Samples: [][]int64{{1, 2}}},
+					{Pattern: "frequent pattern", Samples: tt.samples},
+					{Pattern: "medium pattern", Samples: [][]int64{{1, 5}}},
+				},
+			}
 
-	var buf bytes.Buffer
-	require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+			var buf bytes.Buffer
+			require.NoError(t, loki.FormatPatternsTable(&buf, resp))
 
-	out := buf.String()
-	frequentIdx := strings.Index(out, "frequent pattern")
-	mediumIdx := strings.Index(out, "medium pattern")
-	rareIdx := strings.Index(out, "rare pattern")
-	require.NotEqual(t, -1, frequentIdx)
-	require.NotEqual(t, -1, mediumIdx)
-	require.NotEqual(t, -1, rareIdx)
-	assert.Less(t, frequentIdx, mediumIdx, "highest total should render first")
-	assert.Less(t, mediumIdx, rareIdx, "lowest total should render last")
-	assert.Contains(t, out, "25") // 10 + 15
+			out := buf.String()
+			frequentIdx := strings.Index(out, "frequent pattern")
+			mediumIdx := strings.Index(out, "medium pattern")
+			rareIdx := strings.Index(out, "rare pattern")
+			require.NotEqual(t, -1, frequentIdx)
+			require.NotEqual(t, -1, mediumIdx)
+			require.NotEqual(t, -1, rareIdx)
+			assert.Less(t, frequentIdx, mediumIdx, "highest total should render first")
+			assert.Less(t, mediumIdx, rareIdx, "lowest total should render last")
+			assert.Contains(t, out, "25") // 10 + 15
+		})
+	}
 }
 
 func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {
