@@ -1377,16 +1377,13 @@ func convertAssistantForbiddenErrors(err error) (*gcxerrors.DetailedError, bool)
 	if !errors.As(err, &forbidden) {
 		return nil, false
 	}
-	detailed, ok := convertHTTPStatusErrors(err)
-	if !ok {
-		return nil, false
-	}
+	detailed, _ := convertHTTPStatusErrors(err)
 	detailed.Suggestions = []string{
 		"Inspect your allowed actions: gcx api /api/access-control/user/actions",
 	}
 	switch {
 	case providers.IsPluginRouteDenied(forbidden.Status, []byte(forbidden.ServerMessage)):
-		detailed.Details = joinErrorDetails(detailed.Details, "Ask a Grafana admin to check the permission required by this Assistant plugin route")
+		detailed.Suggestions = append(detailed.Suggestions, "Ask a Grafana admin to check the permission required by this Assistant plugin route")
 	default:
 		if permission := forbidden.RequiredPermission(); permission != "" {
 			detailed.Suggestions = append(detailed.Suggestions, "Ask a Grafana admin to grant a role that includes "+permission)

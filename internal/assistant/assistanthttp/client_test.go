@@ -76,6 +76,45 @@ func TestDoRequest_NoContentTypeForGET(t *testing.T) {
 	assert.Empty(t, gotContentType)
 }
 
+func TestForbiddenErrorRequiredPermission(t *testing.T) {
+	const readAction = "grafana-assistant-app.investigations:read"
+	const systemReadAction = "grafana-assistant-app.investigations.system:read"
+	for _, tc := range []struct {
+		name, body, action string
+	}{
+		{"details action", `{"name":"forbidden","message":"viewing system-created investigations requires the investigations.system:read permission","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction},
+		{"error envelope", `{"status":"error","error":"insufficient permissions","name":"forbidden","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction},
+		{"top-level action", `{"requiredPermission":"` + systemReadAction + `"}`, systemReadAction},
+		{"details precedence", `{"requiredPermission":"` + readAction + `","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction},
+		{"absent action", `{"message":"insufficient permissions"}`, readAction},
+		{"empty action", `{"details":{"requiredPermission":""}}`, readAction},
+		{"non-string action", `{"details":{"requiredPermission":123}}`, readAction},
+		{"null action", `{"requiredPermission":null}`, readAction},
+		{"whitespace action", `{"details":{"requiredPermission":"investigations: read"}}`, readAction},
+		{"newline action", `{"requiredPermission":"investigations:read\n"}`, readAction},
+		{"unicode whitespace", `{"requiredPermission":"investigations:\u00a0read"}`, readAction},
+		{"invalid action", `{"requiredPermission":"permission"}`, readAction},
+		{"punctuation", `{"requiredPermission":"investigations:read;"}`, readAction},
+		{"action at limit", `{"requiredPermission":"` + strings.Repeat("a", 251) + `:read"}`, strings.Repeat("a", 251) + ":read"},
+		{"action too long", `{"requiredPermission":"` + strings.Repeat("a", 252) + `:read"}`, readAction},
+		{"malformed JSON", `{"details":{"requiredPermission":"` + systemReadAction + `"}`, readAction},
+		{"non-JSON", "insufficient permissions", readAction},
+		{"details string", `{"requiredPermission":"` + systemReadAction + `","details":"forbidden"}`, systemReadAction},
+		{"details array", `{"requiredPermission":"` + systemReadAction + `","details":[]}`, systemReadAction},
+		{"details null", `{"requiredPermission":"` + systemReadAction + `","details":null}`, systemReadAction},
+		{"invalid details action with valid top-level", `{"requiredPermission":"` + systemReadAction + `","details":{"requiredPermission":123}}`, systemReadAction},
+		{"empty body", "", readAction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := &assistanthttp.ForbiddenError{
+				HTTPStatusError: &gcxerrors.HTTPStatusError{Status: http.StatusForbidden, ServerMessage: tc.body},
+				Permission:      readAction,
+			}
+			assert.Equal(t, tc.action, err.RequiredPermission())
+		})
+	}
+}
+
 func TestHandleErrorResponse(t *testing.T) {
 	tests := []struct {
 		name   string

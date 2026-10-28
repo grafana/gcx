@@ -116,13 +116,15 @@ var rbacActionPattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.*-]+$`)
 // RequiredPermission prefers the backend's required action over the caller's fallback.
 func (e *ForbiddenError) RequiredPermission() string {
 	var body struct {
-		RequiredPermission any `json:"requiredPermission"`
-		Details            struct {
-			RequiredPermission any `json:"requiredPermission"`
-		} `json:"details"`
+		RequiredPermission any             `json:"requiredPermission"`
+		Details            json.RawMessage `json:"details"`
 	}
 	if err := json.Unmarshal([]byte(e.ServerMessage), &body); err == nil {
-		for _, value := range []any{body.Details.RequiredPermission, body.RequiredPermission} {
+		var details struct {
+			RequiredPermission any `json:"requiredPermission"`
+		}
+		_ = json.Unmarshal(body.Details, &details)
+		for _, value := range []any{details.RequiredPermission, body.RequiredPermission} {
 			if action, ok := value.(string); ok && len(action) <= 256 && rbacActionPattern.MatchString(action) {
 				return action
 			}
