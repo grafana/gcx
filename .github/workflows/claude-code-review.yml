@@ -154,7 +154,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          # Re-reviews need the previous review commit in history to diff previous..HEAD.
+          # Full history, so the previous review commit can be compared with the head.
           fetch-depth: 0
           # A pull_request event checks out the merge ref already. An
           # issue_comment event would otherwise check out the default branch,
