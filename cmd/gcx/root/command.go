@@ -307,6 +307,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(instrumentationcmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
+	rootCmd.AddCommand(exitCodesHelpTopic())
 
 	rootCmd.AddCommand(cmdproviders.Command(pp))
 	for _, p := range pp {

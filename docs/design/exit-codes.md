@@ -19,6 +19,9 @@
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
 Constants defined in `internal/gcxerrors/exitcodes.go`.
+Run `gcx help exit-codes` for the CLI reference, including a description and
+example scenario for each code. The topic is generated from the ordered
+`gcxerrors.ExitCodes()` reference alongside these constants.
 
 **Implementation state:**
 - Exit code 2 (usage error) is set by `convertUsageErrors`,
