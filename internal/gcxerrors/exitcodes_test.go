@@ -2,11 +2,10 @@ package gcxerrors_test
 
 import (
 	"go/ast"
-	"go/constant"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,8 +18,7 @@ func TestExitCodesMatchConstants(t *testing.T) {
 	fset := token.NewFileSet()
 	files, err := os.ReadDir(".")
 	require.NoError(t, err)
-	// Type-check all constants without importing unrelated error helpers.
-	constantsFile := &ast.File{Name: ast.NewIdent("gcxerrors")}
+	constants := make(map[string]int)
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
 			continue
@@ -28,14 +26,29 @@ func TestExitCodesMatchConstants(t *testing.T) {
 		parsed, parseErr := parser.ParseFile(fset, file.Name(), nil, 0)
 		require.NoError(t, parseErr)
 		for _, decl := range parsed.Decls {
-			if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
-				constantsFile.Decls = append(constantsFile.Decls, gen)
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				valueSpec, ok := spec.(*ast.ValueSpec)
+				require.True(t, ok)
+				for i, name := range valueSpec.Names {
+					if !strings.HasPrefix(name.Name, "Exit") {
+						continue
+					}
+					message := name.Name + " must use a plain integer literal; use a literal or update this test"
+					require.Less(t, i, len(valueSpec.Values), message)
+					literal, ok := valueSpec.Values[i].(*ast.BasicLit)
+					require.True(t, ok, message)
+					require.Equal(t, token.INT, literal.Kind, message)
+					code, err := strconv.Atoi(literal.Value)
+					require.NoError(t, err, message)
+					constants[name.Name] = code
+				}
 			}
 		}
 	}
-	var config types.Config
-	pkg, err := config.Check("gcxerrors", fset, []*ast.File{constantsFile}, nil)
-	require.NoError(t, err)
 
 	entries := gcxerrors.ExitCodes()
 	counts := make(map[int]int, len(entries))
@@ -51,19 +64,11 @@ func TestExitCodesMatchConstants(t *testing.T) {
 		})
 	}
 
-	constants := 0
-	for _, name := range pkg.Scope().Names() {
-		value, ok := pkg.Scope().Lookup(name).(*types.Const)
-		if !ok || !strings.HasPrefix(name, "Exit") {
-			continue
-		}
-		constants++
+	for name, code := range constants {
 		t.Run(name, func(t *testing.T) {
-			code, valid := constant.Int64Val(value.Val())
-			require.True(t, valid, "exit code must be an integer")
-			assert.Equal(t, 1, counts[int(code)], "%s must appear exactly once in ExitCodes", name)
+			assert.Equal(t, 1, counts[code], "%s must appear exactly once in ExitCodes", name)
 		})
 	}
-	assert.Positive(t, constants, "must find exit code constants")
-	assert.Len(t, entries, constants, "table must contain only declared exit codes")
+	assert.NotEmpty(t, constants, "must find exit code constants")
+	assert.Len(t, entries, len(constants), "table must contain only declared exit codes")
 }

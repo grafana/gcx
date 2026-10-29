@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -14,9 +15,12 @@ type helpTopic struct {
 	text  string
 }
 
-func registerHelpTopics(rootCmd *cobra.Command) {
+func registerHelpTopics(rootCmd *cobra.Command) []style.HelpTopic {
 	topics := []helpTopic{exitCodesHelpTopic()}
-	helpCmd, _, _ := rootCmd.Find([]string{"help"})
+	helpCmd, _, err := rootCmd.Find([]string{"help"})
+	if err != nil || helpCmd.Name() != "help" || helpCmd.Run == nil {
+		return nil
+	}
 	defaultRun := helpCmd.Run
 	helpCmd.Run = func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
@@ -44,16 +48,11 @@ func registerHelpTopics(rootCmd *cobra.Command) {
 	}
 	rootCmd.SetHelpCommand(helpCmd)
 
-	defaultHelp := rootCmd.HelpFunc()
-	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		defaultHelp(cmd, args)
-		if cmd == rootCmd {
-			fmt.Fprintln(cmd.OutOrStdout(), "\nAdditional help topics:")
-			for _, topic := range topics {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s help %s  %s\n", rootCmd.DisplayName(), topic.name, topic.short)
-			}
-		}
-	})
+	list := make([]style.HelpTopic, 0, len(topics))
+	for _, topic := range topics {
+		list = append(list, style.HelpTopic{Name: topic.name, Short: topic.short})
+	}
+	return list
 }
 
 func exitCodesHelpTopic() helpTopic {

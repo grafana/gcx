@@ -287,9 +287,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		return commandUsageError(cmd, err)
 	})
 
-	defaultHelp := rootCmd.HelpFunc()
-	rootCmd.SetHelpFunc(style.HelpFunc(defaultHelp))
-
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
 	rootCmd.SetIn(os.Stdin)
@@ -351,7 +348,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// traversing the command tree before ExecuteContext() sees the same shape
 	// that Cobra will execute.
 	rootCmd.InitDefaultHelpCmd()
-	registerHelpTopics(rootCmd)
+	topics := registerHelpTopics(rootCmd)
+	rootCmd.SetHelpFunc(style.HelpFunc(rootCmd.HelpFunc(), topics...))
 	rootCmd.InitDefaultCompletionCmd()
 
 	wrapArgumentErrors(rootCmd)

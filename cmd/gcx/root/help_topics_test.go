@@ -31,19 +31,15 @@ func TestExitCodesHelpTopic(t *testing.T) {
 }
 
 func TestExitCodesAdditionalHelpTopic(t *testing.T) {
-	for _, styled := range []bool{false, true} {
-		t.Run(fmt.Sprintf("styled=%t", styled), func(t *testing.T) {
-			style.SetEnabled(styled)
-			t.Cleanup(func() { style.SetEnabled(true) })
-			for _, args := range [][]string{{"--help"}, {"help"}} {
-				cmd := root.NewCommandForTest("test", nil)
-				var stdout bytes.Buffer
-				cmd.SetOut(&stdout)
-				cmd.SetArgs(args)
-				require.NoError(t, cmd.Execute())
-				assert.Contains(t, stdout.String(), "Additional help topics:\n  gcx help exit-codes  Explain exit codes with example scenarios.")
-			}
-		})
+	style.SetEnabled(false)
+	t.Cleanup(func() { style.SetEnabled(true) })
+	for _, args := range [][]string{{"--help"}, {"help"}} {
+		cmd := root.NewCommandForTest("test", nil)
+		var stdout bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetArgs(args)
+		require.NoError(t, cmd.Execute())
+		assert.Contains(t, stdout.String(), "Additional help topics:\n  gcx help exit-codes Explain exit codes with example scenarios.")
 	}
 }
 

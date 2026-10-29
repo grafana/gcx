@@ -22,9 +22,6 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
 Run `gcx help exit-codes` for the CLI reference, including a description and
 example scenario for each code. The topic is generated from the ordered
 `gcxerrors.ExitCodes()` reference alongside these constants.
-Topics are served by the help command, listed under "Additional help topics:"
-in root help, and offered by `gcx help` completion. They are not standalone
-commands and do not appear in `gcx commands`.
 
 **Implementation state:**
 - Exit code 2 (usage error) is set by `convertUsageErrors`,

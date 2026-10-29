@@ -57,6 +57,7 @@ Dedicated help pages for cross-cutting concerns:
 
 Implemented as a topic registry served by the help command, which delegates
 ordinary command help to Cobra. Topics are listed as `gcx help <topic>` under
-"Additional help topics:" in root help and offered by `gcx help` completion.
+"Additional help topics:" alongside native Cobra topics, before the closing
+`Use "gcx [command] --help"` line, and offered by `gcx help` completion.
 They are not registered as standalone commands or included in `gcx commands`.
 Tracked by R2.1, R2.2.
