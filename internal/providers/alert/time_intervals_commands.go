@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -143,7 +142,7 @@ func (o *timeIntervalsWriteOpts) setup(flags *pflag.FlagSet) {
 }
 func (o *timeIntervalsWriteOpts) Validate(cmd *cobra.Command) error {
 	if strings.TrimSpace(o.Filename) == "" {
-		return fail.NewCommandUsageError(cmd, "--filename / -f is required and must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--filename / -f is required and must not be empty", nil)
 	}
 	if err := validateNativeAlertVersionFlag(cmd, o.APIVersion); err != nil {
 		return err
@@ -209,7 +208,7 @@ Fetch the new title after rename to refresh local metadata; files are unchanged.
 			return err
 		}
 		if strings.TrimSpace(obj.GetResourceVersion()) == "" {
-			return fail.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion; fetch the current interval with 'gcx alert time-intervals get <title> -o yaml' before updating", nil)
+			return gcxerrors.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion; fetch the current interval with 'gcx alert time-intervals get <title> -o yaml' before updating", nil)
 		}
 		access, err := binding.Load(cmd.Context(), native.LoadOptions{APIVersion: version})
 		if err != nil {
@@ -223,7 +222,7 @@ Fetch the new title after rename to refresh local metadata; files are unchanged.
 			return resources.ReadOnlyNativeError(current)
 		}
 		if obj.GetName() != "" && obj.GetName() != current.GetName() {
-			return fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q does not match current title %q (API name %q)", obj.GetName(), args[0], current.GetName()), nil)
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q does not match current title %q (API name %q)", obj.GetName(), args[0], current.GetName()), nil)
 		}
 		desired := obj.DeepCopy()
 		desired.SetName(current.GetName())
@@ -302,43 +301,43 @@ func newTimeIntervalsDeleteCommand(binding native.Binding) *cobra.Command {
 // Shared alert-local validation and identity resolution for the two native groups.
 func validateNativeAlertVersionFlag(cmd *cobra.Command, version string) error {
 	if cmd.Flags().Changed("api-version") && version == "" {
-		return fail.NewCommandUsageError(cmd, "--api-version must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--api-version must not be empty", nil)
 	}
 	return validateAPIVersionFlag(cmd, version)
 }
 func validateNativeAlertTitle(cmd *cobra.Command, title string) error {
 	if strings.TrimSpace(title) == "" {
-		return fail.NewCommandUsageError(cmd, "title must be a nonempty string", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "title must be a nonempty string", nil)
 	}
 	return nil
 }
 func nativeAlertManifestVersion(cmd *cobra.Command, obj *unstructured.Unstructured, flagVersion, kind string) (string, error) {
 	for _, field := range []string{"name", "resourceVersion"} {
 		if _, _, err := unstructured.NestedString(obj.Object, "metadata", field); err != nil {
-			return "", fail.NewCommandUsageError(cmd, "metadata."+field+" must be a string", nil)
+			return "", gcxerrors.NewCommandUsageError(cmd, "metadata."+field+" must be a string", nil)
 		}
 	}
 	gv, err := schema.ParseGroupVersion(obj.GetAPIVersion())
 	if err != nil || gv.Group != routingTreesGroup || gv.Version == "" {
-		return "", fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest apiVersion %q must be %s/<version>", obj.GetAPIVersion(), routingTreesGroup), nil)
+		return "", gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("manifest apiVersion %q must be %s/<version>", obj.GetAPIVersion(), routingTreesGroup), nil)
 	}
 	if _, err := native.ParseAPIVersion(routingTreesGroup, obj.GetAPIVersion()); err != nil {
-		return "", fail.NewCommandUsageError(cmd, err.Error(), nil)
+		return "", gcxerrors.NewCommandUsageError(cmd, err.Error(), nil)
 	}
 	if obj.GetKind() != kind {
-		return "", fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest kind %q must be %s", obj.GetKind(), kind), nil)
+		return "", gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("manifest kind %q must be %s", obj.GetKind(), kind), nil)
 	}
 	if flagVersion != "" {
 		v, _ := native.ParseAPIVersion(routingTreesGroup, flagVersion)
 		if v != gv.Version {
-			return "", fail.NewCommandUsageError(cmd, fmt.Sprintf("--api-version %q conflicts with manifest apiVersion %q; the manifest decides the version", flagVersion, obj.GetAPIVersion()), nil)
+			return "", gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--api-version %q conflicts with manifest apiVersion %q; the manifest decides the version", flagVersion, obj.GetAPIVersion()), nil)
 		}
 	}
 	if resources.IsReadOnlyNative(obj) {
 		return "", resources.ReadOnlyNativeError(obj)
 	}
 	if _, _, err := resources.NativeIdentity(obj); err != nil {
-		return "", fail.NewCommandUsageError(cmd, err.Error(), nil)
+		return "", gcxerrors.NewCommandUsageError(cmd, err.Error(), nil)
 	}
 	return gv.Version, nil
 }

@@ -44,6 +44,14 @@ linters:
           deny:
             - pkg: "github.com/davecgh/go-spew"
               desc: debug statements should be removed
+        internal_layering:
+          # ARCHITECTURE.md § Rules: internal/ never imports cmd/.
+          files:
+            - "**/internal/**/*.go"
+            - "!$test"
+          deny:
+            - pkg: "github.com/grafana/gcx/cmd"
+              desc: internal/ must not import cmd/; move the code into internal/ (see ARCHITECTURE.md § Rules)
     forbidigo:
       analyze-types: true
       forbid:
