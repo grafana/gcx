@@ -667,6 +667,9 @@ func TestChecksTestSourceFlags(t *testing.T) {
 		_, _, err := runChecks(t, srv.URL, false, "", "test", "5594", "-f", manifest)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "mutually exclusive")
+		// A usage error maps to exit 2 (docs/design/exit-codes.md).
+		var usageErr *gcxerrors.UsageError
+		require.ErrorAs(t, err, &usageErr)
 
 		st.mu.Lock()
 		defer st.mu.Unlock()
@@ -680,6 +683,8 @@ func TestChecksTestSourceFlags(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "NAME")
 		assert.Contains(t, err.Error(), "--filename")
+		var usageErr *gcxerrors.UsageError
+		require.ErrorAs(t, err, &usageErr)
 	})
 
 	t.Run("more than one NAME is rejected", func(t *testing.T) {

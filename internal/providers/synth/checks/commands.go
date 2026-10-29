@@ -809,25 +809,26 @@ func (o *testOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func (o *testOpts) Validate(args []string) error {
+// Validate requires exactly one check source: a saved check NAME or --filename.
+// Source mistakes are usage errors (exit 2), matching cobra's own argument
+// errors on this command.
+func (o *testOpts) Validate(cmd *cobra.Command, args []string) error {
 	switch {
 	case len(args) > 0 && o.File != "":
-		return errors.New("NAME and --filename/-f are mutually exclusive")
+		return gcxerrors.NewCommandUsageError(cmd, "NAME and --filename/-f are mutually exclusive", nil)
 	case len(args) == 0 && o.File == "":
-		return errors.New("a saved check NAME or --filename/-f is required")
+		return gcxerrors.NewCommandUsageError(cmd, "a saved check NAME or --filename/-f is required", nil)
 	}
 	return o.IO.Validate()
 }
 
-// loadTestSpec returns the check to run: the manifest in --filename, or the
-// saved check named by args[0] (a resource name or numeric ID). Validate has
-// already ensured exactly one of the two is set.
-func loadTestSpec(ctx context.Context, loader smcfg.Loader, file string, args []string) (*CheckSpec, error) {
+// loadTestSpec returns the check to run: the manifest in file, or, when file is
+// empty, the saved check called name (a resource name or numeric ID).
+func loadTestSpec(ctx context.Context, loader smcfg.Loader, file, name string) (*CheckSpec, error) {
 	if file != "" {
 		return readCheckSpec(file)
 	}
 
-	name := args[0]
 	if id, ok := extractIDFromSlug(name); !ok || id == 0 {
 		return nil, fmt.Errorf("invalid check name %q: must be a resource name (e.g. grafana-instance-health-5594) or numeric ID", name)
 	}
@@ -920,7 +921,7 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
   gcx synthetic-monitoring checks test 5594 --logs-datasource-uid my-loki`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(args); err != nil {
+			if err := opts.Validate(cmd, args); err != nil {
 				return err
 			}
 
@@ -931,7 +932,11 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				return err
 			}
 
-			spec, err := loadTestSpec(ctx, loader, opts.File, args)
+			var name string
+			if len(args) > 0 {
+				name = args[0]
+			}
+			spec, err := loadTestSpec(ctx, loader, opts.File, name)
 			if err != nil {
 				return err
 			}
