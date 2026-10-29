@@ -7,8 +7,10 @@
 // gcx is compiled to WebAssembly (GOOS=wasip1, see build.sh) and run with
 // wazero, a pure-Go runtime. Compile the module once with New, then call Run
 // once per command. Each Run gets a fresh module instance that sees only what its
-// Invocation grants: its args and env, an empty read-only root with a
-// writable $HOME, and HTTP to the destinations in its egress policy. The
+// Invocation grants: its args and env, an empty read-only root with a $HOME
+// (a writable host directory, or a read-only in-memory fs.FS, see
+// Invocation.Home and Invocation.HomeFS), and HTTP to the destinations in
+// its egress policy. The
 // guest has no sockets; the host makes every request and can attach
 // credentials the guest never sees.
 package sandbox
@@ -287,7 +289,8 @@ type Invocation struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 	// Home is the host directory mounted read-write at /home. Empty means a
-	// fresh temporary directory, removed when Run returns. Runs given the
+	// fresh temporary directory, removed when Run returns, unless HomeFS is
+	// set, which replaces Home and creates no directory. Runs given the
 	// same Home share it: each sees, and can race with, the config and token
 	// cache the others write. Give each tenant its own, and don't run one
 	// tenant's commands concurrently if those writes must not interleave.
