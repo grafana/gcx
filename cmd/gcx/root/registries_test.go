@@ -105,8 +105,8 @@ func TestConsistency_EveryAreaHasAvailability(t *testing.T) {
 			t.Errorf("%q is both cloud-only and listed in selfHostedAreas", path)
 		}
 	}
-	reportStale(t, seen, "selfHostedAreas", selfHostedAreas)
-	reportStale(t, seen, "areasWithoutAvailability", areasWithoutAvailability)
+	reportStale(t, seen, selfHostedAreas, "selfHostedAreas entry %q is not a top-level command any more; remove it")
+	reportStale(t, seen, areasWithoutAvailability, "areasWithoutAvailability entry %q is not a top-level command any more; remove it")
 }
 
 // TestConsistency_EveryAreaHasSkillDecision fails when a top-level area has no
@@ -126,20 +126,21 @@ func TestConsistency_EveryAreaHasSkillDecision(t *testing.T) {
 			t.Errorf("%q has no entry in internal/agent/command_skills.go; add one, with an empty list when no skill applies", path)
 		}
 	}
-	reportStale(t, seen, "areasWithoutSkillDecision", areasWithoutSkillDecision)
+	reportStale(t, seen, areasWithoutSkillDecision, "areasWithoutSkillDecision entry %q is not a top-level command any more; remove it")
 }
 
-// reportStale fails for every list entry that names no current top-level area.
-func reportStale(t *testing.T, seen map[string]bool, name string, list map[string]bool) {
+// reportStale fails, with format applied to the entry, for every allowlist
+// entry the test did not see. It keeps the allowlists shrink-only.
+func reportStale[V any](t *testing.T, seen map[string]bool, list map[string]V, format string) {
 	t.Helper()
 	var stale []string
-	for path := range list {
-		if !seen[path] {
-			stale = append(stale, path)
+	for entry := range list {
+		if !seen[entry] {
+			stale = append(stale, entry)
 		}
 	}
 	sort.Strings(stale)
-	for _, path := range stale {
-		t.Errorf("%s entry %q is not a top-level command any more; remove it", name, path)
+	for _, entry := range stale {
+		t.Errorf(format, entry)
 	}
 }

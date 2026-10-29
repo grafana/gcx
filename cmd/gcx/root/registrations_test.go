@@ -1,7 +1,8 @@
 package root_test
 
 import (
-	"sort"
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -51,10 +52,13 @@ func TestRegistrations_SchemaAndExample(t *testing.T) {
 	for _, reg := range regs {
 		gvk := reg.GVK.String()
 		seen[gvk] = true
-		if reg.Schema == nil {
-			t.Errorf("registration %s has no Schema; every registration needs one (ARCHITECTURE.md § Rules)", gvk)
+		if reg.Schema == nil || !usableJSON(reg.Schema()) {
+			t.Errorf("registration %s has no usable Schema; every registration needs one that returns a JSON document (ARCHITECTURE.md § Rules)", gvk)
 		}
 		if len(reg.Example) > 0 {
+			if !usableJSON(reg.Example) {
+				t.Errorf("registration %s has an Example that is not a non-empty JSON document", gvk)
+			}
 			if writableRegistrationsMissingExample[gvk] {
 				t.Errorf("registration %s now has an Example; remove it from writableRegistrationsMissingExample", gvk)
 			}
@@ -66,19 +70,20 @@ func TestRegistrations_SchemaAndExample(t *testing.T) {
 		t.Errorf("registration %s has no Example; a writable registration needs one (ARCHITECTURE.md § Rules). If the resource is read-only, add it to readOnlyRegistrations", gvk)
 	}
 
-	var stale []string
-	for gvk := range readOnlyRegistrations {
-		if !seen[gvk] {
-			stale = append(stale, gvk)
-		}
+	reportStale(t, seen, readOnlyRegistrations, "readOnlyRegistrations entry %s no longer exists; remove it")
+	reportStale(t, seen, writableRegistrationsMissingExample, "writableRegistrationsMissingExample entry %s no longer exists; remove it")
+}
+
+// usableJSON reports whether raw is valid JSON with content: not empty, not
+// null, and not an empty object or array.
+func usableJSON(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	if !json.Valid(trimmed) {
+		return false
 	}
-	for gvk := range writableRegistrationsMissingExample {
-		if !seen[gvk] {
-			stale = append(stale, gvk)
-		}
+	switch string(trimmed) {
+	case "", "null", "{}", "[]":
+		return false
 	}
-	sort.Strings(stale)
-	for _, gvk := range stale {
-		t.Errorf("allowlisted registration %s no longer exists; remove its entry", gvk)
-	}
+	return true
 }

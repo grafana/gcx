@@ -1,18 +1,15 @@
 package root_test
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"io/fs"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 )
-
-// registerCall matches a provider self-registration call in a provider package.
-var registerCall = regexp.MustCompile(`\bproviders\.Register\(`)
 
 // TestProviderPackagesAreBlankImported fails when a package under
 // internal/providers/ registers a provider but command.go does not blank-import
@@ -20,7 +17,8 @@ var registerCall = regexp.MustCompile(`\bproviders\.Register\(`)
 // is missing from the binary and from every test that walks the root command
 // tree.
 func TestProviderPackagesAreBlankImported(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "command.go", nil, parser.ImportsOnly)
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "command.go", nil, parser.ImportsOnly)
 	if err != nil {
 		t.Fatalf("parse command.go: %v", err)
 	}
@@ -37,47 +35,67 @@ func TestProviderPackagesAreBlankImported(t *testing.T) {
 	}
 
 	providersDir := filepath.Join("..", "..", "..", "internal", "providers")
-	entries, err := os.ReadDir(providersDir)
+	registering := map[string]bool{}
+	err = filepath.WalkDir(providersDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		dir := filepath.Dir(path)
+		// providers.Register lives in the providers package itself.
+		if dir == providersDir || registering[dir] {
+			return nil
+		}
+		if callsProvidersRegister(t, fset, path) {
+			registering[dir] = true
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("read %s: %v", providersDir, err)
+		t.Fatalf("walk %s: %v", providersDir, err)
+	}
+	if len(registering) == 0 {
+		t.Fatal("found no provider packages calling providers.Register; the scan is broken")
 	}
 
-	registering := 0
-	for _, entry := range entries {
-		if !entry.IsDir() || !registersProvider(t, filepath.Join(providersDir, entry.Name())) {
-			continue
+	for dir := range registering {
+		rel, err := filepath.Rel(providersDir, dir)
+		if err != nil {
+			t.Fatalf("relative path for %s: %v", dir, err)
 		}
-		registering++
-		importPath := "github.com/grafana/gcx/internal/providers/" + entry.Name()
+		importPath := "github.com/grafana/gcx/internal/providers/" + filepath.ToSlash(rel)
 		if !imported[importPath] {
-			t.Errorf("internal/providers/%s calls providers.Register but cmd/gcx/root/command.go does not blank-import %q", entry.Name(), importPath)
+			t.Errorf("%s calls providers.Register but cmd/gcx/root/command.go does not blank-import %q", importPath, importPath)
 		}
-	}
-	if registering == 0 {
-		t.Fatal("found no provider packages calling providers.Register; the scan is broken")
 	}
 }
 
-// registersProvider reports whether a non-test Go file directly in dir calls
-// providers.Register.
-func registersProvider(t *testing.T, dir string) bool {
+// callsProvidersRegister reports whether the Go file at path contains a call
+// expression providers.Register(...). Comments and string literals do not
+// count.
+func callsProvidersRegister(t *testing.T, fset *token.FileSet, path string) bool {
 	t.Helper()
-	files, err := os.ReadDir(dir)
+	file, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
-		t.Fatalf("read %s: %v", dir, err)
+		t.Fatalf("parse %s: %v", path, err)
 	}
-	for _, f := range files {
-		name := f.Name()
-		if f.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || found {
+			return !found
 		}
-		body, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		if registerCall.Match(body) {
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Register" {
 			return true
 		}
-	}
-	return false
+		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "providers" {
+			found = true
+		}
+		return !found
+	})
+	return found
 }

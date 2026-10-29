@@ -126,9 +126,11 @@ func TestConsistency_NoNewCommandOperationsAdded(t *testing.T) {
 	}
 }
 
-// bareTopLevelCommands is the closed list of single-token commands in
-// DESIGN.md § CLI Grammar: bootstrapping that comes before any area, and
-// commands about the binary itself.
+// bareTopLevelCommands transcribes the closed list of single-token commands
+// in DESIGN.md § CLI Grammar: bootstrapping that comes before any area, and
+// commands about the binary itself. It records what the rule permits, not what
+// exists, so it has no staleness check: `setup` and `completion` are areas
+// today and never reach the lookup.
 //
 //nolint:gochecknoglobals // constant-like lookup table for test validation
 var bareTopLevelCommands = map[string]bool{
@@ -172,14 +174,5 @@ func TestConsistency_BareTopLevelCommandsAreClosed(t *testing.T) {
 		t.Errorf("top-level command %q is a bare verb. New top-level commands group subcommands under an area; the bare list is closed (DESIGN.md § CLI Grammar).", name)
 	}
 
-	var stale []string
-	for name := range grandfatheredBareTopLevelCommands {
-		if !seen[name] {
-			stale = append(stale, name)
-		}
-	}
-	sort.Strings(stale)
-	for _, name := range stale {
-		t.Errorf("grandfathered bare command %q no longer exists as a bare top-level command; remove it from grandfatheredBareTopLevelCommands", name)
-	}
+	reportStale(t, seen, grandfatheredBareTopLevelCommands, "grandfathered bare command %q no longer exists as a bare top-level command; remove it from grandfatheredBareTopLevelCommands")
 }
