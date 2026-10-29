@@ -653,7 +653,10 @@ func TestFleetMonitoringAuthDetails(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		for _, body := range []string{
 			"{\"message\":\"denied\",\"extra\":\"raw-response-marker\"}\n",
-			"raw-response-marker\n",
+			`{"error":"denied","message":"lower-priority message","err":"lower-priority err","msg":"lower-priority msg","code":"permission_denied","traceID":"test-trace"}`,
+			`{"err":"denied","msg":"lower-priority msg"}`,
+			`{"msg":"denied"}`,
+			"Unparseable response raw-response-marker.\n",
 			"<html><body>raw-response-marker</body></html>",
 		} {
 			t.Run(fmt.Sprintf("%d/%s", status, body), func(t *testing.T) {
@@ -675,8 +678,18 @@ func TestFleetMonitoringAuthDetails(t *testing.T) {
 				assert.Equal(t, strings.TrimSpace(got.Details), got.Details)
 				suggestions := strings.Join(got.Suggestions, " ")
 				assert.NotContains(t, suggestions, "gcx setup status")
-				if strings.HasPrefix(body, "{") {
+				switch {
+				case strings.HasPrefix(body, "{"):
 					assert.Contains(t, got.Details, "denied")
+					assert.NotContains(t, got.Details, "lower-priority")
+				case status == http.StatusForbidden:
+					assert.Contains(t, got.Details, "Fleet Management denied the request; check the required route actions")
+				default:
+					assert.Contains(t, got.Details, "Fleet Management rejected the credentials")
+				}
+				if strings.Contains(body, "test-trace") {
+					assert.Contains(t, got.Details, "permission_denied")
+					assert.Contains(t, got.Details, "test-trace")
 				}
 				if status == http.StatusForbidden {
 					assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")

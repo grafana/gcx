@@ -440,20 +440,22 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 		args           []string
 		wantInBand     bool
 		wantDiagnostic bool
+		wantHint       bool
 	}{
 		{name: "text", output: "text", wantDiagnostic: true},
 		{name: "json", output: "json", wantDiagnostic: true},
 		{name: "yaml", output: "yaml", wantDiagnostic: true},
-		{name: "agent", agent: true, wantInBand: true},
+		{name: "agent", agent: true, wantInBand: true, wantHint: true},
 		{name: "agents", output: "agents", wantDiagnostic: true},
-		{name: "agent json", output: "json", agent: true, wantInBand: true},
+		{name: "agent json", output: "json", agent: true, wantInBand: true, wantHint: true},
 		{name: "agent yaml", output: "yaml", agent: true, wantDiagnostic: true},
 		{name: "agent text", output: "text", agent: true, wantDiagnostic: true},
 		{name: "json flag", args: []string{"--json", ""}, wantInBand: true},
-		{name: "json fields", args: []string{"--json", "type,schema_version,products,error"}, wantInBand: true, wantDiagnostic: true},
+		{name: "json fields", args: []string{"--json", "type,schema_version,products,error"}, wantInBand: true},
+		{name: "agent json fields", agent: true, args: []string{"--json", "type,schema_version,products,error"}, wantInBand: true, wantHint: true},
 		{name: "jq document", args: []string{"--jq", "."}, wantDiagnostic: true},
 		{name: "jq", agent: true, args: []string{"--jq", ".products"}, wantDiagnostic: true},
-		{name: "json products", agent: true, args: []string{"--json", "products"}, wantDiagnostic: true},
+		{name: "json products", agent: true, args: []string{"--json", "products"}, wantDiagnostic: true, wantHint: true},
 	} {
 		for _, tc := range []struct {
 			name         string
@@ -521,6 +523,14 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 					}
 				}, mode.output, mode.agent, mode.args...)
 				require.True(t, monitoringCalled.Load())
+				if mode.wantHint {
+					hintLine, remaining, found := strings.Cut(stderr, "\n")
+					require.True(t, found)
+					hint := decodeSingleJSONValue(t, hintLine)
+					assert.Equal(t, "hint", hint["class"])
+					assert.Contains(t, hint["summary"], "--jq")
+					stderr = remaining
+				}
 				if tc.wantCode == 0 {
 					require.NoError(t, err)
 					assert.Empty(t, stderr)

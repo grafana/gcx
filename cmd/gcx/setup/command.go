@@ -100,6 +100,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "status",
 		Short: "Show aggregated setup status across all products.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts.IO.ErrWriter = cmd.ErrOrStderr()
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -167,7 +168,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			// Selection and discovery can remove the in-band error, so keep
 			// a diagnostic whenever the full error is not guaranteed on stdout.
-			if doc.Error == nil || opts.IO.JQActive() || len(opts.IO.JSONFields) > 0 || opts.IO.JSONDiscovery {
+			if doc.Error == nil || opts.IO.JQActive() || (len(opts.IO.JSONFields) > 0 && !slices.Contains(opts.IO.JSONFields, "error")) || opts.IO.JSONDiscovery {
 				if agent.IsAgentMode() {
 					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Summary)
 					if failure.Details != "" {

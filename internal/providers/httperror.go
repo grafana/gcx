@@ -46,7 +46,7 @@ func IsPluginRouteDenied(statusCode int, body []byte) bool {
 		return false
 	}
 	var errResp ErrorResponse
-	return json.Unmarshal(body, &errResp) == nil && errResp.message() == pluginRouteDeniedMessage
+	return json.Unmarshal(body, &errResp) == nil && errResp.ErrorMessage() == pluginRouteDeniedMessage
 }
 
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud
@@ -61,8 +61,8 @@ type ErrorResponse struct {
 	TraceID string          `json:"traceID"`
 }
 
-// message returns the first populated field: Error, then Message, then Err, then Msg.
-func (e ErrorResponse) message() string {
+// ErrorMessage returns the first populated message field: error, message, err, then msg.
+func (e ErrorResponse) ErrorMessage() string {
 	for _, m := range []string{e.Error, e.Message} {
 		if m != "" {
 			return m
@@ -116,7 +116,7 @@ func FormatError(statusCode int, body []byte) error {
 	var traceID string
 	if err := json.Unmarshal(body, &errResp); err == nil {
 		traceID = errResp.TraceID
-		if msg := errResp.message(); msg != "" {
+		if msg := errResp.ErrorMessage(); msg != "" {
 			if errResp.TraceID != "" {
 				return statusError(statusCode, nil, msg, errResp.TraceID,
 					"request failed with status %d: %s (traceID %s)", statusCode, msg, errResp.TraceID)

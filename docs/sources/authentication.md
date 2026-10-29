@@ -94,7 +94,7 @@ for role assignment guidance.
 
 ### Permissions to check instrumentation status
 
-To use `gcx setup status` and `gcx instrumentation clusters list` to check Kubernetes monitoring through the Collector app you need both the `grafana-collector-app:read` and the `grafana-collector-app:admin` permissions. 
+To use `gcx setup status` and `gcx instrumentation clusters list` to check Kubernetes monitoring through the Collector app you need both the `grafana-collector-app:read` and the `grafana-collector-app:admin` permissions.
 
 Inspect your allowed actions with:
 
@@ -107,27 +107,27 @@ for role assignment guidance.
 
 #### Status check outputs
 
-A successful check still reports `true` or `false`. 
+A successful check still reports `true` or `false`.
 
-When a setup status check fails, the state is unkown. 
+When a setup status check fails, the state is unknown.
 
-- The text table shows `unknown`, JSON and YAML keep the `enabled` field with a `null` value. 
-- The `fleet-management` row also has `enabled: null`. 
-- The structured status document keeps its `type`, `schema_version`, and `products` fields. 
-- Agent mode and the `--json` flag add an `error` object on failure. It contains the fields `summary`, `exitCode`, and optional `details`, `suggestions`, and `docsLink`. 
+- The text table shows `unknown`, JSON and YAML keep the `enabled` field with a `null` value.
+- The `fleet-management` row also has `enabled: null` when the Collector app plugin state is unknown.
+- The structured status document keeps its `type`, `schema_version`, and `products` fields.
+- Agent mode and the `--json` flag add an `error` object on failure. It contains the fields `summary`, `exitCode`, and optional `details`, `suggestions`, and `docsLink`.
 - Explicit human formats such as `-o yaml`, and plain `-o json` without agent mode, omit the `error` object from stdout.
 
-With field selection and discovery (including field selection with `--jq` or `--json <fields>`, and field discovery with `--json list`) the converted diagnostic goes to `stderr`: 
+The converted diagnostic goes to `stderr` whenever stdout has no `error` object (including explicit human formats such as text and `-o yaml`, and plain `-o json` without agent mode), or with `--jq`, `--json <fields>` that omits `error`, or field discovery with `--json list`:
 
-- With JSONL warnings for the summary and details in agent mode. 
-- With formatted text otherwise. 
+- With JSONL warnings for the summary and details in agent mode.
+- With formatted text otherwise.
 
-Without field selection or discovery, an in-band error has no duplicate `stderr` diagnostic. 
+Without `--jq` or field discovery, an in-band error has no duplicate `stderr` diagnostic, including when `--json <fields>` includes `error`.
 
 #### Exit codes
 
-- HTTP 401 and 403 failures exit with code 3. 
-- Other failed status probes, such as HTTP 500, exit with code 1 even when another product row succeeded. 
+- HTTP 401 and 403 failures exit with code 3.
+- Other failed status probes, such as HTTP 500, exit with code 1 even when another product row succeeded.
 - A setup snapshot is a diagnostic check; exit 4 is reserved for partial batch or mutation failures.
 
 ### Grafana Cloud product API 
