@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
+  evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
+  dropped both fields without an error, so a `sequential` rule was created as
+  `parallel` and its tag keys were lost. `rules get`, `rules list` and
+  `gcx resources pull` now show both, so a pulled rule keeps them when pushed
+  back. A file that leaves either field out still gets the server default on
+  create and keeps the stored value on update.
 - `gcx setup status` reports a failed instrumentation check as unknown
   (`enabled: null`) instead of disabled, names the missing permission when
   known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC

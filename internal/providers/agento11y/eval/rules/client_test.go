@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -168,6 +169,72 @@ func TestClient_Create_ConversationRule(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created.MinIdleSeconds)
 	assert.Equal(t, 10, *created.MinIdleSeconds)
+}
+
+// TestClient_ExecutionModeAndFilterableTagKeysRoundTrip pins that a rule's
+// execution_mode and filterable_tag_keys reach the server on create and
+// update, and come back from get and list. gcx previously dropped both, so a
+// sequential rule was created as parallel and its tag keys were lost.
+func TestClient_ExecutionModeAndFilterableTagKeysRoundTrip(t *testing.T) {
+	stored := map[string]any{
+		"rule_id":             "gated_quality",
+		"enabled":             true,
+		"selector":            "user_visible_turn",
+		"sample_rate":         1.0,
+		"evaluator_ids":       []string{"cheap_gate", "quality_judge"},
+		"execution_mode":      "sequential",
+		"filterable_tag_keys": []string{"environment", "team"},
+	}
+
+	var bodies []map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodPost, http.MethodPatch:
+			var body map[string]any
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			bodies = append(bodies, body)
+			writeJSON(w, stored)
+		case http.MethodGet:
+			if strings.HasSuffix(r.URL.Path, "/eval/rules") {
+				writeJSON(w, map[string]any{"items": []any{stored}})
+				return
+			}
+			writeJSON(w, stored)
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+
+	rule := &eval.RuleDefinition{
+		RuleID:            "gated_quality",
+		Enabled:           true,
+		Selector:          "user_visible_turn",
+		SampleRate:        1.0,
+		EvaluatorIDs:      []string{"cheap_gate", "quality_judge"},
+		ExecutionMode:     "sequential",
+		FilterableTagKeys: []string{"environment", "team"},
+	}
+
+	created, err := client.Create(t.Context(), rule)
+	require.NoError(t, err)
+	got, err := client.Get(t.Context(), "gated_quality")
+	require.NoError(t, err)
+	listed, err := client.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	updated, err := client.Update(t.Context(), "gated_quality", got)
+	require.NoError(t, err)
+
+	require.Len(t, bodies, 2)
+	for i, body := range bodies {
+		assert.Equal(t, "sequential", body["execution_mode"], "request %d", i)
+		assert.Equal(t, []any{"environment", "team"}, body["filterable_tag_keys"], "request %d", i)
+	}
+	for name, r := range map[string]*eval.RuleDefinition{"create": created, "get": got, "list": &listed[0], "update": updated} {
+		assert.Equal(t, "sequential", r.ExecutionMode, name)
+		assert.Equal(t, []string{"environment", "team"}, r.FilterableTagKeys, name)
+	}
 }
 
 func TestClient_Update(t *testing.T) {
