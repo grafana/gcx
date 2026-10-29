@@ -146,15 +146,23 @@ func TestSMDiscoveryHTMLPermissionFailure(t *testing.T) {
 func TestFleetAuthHTMLContentTypePreservesConvertedDetails(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			var requiredAction string
+			if status == http.StatusForbidden {
+				requiredAction = fleet.CollectorAppAdminAction
+			}
 			got := toDetailedError(t, fmt.Errorf("check monitoring: %w", &fleet.HTTPError{
 				Status:         status,
 				Path:           "/GetPipeline",
 				Body:           `{"message":"server denial","code":"permission_denied","traceID":"trace-auth"}`,
 				ContentType:    "text/html",
-				RequiredAction: fleet.CollectorAppAdminAction,
+				RequiredAction: requiredAction,
 			}))
 			assert.Contains(t, got.Details, "check monitoring: server denial (code permission_denied)")
-			assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+			if status == http.StatusForbidden {
+				assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+			} else {
+				assert.NotContains(t, got.Details, "requires the")
+			}
 			assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d, trace ID trace-auth", status))
 			assert.NotContains(t, got.Details, "/GetPipeline")
 			assert.NotContains(t, got.Details, "got an HTML page")

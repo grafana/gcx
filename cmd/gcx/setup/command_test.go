@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/setup"
@@ -442,6 +443,12 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 		{name: "json", output: "json"},
 		{name: "yaml", output: "yaml"},
 		{name: "agent", agent: true},
+		{name: "agents", output: "agents"},
+		{name: "agent json", output: "json", agent: true},
+		{name: "agent yaml", output: "yaml", agent: true},
+		{name: "agent text", output: "text", agent: true},
+		{name: "json fields", args: []string{"--json", "type,schema_version,products,error"}},
+		{name: "jq document", args: []string{"--jq", "."}},
 		{name: "jq", agent: true, args: []string{"--jq", ".products"}},
 	} {
 		for _, tc := range []struct {
@@ -452,6 +459,7 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 			wantCode     int
 			wantSummary  string
 			body         string
+			wantCause    string
 		}{
 			{name: "read-only token forbidden", status: 403, actionsKnown: true, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
 			{name: "unknown actions forbidden", status: 403, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
@@ -460,10 +468,11 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 			{name: "endpoint missing", status: 404, body: `{"message":"plugin route match not found"}`, wantCode: 1, wantSummary: gcxerrors.SummaryEndpointNotAvailable},
 			{name: "credentials rejected", status: 401, wantCode: 3, wantSummary: gcxerrors.SummaryAuthenticationFailed},
 			{name: "server error with admin", status: 500, actionsKnown: true, canAdmin: true, wantCode: 1, wantSummary: gcxerrors.SummaryAPIError},
+			{name: "monitoring connection closed", wantCode: 1, wantSummary: gcxerrors.SummaryNetworkError, wantCause: "EOF"},
 			{name: "no clusters", status: 200, actionsKnown: true, canAdmin: true},
 		} {
 			t.Run(mode.name+"/"+tc.name, func(t *testing.T) {
-				monitoringCalled := false
+				var monitoringCalled atomic.Bool
 				stdout, stderr, err := runStatusMode(t, func(w http.ResponseWriter, r *http.Request) {
 					switch r.URL.Path {
 					case "/bootdata":
@@ -479,7 +488,18 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 					case "/api/plugin-proxy/grafana-collector-app/grafanacom-api/instances/":
 						writeJSON(w, map[string]any{"hmInstancePromId": 123, "hmInstancePromClusterId": 42})
 					case "/api/plugin-proxy/grafana-collector-app/fleet-management-api/discovery.v1.DiscoveryService/RunK8sMonitoring":
-						monitoringCalled = true
+						monitoringCalled.Store(true)
+						if tc.wantCause != "" {
+							hijacker, ok := w.(http.Hijacker)
+							if !assert.True(t, ok) {
+								return
+							}
+							conn, _, hijackErr := hijacker.Hijack()
+							if assert.NoError(t, hijackErr) {
+								_ = conn.Close()
+							}
+							return
+						}
 						if tc.status == http.StatusOK {
 							writeJSON(w, map[string]any{"clusters": []any{}})
 							return
@@ -496,7 +516,7 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 						w.WriteHeader(http.StatusNotFound)
 					}
 				}, mode.output, mode.agent, mode.args...)
-				require.True(t, monitoringCalled)
+				require.True(t, monitoringCalled.Load())
 				if tc.wantCode == 0 {
 					require.NoError(t, err)
 					assert.Empty(t, stderr)
@@ -506,15 +526,11 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 					assert.Equal(t, tc.wantCode, emitted.Code)
 					assert.Contains(t, stdout, tc.wantSummary)
 					assert.Contains(t, stderr, tc.wantSummary)
-					if mode.agent {
-						diagnostic := decodeSingleJSONValue(t, stderr)
-						assert.Equal(t, gcxerrors.ErrorEnvelopeType, diagnostic["type"])
-						failure, ok := diagnostic["error"].(map[string]any)
-						require.True(t, ok)
-						assert.EqualValues(t, tc.wantCode, failure["exitCode"])
-					} else {
-						assert.Contains(t, stderr, "Error: "+tc.wantSummary)
+					if tc.wantCause != "" {
+						assert.Contains(t, stdout, tc.wantCause)
+						assert.Contains(t, stderr, tc.wantCause)
 					}
+					assertStatusDiagnostic(t, stderr, tc.wantSummary, mode.agent)
 				}
 				switch {
 				case mode.name == "jq":
@@ -554,44 +570,79 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 					if tc.wantCode == 0 {
 						assert.Equal(t, false, row["enabled"])
 						assert.Equal(t, "healthy", row["health"])
+						assert.Nil(t, doc["error"])
+						break
+					}
+					assert.Nil(t, row["enabled"])
+					assert.Equal(t, "unknown", row["health"])
+					details, ok := row["details"].(string)
+					require.True(t, ok)
+					assert.Equal(t, strings.TrimSpace(details), details)
+					if mode.output == "yaml" {
 						assert.NotContains(t, doc, "error")
-					} else {
-						assert.Nil(t, row["enabled"])
-						assert.Equal(t, "unknown", row["health"])
-						details, ok := row["details"].(string)
-						require.True(t, ok)
-						assert.Equal(t, strings.TrimSpace(details), details)
-						failure, ok := doc["error"].(map[string]any)
-						require.True(t, ok)
-						assert.Equal(t, tc.wantSummary, failure["summary"])
-						assert.EqualValues(t, tc.wantCode, failure["exitCode"])
-						if tc.status == http.StatusUnauthorized || tc.status == http.StatusForbidden || tc.status == http.StatusNotFound {
-							require.Contains(t, failure, "docsLink")
-						}
-						if link, ok := failure["docsLink"].(string); ok {
-							assert.Contains(t, failure["suggestions"], gcxerrors.DocsFetchSuggestion(link))
-						}
+						assert.Contains(t, stdout, "enabled: null")
+						break
+					}
+					failure, ok := doc["error"].(map[string]any)
+					require.True(t, ok)
+					assert.Equal(t, tc.wantSummary, failure["summary"])
+					assert.EqualValues(t, tc.wantCode, failure["exitCode"])
+					cause, ok := failure["details"].(string)
+					require.True(t, ok)
+					assert.Equal(t, "the check failed: "+tc.wantSummary+": "+cause, details)
+					if tc.status == http.StatusUnauthorized || tc.status == http.StatusForbidden || tc.status == http.StatusNotFound {
+						require.Contains(t, failure, "docsLink")
+					}
+					if link, ok := failure["docsLink"].(string); ok {
+						assert.Contains(t, failure["suggestions"], gcxerrors.DocsFetchSuggestion(link))
 					}
 				}
 				assert.NotContains(t, stdout+stderr, "gcx setup status")
 				if tc.status == 401 || tc.status == 403 {
-					assert.NotContains(t, stdout, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
-					assert.NotContains(t, stdout, "raw-response-marker")
-					assert.NotContains(t, stderr, "raw-response-marker")
-					assert.NotContains(t, stderr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
-					if tc.status == 403 {
-						assert.Contains(t, stderr, "Named read routes")
-						assert.Contains(t, stderr, "Wildcard routes")
-						assert.Contains(t, stderr, "gcx api /api/access-control/user/actions")
-						if tc.body == "" {
-							assert.Contains(t, stdout+stderr, "requires the grafana-collector-app:admin action")
-						} else {
-							assert.NotContains(t, stdout+stderr, "requires the")
-							assert.NotContains(t, stderr, "Ask a stack admin to grant")
-						}
-					}
+					assertStatusAuthDiagnostic(t, stdout, stderr, tc.status, tc.body, mode.agent)
 				}
 			})
 		}
+	}
+}
+
+func assertStatusDiagnostic(t *testing.T, stderr, summary string, agentMode bool) {
+	t.Helper()
+	if !agentMode {
+		assert.Contains(t, stderr, "Error: "+summary)
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	require.Len(t, lines, 2)
+	for i, line := range lines {
+		diagnostic := decodeSingleJSONValue(t, line)
+		assert.Equal(t, "warning", diagnostic["class"])
+		assert.NotContains(t, diagnostic, "error")
+		assert.NotContains(t, diagnostic, "type")
+		if i == 0 {
+			assert.Equal(t, summary, diagnostic["summary"])
+		} else {
+			assert.NotEmpty(t, diagnostic["summary"])
+		}
+	}
+}
+
+func assertStatusAuthDiagnostic(t *testing.T, stdout, stderr string, status int, body string, agentMode bool) {
+	t.Helper()
+	assert.NotContains(t, stdout+stderr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
+	assert.NotContains(t, stdout+stderr, "raw-response-marker")
+	if status != http.StatusForbidden {
+		return
+	}
+	if !agentMode {
+		assert.Contains(t, stderr, "Named read routes")
+		assert.Contains(t, stderr, "Wildcard routes")
+		assert.Contains(t, stderr, "gcx api /api/access-control/user/actions")
+	}
+	if body == "" {
+		assert.Contains(t, stdout+stderr, "requires the grafana-collector-app:admin action")
+	} else {
+		assert.NotContains(t, stdout+stderr, "requires the")
+		assert.NotContains(t, stderr, "Ask a stack admin to grant")
 	}
 }

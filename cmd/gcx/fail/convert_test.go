@@ -657,11 +657,15 @@ func TestFleetMonitoringAuthDetails(t *testing.T) {
 			"<html><body>raw-response-marker</body></html>",
 		} {
 			t.Run(fmt.Sprintf("%d/%s", status, body), func(t *testing.T) {
+				var requiredAction string
+				if status == http.StatusForbidden {
+					requiredAction = fleet.CollectorAppAdminAction
+				}
 				got := toDetailedError(t, fmt.Errorf("clusters list: %w", &fleet.HTTPError{
 					Status:         status,
 					Path:           "/discovery.v1.DiscoveryService/RunK8sMonitoring",
 					Body:           body,
-					RequiredAction: fleet.CollectorAppAdminAction,
+					RequiredAction: requiredAction,
 				}))
 				require.NotNil(t, got.ExitCode)
 				assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
@@ -671,16 +675,17 @@ func TestFleetMonitoringAuthDetails(t *testing.T) {
 				assert.Equal(t, strings.TrimSpace(got.Details), got.Details)
 				suggestions := strings.Join(got.Suggestions, " ")
 				assert.NotContains(t, suggestions, "gcx setup status")
-				assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
 				if strings.HasPrefix(body, "{") {
 					assert.Contains(t, got.Details, "denied")
 				}
 				if status == http.StatusForbidden {
+					assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
 					assert.Contains(t, suggestions, "Named read routes")
 					assert.Contains(t, suggestions, "Wildcard routes")
 					assert.Contains(t, suggestions, "grant the grafana-collector-app:admin action")
 					assert.Contains(t, suggestions, "gcx api /api/access-control/user/actions")
 				} else {
+					assert.NotContains(t, got.Details, "requires the")
 					assert.Contains(t, suggestions, "gcx login")
 				}
 			})

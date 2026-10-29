@@ -118,7 +118,7 @@ func explicitHumanOutput(cmd *cobra.Command) bool {
 	if slices.Contains(f.Annotations[output.ArtifactFormatsAnnotation], value) {
 		return false
 	}
-	return value != "json" && value != "agents"
+	return !output.IsJSONFormat(value)
 }
 
 func shouldNotifySkills(cmd *cobra.Command) bool {

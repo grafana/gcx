@@ -1401,16 +1401,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 	operation := wrappedTypedErrorContext(err, httpErr)
-	if operation == "" {
-		operation = httpErr.Path
-	} else if httpErr.Path != "" {
-		operation += " [" + httpErr.Path + "]"
-	}
-	message, code, traceID := responseErrorFields(httpErr.Body)
-	detailed := &gcxerrors.DetailedError{
-		Summary: httpStatusSummary(httpErr.Status),
-		Details: httpFailureDetails(operation, errorMessageWithCode(message, code), httpErr.Status, traceID),
-	}
+	var message, code, traceID string
 	switch httpErr.Status {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		message, code, traceID = parsedResponseErrorFields(httpErr.Body)
@@ -1422,10 +1413,24 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 				message = "Fleet Management denied the request; check the required route actions"
 			}
 		}
-		if httpErr.RequiredAction != "" {
+		if httpErr.Status == http.StatusForbidden && httpErr.RequiredAction != "" {
 			message += "; this Fleet Management operation requires the " + httpErr.RequiredAction + " action; ask a stack admin to grant it"
 		}
-		detailed.Details = httpFailureDetails(wrappedTypedErrorContext(err, httpErr), message, httpErr.Status, traceID)
+	default:
+		if operation == "" {
+			operation = httpErr.Path
+		} else if httpErr.Path != "" {
+			operation += " [" + httpErr.Path + "]"
+		}
+		message, code, traceID = responseErrorFields(httpErr.Body)
+		message = errorMessageWithCode(message, code)
+	}
+	detailed := &gcxerrors.DetailedError{
+		Summary: httpStatusSummary(httpErr.Status),
+		Details: httpFailureDetails(operation, message, httpErr.Status, traceID),
+	}
+	switch httpErr.Status {
+	case http.StatusUnauthorized, http.StatusForbidden:
 		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
 		if httpErr.Status == http.StatusUnauthorized {
 			detailed.Suggestions = []string{"Verify the token has not expired: gcx config view", reauthSuggestion}

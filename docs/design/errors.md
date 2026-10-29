@@ -146,11 +146,13 @@ For ID-based lookups with no name match, the original typed resource failure is 
 
 #### Error details and duplicate causes
 
-Non-auth Fleet errors and GCOM errors render caller operation, parsed server
+Fleet errors and GCOM errors render caller operation, parsed server
 message, error code when available, and HTTP status/trace ID once in details.
-Raw response text is the fallback when no server message parses. They omit `Parent` because it would
-repeat those details. Filesystem errors likewise render the full wrapped syscall
-error once in details, preserving operation, path, and cause.
+Raw response text is the fallback when no server message parses, except for
+Fleet HTTP 401/403 errors, which omit raw-body fallback and the `[path]` suffix.
+They omit `Parent` because it would repeat those details. Filesystem errors
+likewise render the full wrapped syscall error once in details, preserving
+operation, path, and cause.
 
 GCOM create/update 409 with code `InvalidArgument` remains `Invalid stack request`
 (exit 2); other 409s remain `Resource conflict`, including delete protection with

@@ -138,6 +138,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			doc := newSetupStatus(products)
 			var detailed *gcxerrors.DetailedError
+			var failure gcxerrors.JSONError
 			if statusErr != nil {
 				detailed = fail.ErrorToDetailedError(statusErr)
 				detailed.Suggestions = slices.DeleteFunc(detailed.Suggestions, func(s string) bool {
@@ -147,21 +148,26 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 				if detailed.ExitCode != nil {
 					code = *detailed.ExitCode
 				}
-				row = unknownInstrumentationRow(detailed)
-				failure := detailed.JSONObject(code)
-				doc.Error = &failure
+				failure = detailed.JSONObject(code)
+				row = unknownInstrumentationRow(failure)
+				if cmdio.IsJSONFormat(opts.IO.OutputFormat) {
+					doc.Error = &failure
+				}
 			}
 			doc.Products = append(doc.Products, row)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
 				return err
 			}
-			if doc.Error != nil {
+			if statusErr != nil {
 				if agent.IsAgentMode() {
-					_ = detailed.WriteJSON(cmd.ErrOrStderr(), doc.Error.ExitCode)
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Summary)
+					if failure.Details != "" {
+						cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Details)
+					}
 				} else {
 					fmt.Fprint(cmd.ErrOrStderr(), detailed.Error())
 				}
-				return gcxerrors.NewEmittedError(doc.Error.ExitCode, statusErr)
+				return gcxerrors.NewEmittedError(failure.ExitCode, statusErr)
 			}
 			return nil
 		},
@@ -193,7 +199,7 @@ func instrumentationRow(ctx context.Context, loader *providers.ConfigLoader) (se
 
 // unknownInstrumentationRow renders a failed instrumentation check as a product
 // row, so the user sees the cause next to the Fleet Management row.
-func unknownInstrumentationRow(err *gcxerrors.DetailedError) setupProductStatus {
+func unknownInstrumentationRow(err gcxerrors.JSONError) setupProductStatus {
 	details := "the check failed: " + err.Summary
 	if reason := strings.TrimSpace(err.Details); reason != "" {
 		details += ": " + reason

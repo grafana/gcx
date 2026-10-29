@@ -105,12 +105,12 @@ When a setup status check fails, its enablement is unknown: the text table shows
 The `fleet-management` row also has `enabled: null` when the Collector app
 plugin state is unknown. A successful check still reports `true` or `false`.
 The structured status document keeps its `type`, `schema_version`, and
-`products` fields and adds an `error` object only on failure, containing
+`products` fields. JSON and agent output add an `error` object on failure, containing
 `summary`, `exitCode`, and optional `details`, `suggestions`, and `docsLink`.
-Agent output uses the same document.
-The converted diagnostic also goes to stderr (JSONL in agent mode, formatted
-text otherwise), including when `--jq '.products'` or `--json products` selects
-only the product rows.
+Explicit human formats such as `-o yaml` omit the `error` object from stdout.
+The converted diagnostic also goes to stderr (JSONL warnings for the summary
+and details in agent mode, formatted text otherwise), including when
+`--jq '.products'` or `--json products` selects only the product rows.
 
 HTTP 401 and 403 failures exit with code 3. Other failed status probes, such as
 HTTP 500, exit with code 1 even when another product row succeeded. A setup
