@@ -7,7 +7,7 @@
   `-o json` or `-o yaml`, and `gcx resources pull`, now include both, so a
   pulled rule keeps them when pushed back. A file that leaves either field
   out still gets the server default on create and keeps the stored value on
-  update.
+  update; `filterable_tag_keys: []` clears the keys.
 - `gcx setup status` reports a failed instrumentation check as unknown
   (`enabled: null`) instead of disabled, names the missing permission when
   known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC

@@ -74,7 +74,7 @@ evaluator_ids:
 
 ## Tagged — Break Down Scores by Generation Tags
 
-`filterable_tag_keys` lists up to 10 generation tag keys to expose as labels on evaluation score metrics: `team` becomes `agento11y_eval_tag_team`. The keys don't change which generations the rule matches. Keep the number of distinct tag values small to limit metric series.
+`filterable_tag_keys` lists up to 10 generation tag keys to expose as labels on evaluation score metrics: `team` becomes `agento11y_eval_tag_team`. The keys don't change which generations the rule matches. Keep the number of distinct tag values small to limit metric series. To remove the keys, update the rule with `filterable_tag_keys: []`; leaving the field out keeps the current keys.
 
 ```yaml
 rule_id: quality_by_team

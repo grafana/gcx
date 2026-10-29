@@ -67,8 +67,10 @@ type RuleDefinition struct {
 	ExecutionMode string `json:"execution_mode,omitempty"`
 	// FilterableTagKeys are generation tag keys exposed as
 	// agento11y_eval_tag_<key> labels on evaluation score metrics. They don't
-	// change which generations the rule matches.
-	FilterableTagKeys []string `json:"filterable_tag_keys,omitempty"`
+	// change which generations the rule matches. omitzero rather than
+	// omitempty: nil is omitted, so update keeps the stored keys, but an
+	// explicit empty list is sent, which is how update clears them.
+	FilterableTagKeys []string `json:"filterable_tag_keys,omitzero"`
 
 	// Server-generated fields (stripped on push)
 	TenantID  string     `json:"tenant_id,omitempty"`

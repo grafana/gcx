@@ -270,6 +270,45 @@ func TestClient_Update(t *testing.T) {
 	assert.InDelta(t, 0.5, updated.SampleRate, 0.001)
 }
 
+// TestClient_UpdateFilterableTagKeys pins how a rule file's
+// filterable_tag_keys reaches the PATCH body. The server keeps the stored keys
+// when the field is absent and replaces them when it is present, so an empty
+// list must be sent rather than dropped, or update can't clear the keys.
+func TestClient_UpdateFilterableTagKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		file     string
+		wantSent bool
+		want     []any
+	}{
+		{name: "yaml empty list clears", file: "rule_id: r\nfilterable_tag_keys: []\n", wantSent: true, want: []any{}},
+		{name: "json empty list clears", file: `{"rule_id":"r","filterable_tag_keys":[]}`, wantSent: true, want: []any{}},
+		{name: "yaml keys replace", file: "rule_id: r\nfilterable_tag_keys: [team]\n", wantSent: true, want: []any{"team"}},
+		{name: "absent keeps stored", file: "rule_id: r\nsample_rate: 0.5\n"},
+		{name: "null keeps stored", file: "rule_id: r\nfilterable_tag_keys: null\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				writeJSON(w, eval.RuleDefinition{RuleID: "r"})
+			}))
+
+			rule, err := rules.ReadRuleFile("-", strings.NewReader(tt.file))
+			require.NoError(t, err)
+			_, err = client.Update(t.Context(), "r", rule)
+			require.NoError(t, err)
+
+			got, sent := body["filterable_tag_keys"]
+			assert.Equal(t, tt.wantSent, sent)
+			if tt.wantSent {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
 func TestClient_Delete(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodDelete, r.Method)
