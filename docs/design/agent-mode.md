@@ -73,7 +73,9 @@ Confirmation behavior follows [safety.md § 3.3](safety.md#33-agent-mode-rejects
 
 **Interactions that become required inputs.** Agent mode never removes a
 capability. An interaction it cannot automate fails with a structured error
-naming the input that replaces it. The complete list:
+naming the input that replaces it. Prompts with a safe default, such as the
+optional steps of `login`, take the default instead and are not listed. The
+interactions that fail:
 
 | Command | Interaction | Agent input |
 |---------|-------------|-------------|
@@ -82,6 +84,8 @@ naming the input that replaces it. The complete list:
 | `config edit` | Editor | `config set` / `config unset` |
 | `config use-context` | Context picker | The context name as an argument |
 | `frontend sessions get` | Session dump written to stdout | `--save <path>` |
+| `dev scaffold` | Project form | `--project` and `--go-module-path` |
+| `instrumentation setup` | Setup wizard prompts | `--use-defaults` |
 
 A new agent-mode branch that refuses an interaction adds its row here.
 

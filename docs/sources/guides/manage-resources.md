@@ -36,8 +36,6 @@ You need to [configure one context per environment](../../configuration#define-c
 Resources are pulled and pushed from the `./resources` directory by default.
 Configure this path with the `--path`/`-p` flags.
 {{< /admonition >}}
-    Resources are pulled and pushed from the `./resources` directory by default.
-    Configure this path with the `--path`/`-p` flags.
 
 ### Keep references valid across environments
 

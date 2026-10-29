@@ -84,12 +84,13 @@ Check work against these documents while planning, designing and implementing, i
 | 1 | [VISION.md](VISION.md) | **Product fit** — violation is wasted work | Does this belong in gcx? Does it serve the core beliefs? | Pause. Confirm direction with a human before investing more effort. |
 | 2 | [ARCHITECTURE.md § Rules](ARCHITECTURE.md#rules) and [DESIGN.md](DESIGN.md) | **Rules** — violation is a bug | Layering, pipeline, provider registration, transport, command grammar, output contract, exit codes, safety | Fix before proceeding. Existing violations are tracked debt, not precedent. Waiving a rule needs maintainer approval in the PR. |
 | 3 | [CONTRIBUTING.md](CONTRIBUTING.md#rules-and-code-conventions) | **Code conventions** — violation is a review defect | Options pattern, tests, dependencies, linter suppressions, commit titles | Fix. |
-| 4 | [docs/architecture/](docs/architecture/README.md) and [docs/design/](docs/design/) | **Mechanics** — how to follow the rules | Patterns, codec and error implementation, provider checklists | Prefer compliance. A deviation needs its rationale in the PR or an RFC. |
+| 4 | [docs/design/](docs/design/) | **Design mechanics** — violation is a UX defect | Command naming, codecs, errors, exit codes, safety, provider UX checklist | Fix. New code must comply. |
+| 5 | [docs/architecture/](docs/architecture/README.md) | **Architecture mechanics** — how to follow the architecture rules | Patterns, data flows, client layer | Prefer compliance. A deviation needs its rationale in the PR or an RFC. |
 
 **When to check:**
 - **Planning/design**: VISION (1) and the rules (2) — are we building the right thing, and can we build it within the rules?
-- **Implementation**: the rules (2), conventions (3) and mechanics (4).
-- **Pre-flight** (below): a final sweep across all four before pushing.
+- **Implementation**: the rules (2), conventions (3) and mechanics (4, 5).
+- **Pre-flight** (below): a final sweep across every level before pushing.
 
 ## Releasing
 
