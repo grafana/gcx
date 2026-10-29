@@ -434,22 +434,26 @@ func writeJSON(w http.ResponseWriter, value any) {
 // classification are exercised together in every supported default output mode.
 func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 	for _, mode := range []struct {
-		name   string
-		output string
-		agent  bool
-		args   []string
+		name           string
+		output         string
+		agent          bool
+		args           []string
+		wantInBand     bool
+		wantDiagnostic bool
 	}{
-		{name: "text", output: "text"},
-		{name: "json", output: "json"},
-		{name: "yaml", output: "yaml"},
-		{name: "agent", agent: true},
-		{name: "agents", output: "agents"},
-		{name: "agent json", output: "json", agent: true},
-		{name: "agent yaml", output: "yaml", agent: true},
-		{name: "agent text", output: "text", agent: true},
-		{name: "json fields", args: []string{"--json", "type,schema_version,products,error"}},
-		{name: "jq document", args: []string{"--jq", "."}},
-		{name: "jq", agent: true, args: []string{"--jq", ".products"}},
+		{name: "text", output: "text", wantDiagnostic: true},
+		{name: "json", output: "json", wantDiagnostic: true},
+		{name: "yaml", output: "yaml", wantDiagnostic: true},
+		{name: "agent", agent: true, wantInBand: true},
+		{name: "agents", output: "agents", wantDiagnostic: true},
+		{name: "agent json", output: "json", agent: true, wantInBand: true},
+		{name: "agent yaml", output: "yaml", agent: true, wantDiagnostic: true},
+		{name: "agent text", output: "text", agent: true, wantDiagnostic: true},
+		{name: "json flag", args: []string{"--json", ""}, wantInBand: true},
+		{name: "json fields", args: []string{"--json", "type,schema_version,products,error"}, wantInBand: true, wantDiagnostic: true},
+		{name: "jq document", args: []string{"--jq", "."}, wantDiagnostic: true},
+		{name: "jq", agent: true, args: []string{"--jq", ".products"}, wantDiagnostic: true},
+		{name: "json products", agent: true, args: []string{"--json", "products"}, wantDiagnostic: true},
 	} {
 		for _, tc := range []struct {
 			name         string
@@ -525,17 +529,28 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 					require.ErrorAs(t, err, &emitted)
 					assert.Equal(t, tc.wantCode, emitted.Code)
 					assert.Contains(t, stdout, tc.wantSummary)
-					assert.Contains(t, stderr, tc.wantSummary)
 					if tc.wantCause != "" {
 						assert.Contains(t, stdout, tc.wantCause)
-						assert.Contains(t, stderr, tc.wantCause)
 					}
-					assertStatusDiagnostic(t, stderr, tc.wantSummary, mode.agent)
+					if mode.wantDiagnostic {
+						assertStatusDiagnostic(t, stderr, tc.wantSummary, mode.agent)
+					} else {
+						assert.Empty(t, stderr)
+					}
 				}
 				switch {
-				case mode.name == "jq":
+				case mode.name == "jq" || mode.name == "json products":
 					var products []map[string]any
-					require.NoError(t, json.Unmarshal([]byte(stdout), &products))
+					if mode.name == "json products" {
+						var selected struct {
+							Products []map[string]any `json:"products"`
+						}
+						require.NoError(t, json.Unmarshal([]byte(stdout), &selected))
+						products = selected.Products
+						assert.Len(t, decodeSingleJSONValue(t, stdout), 1)
+					} else {
+						require.NoError(t, json.Unmarshal([]byte(stdout), &products))
+					}
 					require.Len(t, products, 2)
 					assert.Equal(t, "instrumentation", products[1]["product"])
 					assert.NotContains(t, stdout, `"error"`)
@@ -558,51 +573,63 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 						require.NoError(t, convertErr)
 						jsonOutput = string(data)
 					}
-					doc := decodeSingleJSONValue(t, jsonOutput)
-					assert.Equal(t, "gcx.setup.status", doc["type"])
-					assert.Equal(t, "1", doc["schema_version"])
-					products, ok := doc["products"].([]any)
-					require.True(t, ok)
-					require.Len(t, products, 2)
-					row, ok := products[1].(map[string]any)
-					require.True(t, ok)
-					require.Contains(t, row, "enabled")
-					if tc.wantCode == 0 {
-						assert.Equal(t, false, row["enabled"])
-						assert.Equal(t, "healthy", row["health"])
-						assert.Nil(t, doc["error"])
-						break
-					}
-					assert.Nil(t, row["enabled"])
-					assert.Equal(t, "unknown", row["health"])
-					details, ok := row["details"].(string)
-					require.True(t, ok)
-					assert.Equal(t, strings.TrimSpace(details), details)
-					if mode.output == "yaml" {
-						assert.NotContains(t, doc, "error")
+					assertStatusDocument(t, jsonOutput, tc.wantSummary, tc.wantCode, tc.status, mode.wantInBand)
+					if mode.output == "yaml" && tc.wantCode != 0 {
 						assert.Contains(t, stdout, "enabled: null")
-						break
-					}
-					failure, ok := doc["error"].(map[string]any)
-					require.True(t, ok)
-					assert.Equal(t, tc.wantSummary, failure["summary"])
-					assert.EqualValues(t, tc.wantCode, failure["exitCode"])
-					cause, ok := failure["details"].(string)
-					require.True(t, ok)
-					assert.Equal(t, "the check failed: "+tc.wantSummary+": "+cause, details)
-					if tc.status == http.StatusUnauthorized || tc.status == http.StatusForbidden || tc.status == http.StatusNotFound {
-						require.Contains(t, failure, "docsLink")
-					}
-					if link, ok := failure["docsLink"].(string); ok {
-						assert.Contains(t, failure["suggestions"], gcxerrors.DocsFetchSuggestion(link))
 					}
 				}
 				assert.NotContains(t, stdout+stderr, "gcx setup status")
 				if tc.status == 401 || tc.status == 403 {
-					assertStatusAuthDiagnostic(t, stdout, stderr, tc.status, tc.body, mode.agent)
+					assertStatusAuthDiagnostic(t, stdout, stderr, tc.status, tc.body, mode.wantDiagnostic && !mode.agent)
 				}
 			})
 		}
+	}
+}
+
+func assertStatusDocument(t *testing.T, raw, summary string, code, status int, inBand bool) {
+	t.Helper()
+	doc := decodeSingleJSONValue(t, raw)
+	assert.Equal(t, "gcx.setup.status", doc["type"])
+	assert.Equal(t, "1", doc["schema_version"])
+	products, ok := doc["products"].([]any)
+	require.True(t, ok)
+	require.Len(t, products, 2)
+	row, ok := products[1].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, row, "enabled")
+	if code == 0 {
+		assert.Equal(t, false, row["enabled"])
+		assert.Equal(t, "healthy", row["health"])
+		assert.Nil(t, doc["error"])
+		return
+	}
+	assert.Nil(t, row["enabled"])
+	assert.Equal(t, "unknown", row["health"])
+	details, ok := row["details"].(string)
+	require.True(t, ok)
+	assert.Equal(t, strings.TrimSpace(details), details)
+	if !inBand {
+		assert.NotContains(t, doc, "error")
+		return
+	}
+	assertStatusFailure(t, doc, details, summary, code, status)
+}
+
+func assertStatusFailure(t *testing.T, doc map[string]any, details, summary string, code, status int) {
+	t.Helper()
+	failure, ok := doc["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, summary, failure["summary"])
+	assert.EqualValues(t, code, failure["exitCode"])
+	cause, ok := failure["details"].(string)
+	require.True(t, ok)
+	assert.Equal(t, "the check failed: "+summary+": "+cause, details)
+	if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusNotFound {
+		require.Contains(t, failure, "docsLink")
+	}
+	if link, ok := failure["docsLink"].(string); ok {
+		assert.Contains(t, failure["suggestions"], gcxerrors.DocsFetchSuggestion(link))
 	}
 }
 
@@ -627,14 +654,14 @@ func assertStatusDiagnostic(t *testing.T, stderr, summary string, agentMode bool
 	}
 }
 
-func assertStatusAuthDiagnostic(t *testing.T, stdout, stderr string, status int, body string, agentMode bool) {
+func assertStatusAuthDiagnostic(t *testing.T, stdout, stderr string, status int, body string, humanDiagnostic bool) {
 	t.Helper()
 	assert.NotContains(t, stdout+stderr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
 	assert.NotContains(t, stdout+stderr, "raw-response-marker")
 	if status != http.StatusForbidden {
 		return
 	}
-	if !agentMode {
+	if humanDiagnostic {
 		assert.Contains(t, stderr, "Named read routes")
 		assert.Contains(t, stderr, "Wildcard routes")
 		assert.Contains(t, stderr, "gcx api /api/access-control/user/actions")

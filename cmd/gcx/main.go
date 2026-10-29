@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
@@ -268,7 +269,7 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		})
 	}
 
-	if (agent.IsAgentMode() && !root.IsHumanOutputFlagActive()) || root.IsJSONFlagActive() {
+	if output.ErrorInBand(root.IsHumanOutputFlagActive(), root.IsJSONFlagActive()) {
 		// Machine consumers get JSON on stdout only — the human-formatted
 		// stderr error is noise for agents and scripts. An explicit
 		// human-format -o (text, wide, yaml, ...) overrides agent mode, as it

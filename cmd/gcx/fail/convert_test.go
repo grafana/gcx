@@ -680,6 +680,7 @@ func TestFleetMonitoringAuthDetails(t *testing.T) {
 				}
 				if status == http.StatusForbidden {
 					assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+					assert.NotContains(t, got.Details, "ask a stack admin")
 					assert.Contains(t, suggestions, "Named read routes")
 					assert.Contains(t, suggestions, "Wildcard routes")
 					assert.Contains(t, suggestions, "grant the grafana-collector-app:admin action")

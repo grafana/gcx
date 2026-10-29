@@ -141,6 +141,10 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			var failure gcxerrors.JSONError
 			if statusErr != nil {
 				detailed = fail.ErrorToDetailedError(statusErr)
+				if detailed == nil {
+					// Already-reported errors may have no converted details.
+					detailed = &gcxerrors.DetailedError{Summary: statusErr.Error()}
+				}
 				detailed.Suggestions = slices.DeleteFunc(detailed.Suggestions, func(s string) bool {
 					return strings.Contains(s, "gcx setup status")
 				})
@@ -150,7 +154,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 				}
 				failure = detailed.JSONObject(code)
 				row = unknownInstrumentationRow(failure)
-				if cmdio.IsJSONFormat(opts.IO.OutputFormat) {
+				if cmdio.ErrorInBand(cmdio.IsHumanOutputFlagActive(cmd), cmdio.IsJSONFlagActive(cmd)) {
 					doc.Error = &failure
 				}
 			}
@@ -158,7 +162,12 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
 				return err
 			}
-			if statusErr != nil {
+			if statusErr == nil {
+				return nil
+			}
+			// Selection and discovery can remove the in-band error, so keep
+			// a diagnostic whenever the full error is not guaranteed on stdout.
+			if doc.Error == nil || opts.IO.JQActive() || len(opts.IO.JSONFields) > 0 || opts.IO.JSONDiscovery {
 				if agent.IsAgentMode() {
 					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Summary)
 					if failure.Details != "" {
@@ -167,9 +176,8 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 				} else {
 					fmt.Fprint(cmd.ErrOrStderr(), detailed.Error())
 				}
-				return gcxerrors.NewEmittedError(failure.ExitCode, statusErr)
 			}
-			return nil
+			return gcxerrors.NewEmittedError(failure.ExitCode, statusErr)
 		},
 	}
 	opts.setup(cmd.Flags())

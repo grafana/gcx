@@ -1414,7 +1414,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 			}
 		}
 		if httpErr.Status == http.StatusForbidden && httpErr.RequiredAction != "" {
-			message += "; this Fleet Management operation requires the " + httpErr.RequiredAction + " action; ask a stack admin to grant it"
+			message += "; this Fleet Management operation requires the " + httpErr.RequiredAction + " action"
 		}
 	default:
 		if operation == "" {
