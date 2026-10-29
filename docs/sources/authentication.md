@@ -94,31 +94,41 @@ for role assignment guidance.
 
 ### Permissions to check instrumentation status
 
-`gcx setup status` and `gcx instrumentation clusters list` check Kubernetes
-monitoring through the Collector app. This read-only operation requires the
-`grafana-collector-app:admin` action; `grafana-collector-app:read` alone is
-insufficient. Ask a stack administrator to grant the required action, and inspect
-your current actions with `gcx api /api/access-control/user/actions`.
+To use `gcx setup status` and `gcx instrumentation clusters list` to check Kubernetes monitoring through the Collector app you need both the `grafana-collector-app:read` and the `grafana-collector-app:admin` permissions. 
 
-When a setup status check fails, its enablement is unknown: the text table shows
-`unknown`, and JSON and YAML keep the `enabled` field with a `null` value.
-The `fleet-management` row also has `enabled: null` when the Collector app
-plugin state is unknown. A successful check still reports `true` or `false`.
-The structured status document keeps its `type`, `schema_version`, and
-`products` fields. Agent mode and the `--json` flag add an `error` object on
-failure, containing `summary`, `exitCode`, and optional `details`, `suggestions`,
-and `docsLink`. Explicit human formats such as `-o yaml`, and plain `-o json`
-without agent mode, omit the `error` object from stdout.
-Without field selection or discovery, an in-band error has no duplicate stderr
-diagnostic.
-Otherwise the converted diagnostic goes to stderr (JSONL warnings for the summary
-and details in agent mode, formatted text otherwise). This includes field
-selection with `--jq` or `--json <fields>`, and field discovery with `--json list`.
+Inspect your allowed actions with:
 
-HTTP 401 and 403 failures exit with code 3. Other failed status probes, such as
-HTTP 500, exit with code 1 even when another product row succeeded. A setup
-snapshot is a diagnostic check; exit 4 is reserved for partial batch or mutation
-failures.
+```bash
+gcx api /api/access-control/user/actions
+```
+
+Ask your Grafana administrator to check your roles for the required action. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
+for role assignment guidance.
+
+#### Status check outputs
+
+A successful check still reports `true` or `false`. 
+
+When a setup status check fails, the state is unkown. 
+
+- The text table shows `unknown`, JSON and YAML keep the `enabled` field with a `null` value. 
+- The `fleet-management` row also has `enabled: null`. 
+- The structured status document keeps its `type`, `schema_version`, and `products` fields. 
+- Agent mode and the `--json` flag add an `error` object on failure. It contains the fields `summary`, `exitCode`, and optional `details`, `suggestions`, and `docsLink`. 
+- Explicit human formats such as `-o yaml`, and plain `-o json` without agent mode, omit the `error` object from stdout.
+
+With field selection and discovery (including field selection with `--jq` or `--json <fields>`, and field discovery with `--json list`) the converted diagnostic goes to `stderr`: 
+
+- With JSONL warnings for the summary and details in agent mode. 
+- With formatted text otherwise. 
+
+Without field selection or discovery, an in-band error has no duplicate `stderr` diagnostic. 
+
+#### Exit codes
+
+- HTTP 401 and 403 failures exit with code 3. 
+- Other failed status probes, such as HTTP 500, exit with code 1 even when another product row succeeded. 
+- A setup snapshot is a diagnostic check; exit 4 is reserved for partial batch or mutation failures.
 
 ### Grafana Cloud product API 
 
