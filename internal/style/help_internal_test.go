@@ -45,6 +45,9 @@ func TestHelpFunc_AdditionalTopics(t *testing.T) {
 				var buf bytes.Buffer
 				cmd.SetOut(&buf)
 				defaultHelp := cmd.HelpFunc()
+				defaultHelp(cmd, nil)
+				defaultOutput := buf.String()
+				buf.Reset()
 				if styled {
 					defaultHelp = func(*cobra.Command, []string) { t.Fatal("styled help must not delegate to plain help") }
 				}
@@ -53,14 +56,24 @@ func TestHelpFunc_AdditionalTopics(t *testing.T) {
 					HelpTopic{Name: "next", Short: "Next topic."}))
 				require.NoError(t, cmd.Help())
 				out := buf.String()
-				want := "Additional help topics:\n"
-				if native {
-					want += fmt.Sprintf("  %-16s %s\n", "test about", "About the command.")
+				registryTopics := "  test help first  First topic.\n  test help next   Next topic.\n\n"
+				if styled {
+					want := "Additional help topics:\n"
+					if native {
+						want += fmt.Sprintf("  %-16s %s\n", "test about", "About the command.")
+					}
+					want += registryTopics
+					want += "Use \"test [command] --help\" for more information about a command.\n"
+					assert.Contains(t, out, want)
+					assert.Equal(t, 1, strings.Count(out, "Additional help topics:"))
+				} else {
+					assert.Equal(t, defaultOutput+"\nAdditional help topics:\n"+registryTopics, out)
 				}
-				want += "  test help first  First topic.\n  test help next   Next topic.\n\n"
-				want += "Use \"test [command] --help\" for more information about a command.\n"
-				assert.Contains(t, out, want)
-				assert.Equal(t, 1, strings.Count(out, "Additional help topics:"))
+				assert.Equal(t, 1, strings.Count(out, "test help first"))
+				assert.Equal(t, 1, strings.Count(out, "test help next"))
+				if native {
+					assert.Equal(t, 1, strings.Count(out, "test about"))
+				}
 
 				buf.Reset()
 				require.NoError(t, cmd.Commands()[0].Help())

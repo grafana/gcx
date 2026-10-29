@@ -10,9 +10,9 @@ import (
 )
 
 type helpTopic struct {
-	name  string
-	short string
-	text  string
+	style.HelpTopic
+
+	text string
 }
 
 func registerHelpTopics(rootCmd *cobra.Command) []style.HelpTopic {
@@ -25,7 +25,7 @@ func registerHelpTopics(rootCmd *cobra.Command) []style.HelpTopic {
 	helpCmd.Run = func(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
 			for _, topic := range topics {
-				if args[0] == topic.name {
+				if args[0] == topic.Name {
 					fmt.Fprintln(cmd.OutOrStdout(), topic.text)
 					return
 				}
@@ -36,11 +36,15 @@ func registerHelpTopics(rootCmd *cobra.Command) []style.HelpTopic {
 
 	defaultComplete := helpCmd.ValidArgsFunction
 	helpCmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		completions, directive := defaultComplete(cmd, args, toComplete)
+		var completions []cobra.Completion
+		directive := cobra.ShellCompDirectiveNoFileComp
+		if defaultComplete != nil {
+			completions, directive = defaultComplete(cmd, args, toComplete)
+		}
 		if len(args) == 0 {
 			for _, topic := range topics {
-				if strings.HasPrefix(topic.name, toComplete) {
-					completions = append(completions, cobra.CompletionWithDesc(topic.name, topic.short))
+				if strings.HasPrefix(topic.Name, toComplete) {
+					completions = append(completions, cobra.CompletionWithDesc(topic.Name, topic.Short))
 				}
 			}
 		}
@@ -50,7 +54,7 @@ func registerHelpTopics(rootCmd *cobra.Command) []style.HelpTopic {
 
 	list := make([]style.HelpTopic, 0, len(topics))
 	for _, topic := range topics {
-		list = append(list, style.HelpTopic{Name: topic.name, Short: topic.short})
+		list = append(list, topic.HelpTopic)
 	}
 	return list
 }
@@ -62,8 +66,10 @@ func exitCodesHelpTopic() helpTopic {
 		fmt.Fprintf(&help, "  %d  %s\n     %s\n     Example: %s\n\n", info.Code, info.Name, info.Description, info.Example)
 	}
 	return helpTopic{
-		name:  "exit-codes",
-		short: "Explain exit codes with example scenarios.",
-		text:  strings.TrimSpace(help.String()),
+		HelpTopic: style.HelpTopic{
+			Name:  "exit-codes",
+			Short: "Explain exit codes with example scenarios.",
+		},
+		text: strings.TrimSpace(help.String()),
 	}
 }

@@ -3,6 +3,7 @@ package root_test
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -40,6 +41,9 @@ func TestExitCodesAdditionalHelpTopic(t *testing.T) {
 		cmd.SetArgs(args)
 		require.NoError(t, cmd.Execute())
 		assert.Contains(t, stdout.String(), "Additional help topics:\n  gcx help exit-codes Explain exit codes with example scenarios.")
+		assert.Equal(t, 1, strings.Count(stdout.String(), "gcx help exit-codes"))
+		assert.Contains(t, stdout.String(), `Use "gcx [command] --help"`)
+		assert.Less(t, strings.Index(stdout.String(), `Use "gcx [command] --help"`), strings.Index(stdout.String(), "Additional help topics:"))
 	}
 }
 
