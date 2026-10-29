@@ -85,7 +85,9 @@ jobs:
             --json headRefOid --jq '"head_sha=" + .headRefOid' >> "$GITHUB_OUTPUT"
 
       # Carry the last reviewed commit and open findings into the next round.
-      # This step needs only pull-requests read.
+      # This step needs only pull-requests read. Findings come from unresolved
+      # inline threads, so a review whose findings fell back to the summary
+      # body (GitHub rejected the anchors) contributes none.
       - name: Find previous review
         id: prev
         shell: bash
@@ -101,10 +103,10 @@ jobs:
             local reviews threads ids
             reviews=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp |
               jq -ce '[.[][]
-                | select(.user.login == "github-actions[bot]" or .user.login == "claude[bot]")
+                | select(.user.login == "github-actions[bot]")
                 | select((.body // "") | contains("<!-- gcx-claude-review:"))]') || return 1
             [ "$(jq 'length' <<< "$reviews")" -gt 0 ] || return 0
-            ids=$(jq '[.[].id]' <<< "$reviews") || return 1
+            ids=$(jq '[.[] | {key: (.id | tostring), value: .commit_id[:12]}] | from_entries' <<< "$reviews") || return 1
             threads=$(gh api graphql --paginate --slurp \
               -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" \
               -F number="$PR_NUMBER" -f query='
@@ -128,11 +130,11 @@ jobs:
               [.[] | .data.repository.pullRequest.reviewThreads.nodes[]
                 | select(.isResolved == false)
                 | .comments.nodes[0] as $comment
-                | select($ids | index($comment.pullRequestReview.databaseId))
+                | ($ids[($comment.pullRequestReview.databaseId // "" | tostring)]) as $commit
+                | select($commit != null)
                 | ($comment.body | gsub("\r|<!--|-->"; "") | split("\n")
                     | map(trim | select(length > 0)) | .[0] // "" | .[:200]) as $body
-                | "- \(.path):\(.line // .originalLine // "?") \(if .isOutdated then "[outdated] " else "" end)\($body)"
-                | gsub("\r|<!--|-->"; "") | gsub("\n"; " ")]
+                | "- \(.path):\(.line // .originalLine // "?") (review of \($commit)) \(if .isOutdated then "[outdated] " else "" end)\($body)"]
               | .[:30][]
             ' <<< "$threads" > "$findings" || return 1
             sha=$(jq -r 'max_by(.submitted_at).commit_id // empty' <<< "$reviews") || return 1
@@ -154,7 +156,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          # Full history, so the previous review commit can be compared with the head.
+          # Full history, so the review can diff the previous review commit against the head.
           fetch-depth: 0
           # A pull_request event checks out the merge ref already. An
           # issue_comment event would otherwise check out the default branch,

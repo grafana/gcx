@@ -160,7 +160,7 @@ Silence is not the same as a pass you did not run. If your correctness pass
 could not complete, say that instead. Never deliver "no findings" for a review
 that did not happen.
 
-If the prompt lists a previous review commit and findings, use them as context: do not repeat a finding already raised, and note in the summary which earlier findings look addressed.
+If the prompt lists a previous review commit and findings, use them as context: run `git diff <previous review commit>..HEAD` to check whether each earlier finding was actually addressed, do not post a previous finding again as a new comment, and say in the summary which earlier findings are addressed and which still stand.
 
 ### Workflow delivery
 
