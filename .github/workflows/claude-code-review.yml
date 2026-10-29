@@ -84,10 +84,78 @@ jobs:
           gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
             --json headRefOid --jq '"head_sha=" + .headRefOid' >> "$GITHUB_OUTPUT"
 
+      # Carry the last reviewed commit and open findings into the next round.
+      # This step needs only pull-requests read.
+      - name: Find previous review
+        id: prev
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          findings=$(mktemp "$RUNNER_TEMP/previous-findings.XXXXXX")
+          sha=""
+          load_previous() {
+            local reviews threads ids
+            reviews=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp |
+              jq -ce '[.[][]
+                | select(.user.login == "github-actions[bot]" or .user.login == "claude[bot]")
+                | select((.body // "") | contains("<!-- gcx-claude-review:"))]') || return 1
+            [ "$(jq 'length' <<< "$reviews")" -gt 0 ] || return 0
+            ids=$(jq '[.[].id]' <<< "$reviews") || return 1
+            threads=$(gh api graphql --paginate --slurp \
+              -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" \
+              -F number="$PR_NUMBER" -f query='
+                query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+                  repository(owner: $owner, name: $name) {
+                    pullRequest(number: $number) {
+                      reviewThreads(first: 100, after: $endCursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                          isResolved isOutdated path line originalLine
+                          comments(first: 1) {
+                            nodes { body pullRequestReview { databaseId } }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }') || return 1
+            jq -r --argjson ids "$ids" '
+              def trim: gsub("^\\s+|\\s+$"; "");
+              [.[] | .data.repository.pullRequest.reviewThreads.nodes[]
+                | select(.isResolved == false)
+                | .comments.nodes[0] as $comment
+                | select($ids | index($comment.pullRequestReview.databaseId))
+                | ($comment.body | gsub("\r|<!--|-->"; "") | split("\n")
+                    | map(trim | select(length > 0)) | .[0] // "" | .[:200]) as $body
+                | "- \(.path):\(.line // .originalLine // "?") \(if .isOutdated then "[outdated] " else "" end)\($body)"
+                | gsub("\r|<!--|-->"; "") | gsub("\n"; " ")]
+              | .[:30][]
+            ' <<< "$threads" > "$findings" || return 1
+            sha=$(jq -r 'max_by(.submitted_at).commit_id // empty' <<< "$reviews") || return 1
+          }
+
+          if ! load_previous; then
+            echo "::warning::Could not read previous Claude reviews; continuing with a full review."
+            sha=""
+            : > "$findings"
+          fi
+          delim="EOF_$(openssl rand -hex 16)"
+          {
+            echo "sha=$sha"
+            echo "findings<<$delim"
+            cat "$findings"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          fetch-depth: 1
+          # Re-reviews need the previous review commit in history to diff previous..HEAD.
+          fetch-depth: 0
           # A pull_request event checks out the merge ref already. An
           # issue_comment event would otherwise check out the default branch,
           # so the review would grep the base instead of the PR's code.
@@ -134,6 +202,9 @@ jobs:
 
             This is an unattended workflow run requesting Workflow delivery.
             Review head: ${{ steps.pr.outputs.head_sha }}
+            Previous review commit: ${{ steps.prev.outputs.sha }}
+            Previous findings:
+            ${{ steps.prev.outputs.findings }}
 
             Return the structured review payload and publish nothing. The next
             workflow step submits the review and checks GitHub's response.
