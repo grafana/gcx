@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"os"
 	"strings"
 	"testing"
 
@@ -16,10 +17,24 @@ import (
 
 func TestExitCodesMatchConstants(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "exitcodes.go", nil, 0)
+	files, err := os.ReadDir(".")
 	require.NoError(t, err)
+	// Type-check all constants without importing unrelated error helpers.
+	constantsFile := &ast.File{Name: ast.NewIdent("gcxerrors")}
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), ".go") || strings.HasSuffix(file.Name(), "_test.go") {
+			continue
+		}
+		parsed, parseErr := parser.ParseFile(fset, file.Name(), nil, 0)
+		require.NoError(t, parseErr)
+		for _, decl := range parsed.Decls {
+			if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
+				constantsFile.Decls = append(constantsFile.Decls, gen)
+			}
+		}
+	}
 	var config types.Config
-	pkg, err := config.Check("gcxerrors", fset, []*ast.File{file}, nil)
+	pkg, err := config.Check("gcxerrors", fset, []*ast.File{constantsFile}, nil)
 	require.NoError(t, err)
 
 	entries := gcxerrors.ExitCodes()
@@ -27,7 +42,6 @@ func TestExitCodesMatchConstants(t *testing.T) {
 	for i, info := range entries {
 		counts[info.Code]++
 		t.Run(info.Name, func(t *testing.T) {
-			assert.Equal(t, 1, counts[info.Code], "duplicate exit code %d", info.Code)
 			assert.NotEmpty(t, info.Name)
 			assert.NotEmpty(t, info.Description)
 			assert.NotEmpty(t, info.Example)

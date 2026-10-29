@@ -307,7 +307,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(instrumentationcmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
-	rootCmd.AddCommand(exitCodesHelpTopic())
 
 	rootCmd.AddCommand(cmdproviders.Command(pp))
 	for _, p := range pp {
@@ -352,6 +351,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// traversing the command tree before ExecuteContext() sees the same shape
 	// that Cobra will execute.
 	rootCmd.InitDefaultHelpCmd()
+	registerHelpTopics(rootCmd)
 	rootCmd.InitDefaultCompletionCmd()
 
 	wrapArgumentErrors(rootCmd)

@@ -55,5 +55,8 @@ Dedicated help pages for cross-cutting concerns:
 | `gcx help formatting` | Output format guide, jq patterns | Planned |
 | `gcx help exit-codes` | Exit code reference with descriptions and examples ([exit-codes.md](exit-codes.md)) | Implemented |
 
-Implemented as Cobra help topic commands (no run function or subcommands),
-listed under "Additional help topics:" in root help. Tracked by R2.1, R2.2.
+Implemented as a topic registry served by the help command, which delegates
+ordinary command help to Cobra. Topics are listed as `gcx help <topic>` under
+"Additional help topics:" in root help and offered by `gcx help` completion.
+They are not registered as standalone commands or included in `gcx commands`.
+Tracked by R2.1, R2.2.
