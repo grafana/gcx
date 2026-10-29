@@ -620,6 +620,7 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 		respStatus     int
 		respBody       string
 		wantErr        bool
+		wantAction     string
 		wantCluster    string
 		wantClusterLen int
 	}{
@@ -641,6 +642,19 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 			respBody:   `{"error":"server error"}`,
 			wantErr:    true,
 		},
+		{
+			name:       "backend forbidden has no known missing action",
+			respStatus: http.StatusForbidden,
+			respBody:   `{"message":"backend access denied"}`,
+			wantErr:    true,
+		},
+		{
+			name:       "plugin route forbidden requires admin",
+			respStatus: http.StatusForbidden,
+			respBody:   `{"message":"plugin proxy route access denied"}`,
+			wantErr:    true,
+			wantAction: fleet.CollectorAppAdminAction,
+		},
 	}
 
 	for _, tt := range tests {
@@ -657,6 +671,9 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				var httpErr *fleet.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, tt.wantAction, httpErr.RequiredAction)
 				return
 			}
 			require.NoError(t, err)

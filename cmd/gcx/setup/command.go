@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -55,7 +57,7 @@ type setupStatus struct {
 	Type          string               `json:"type" yaml:"type"`
 	SchemaVersion string               `json:"schema_version" yaml:"schema_version"`
 	Products      []setupProductStatus `json:"products" yaml:"products"`
-	Error         *setupStatusError    `json:"error,omitempty" yaml:"error,omitempty"`
+	Error         *gcxerrors.JSONError `json:"error,omitempty" yaml:"error,omitempty"`
 }
 
 // setupProductStatus is the aggregated status of a single product.
@@ -64,15 +66,6 @@ type setupProductStatus struct {
 	Enabled *bool  `json:"enabled" yaml:"enabled"` // nil means the check could not determine enablement.
 	Health  string `json:"health" yaml:"health"`
 	Details string `json:"details,omitempty" yaml:"details,omitempty"`
-}
-
-// setupStatusError keeps the converted failure in the same document as the rows.
-type setupStatusError struct {
-	Summary     string   `json:"summary" yaml:"summary"`
-	ExitCode    int      `json:"exitCode" yaml:"exitCode"`
-	Details     string   `json:"details,omitempty" yaml:"details,omitempty"`
-	Suggestions []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	DocsLink    string   `json:"docsLink,omitempty" yaml:"docsLink,omitempty"`
 }
 
 // newSetupStatus returns a setupStatus with the discriminators set.
@@ -144,26 +137,30 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			doc := newSetupStatus(products)
+			var detailed *gcxerrors.DetailedError
 			if statusErr != nil {
-				detailed := fail.ErrorToDetailedError(statusErr)
+				detailed = fail.ErrorToDetailedError(statusErr)
+				detailed.Suggestions = slices.DeleteFunc(detailed.Suggestions, func(s string) bool {
+					return strings.Contains(s, "gcx setup status")
+				})
 				code := gcxerrors.ExitGeneralError
 				if detailed.ExitCode != nil {
 					code = *detailed.ExitCode
 				}
 				row = unknownInstrumentationRow(detailed)
-				doc.Error = &setupStatusError{
-					Summary:     detailed.Summary,
-					ExitCode:    code,
-					Details:     detailed.Details,
-					Suggestions: detailed.Suggestions,
-					DocsLink:    detailed.DocsLink,
-				}
+				failure := detailed.JSONObject(code)
+				doc.Error = &failure
 			}
 			doc.Products = append(doc.Products, row)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
 				return err
 			}
 			if doc.Error != nil {
+				if agent.IsAgentMode() {
+					_ = detailed.WriteJSON(cmd.ErrOrStderr(), doc.Error.ExitCode)
+				} else {
+					fmt.Fprint(cmd.ErrOrStderr(), detailed.Error())
+				}
 				return gcxerrors.NewEmittedError(doc.Error.ExitCode, statusErr)
 			}
 			return nil
@@ -236,17 +233,5 @@ func (c *setupStatusTextCodec) Encode(w io.Writer, value any) error {
 		}
 		t.Row(p.Product, enabled, p.Health, p.Details)
 	}
-	if err := t.Render(w); err != nil {
-		return err
-	}
-	if status.Error != nil {
-		_, err := fmt.Fprint(w, (gcxerrors.DetailedError{
-			Summary:     status.Error.Summary,
-			Details:     status.Error.Details,
-			Suggestions: status.Error.Suggestions,
-			DocsLink:    status.Error.DocsLink,
-		}).Error())
-		return err
-	}
-	return nil
+	return t.Render(w)
 }

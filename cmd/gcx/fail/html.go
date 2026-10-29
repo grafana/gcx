@@ -46,13 +46,7 @@ func renderConvertedError(err error, detailed *gcxerrors.DetailedError) *gcxerro
 	}
 	var fleetErr *fleet.HTTPError
 	if errors.As(err, &fleetErr) && (fleetErr.Status == http.StatusUnauthorized || fleetErr.Status == http.StatusForbidden) {
-		operation = wrappedTypedErrorContext(err, fleetErr)
-		if operation == "" {
-			operation = "Fleet Management"
-		}
-		if fleetErr.Status == http.StatusForbidden && fleetErr.RequiredAction != "" {
-			message += "; this operation requires the " + fleetErr.RequiredAction + " action"
-		}
+		return detailed
 	}
 	if operation != "" {
 		message = operation + ": " + message

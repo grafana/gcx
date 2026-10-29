@@ -5,20 +5,27 @@ import "encoding/json"
 // responseErrorFields extracts conventional API fields without discarding a
 // raw response that is not a JSON error object.
 func responseErrorFields(body string) (string, string, string) {
+	message, code, traceID := parsedResponseErrorFields(body)
+	if message == "" {
+		return body, "", ""
+	}
+	return message, code, traceID
+}
+
+// parsedResponseErrorFields never falls back to the raw body, so auth failures
+// can retain a server message without exposing opaque or HTML responses.
+func parsedResponseErrorFields(body string) (string, string, string) {
 	var parsed struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 		TraceID string `json:"traceID"`
 	}
 	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
-		return body, "", ""
+		return "", "", ""
 	}
 	message := parsed.Message
 	if message == "" {
 		message = parsed.Code
-	}
-	if message == "" {
-		return body, "", ""
 	}
 	return message, parsed.Code, parsed.TraceID
 }

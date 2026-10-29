@@ -671,8 +671,13 @@ func TestFleetMonitoringAuthDetails(t *testing.T) {
 				assert.Equal(t, strings.TrimSpace(got.Details), got.Details)
 				suggestions := strings.Join(got.Suggestions, " ")
 				assert.NotContains(t, suggestions, "gcx setup status")
+				assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+				if strings.HasPrefix(body, "{") {
+					assert.Contains(t, got.Details, "denied")
+				}
 				if status == http.StatusForbidden {
-					assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+					assert.Contains(t, suggestions, "Named read routes")
+					assert.Contains(t, suggestions, "Wildcard routes")
 					assert.Contains(t, suggestions, "grant the grafana-collector-app:admin action")
 					assert.Contains(t, suggestions, "gcx api /api/access-control/user/actions")
 				} else {

@@ -47,7 +47,7 @@ func TestFleetStatusAndDetails(t *testing.T) {
 				assert.Contains(t, got.Details, "fleet: get pipeline pipeline-1")
 				assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d, trace ID trace-1", tc.status))
 				assert.NotContains(t, got.Details, "/GetPipeline")
-				assert.NotContains(t, got.Details, "specific server failure")
+				assert.Contains(t, got.Details, "specific server failure (code not_found)")
 				return
 			}
 			assert.Equal(t, fmt.Sprintf("fleet: get pipeline pipeline-1 [/GetPipeline]: specific server failure (code not_found) (HTTP %d, trace ID trace-1)", tc.status), got.Details)

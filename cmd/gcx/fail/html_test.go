@@ -61,8 +61,14 @@ func TestHTMLResponsesKeepStatusClassification(t *testing.T) {
 				}
 				assert.Equal(t, exit, actual)
 				assert.Equal(t, summary, got.Summary)
-				assert.Contains(t, got.Details, "got an HTML page")
-				assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d %s", status, http.StatusText(status)))
+				if name == "fleet" && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+					assert.NotContains(t, got.Details, "got an HTML page")
+					assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d", status))
+					assert.NotContains(t, got.Details, "/GetPipeline")
+				} else {
+					assert.Contains(t, got.Details, "got an HTML page")
+					assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d %s", status, http.StatusText(status)))
+				}
 				assert.Contains(t, got.Details, "operation context")
 				assert.NotContains(t, got.Error(), "secret login page")
 				assert.NotContains(t, got.Error(), "<html>")
@@ -133,6 +139,25 @@ func TestSMDiscoveryHTMLPermissionFailure(t *testing.T) {
 			assert.Contains(t, got.Details, "got an HTML page")
 			assert.NotContains(t, got.Error(), "private scope page")
 			assert.NoError(t, got.Parent)
+		})
+	}
+}
+
+func TestFleetAuthHTMLContentTypePreservesConvertedDetails(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			got := toDetailedError(t, fmt.Errorf("check monitoring: %w", &fleet.HTTPError{
+				Status:         status,
+				Path:           "/GetPipeline",
+				Body:           `{"message":"server denial","code":"permission_denied","traceID":"trace-auth"}`,
+				ContentType:    "text/html",
+				RequiredAction: fleet.CollectorAppAdminAction,
+			}))
+			assert.Contains(t, got.Details, "check monitoring: server denial (code permission_denied)")
+			assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+			assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d, trace ID trace-auth", status))
+			assert.NotContains(t, got.Details, "/GetPipeline")
+			assert.NotContains(t, got.Details, "got an HTML page")
 		})
 	}
 }

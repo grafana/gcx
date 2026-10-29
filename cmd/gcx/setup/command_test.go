@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 // These tests pin the agent output contract for `gcx setup status`. Before
@@ -189,7 +190,7 @@ func runStatus(t *testing.T, handler http.HandlerFunc) (string, error) {
 	return stdout, err
 }
 
-func runStatusMode(t *testing.T, handler http.HandlerFunc, output string, agentMode bool) (string, string, error) {
+func runStatusMode(t *testing.T, handler http.HandlerFunc, output string, agentMode bool, extraArgs ...string) (string, string, error) {
 	t.Helper()
 	agent.SetFlag(agentMode)
 	t.Cleanup(func() { agent.SetFlag(false) })
@@ -223,7 +224,7 @@ func runStatusMode(t *testing.T, handler http.HandlerFunc, output string, agentM
 	if output != "" {
 		args = append(args, "-o", output)
 	}
-	root.SetArgs(args)
+	root.SetArgs(append(args, extraArgs...))
 
 	err := root.Execute()
 	return stdout.String(), stderr.String(), err
@@ -410,6 +411,8 @@ func TestSetupStatus_UnknownPluginStateStillTriesTheCheck(t *testing.T) {
 		t.Fatalf("products = %v, want two entries", doc["products"])
 	}
 	plugin, _ := products[0].(map[string]any)
+	require.Contains(t, plugin, "enabled")
+	assert.Nil(t, plugin["enabled"])
 	if plugin["health"] != "unknown" {
 		t.Fatalf("plugin health = %v, want unknown", plugin["health"])
 	}
@@ -433,10 +436,13 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 		name   string
 		output string
 		agent  bool
+		args   []string
 	}{
 		{name: "text", output: "text"},
 		{name: "json", output: "json"},
+		{name: "yaml", output: "yaml"},
 		{name: "agent", agent: true},
+		{name: "jq", agent: true, args: []string{"--jq", ".products"}},
 	} {
 		for _, tc := range []struct {
 			name         string
@@ -445,10 +451,13 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 			canAdmin     bool
 			wantCode     int
 			wantSummary  string
+			body         string
 		}{
 			{name: "read-only token forbidden", status: 403, actionsKnown: true, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
 			{name: "unknown actions forbidden", status: 403, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
 			{name: "admin token forbidden", status: 403, actionsKnown: true, canAdmin: true, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
+			{name: "backend forbidden", status: 403, body: `{"message":"backend access denied"}`, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
+			{name: "endpoint missing", status: 404, body: `{"message":"plugin route match not found"}`, wantCode: 1, wantSummary: gcxerrors.SummaryEndpointNotAvailable},
 			{name: "credentials rejected", status: 401, wantCode: 3, wantSummary: gcxerrors.SummaryAuthenticationFailed},
 			{name: "server error with admin", status: 500, actionsKnown: true, canAdmin: true, wantCode: 1, wantSummary: gcxerrors.SummaryAPIError},
 			{name: "no clusters", status: 200, actionsKnown: true, canAdmin: true},
@@ -477,31 +486,63 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 						}
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(tc.status)
-						_, _ = io.WriteString(w, "{\"message\":\"plugin proxy route access denied\",\"extra\":\"raw-response-marker\"}\n")
+						body := tc.body
+						if body == "" {
+							body = `{"message":"plugin proxy route access denied","extra":"raw-response-marker"}`
+						}
+						_, _ = io.WriteString(w, body)
 					default:
 						t.Errorf("unexpected request: %s", r.URL.Path)
 						w.WriteHeader(http.StatusNotFound)
 					}
-				}, mode.output, mode.agent)
+				}, mode.output, mode.agent, mode.args...)
 				require.True(t, monitoringCalled)
-				assert.Empty(t, stderr)
 				if tc.wantCode == 0 {
 					require.NoError(t, err)
+					assert.Empty(t, stderr)
 				} else {
 					var emitted *gcxerrors.EmittedError
 					require.ErrorAs(t, err, &emitted)
 					assert.Equal(t, tc.wantCode, emitted.Code)
 					assert.Contains(t, stdout, tc.wantSummary)
+					assert.Contains(t, stderr, tc.wantSummary)
+					if mode.agent {
+						diagnostic := decodeSingleJSONValue(t, stderr)
+						assert.Equal(t, gcxerrors.ErrorEnvelopeType, diagnostic["type"])
+						failure, ok := diagnostic["error"].(map[string]any)
+						require.True(t, ok)
+						assert.EqualValues(t, tc.wantCode, failure["exitCode"])
+					} else {
+						assert.Contains(t, stderr, "Error: "+tc.wantSummary)
+					}
 				}
-				switch mode.output {
-				case "text":
+				switch {
+				case mode.name == "jq":
+					var products []map[string]any
+					require.NoError(t, json.Unmarshal([]byte(stdout), &products))
+					require.Len(t, products, 2)
+					assert.Equal(t, "instrumentation", products[1]["product"])
+					assert.NotContains(t, stdout, `"error"`)
+					if tc.wantCode != 0 {
+						assert.Nil(t, products[1]["enabled"])
+						assert.Equal(t, "unknown", products[1]["health"])
+					}
+				case mode.output == "text":
 					if tc.wantCode != 0 {
 						assert.Regexp(t, `instrumentation\s+unknown\s+unknown`, stdout)
+						assert.NotContains(t, stdout, "Error:")
+						assert.NotContains(t, stdout, "Suggestions:")
 					} else {
 						assert.Regexp(t, `instrumentation\s+no\s+healthy`, stdout)
 					}
 				default:
-					doc := decodeSingleJSONValue(t, stdout)
+					jsonOutput := stdout
+					if mode.output == "yaml" {
+						data, convertErr := yaml.YAMLToJSON([]byte(stdout))
+						require.NoError(t, convertErr)
+						jsonOutput = string(data)
+					}
+					doc := decodeSingleJSONValue(t, jsonOutput)
 					assert.Equal(t, "gcx.setup.status", doc["type"])
 					assert.Equal(t, "1", doc["schema_version"])
 					products, ok := doc["products"].([]any)
@@ -524,16 +565,30 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 						require.True(t, ok)
 						assert.Equal(t, tc.wantSummary, failure["summary"])
 						assert.EqualValues(t, tc.wantCode, failure["exitCode"])
+						if tc.status == http.StatusUnauthorized || tc.status == http.StatusForbidden || tc.status == http.StatusNotFound {
+							require.Contains(t, failure, "docsLink")
+						}
+						if link, ok := failure["docsLink"].(string); ok {
+							assert.Contains(t, failure["suggestions"], gcxerrors.DocsFetchSuggestion(link))
+						}
 					}
 				}
+				assert.NotContains(t, stdout+stderr, "gcx setup status")
 				if tc.status == 401 || tc.status == 403 {
 					assert.NotContains(t, stdout, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
 					assert.NotContains(t, stdout, "raw-response-marker")
-					assert.NotContains(t, stdout, "plugin proxy route access denied")
-					assert.NotContains(t, stdout, "gcx setup status")
+					assert.NotContains(t, stderr, "raw-response-marker")
+					assert.NotContains(t, stderr, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
 					if tc.status == 403 {
-						assert.Contains(t, stdout, "requires the grafana-collector-app:admin action")
-						assert.Contains(t, stdout, "gcx api /api/access-control/user/actions")
+						assert.Contains(t, stderr, "Named read routes")
+						assert.Contains(t, stderr, "Wildcard routes")
+						assert.Contains(t, stderr, "gcx api /api/access-control/user/actions")
+						if tc.body == "" {
+							assert.Contains(t, stdout+stderr, "requires the grafana-collector-app:admin action")
+						} else {
+							assert.NotContains(t, stdout+stderr, "requires the")
+							assert.NotContains(t, stderr, "Ask a stack admin to grant")
+						}
 					}
 				}
 			})

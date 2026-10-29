@@ -1,5 +1,12 @@
 ## Unreleased
 
+- `gcx setup status` reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled, names the missing permission when
+  known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC
+  paths from auth diagnostics. It exits 3 on auth failures and 1 on other
+  probe failures instead of 4. The
+  `fleet-management` row also has `enabled: null` when the plugin state is
+  unknown, and the JSON document gains an optional `error` object. (#1699)
 - Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a
   false value from the request, so the API applied its default of `true`, and
   `checks update` switched a full-metrics check back to basic metrics.
