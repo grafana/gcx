@@ -809,11 +809,38 @@ func (o *testOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func (o *testOpts) Validate() error {
-	if o.File == "" {
-		return errors.New("--filename/-f is required")
+func (o *testOpts) Validate(args []string) error {
+	switch {
+	case len(args) > 0 && o.File != "":
+		return errors.New("NAME and --filename/-f are mutually exclusive")
+	case len(args) == 0 && o.File == "":
+		return errors.New("a saved check NAME or --filename/-f is required")
 	}
 	return o.IO.Validate()
+}
+
+// loadTestSpec returns the check to run: the manifest in --filename, or the
+// saved check named by args[0] (a resource name or numeric ID). Validate has
+// already ensured exactly one of the two is set.
+func loadTestSpec(ctx context.Context, loader smcfg.Loader, file string, args []string) (*CheckSpec, error) {
+	if file != "" {
+		return readCheckSpec(file)
+	}
+
+	name := args[0]
+	if id, ok := extractIDFromSlug(name); !ok || id == 0 {
+		return nil, fmt.Errorf("invalid check name %q: must be a resource name (e.g. grafana-instance-health-5594) or numeric ID", name)
+	}
+
+	crud, _, err := NewTypedCRUD(ctx, loader)
+	if err != nil {
+		return nil, err
+	}
+	typedObj, err := crud.Get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return &typedObj.Spec.CheckSpec, nil
 }
 
 // checkTestResult is the finite result document for `checks test`.
@@ -867,10 +894,13 @@ func (c *checkTestCodec) Encode(w io.Writer, v any) error {
 func newTestCommand(loader smcfg.AdHocLoader) *cobra.Command {
 	opts := &testOpts{}
 	cmd := &cobra.Command{
-		Use:   "test",
+		Use:   "test [NAME]",
 		Short: "Run a Synthetic Monitoring check once, without saving it.",
 		Long: `Run a Synthetic Monitoring check once against its probes without persisting
-it — the check is never saved, and no schedule is created.
+it — the check is never saved or modified, and no schedule is created.
+
+The check comes from either a saved check, named by NAME, or a YAML manifest
+passed with --filename. Exactly one of the two is required.
 
 Results are recovered by polling Loki for the log lines the probes emit for
 this execution (tagged type="adhoc"), the same mechanism the Synthetic
@@ -879,13 +909,18 @@ ad-hoc logs, and read access to it.
 
 Note: ad-hoc test executions are billed the same as scheduled check
 executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
-		Example: `  # Run a check once from a YAML file.
+		Example: `  # Run a saved check once (resource name from 'checks list', or numeric ID).
+  gcx synthetic-monitoring checks test grafana-instance-health-5594
+  gcx synthetic-monitoring checks test 5594
+
+  # Run a check once from a YAML file.
   gcx synthetic-monitoring checks test -f check.yaml
 
   # Specify the Loki datasource to poll for results.
-  gcx synthetic-monitoring checks test -f check.yaml --logs-datasource-uid my-loki`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
+  gcx synthetic-monitoring checks test 5594 --logs-datasource-uid my-loki`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(args); err != nil {
 				return err
 			}
 
@@ -896,7 +931,7 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				return err
 			}
 
-			spec, err := readCheckSpec(opts.File)
+			spec, err := loadTestSpec(ctx, loader, opts.File, args)
 			if err != nil {
 				return err
 			}
