@@ -125,3 +125,61 @@ func TestConsistency_NoNewCommandOperationsAdded(t *testing.T) {
 		t.Errorf("the non_canonical_command_operations.json entry %q does not exist in the gcx command tree any more, or it has been made into a canonical operation. Please remove it from non_canonical_command_operations.json", path)
 	}
 }
+
+// bareTopLevelCommands is the closed list of single-token commands in
+// DESIGN.md § CLI Grammar: bootstrapping that comes before any area, and
+// commands about the binary itself.
+//
+//nolint:gochecknoglobals // constant-like lookup table for test validation
+var bareTopLevelCommands = map[string]bool{
+	"signup":     true,
+	"login":      true,
+	"setup":      true,
+	"version":    true,
+	"help":       true,
+	"completion": true,
+}
+
+// grandfatheredBareTopLevelCommands shipped as bare top-level commands before
+// the closed list was enforced. They stay for v1 compatibility; remove an
+// entry when its command moves under an area.
+//
+//nolint:gochecknoglobals // constant-like lookup table for test validation
+var grandfatheredBareTopLevelCommands = map[string]bool{
+	"api":       true,
+	"commands":  true,
+	"help-tree": true,
+}
+
+// TestConsistency_BareTopLevelCommandsAreClosed fails when a new top-level
+// command runs on its own instead of grouping subcommands under an area, and
+// when a grandfathered entry no longer exists as a bare command.
+func TestConsistency_BareTopLevelCommandsAreClosed(t *testing.T) {
+	rootCmd := buildRootCmd()
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
+	seen := map[string]bool{}
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Hidden || !isLeaf(cmd) || cmd.HasSubCommands() {
+			continue
+		}
+		name := cmd.Name()
+		seen[name] = true
+		if bareTopLevelCommands[name] || grandfatheredBareTopLevelCommands[name] {
+			continue
+		}
+		t.Errorf("top-level command %q is a bare verb. New top-level commands group subcommands under an area; the bare list is closed (DESIGN.md § CLI Grammar).", name)
+	}
+
+	var stale []string
+	for name := range grandfatheredBareTopLevelCommands {
+		if !seen[name] {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(stale)
+	for _, name := range stale {
+		t.Errorf("grandfathered bare command %q no longer exists as a bare top-level command; remove it from grandfatheredBareTopLevelCommands", name)
+	}
+}
