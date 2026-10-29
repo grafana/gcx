@@ -110,7 +110,7 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 ### Install `gcx`
 
-> For other installation options such as the binary or Go install, refer to the main [Installation](/docs/sources/installation.md) doc.
+> For other installation options such as the binary or Go install, refer to the main [Installation](docs/sources/installation.md) doc.
 
 The quickest way to install `gcx` in Linux or macOS is with the script, which downloads the latest release, verifies the SHA-256 checksum, and installs to `~/.local/bin`.
 
