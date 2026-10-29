@@ -10,9 +10,8 @@
 // Invocation grants: its args and env, an empty read-only root with a $HOME
 // (a writable host directory, or a read-only in-memory fs.FS, see
 // Invocation.Home and Invocation.HomeFS), and HTTP to the destinations in
-// its egress policy. The
-// guest has no sockets; the host makes every request and can attach
-// credentials the guest never sees.
+// its egress policy. The guest has no sockets; the host makes every request
+// and can attach credentials the guest never sees.
 package sandbox
 
 import (
