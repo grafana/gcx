@@ -57,7 +57,7 @@ evaluator_ids:
   - tool_correctness
 ```
 
-## Sequential: Gate an LLM Judge Behind a Cheap Check
+## Sequential — Gate an LLM Judge Behind a Cheap Check
 
 `execution_mode: sequential` runs `evaluator_ids` in order, and each evaluator must pass before the next one runs. The default, `parallel`, runs every evaluator independently. Put a deterministic evaluator first so the LLM judge only scores generations that pass it. Every evaluator except the last needs a pass condition on its outputs (`pass_threshold`, `pass_value` or `pass_match`). To switch a rule back, update it with `execution_mode: parallel`; leaving the field out keeps the current mode.
 
@@ -72,7 +72,7 @@ evaluator_ids:
   - helpfulness_judge    # llm_judge, runs only when the gate passes
 ```
 
-## Tagged: Break Down Scores by Generation Tags
+## Tagged — Break Down Scores by Generation Tags
 
 `filterable_tag_keys` lists up to 10 generation tag keys to expose as labels on evaluation score metrics: `team` becomes `agento11y_eval_tag_team`. The keys don't change which generations the rule matches. Keep the number of distinct tag values small to limit metric series.
 
