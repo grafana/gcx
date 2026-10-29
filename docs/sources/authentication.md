@@ -92,6 +92,26 @@ for role assignment guidance.
 
 `gcx setup status` doesn't check Assistant access.
 
+### Permissions to check instrumentation status
+
+`gcx setup status` and `gcx instrumentation clusters list` check Kubernetes
+monitoring through the Collector app. This read-only operation requires the
+`grafana-collector-app:admin` action; `grafana-collector-app:read` alone is
+insufficient. Ask a stack administrator to grant the required action, and inspect
+your current actions with `gcx api /api/access-control/user/actions`.
+
+When a setup status check fails, its enablement is unknown: the text table shows
+`unknown`, and JSON and YAML keep the `enabled` field with a `null` value.
+A successful check still reports `true` or `false`. The structured status document
+keeps its `type`, `schema_version`, and `products` fields and adds an `error`
+object only on failure, containing `summary`, `exitCode`, and optional `details`,
+`suggestions`, and `docsLink`. Agent output uses the same document.
+
+HTTP 401 and 403 failures exit with code 3. Other failed status probes, such as
+HTTP 500, exit with code 1 even when another product row succeeded. A setup
+snapshot is a diagnostic check; exit 4 is reserved for partial batch or mutation
+failures.
+
 ### Grafana Cloud product API 
 
 Grafana Cloud platform APIs use a separate credential stored in a named Cloud entry in addition to the Grafana instance auth. 

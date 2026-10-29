@@ -124,7 +124,11 @@ from instrumentation and Fleet provider clients before the shared transport
 converter and generic fallback.
 
 - HTTP 401 → `Authentication failed`, exit 3, with credential recovery suggestions.
-- HTTP 403 → `Authorization failed`, exit 3, with role/action checks.
+- HTTP 403 → `Authorization failed`, exit 3, with role/action checks. Known
+  required route actions are named in details. Fleet auth failures omit raw
+  response bodies and RPC paths; permission hints use
+  `gcx api /api/access-control/user/actions` rather than referring back to setup
+  status.
 - HTTP 404 → `Resource not found` only when the response is Connect JSON with
   `"code":"not_found"`; every other 404 means `Endpoint not available`, including
   missing plugins, proxy routes, and unknown RPC paths.
@@ -142,9 +146,9 @@ For ID-based lookups with no name match, the original typed resource failure is 
 
 #### Error details and duplicate causes
 
-Fleet and GCOM errors render caller operation, parsed server message, error code
-when available, and HTTP status/trace ID once in details. Raw response text is
-the fallback when no server message parses. They omit `Parent` because it would
+Non-auth Fleet errors and GCOM errors render caller operation, parsed server
+message, error code when available, and HTTP status/trace ID once in details.
+Raw response text is the fallback when no server message parses. They omit `Parent` because it would
 repeat those details. Filesystem errors likewise render the full wrapped syscall
 error once in details, preserving operation, path, and cause.
 

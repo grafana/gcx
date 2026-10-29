@@ -17,6 +17,8 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // These tests pin the agent output contract for `gcx setup status`. Before
@@ -183,6 +185,14 @@ func decodeSingleJSONValue(t *testing.T, raw string) map[string]any {
 // of the run.
 func runStatus(t *testing.T, handler http.HandlerFunc) (string, error) {
 	t.Helper()
+	stdout, _, err := runStatusMode(t, handler, "json", false)
+	return stdout, err
+}
+
+func runStatusMode(t *testing.T, handler http.HandlerFunc, output string, agentMode bool) (string, string, error) {
+	t.Helper()
+	agent.SetFlag(agentMode)
+	t.Cleanup(func() { agent.SetFlag(false) })
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -206,24 +216,30 @@ func runStatus(t *testing.T, handler http.HandlerFunc) (string, error) {
 	root := &cobra.Command{Use: "gcx", SilenceUsage: true, SilenceErrors: true}
 	root.AddCommand(setup.Command())
 
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
-	root.SetErr(io.Discard)
-	root.SetArgs([]string{"setup", "status", "--config", cfgFile, "-o", "json"})
+	root.SetErr(&stderr)
+	args := []string{"setup", "status", "--config", cfgFile}
+	if output != "" {
+		args = append(args, "-o", output)
+	}
+	root.SetArgs(args)
 
 	err := root.Execute()
-	return stdout.String(), err
+	return stdout.String(), stderr.String(), err
 }
 
 // The Fleet Management preflight row is the reason the preflight exists. A
 // failed instrumentation check must not discard it.
 func TestSetupStatus_KeepsPreflightRowWhenInstrumentationFails(t *testing.T) {
 	tests := []struct {
-		name    string
-		handler http.HandlerFunc
+		name     string
+		wantCode int
+		handler  http.HandlerFunc
 	}{
 		{
-			name: "stack lookup fails",
+			name:     "stack lookup fails",
+			wantCode: gcxerrors.ExitAuthFailure,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/plugins/grafana-collector-app/settings":
@@ -239,7 +255,8 @@ func TestSetupStatus_KeepsPreflightRowWhenInstrumentationFails(t *testing.T) {
 			},
 		},
 		{
-			name: "monitoring request fails",
+			name:     "monitoring request fails",
+			wantCode: gcxerrors.ExitGeneralError,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/plugins/grafana-collector-app/settings":
@@ -274,8 +291,8 @@ func TestSetupStatus_KeepsPreflightRowWhenInstrumentationFails(t *testing.T) {
 			if !errors.As(err, &emitted) {
 				t.Fatalf("error = %T (%v), want *gcxerrors.EmittedError", err, err)
 			}
-			if emitted.Code != gcxerrors.ExitPartialFailure {
-				t.Fatalf("exit code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
+			if emitted.Code != tt.wantCode {
+				t.Fatalf("exit code = %d, want %d", emitted.Code, tt.wantCode)
 			}
 
 			doc := decodeSingleJSONValue(t, stdout)
@@ -294,7 +311,7 @@ func TestSetupStatus_KeepsPreflightRowWhenInstrumentationFails(t *testing.T) {
 			if !ok {
 				t.Fatalf("products[1] is %T, want object", products[1])
 			}
-			if instrumentation["product"] != "instrumentation" || instrumentation["health"] != "unknown" {
+			if instrumentation["product"] != "instrumentation" || instrumentation["health"] != "unknown" || instrumentation["enabled"] != nil {
 				t.Fatalf("unexpected instrumentation row: %v", instrumentation)
 			}
 			details, _ := instrumentation["details"].(string)
@@ -406,5 +423,120 @@ func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// Drive the public command so preflight, typed errors, encoding and process exit
+// classification are exercised together in every supported default output mode.
+func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
+	for _, mode := range []struct {
+		name   string
+		output string
+		agent  bool
+	}{
+		{name: "text", output: "text"},
+		{name: "json", output: "json"},
+		{name: "agent", agent: true},
+	} {
+		for _, tc := range []struct {
+			name         string
+			status       int
+			actionsKnown bool
+			canAdmin     bool
+			wantCode     int
+			wantSummary  string
+		}{
+			{name: "read-only token forbidden", status: 403, actionsKnown: true, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
+			{name: "unknown actions forbidden", status: 403, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
+			{name: "admin token forbidden", status: 403, actionsKnown: true, canAdmin: true, wantCode: 3, wantSummary: gcxerrors.SummaryAuthorizationFailed},
+			{name: "credentials rejected", status: 401, wantCode: 3, wantSummary: gcxerrors.SummaryAuthenticationFailed},
+			{name: "server error with admin", status: 500, actionsKnown: true, canAdmin: true, wantCode: 1, wantSummary: gcxerrors.SummaryAPIError},
+			{name: "no clusters", status: 200, actionsKnown: true, canAdmin: true},
+		} {
+			t.Run(mode.name+"/"+tc.name, func(t *testing.T) {
+				monitoringCalled := false
+				stdout, stderr, err := runStatusMode(t, func(w http.ResponseWriter, r *http.Request) {
+					switch r.URL.Path {
+					case "/bootdata":
+						w.WriteHeader(http.StatusNotFound)
+					case "/api/plugins/grafana-collector-app/settings":
+						writeJSON(w, map[string]any{"id": "grafana-collector-app", "enabled": true})
+					case "/api/access-control/user/actions":
+						if !tc.actionsKnown {
+							w.WriteHeader(http.StatusForbidden)
+							return
+						}
+						writeJSON(w, map[string]bool{"grafana-collector-app:read": true, "grafana-collector-app:admin": tc.canAdmin})
+					case "/api/plugin-proxy/grafana-collector-app/grafanacom-api/instances/":
+						writeJSON(w, map[string]any{"hmInstancePromId": 123, "hmInstancePromClusterId": 42})
+					case "/api/plugin-proxy/grafana-collector-app/fleet-management-api/discovery.v1.DiscoveryService/RunK8sMonitoring":
+						monitoringCalled = true
+						if tc.status == http.StatusOK {
+							writeJSON(w, map[string]any{"clusters": []any{}})
+							return
+						}
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(tc.status)
+						_, _ = io.WriteString(w, "{\"message\":\"plugin proxy route access denied\",\"extra\":\"raw-response-marker\"}\n")
+					default:
+						t.Errorf("unexpected request: %s", r.URL.Path)
+						w.WriteHeader(http.StatusNotFound)
+					}
+				}, mode.output, mode.agent)
+				require.True(t, monitoringCalled)
+				assert.Empty(t, stderr)
+				if tc.wantCode == 0 {
+					require.NoError(t, err)
+				} else {
+					var emitted *gcxerrors.EmittedError
+					require.ErrorAs(t, err, &emitted)
+					assert.Equal(t, tc.wantCode, emitted.Code)
+					assert.Contains(t, stdout, tc.wantSummary)
+				}
+				switch mode.output {
+				case "text":
+					if tc.wantCode != 0 {
+						assert.Regexp(t, `instrumentation\s+unknown\s+unknown`, stdout)
+					} else {
+						assert.Regexp(t, `instrumentation\s+no\s+healthy`, stdout)
+					}
+				default:
+					doc := decodeSingleJSONValue(t, stdout)
+					assert.Equal(t, "gcx.setup.status", doc["type"])
+					assert.Equal(t, "1", doc["schema_version"])
+					products, ok := doc["products"].([]any)
+					require.True(t, ok)
+					require.Len(t, products, 2)
+					row, ok := products[1].(map[string]any)
+					require.True(t, ok)
+					require.Contains(t, row, "enabled")
+					if tc.wantCode == 0 {
+						assert.Equal(t, false, row["enabled"])
+						assert.Equal(t, "healthy", row["health"])
+						assert.NotContains(t, doc, "error")
+					} else {
+						assert.Nil(t, row["enabled"])
+						assert.Equal(t, "unknown", row["health"])
+						details, ok := row["details"].(string)
+						require.True(t, ok)
+						assert.Equal(t, strings.TrimSpace(details), details)
+						failure, ok := doc["error"].(map[string]any)
+						require.True(t, ok)
+						assert.Equal(t, tc.wantSummary, failure["summary"])
+						assert.EqualValues(t, tc.wantCode, failure["exitCode"])
+					}
+				}
+				if tc.status == 401 || tc.status == 403 {
+					assert.NotContains(t, stdout, "/discovery.v1.DiscoveryService/RunK8sMonitoring")
+					assert.NotContains(t, stdout, "raw-response-marker")
+					assert.NotContains(t, stdout, "plugin proxy route access denied")
+					assert.NotContains(t, stdout, "gcx setup status")
+					if tc.status == 403 {
+						assert.Contains(t, stdout, "requires the grafana-collector-app:admin action")
+						assert.Contains(t, stdout, "gcx api /api/access-control/user/actions")
+					}
+				}
+			})
+		}
 	}
 }

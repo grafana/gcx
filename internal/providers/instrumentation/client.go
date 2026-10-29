@@ -545,11 +545,12 @@ func (c *Client) RunK8sMonitoring(ctx context.Context, promHeaders PromHeaders) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("RunK8sMonitoring: %w", &fleet.HTTPError{
-			Status:      resp.StatusCode,
-			ContentType: resp.Header.Get("Content-Type"),
-			Path:        pathRunK8sMonitoring,
-			Body:        fleet.ReadErrorBody(resp),
+		return nil, fmt.Errorf("check Kubernetes monitoring: %w", &fleet.HTTPError{
+			Status:         resp.StatusCode,
+			RequiredAction: fleet.CollectorAppAdminAction,
+			ContentType:    resp.Header.Get("Content-Type"),
+			Path:           pathRunK8sMonitoring,
+			Body:           fleet.ReadErrorBody(resp),
 		})
 	}
 

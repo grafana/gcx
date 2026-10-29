@@ -1413,14 +1413,26 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 	switch httpErr.Status {
 	case http.StatusUnauthorized:
+		detailed.Details = httpFailureDetails(wrappedTypedErrorContext(err, httpErr), "Fleet Management rejected the credentials", httpErr.Status, traceID)
 		detailed.Suggestions = []string{"Verify the token has not expired: gcx config view", reauthSuggestion}
 		detailed.DocsLink = docs.ServiceAccounts
 		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
 	case http.StatusForbidden:
+		message := "Fleet Management denied the request; check the required route actions"
+		if httpErr.RequiredAction != "" {
+			message = "This Fleet Management operation requires the " + httpErr.RequiredAction + " action; ask a stack admin to grant it"
+		}
+		detailed.Details = httpFailureDetails(wrappedTypedErrorContext(err, httpErr), message, httpErr.Status, traceID)
 		detailed.Suggestions = []string{
 			"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
 			"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
-			"Check what your login holds: gcx setup status",
+			"Inspect your allowed actions: gcx api /api/access-control/user/actions",
+		}
+		if httpErr.RequiredAction != "" {
+			detailed.Suggestions = []string{
+				"Ask a stack admin to grant the " + httpErr.RequiredAction + " action to your user or service account",
+				"Inspect your allowed actions: gcx api /api/access-control/user/actions",
+			}
 		}
 		detailed.DocsLink = docs.RolesAndPermissions
 		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)

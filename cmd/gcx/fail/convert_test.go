@@ -644,6 +644,43 @@ func TestErrorToDetailedError_FleetForbiddenNamesTheAction(t *testing.T) {
 	assert.Contains(t, suggestions, fleet.CollectorAppReadAction)
 	assert.Contains(t, suggestions, fleet.CollectorAppAdminAction)
 	assert.Contains(t, suggestions, "read-only commands")
+	assert.NotContains(t, suggestions, "gcx setup status")
+	assert.Contains(t, suggestions, "gcx api /api/access-control/user/actions")
+}
+
+// A route's known permission survives JSON, opaque and HTML auth responses.
+func TestFleetMonitoringAuthDetails(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		for _, body := range []string{
+			"{\"message\":\"denied\",\"extra\":\"raw-response-marker\"}\n",
+			"raw-response-marker\n",
+			"<html><body>raw-response-marker</body></html>",
+		} {
+			t.Run(fmt.Sprintf("%d/%s", status, body), func(t *testing.T) {
+				got := toDetailedError(t, fmt.Errorf("clusters list: %w", &fleet.HTTPError{
+					Status:         status,
+					Path:           "/discovery.v1.DiscoveryService/RunK8sMonitoring",
+					Body:           body,
+					RequiredAction: fleet.CollectorAppAdminAction,
+				}))
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+				assert.Contains(t, got.Details, "clusters list")
+				assert.NotContains(t, got.Error(), "/discovery.v1.DiscoveryService/RunK8sMonitoring")
+				assert.NotContains(t, got.Error(), "raw-response-marker")
+				assert.Equal(t, strings.TrimSpace(got.Details), got.Details)
+				suggestions := strings.Join(got.Suggestions, " ")
+				assert.NotContains(t, suggestions, "gcx setup status")
+				if status == http.StatusForbidden {
+					assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+					assert.Contains(t, suggestions, "grant the grafana-collector-app:admin action")
+					assert.Contains(t, suggestions, "gcx api /api/access-control/user/actions")
+				} else {
+					assert.Contains(t, suggestions, "gcx login")
+				}
+			})
+		}
+	}
 }
 
 func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {

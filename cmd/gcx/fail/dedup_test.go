@@ -43,6 +43,13 @@ func TestFleetStatusAndDetails(t *testing.T) {
 			}
 			assert.Equal(t, tc.exit, exit)
 			require.NoError(t, got.Parent)
+			if tc.status == 401 || tc.status == 403 {
+				assert.Contains(t, got.Details, "fleet: get pipeline pipeline-1")
+				assert.Contains(t, got.Details, fmt.Sprintf("HTTP %d, trace ID trace-1", tc.status))
+				assert.NotContains(t, got.Details, "/GetPipeline")
+				assert.NotContains(t, got.Details, "specific server failure")
+				return
+			}
 			assert.Equal(t, fmt.Sprintf("fleet: get pipeline pipeline-1 [/GetPipeline]: specific server failure (code not_found) (HTTP %d, trace ID trace-1)", tc.status), got.Details)
 			assert.Equal(t, 1, strings.Count(got.Details, "specific server failure"))
 		})
