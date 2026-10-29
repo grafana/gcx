@@ -292,6 +292,14 @@ type Invocation struct {
 	// cache the others write. Give each tenant its own, and don't run one
 	// tenant's commands concurrently if those writes must not interleave.
 	Home string
+	// HomeFS, if set, is mounted at /home instead of Home, which must then be
+	// empty. It is read-only, so the guest can't write to it and nothing
+	// reaches the host's disk. Seed whatever gcx expects to find there, for
+	// example $HOME/.config/gcx/config.yaml, which gcx insists on creating
+	// if it's missing, or $HOME/.local/state/gcx/device-id to fix the device
+	// ID that gcx's usage telemetry reports. Use it when the files gcx needs
+	// are known up front; otherwise use Home.
+	HomeFS fs.FS
 	// Egress lists the only destinations the guest may reach.
 	Egress []Destination
 	// Authorize, if set, is called for every request that Egress allows,
@@ -311,6 +319,9 @@ type Result struct {
 // Run executes one gcx command in a fresh instance. Cancelling ctx, or
 // reaching its deadline, stops the guest and returns ctx's error.
 func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
+	if inv.Home != "" && inv.HomeFS != nil {
+		return Result{}, errors.New("sandbox: set at most one of Invocation.Home and Invocation.HomeFS")
+	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil) // abandons any requests still in flight on the host
 	if !r.start(&cancel) {
@@ -319,7 +330,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	defer r.finish(&cancel)
 
 	home := inv.Home
-	if home == "" {
+	if home == "" && inv.HomeFS == nil {
 		dir, err := os.MkdirTemp("", "gcx-sandbox-home")
 		if err != nil {
 			return Result{}, err
@@ -328,14 +339,18 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 		home = dir
 	}
 
+	// An empty root makes paths outside $HOME report ENOENT (as gcx
+	// expects for optional config files) instead of EBADF.
+	fsc := wazero.NewFSConfig().WithReadOnlyDirMount(r.root, "/")
+	if inv.HomeFS != nil {
+		fsc = fsc.WithFSMount(inv.HomeFS, "/home")
+	} else {
+		fsc = fsc.WithDirMount(home, "/home")
+	}
 	cfg := wazero.NewModuleConfig().
 		WithName(""). // allow concurrent instances of the same module
 		WithArgs(append([]string{"gcx"}, inv.Args...)...).
-		WithFSConfig(wazero.NewFSConfig().
-			// An empty root makes paths outside $HOME report ENOENT (as gcx
-			// expects for optional config files) instead of EBADF.
-			WithReadOnlyDirMount(r.root, "/").
-			WithDirMount(home, "/home")).
+		WithFSConfig(fsc).
 		WithEnv("HOME", "/home").
 		WithSysWalltime().WithSysNanotime().WithSysNanosleep()
 	if _, ok := inv.Env["GCX_AGENT_SPILL_BYTES"]; !ok {

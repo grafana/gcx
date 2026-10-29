@@ -36,7 +36,7 @@ unmodified CLI, a fresh instance per command) with in-process isolation:
   own memory, args, env and filesystem view. The exception is a `Home` you pass
   to several calls, which they share (see `Invocation.Home`).
 - **Nothing is reachable unless granted.** The guest sees an empty read-only `/`,
-  one writable `$HOME`, only the environment variables it's given, and no sockets.
+  one `$HOME` (writable, or an in-memory read-only one), only the environment variables it's given, and no sockets.
 - **The host controls the network.** gcx hands every HTTP request to the host,
   which applies an egress policy and can add credentials the guest never sees.
 - **Pure Go.** No cgo and no external runtime.
@@ -181,7 +181,7 @@ fails only when storing the first.
 
 Each `Run`:
 
-- **Filesystem:** an empty read-only `/` and one writable `$HOME` at `/home`.
+- **Filesystem:** an empty read-only `/` and `$HOME` at `/home`: a writable host directory (`Home`), or a read-only in-memory `fs.FS` (`HomeFS`) that never touches the host's disk.
 - **Environment:** only `Invocation.Env`.
 - **Network:** no sockets. Every request goes to the host, which applies
   `Invocation.Egress`.
