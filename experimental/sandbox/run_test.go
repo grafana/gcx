@@ -296,11 +296,13 @@ func TestRun(t *testing.T) {
 	})
 }
 
+// TestDocsSearchHostTransport guards against guest HTTP setup logging errors for successful host requests.
 func TestDocsSearchHostTransport(t *testing.T) {
 	srv := newFakeGrafana(t, "docs")
 	rt := newRuntime(t, sandbox.Config{Transport: multiTransport(srv)})
 	inv, _ := invocation(srv, "docs-token", "docs", "search", "example", "--limit", "1", "-o", "json")
 	inv.Env["DOCS_INDEX_URL"] = srv.url() + "/docs-index"
+	inv.Env["GCX_AGENT_MODE"] = "false"
 	var stdout, stderr bytes.Buffer
 	inv.Stdout, inv.Stderr = &stdout, &stderr
 	res, err := rt.Run(context.Background(), inv)
@@ -310,8 +312,8 @@ func TestDocsSearchHostTransport(t *testing.T) {
 	if !srv.saw("GET /docs-index") || !strings.Contains(stdout.String(), "Example dashboard") {
 		t.Fatalf("docs search did not return the host's index: %s", stdout.String())
 	}
-	if strings.Contains(stderr.String(), "Error enabling Transport HTTP/2 support") {
-		t.Fatalf("host transport caused HTTP/2 registration failure: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("successful host request wrote to stderr: %s", stderr.String())
 	}
 }
 
