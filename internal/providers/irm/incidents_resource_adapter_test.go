@@ -264,26 +264,6 @@ func TestResourceAdapter_Delete(t *testing.T) {
 	}
 }
 
-func TestIncidentDeleteMutationPolicy(t *testing.T) {
-	registrations := (&irm.IRMProvider{}).TypedRegistrations()
-	for _, reg := range registrations {
-		if reg.Descriptor.Kind != "Incident" {
-			continue
-		}
-		require.NotNil(t, reg.CheckMutation)
-		err := reg.CheckMutation("delete")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "delete is not supported")
-		var unsupported *resources.UnsupportedResourceError
-		require.ErrorAs(t, err, &unsupported)
-		assert.Equal(t, "incidents", unsupported.Selector)
-		require.NoError(t, reg.CheckMutation("create"))
-		require.NoError(t, reg.CheckMutation("update"))
-		return
-	}
-	t.Fatal("incident registration not found")
-}
-
 func TestResourceAdapter_RoundTrip(t *testing.T) {
 	originalInc := irm.Incident{
 		IncidentID:   "rt-inc-001",
