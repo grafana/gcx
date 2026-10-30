@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -221,6 +222,7 @@ func TestHandleErrorResponsePluginUnavailable(t *testing.T) {
 	}{
 		{"plugin absent JSON", http.StatusNotFound, `{"message":"Plugin not found"}`, true},
 		{"plugin absent text", http.StatusNotFound, "Plugin not found, no installed plugin with id grafana-agento11y-app", true},
+		{"plugin wording suffix", http.StatusNotFound, `{"message":"Plugin not found with id: grafana-agento11y-app"}`, true},
 		{"resource absent", http.StatusNotFound, `{"message":"experiment not found"}`, false},
 		{"unknown route", http.StatusNotFound, "404 page not found", false},
 		{"unrelated status", http.StatusForbidden, `{"message":"Plugin not found"}`, false},
@@ -232,14 +234,53 @@ func TestHandleErrorResponsePluginUnavailable(t *testing.T) {
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
 			assert.Equal(t, tc.status, statusErr.HTTPStatusCode())
-			var detailed *gcxerrors.DetailedError
-			assert.Equal(t, tc.unavailable, errors.As(err, &detailed))
+			var pluginErr *agento11yhttp.PluginUnavailableError
+			assert.Equal(t, tc.unavailable, errors.As(err, &pluginErr))
 			if tc.unavailable {
-				require.NotNil(t, detailed)
-				assert.Equal(t, gcxerrors.SummaryEndpointNotAvailable, detailed.Summary)
-				assert.Contains(t, detailed.Details, "Agent Observability")
-				assert.Contains(t, strings.Join(detailed.Suggestions, " "), "installed and enabled")
+				require.NotNil(t, pluginErr)
+				assert.Equal(t, "grafana-agento11y-app", pluginErr.PluginID)
+				assert.Contains(t, err.Error(), "Agent Observability")
+				assert.NotContains(t, err.Error(), "\n")
+				assert.NotContains(t, err.Error(), "\x1b")
 			}
 		})
+	}
+}
+
+func TestNotFoundHelpersPreservePluginUnavailable(t *testing.T) {
+	for _, operation := range []string{"get", "delete"} {
+		for _, pluginMissing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/plugin-missing-%t", operation, pluginMissing), func(t *testing.T) {
+				client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/example", r.URL.Path)
+					if operation == "get" {
+						assert.Equal(t, http.MethodGet, r.Method)
+					} else {
+						assert.Equal(t, http.MethodDelete, r.Method)
+					}
+					w.WriteHeader(http.StatusNotFound)
+					if pluginMissing {
+						writeJSON(w, map[string]string{"message": "Plugin not found"})
+					} else {
+						writeJSON(w, map[string]string{"message": "experiment not found"})
+					}
+				}))
+				sentinel := errors.New("example: not found")
+				var err error
+				if operation == "get" {
+					_, err = agento11yhttp.DoJSONNotFound[any, testItem](context.Background(), client, http.MethodGet, "/eval/experiments/example", nil, sentinel, http.StatusOK)
+				} else {
+					err = agento11yhttp.DoStatusNotFound[any](context.Background(), client, http.MethodDelete, "/eval/experiments/example", nil, sentinel, http.StatusNoContent)
+				}
+				require.Error(t, err)
+				if pluginMissing {
+					var pluginErr *agento11yhttp.PluginUnavailableError
+					require.ErrorAs(t, err, &pluginErr)
+					assert.NotErrorIs(t, err, sentinel)
+				} else {
+					assert.ErrorIs(t, err, sentinel)
+				}
+			})
+		}
 	}
 }

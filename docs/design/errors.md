@@ -119,11 +119,13 @@ API/network errors. Details identify the token discovery failure.
 
 #### Agent Observability plugin availability
 
-Agent Observability's plugin client recognizes the Grafana proxy's explicit
-`Plugin not found` HTTP 404 response. It reports `Endpoint not available`, names
-`grafana-agento11y-app`, and suggests checking that Agent Observability is installed
-and enabled on the selected Grafana instance. Other HTTP 404 responses retain
-their resource or API error handling.
+Agent Observability's client recognizes Grafana's plugin API `Plugin not found`
+HTTP 404 response from `/api/plugins/grafana-agento11y-app/resources` and returns
+a typed `PluginUnavailableError`. The `convertAgento11yPluginUnavailable` converter
+in `cmd/gcx/fail/convert.go` reports `Endpoint not available`, names the plugin,
+and suggests checking that Agent Observability is installed and enabled on the
+selected instance. Non-CLI callers retain an unrendered error, and other HTTP 404
+responses retain their resource or API error handling.
 
 #### Fleet Management HTTP errors
 

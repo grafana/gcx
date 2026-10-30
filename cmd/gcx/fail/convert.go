@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -83,6 +84,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCloudOrgsErrors,                      // Organisation discovery auth failures
 		convertAuthErrors,                           // Auth-related (expired tokens)
 		convertPluginRouteDenied,                    // Plugin proxy refused a route: name the missing action
+		convertAgento11yPluginUnavailable,           // Explicit missing Agent Observability plugin
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
@@ -425,6 +427,19 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 		detailedErr.Summary = gcxerrors.SummaryResourceConflict
 	}
 	return detailedErr, true
+}
+
+func convertAgento11yPluginUnavailable(err error) (*gcxerrors.DetailedError, bool) {
+	var pluginErr *agento11yhttp.PluginUnavailableError
+	if !errors.As(err, &pluginErr) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Parent:      err,
+		Summary:     gcxerrors.SummaryEndpointNotAvailable,
+		Details:     err.Error(),
+		Suggestions: []string{"Confirm the selected instance with gcx config current-context, then check that Agent Observability is installed and enabled there"},
+	}, true
 }
 
 // convertUnavailableEndpoint renders a route-absent response from an endpoint
