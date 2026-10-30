@@ -3,10 +3,10 @@ package fleet_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers/fleet"
@@ -107,6 +107,7 @@ func TestClient_GetPipeline(t *testing.T) {
 			id:   "p-missing",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"code":"not_found","message":"resource not found"}`))
 			},
 			wantErr: true,
 			errMsg:  "not found",
@@ -342,14 +343,22 @@ func TestClient_DeletePipeline(t *testing.T) {
 }
 
 func TestClient_ListCollectors(t *testing.T) {
+	createdAt := "2026-08-01T10:00:00Z"
+	updatedAt := "2026-09-18T11:12:13Z"
+	inactiveAt := "2026-09-18T12:00:00Z"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/ListCollectors")
 		writeJSON(w, map[string]any{
 			"collectors": []map[string]any{
-				{"id": "c-1", "name": "collector-1", "collector_type": "alloy"},
-				{"id": "c-2", "name": "collector-2", "collector_type": "alloy"},
-				{"id": "c-3", "name": "collector-3", "collector_type": "alloy"},
+				{
+					"id": "c-1", "name": "collector-1", "collectorType": "COLLECTOR_TYPE_ALLOY",
+					"localAttributes":  map[string]string{"collector.version": "1.10.2", "collector.os": "linux"},
+					"remoteAttributes": map[string]string{"env": "production"},
+					"createdAt":        createdAt, "updatedAt": updatedAt, "markedInactiveAt": inactiveAt,
+				},
+				{"id": "c-2", "name": "collector-2", "collectorType": "COLLECTOR_TYPE_ALLOY"},
+				{"id": "c-3", "name": "collector-3", "collectorType": "COLLECTOR_TYPE_ALLOY"},
 			},
 		})
 	}))
@@ -361,6 +370,15 @@ func TestClient_ListCollectors(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, collectors, 3)
 	assert.Equal(t, "c-1", collectors[0].ID)
+	assert.Equal(t, "COLLECTOR_TYPE_ALLOY", collectors[0].CollectorType)
+	assert.Equal(t, "1.10.2", collectors[0].LocalAttributes["collector.version"])
+	assert.Equal(t, "production", collectors[0].RemoteAttributes["env"])
+	require.NotNil(t, collectors[0].CreatedAt)
+	assert.Equal(t, createdAt, collectors[0].CreatedAt.Format(time.RFC3339))
+	require.NotNil(t, collectors[0].UpdatedAt)
+	assert.Equal(t, updatedAt, collectors[0].UpdatedAt.Format(time.RFC3339))
+	require.NotNil(t, collectors[0].MarkedInactiveAt)
+	assert.Equal(t, inactiveAt, collectors[0].MarkedInactiveAt.Format(time.RFC3339))
 }
 
 func TestClient_GetCollector(t *testing.T) {
@@ -394,6 +412,7 @@ func TestClient_GetCollector(t *testing.T) {
 			id:   "c-missing",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"code":"not_found","message":"resource not found"}`))
 			},
 			wantErr: true,
 			errMsg:  "not found",
@@ -536,47 +555,50 @@ func TestClient_GetLimits(t *testing.T) {
 
 // A 404 has two meanings behind the plugin proxy: Fleet Management has no such
 // resource, or Grafana has no such plugin route. The two must not be confused.
-func TestClient_PluginRouteMissing(t *testing.T) {
+func TestClient_NotFoundReturnsTypedError(t *testing.T) {
 	tests := []struct {
-		name         string
-		body         string
-		wantTypedErr bool
-		wantMessage  string
+		name            string
+		body            string
+		resourceMissing bool
 	}{
-		{
-			name:         "missing resource stays a not found message",
-			body:         `{"code":"not_found","message":"pipeline not found"}`,
-			wantTypedErr: false,
-			wantMessage:  "not found",
-		},
-		{
-			name:         "missing plugin route returns the typed error",
-			body:         `{"message":"plugin route match not found"}`,
-			wantTypedErr: true,
-			wantMessage:  "plugin route match not found",
-		},
+		{"Connect resource error", `{"code":"not_found","message":"resource not found"}`, true},
+		{"plugin route error", `{"message":"plugin route match not found"}`, false},
+		{"plugin disabled", `{"message":"plugin is not enabled"}`, false},
+		{"unknown RPC", "404 page not found", false},
+		{"message only", `{"message":"resource not found"}`, false},
+		{"empty body", "", false},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer server.Close()
-
 			client := newTestClient(t, server)
-
-			_, err := client.GetPipeline(context.Background(), "123")
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantMessage)
-
-			var httpErr *fleetbase.HTTPError
-			assert.Equal(t, tt.wantTypedErr, errors.As(err, &httpErr))
-
-			_, err = client.GetCollector(context.Background(), "123")
-			require.Error(t, err)
-			assert.Equal(t, tt.wantTypedErr, errors.As(err, &httpErr))
+			getters := []struct {
+				name string
+				get  func() error
+			}{
+				{"pipeline", func() error { _, err := client.GetPipeline(context.Background(), "p-missing"); return err }},
+				{"collector", func() error { _, err := client.GetCollector(context.Background(), "c-missing"); return err }},
+			}
+			for _, getter := range getters {
+				t.Run(getter.name, func(t *testing.T) {
+					err := getter.get()
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "get "+getter.name)
+					assert.Contains(t, err.Error(), string(getter.name[0])+"-missing")
+					var httpErr *fleetbase.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusNotFound, httpErr.Status)
+					assert.Equal(t, tt.body, httpErr.Body)
+					assert.Equal(t, "application/problem+json", httpErr.ContentType)
+					assert.Contains(t, httpErr.Path, "/Get")
+					assert.Equal(t, tt.resourceMissing, fleetbase.IsResourceNotFoundBody(httpErr.Body))
+				})
+			}
 		})
 	}
 }

@@ -1,34 +1,21 @@
 // Package kg provides a client for the Grafana Knowledge Graph (Asserts) API.
 package kg
 
-import "encoding/json"
+import (
+	"encoding/json"
 
-// Status represents the Knowledge Graph stack status.
-type Status struct {
-	Status                  string              `json:"status"`
-	Enabled                 bool                `json:"enabled"`
-	AlertManagerConfigured  bool                `json:"alertManagerConfigured"`
-	GraphInstanceCreated    bool                `json:"graphInstanceCreated"`
-	UseGrafanaManagedAlerts bool                `json:"useGrafanaManagedAlerts"`
-	DisabledTime            *string             `json:"disabledTime,omitempty"`
-	Version                 int                 `json:"version"`
-	SanityCheckResults      []SanityCheckResult `json:"sanityCheckResults,omitempty"`
-}
+	kgquery "github.com/grafana/gcx/internal/query/kg"
+)
 
-// SanityCheckResult represents a metric sanity check result (MetricSanityCheckResult).
-type SanityCheckResult struct {
-	CheckName   string             `json:"checkName"`
-	DataPresent bool               `json:"dataPresent"`
-	StepResults []SanityStepResult `json:"stepResults,omitempty"`
-}
-
-// SanityStepResult represents a single step within a sanity check (MetricSanityCheckStepResult).
-type SanityStepResult struct {
-	Name         string   `json:"name"`
-	Troubleshoot string   `json:"troubleshoot,omitempty"`
-	Blockers     []string `json:"blockers,omitempty"`
-	Warnings     []string `json:"warnings,omitempty"`
-}
+// Status, SanityCheckResult, SanityStepResult, and APIError now live in
+// internal/query/kg (the shared transport package); aliased here so existing
+// callers, tests, and errors.As targets in this package keep compiling.
+type (
+	Status            = kgquery.Status
+	SanityCheckResult = kgquery.SanityCheckResult
+	SanityStepResult  = kgquery.SanityStepResult
+	APIError          = kgquery.APIError
+)
 
 // EntityKey identifies an entity in the Knowledge Graph.
 type EntityKey struct {
@@ -238,6 +225,24 @@ type Rule struct {
 	Groups []RuleGroup `json:"groups,omitempty"`
 }
 
+// ThresholdRulesDto is the structured per-category threshold view returned by the
+// v1 threshold config API (GET /v1/config/threshold-rules/{request|resource}). It is
+// a different wire type from the whole-config PrometheusRulesDto/[Rule] returned by
+// GET /v1/config/threshold-rules.
+type ThresholdRulesDto struct {
+	CustomThresholds []Threshold `json:"customThresholds"`
+	GlobalThresholds []Threshold `json:"globalThresholds"`
+}
+
+// Threshold is a single threshold rule within a [ThresholdRulesDto]. Global
+// thresholds frequently omit Labels.
+type Threshold struct {
+	Active bool              `json:"active"`
+	Record string            `json:"record"`
+	Expr   string            `json:"expr"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
 // RuleGroup is a group of related Prometheus rules within a Rule file.
 type RuleGroup struct {
 	Name     string     `json:"name"`
@@ -397,6 +402,29 @@ type CypherEdge struct {
 	DestinationName  string         `json:"destinationName"`
 	DestinationType  string         `json:"destinationType"`
 	DestinationScope map[string]any `json:"destinationScope,omitempty"`
+}
+
+// CypherQueryRequest is the body for POST /v1/query/cypher. Times are epoch milliseconds.
+type CypherQueryRequest struct {
+	Query string `json:"query"`
+	Start int64  `json:"start"`
+	End   int64  `json:"end"`
+}
+
+// CypherQueryResponse preserves projection order, duplicate columns, and arbitrary
+// JSON values (including nodes, relationships, and paths). Raw cells avoid losing
+// integer precision when the engine returns values larger than 2^53.
+type CypherQueryResponse struct {
+	Columns []string            `json:"columns"`
+	Rows    [][]json.RawMessage `json:"rows"`
+	Stats   CypherQueryStats    `json:"stats"`
+}
+
+// CypherQueryStats describes the returned result, not the total number of possible matches.
+type CypherQueryStats struct {
+	ColumnCount int   `json:"columnCount"`
+	ElapsedMs   int64 `json:"elapsedMs"`
+	RowCount    int   `json:"rowCount"`
 }
 
 // CypherSearchRequest is the request body for POST /v1/search/cypher.

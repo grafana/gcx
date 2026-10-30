@@ -1,19 +1,15 @@
 package instances
 
 import (
-	"errors"
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -30,8 +26,9 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &instancesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &instancesTableCodec{Wide: true})
+	table := instancesTable()
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -45,7 +42,7 @@ func (o *listOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if o.Limit < 0 {
-		return fail.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
 	}
 	return nil
 }
@@ -96,7 +93,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		}
 		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()
@@ -159,57 +156,27 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 	}
 }
 
-// instancesTableCodec renders the instances inventory as a tabular view.
-type instancesTableCodec struct {
-	Wide bool
-}
-
-func (c *instancesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func instancesTable() cmdio.TableAdapter[*InstancesResponse, Instance] {
+	return cmdio.TableAdapter[*InstancesResponse, Instance]{
+		Table: cmdio.Table[Instance]{
+			Columns: []cmdio.Column[Instance]{
+				{Header: "NAME", Content: func(inst Instance) string { return inst.Name }},
+				{Header: "ENGINE", Content: func(inst Instance) string { return orDash(inst.Engine) }},
+				{Header: "VERSION", Content: func(inst Instance) string { return orDash(inst.EngineVersion) }},
+				{Header: "ENVIRONMENT", Content: func(inst Instance) string { return orDash(inst.Environment) }},
+				{Header: "PROVIDER", Content: func(inst Instance) string { return orDash(inst.ProviderName) }},
+				{Header: "NAMESPACE", Visible: cmdio.WideOnly, Content: func(inst Instance) string { return orDash(inst.Namespace) }},
+				{Header: "HOST", Visible: cmdio.WideOnly, Content: func(inst Instance) string { return orDash(inst.Host) }},
+				{Header: "IDENTIFIER", Visible: cmdio.WideOnly, Content: func(inst Instance) string { return orDash(inst.InstanceIdentifier) }},
+				{Header: "REGION", Visible: cmdio.WideOnly, Content: func(inst Instance) string { return orDash(inst.ProviderRegion) }},
+			},
+			Empty: func(w io.Writer) error {
+				_, err := fmt.Fprintln(w, "No database instances discovered. Verify Database Observability is configured for this stack.")
+				return err
+			},
+		},
+		Rows: func(resp *InstancesResponse) ([]Instance, error) { return resp.Items, nil },
 	}
-	return "table"
-}
-
-func (c *instancesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("instances table codec does not support decoding")
-}
-
-func (c *instancesTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*InstancesResponse)
-	if !ok {
-		return fmt.Errorf("invalid data type for instances table codec: %T", v)
-	}
-	if len(resp.Items) == 0 {
-		_, err := fmt.Fprintln(w, "No database instances discovered. Verify Database Observability is configured for this stack.")
-		return err
-	}
-
-	headers := []string{"NAME", "ENGINE", "VERSION", "ENVIRONMENT", "PROVIDER"}
-	if c.Wide {
-		headers = append(headers, "NAMESPACE", "HOST", "IDENTIFIER", "REGION")
-	}
-
-	t := style.NewTable(headers...)
-	for _, inst := range resp.Items {
-		row := []string{
-			inst.Name,
-			orDash(inst.Engine),
-			orDash(inst.EngineVersion),
-			orDash(inst.Environment),
-			orDash(inst.ProviderName),
-		}
-		if c.Wide {
-			row = append(row,
-				orDash(inst.Namespace),
-				orDash(inst.Host),
-				orDash(inst.InstanceIdentifier),
-				orDash(inst.ProviderRegion),
-			)
-		}
-		t.Row(row...)
-	}
-	return t.Render(w)
 }
 
 func orDash(v string) string {

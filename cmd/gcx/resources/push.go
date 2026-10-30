@@ -81,10 +81,10 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources push dashboards/foo
 	gcx resources push dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources push dashboard.dashboards/foo
-	gcx resources push dashboard.dashboards/foo,bar
+	gcx resources push dashboards.dashboard.grafana.app/foo
+	gcx resources push dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -96,20 +96,23 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources push dashboards/foo folders/qux
 	gcx resources push dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources push dashboard.dashboards/foo folder.folders/qux
-	gcx resources push dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources push dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources push dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
 	gcx resources push dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources push slo -p ./slo-defs/
-	gcx resources push checks -p ./checks/
-	gcx resources push rules -p ./rules/
+	gcx resources push checks.syntheticmonitoring -p ./checks/
+
+	# Native Grafana alert rules:
+
+	gcx resources push alertrules -p ./alertrules/
 
 	# Mixed push: native and provider resources from the same directory
 	# (types auto-detected from apiVersion/kind in YAML files):
@@ -139,6 +142,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 				Selectors: sels,
+				Warn:      cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
@@ -146,6 +150,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			reader := local.FSReader{
 				Decoders:           format.Codecs(),
+				Warn:               cmd.ErrOrStderr(),
 				MaxConcurrentReads: opts.MaxConcurrent,
 				StopOnError:        opts.OnError.StopOnError(),
 			}
@@ -182,7 +187,8 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			summary, err := pusher.Push(ctx, req)
-			if err != nil {
+			reportOperationWarnings(cmd.ErrOrStderr(), summary)
+			if err != nil && !summary.HasSavedMutationFailure() {
 				return err
 			}
 
@@ -195,7 +201,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
+			if summary.HasSavedMutationFailure() || (opts.OnError.FailOnErrors() && summary.FailedCount() > 0) {
 				// The result document (with enumerated failures) is already
 				// on stdout — the typed stderr diagnostic + EmittedError
 				// carry exit 4 without a second error document.

@@ -18,7 +18,7 @@ func LoggingMiddleware(rt http.RoundTripper) http.RoundTripper {
 }
 
 // RequestResponseLoggingMiddleware wraps a transport with RequestResponseLoggingRoundTripper
-// (full request/response body dump via httputil.DumpRequest/DumpResponse).
+// (full request/response body dump via httputil.DumpRequestOut/DumpResponse).
 func RequestResponseLoggingMiddleware(rt http.RoundTripper) http.RoundTripper {
 	return &RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 }
@@ -31,6 +31,9 @@ type ClientOpts struct {
 	// CheckRedirect, if non-nil, is set on the returned client to gate redirects
 	// (see http.Client.CheckRedirect).
 	CheckRedirect func(req *http.Request, via []*http.Request) error
+	// DisableRetry omits the retry layer, for best-effort calls that must
+	// fail fast rather than spend their time budget on backoff.
+	DisableRetry bool
 }
 
 // NewClient returns a configured *http.Client.
@@ -45,12 +48,15 @@ func NewClient(opts ClientOpts) *http.Client {
 		middlewares = []Middleware{LoggingMiddleware}
 	}
 
-	var rt http.RoundTripper = NewTransport(opts.TLSConfig)
+	rt := WireTransport(NewTransport(opts.TLSConfig))
 	for _, mw := range middlewares {
 		rt = mw(rt)
 	}
-	// Outermost layers: User-Agent injection, then retry for rate limiting (429) and transient errors.
-	rt = &retry.Transport{Base: rt}
+	// Outermost layers: User-Agent injection, then (unless DisableRetry) retry
+	// for rate limiting (429) and transient errors.
+	if !opts.DisableRetry {
+		rt = &retry.Transport{Base: rt}
+	}
 	rt = &UserAgentTransport{Base: rt}
 	return &http.Client{Timeout: timeout, Transport: rt, CheckRedirect: opts.CheckRedirect}
 }
@@ -60,8 +66,9 @@ func NewClient(opts ClientOpts) *http.Client {
 // must set auth headers per request.
 //
 // Reads context for configuration:
-//   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware for full
-//     request/response body dumps (includes raw credentials — see --insecure-log-http-payload).
+//   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware as the
+//     innermost layer for full request/response body dumps (includes raw
+//     credentials — see --insecure-log-http-payload).
 func NewDefaultClient(ctx context.Context) *http.Client {
 	return NewDefaultClientWithTLS(ctx, nil)
 }
@@ -72,7 +79,9 @@ func NewDefaultClient(ctx context.Context) *http.Client {
 func NewDefaultClientWithTLS(ctx context.Context, tlsConfig *tls.Config) *http.Client {
 	opts := ClientOpts{TLSConfig: tlsConfig}
 	if PayloadLogging(ctx) {
-		opts.Middlewares = []Middleware{LoggingMiddleware, RequestResponseLoggingMiddleware}
+		// NewClient applies the first middleware closest to the base transport,
+		// so the dump runs last and shows every header that reaches the wire.
+		opts.Middlewares = []Middleware{RequestResponseLoggingMiddleware, LoggingMiddleware}
 	}
 	return NewClient(opts)
 }

@@ -40,6 +40,11 @@ type NamespacedRESTConfig struct {
 	// loaded stack against it before resolving or writing rotated credentials,
 	// so a concurrent server, proxy, or TLS trust change cannot adopt them.
 	oauthCredentialBinding credentials.Binding
+
+	// keychainPolicy freezes the process-effective storage decision used when
+	// the source context was resolved. OAuth refresh callbacks can execute much
+	// later and reload only the owning layer, so they must not recompute it.
+	keychainPolicy keychainPolicy
 }
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
@@ -80,7 +85,7 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 // when empty it defaults to contextName (the stack-named-after-context
 // convention used by login).
 //
-//nolint:gocyclo // Refresh locking, reload, binding CAS, and persistence form one security-critical transaction.
+//nolint:gocyclo,maintidx // Refresh locking, reload, binding CAS, and persistence form one security-critical transaction.
 func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName, stackName string, sources []ConfigSource) {
 	if n.oauthTransport == nil {
 		return
@@ -119,6 +124,9 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 			return Config{}, err
 		}
 		loadOpts.writeLockHeldFor = identity
+		if n.keychainPolicy.source != "" {
+			loadOpts = loadOpts.withKeychainPolicy(n.keychainPolicy)
+		}
 		fresh, err := load(persistCtx, persistSource, loadOpts)
 		if err != nil {
 			return fresh, err
@@ -182,6 +190,19 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 			ExpiresAt:        parseRFC3339OrZero(s.Grafana.OAuthTokenExpiresAt),
 			RefreshExpiresAt: parseRFC3339OrZero(s.Grafana.OAuthRefreshExpiresAt),
 		}, true, nil
+	}
+
+	n.oauthTransport.CheckPersistence = func() error {
+		fresh, err := persistLoad()
+		if err != nil {
+			return err
+		}
+		err = credentials.CheckWritable(fresh.keychainStore)
+		if errors.Is(err, credentials.ErrDisabled) {
+			// The user selected plaintext credential storage.
+			return nil
+		}
+		return err
 	}
 
 	n.SetOnRefresh(func(previousRefreshToken, token, refreshToken, expiresAt, refreshExpiresAt string) error {
@@ -274,6 +295,30 @@ func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, erro
 		layer = selected.Type
 	}
 	return canonicalConfigSourceForLayer(path, layer)
+}
+
+// CheckOAuthCredentialPersistence verifies that a new OAuth credential can be
+// persisted before gcx starts a browser flow. A disabled store keeps the
+// documented plaintext fallback.
+func CheckOAuthCredentialPersistence() error {
+	return checkOAuthCredentialPersistence(keychainStoreFn())
+}
+
+// CheckOAuthCredentialPersistence verifies OAuth persistence with the
+// credential-store policy that was resolved when cfg was loaded.
+func (cfg *Config) CheckOAuthCredentialPersistence() error {
+	if cfg == nil || cfg.keychainStore == nil {
+		return CheckOAuthCredentialPersistence()
+	}
+	return checkOAuthCredentialPersistence(cfg.keychainStore)
+}
+
+func checkOAuthCredentialPersistence(store credentials.Store) error {
+	err := credentials.CheckWritable(store)
+	if errors.Is(err, credentials.ErrDisabled) {
+		return nil
+	}
+	return err
 }
 
 func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, bool) {
@@ -382,6 +427,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		QPS:   50,
 		Burst: 100,
 	}
+	if writer := warningWriterFromCtx(ctx); writer != nil {
+		rcfg.WarningHandlerWithContext = newAPIWarningHandler(writer)
+	}
 
 	if selectedGrafana.TLS != nil {
 		resolvedTLS := *selectedGrafana.TLS
@@ -451,13 +499,17 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+		rt = httputils.WireTransport(rt)
+		// Innermost layer: dump the bytes that reach the wire, after every
+		// outer layer added its headers. The OAuth bearer token comes from
+		// prevWrap below, so a dump placed further out would not show it.
+		if payloadLogging {
+			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
+		}
 		if prevWrap != nil {
 			rt = prevWrap(rt)
 		}
 		rt = &httputils.LoggingRoundTripper{Base: rt}
-		if payloadLogging {
-			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
-		}
 		rt = &retry.Transport{Base: rt}
 		// Outermost layer: stamp the caller-id header so every datasource query
 		// (unified query API and legacy proxy alike) is attributable upstream,
@@ -471,5 +523,6 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport:         oauthTransport,
 		oauthCredentialBinding: oauthCredentialBinding,
+		keychainPolicy:         cfg.keychainPolicy,
 	}, nil
 }

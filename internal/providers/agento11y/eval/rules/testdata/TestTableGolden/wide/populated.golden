@@ -1,0 +1,3 @@
+ID      ENABLED  SELECTOR             SAMPLE RATE  EVALUATORS       CREATED BY  CREATED AT
+rule-1  yes      {agent="assistant"}  0.25         quality, safety  reviewer    2026-09-01 12:30
+		no                            0            -                -           -

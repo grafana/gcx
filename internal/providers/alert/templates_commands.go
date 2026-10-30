@@ -2,14 +2,11 @@ package alert
 
 import (
 	"errors"
-	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -36,7 +33,7 @@ type templatesListOpts struct {
 }
 
 func (o *templatesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TemplatesTableCodec{})
+	cmdio.RegisterTable(&o.IO, TemplatesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -72,25 +69,12 @@ func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// TemplatesTableCodec renders notification templates as a tabular table.
-type TemplatesTableCodec struct{}
-
-func (c *TemplatesTableCodec) Format() format.Format { return "table" }
-
-func (c *TemplatesTableCodec) Encode(w io.Writer, v any) error {
-	templates, ok := v.([]NotificationTemplate)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []NotificationTemplate")
-	}
-	t := style.NewTable("NAME", "PROVENANCE", "LENGTH")
-	for _, tmpl := range templates {
-		t.Row(tmpl.Name, tmpl.Provenance, strconv.Itoa(len(tmpl.Template)))
-	}
-	return t.Render(w)
-}
-
-func (c *TemplatesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func TemplatesTable() cmdio.Table[NotificationTemplate] {
+	return cmdio.Table[NotificationTemplate]{Columns: []cmdio.Column[NotificationTemplate]{
+		{Header: "NAME", Content: func(r NotificationTemplate) string { return r.Name }},
+		{Header: "PROVENANCE", Content: func(r NotificationTemplate) string { return r.Provenance }},
+		{Header: "LENGTH", Content: func(r NotificationTemplate) string { return strconv.Itoa(len(r.Template)) }},
+	}}
 }
 
 type templatesGetOpts struct {
@@ -133,14 +117,16 @@ func newTemplatesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type templatesUpsertOpts struct {
-	IO   cmdio.Options
-	File string
+	IO             cmdio.Options
+	File           string
+	AllowUIUpdates bool
 }
 
 func (o *templatesUpsertOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the template definition (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.AllowUIUpdates, "allow-ui-updates", true, "Keep the template editable in the Grafana UI (false disables UI edits)")
 }
 
 func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -148,6 +134,7 @@ func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upsert",
 		Short: "Create or update a notification template.",
+		Args:  cobra.NoArgs,
 		Long: `Create or update a notification template.
 
 The provisioning API uses a single PUT endpoint keyed by template name,
@@ -172,7 +159,7 @@ so the same command handles both create and update.`,
 			if err != nil {
 				return err
 			}
-			saved, err := client.UpsertTemplate(ctx, t)
+			saved, err := client.UpsertTemplate(ctx, t, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}

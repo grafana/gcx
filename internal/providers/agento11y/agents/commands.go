@@ -1,15 +1,11 @@
 package agents
 
 import (
-	"errors"
-	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -45,8 +41,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ListTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, ListTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of agents to return")
@@ -122,7 +117,7 @@ type versionsOpts struct {
 }
 
 func (o *versionsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &VersionsTableCodec{})
+	cmdio.RegisterTable(&o.IO, VersionsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -154,69 +149,27 @@ func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- list table codec ---
 
-type ListTableCodec struct {
-	Wide bool
-}
-
-func (c *ListTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *ListTableCodec) Encode(w io.Writer, v any) error {
-	agents, ok := v.([]Agent)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Agent")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "VERSIONS", "GENERATIONS", "TOOLS", "TOKENS", "FIRST SEEN", "LAST SEEN")
-	} else {
-		t = style.NewTable("NAME", "VERSIONS", "GENERATIONS", "TOOLS", "LAST SEEN")
-	}
-
-	for _, a := range agents {
-		lastSeen := agento11yhttp.FormatTime(a.LatestSeenAt)
-		if c.Wide {
-			firstSeen := agento11yhttp.FormatTime(a.FirstSeenAt)
-			t.Row(a.AgentName, strconv.Itoa(a.VersionCount), strconv.FormatInt(a.GenerationCount, 10),
-				strconv.Itoa(a.ToolCount), strconv.Itoa(a.TokenEstimate.Total), firstSeen, lastSeen)
-		} else {
-			t.Row(a.AgentName, strconv.Itoa(a.VersionCount), strconv.FormatInt(a.GenerationCount, 10),
-				strconv.Itoa(a.ToolCount), lastSeen)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func ListTable() cmdio.Table[Agent] {
+	return cmdio.Table[Agent]{Columns: []cmdio.Column[Agent]{
+		{Header: "NAME", Content: func(r Agent) string { return r.AgentName }},
+		{Header: "VERSIONS", Content: func(r Agent) string { return strconv.Itoa(r.VersionCount) }},
+		{Header: "GENERATIONS", Content: func(r Agent) string { return strconv.FormatInt(r.GenerationCount, 10) }},
+		{Header: "TOOLS", Content: func(r Agent) string { return strconv.Itoa(r.ToolCount) }},
+		{Header: "TOKENS", Visible: cmdio.WideOnly, Content: func(r Agent) string { return strconv.Itoa(r.TokenEstimate.Total) }},
+		{Header: "FIRST SEEN", Visible: cmdio.WideOnly, Content: func(r Agent) string { return agento11yhttp.FormatTime(r.FirstSeenAt) }},
+		{Header: "LAST SEEN", Content: func(r Agent) string { return agento11yhttp.FormatTime(r.LatestSeenAt) }},
+	}}
 }
 
 // --- versions table codec ---
 
-type VersionsTableCodec struct{}
-
-func (c *VersionsTableCodec) Format() format.Format { return "table" }
-
-func (c *VersionsTableCodec) Encode(w io.Writer, v any) error {
-	versions, ok := v.([]AgentVersion)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []AgentVersion")
-	}
-
-	t := style.NewTable("VERSION", "GENERATIONS", "TOOLS", "TOKENS", "FIRST SEEN", "LAST SEEN")
-	for _, ver := range versions {
-		t.Row(ver.EffectiveVersion, strconv.FormatInt(ver.GenerationCount, 10),
-			strconv.Itoa(ver.ToolCount), strconv.Itoa(ver.TokenEstimate.Total),
-			agento11yhttp.FormatTime(ver.FirstSeenAt), agento11yhttp.FormatTime(ver.LastSeenAt))
-	}
-	return t.Render(w)
-}
-
-func (c *VersionsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func VersionsTable() cmdio.Table[AgentVersion] {
+	return cmdio.Table[AgentVersion]{Columns: []cmdio.Column[AgentVersion]{
+		{Header: "VERSION", Content: func(r AgentVersion) string { return r.EffectiveVersion }},
+		{Header: "GENERATIONS", Content: func(r AgentVersion) string { return strconv.FormatInt(r.GenerationCount, 10) }},
+		{Header: "TOOLS", Content: func(r AgentVersion) string { return strconv.Itoa(r.ToolCount) }},
+		{Header: "TOKENS", Content: func(r AgentVersion) string { return strconv.Itoa(r.TokenEstimate.Total) }},
+		{Header: "FIRST SEEN", Content: func(r AgentVersion) string { return agento11yhttp.FormatTime(r.FirstSeenAt) }},
+		{Header: "LAST SEEN", Content: func(r AgentVersion) string { return agento11yhttp.FormatTime(r.LastSeenAt) }},
+	}}
 }

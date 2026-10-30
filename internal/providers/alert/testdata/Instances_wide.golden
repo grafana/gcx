@@ -1,0 +1,3 @@
+RULE_UID  RULE          GROUP       FOLDER    STATE   ACTIVE_AT             VALUE  LABELS
+r1        High latency  production  folder-1  firing  2026-09-01T12:00:00Z  1.25   env=prod, service=api
+										-                 -                     -      -

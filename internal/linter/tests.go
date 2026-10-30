@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/linter/builtins"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/open-policy-agent/opa/v1/cover"
@@ -19,8 +20,6 @@ import (
 	"github.com/open-policy-agent/opa/v1/tester"
 	"github.com/open-policy-agent/opa/v1/topdown"
 )
-
-var ErrTestsFailed = errors.New("tests failed")
 
 type TestsOptions struct {
 	OutputFormat string
@@ -210,5 +209,5 @@ func runTests(ctx context.Context, store storage.Store, runner *tester.Runner, r
 		return nil
 	}
 
-	return ErrTestsFailed
+	return linterr.ErrTestsFailed
 }

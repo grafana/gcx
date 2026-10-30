@@ -1,0 +1,5 @@
+SCORE KEY  VALUE     PASSED  EVALUATOR  CREATED AT
+relevance  0.95      yes     eval-1     2026-09-01 12:00
+harmful    false     no      eval-2     -
+sentiment  positive  -                  -
+unset      -         -                  -

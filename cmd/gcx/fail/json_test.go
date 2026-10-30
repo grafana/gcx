@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 )
 
@@ -27,7 +26,7 @@ func TestWriteJSON_NoBoxChars(t *testing.T) {
 		Details:     `cluster "x" has no config`,
 		Suggestions: []string{"Run: gcx instrumentation clusters list"},
 	}
-	converted := fail.ErrorToDetailedError(err)
+	converted := toDetailedError(t, err)
 
 	var buf strings.Builder
 	_ = converted.WriteJSON(&buf, 1)
@@ -51,7 +50,7 @@ func TestWriteJSON_FallbackErrorIncludesDetails(t *testing.T) {
 	inner := errors.New("response body exceeds 50 MB limit; try narrowing your query or adding filters")
 	err := fmt.Errorf("search failed: %w", inner)
 
-	converted := fail.ErrorToDetailedError(err)
+	converted := toDetailedError(t, err)
 
 	var buf strings.Builder
 	_ = converted.WriteJSON(&buf, 1)

@@ -207,10 +207,10 @@ func TestCollectorToResource_RetainsID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// PipelineTableCodec tests
+// PipelineTable tests
 // ---------------------------------------------------------------------------
 
-func TestPipelineTableCodec_Encode(t *testing.T) {
+func TestPipelineTable_Encode(t *testing.T) {
 	pipelines := []fleet.Pipeline{
 		{ID: "p-1", Name: "alpha", Enabled: new(true), Matchers: []string{"env=prod"}},
 		{ID: "p-2", Name: "beta", Enabled: new(false), Matchers: nil},
@@ -218,20 +218,20 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		codec      fleet.PipelineTableCodec
+		format     string
 		wantHeader []string
 		wantValues []string
 	}{
 		{
 			name:       "standard format has ID/NAME/ENABLED",
-			codec:      fleet.PipelineTableCodec{Wide: false},
+			format:     "table",
 			wantHeader: []string{"ID", "NAME", "ENABLED"},
 			wantValues: []string{"p-1", "alpha", "true", "p-2", "beta", "false"},
 		},
 		{
-			name:       "wide format adds MATCHERS",
-			codec:      fleet.PipelineTableCodec{Wide: true},
-			wantHeader: []string{"ID", "NAME", "ENABLED", "MATCHERS"},
+			name:       "wide format adds CONFIG TYPE and MATCHERS",
+			format:     "wide",
+			wantHeader: []string{"ID", "NAME", "ENABLED", "CONFIG TYPE", "MATCHERS"},
 			wantValues: []string{"p-1", "alpha", "true", "env=prod", "p-2", "beta", "false"},
 		},
 	}
@@ -239,7 +239,7 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := tt.codec.Encode(&buf, pipelines)
+			err := fleet.PipelineTable().Codec(tt.format).Encode(&buf, pipelines)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -251,7 +251,7 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 			}
 
 			// Verify "-" for empty matchers in wide mode.
-			if tt.codec.Wide {
+			if tt.format == "wide" {
 				lines := strings.Split(strings.TrimSpace(output), "\n")
 				require.GreaterOrEqual(t, len(lines), 3) // header + 2 data lines
 				assert.Contains(t, lines[2], "-", "empty matchers should show as -")
@@ -260,14 +260,14 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 	}
 }
 
-// TestPipelineTableCodec_WideShowsConfigType asserts the wide table surfaces the
+// TestPipelineTable_WideShowsConfigType asserts the wide table surfaces the
 // pipeline config type, so OTel pipelines are distinguishable from Alloy ones.
 // An empty configType (the Alloy default) renders as "-".
 //
 // The assertions index the column, and the fixtures carry no hyphen in their ID
 // or name: a plain substring check for "-" passes on any row that contains a
 // hyphen anywhere, whatever the codec renders in the config type column.
-func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
+func TestPipelineTable_WideShowsConfigType(t *testing.T) {
 	// Wide columns: ID, NAME, ENABLED, CONFIG TYPE, MATCHERS.
 	const configTypeColumn = 3
 
@@ -279,7 +279,7 @@ func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	codec := fleet.PipelineTableCodec{Wide: true}
+	codec := fleet.PipelineTable().Codec("wide")
 	require.NoError(t, codec.Encode(&buf, pipelines))
 
 	output := buf.String()
@@ -297,8 +297,8 @@ func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
 	assert.Equal(t, "-", alloyRow[configTypeColumn], "empty configType should render as -")
 }
 
-func TestPipelineTableCodec_WrongType(t *testing.T) {
-	codec := fleet.PipelineTableCodec{}
+func TestPipelineTable_WrongType(t *testing.T) {
+	codec := fleet.PipelineTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not a pipeline slice")
 	require.Error(t, err)
@@ -312,10 +312,20 @@ func TestPipelineTableCodec_WrongType(t *testing.T) {
 func TestCollectorTableCodec_Encode(t *testing.T) {
 	enabled := true
 	createdAt := time.Date(2025, 3, 15, 14, 30, 0, 0, time.UTC)
+	updatedAt := time.Date(2025, 3, 16, 15, 45, 0, 0, time.UTC)
+	inactiveAt := time.Date(2025, 3, 17, 16, 0, 0, 0, time.UTC)
 
 	collectors := []fleet.Collector{
-		{ID: "c-1", Name: "coll-1", CollectorType: "alloy", Enabled: &enabled, CreatedAt: &createdAt},
-		{ID: "c-2", Name: "coll-2", CollectorType: "", Enabled: nil, CreatedAt: nil},
+		{
+			ID: "c-1", Name: "coll-1", CollectorType: "COLLECTOR_TYPE_ALLOY", Enabled: &enabled,
+			CreatedAt: &createdAt, UpdatedAt: &updatedAt, MarkedInactiveAt: &inactiveAt,
+			LocalAttributes:  map[string]string{"collector.os": "linux", "collector.version": "1.10.2"},
+			RemoteAttributes: map[string]string{"env": "production"},
+		},
+		{
+			ID: "c-2", Name: "coll-2", CollectorType: "COLLECTOR_TYPE_OTEL",
+			LocalAttributes: map[string]string{"os.type": "darwin"},
+		},
 	}
 
 	tests := []struct {
@@ -325,16 +335,16 @@ func TestCollectorTableCodec_Encode(t *testing.T) {
 		wantValues []string
 	}{
 		{
-			name:       "standard format has ID/NAME/TYPE/ENABLED",
+			name:       "standard format shows health fields",
 			codec:      fleet.CollectorTableCodec{Wide: false},
-			wantHeader: []string{"ID", "NAME", "TYPE", "ENABLED"},
-			wantValues: []string{"c-1", "coll-1", "alloy", "true", "c-2", "coll-2"},
+			wantHeader: []string{"ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT"},
+			wantValues: []string{"c-1", "coll-1", "ALLOY", "1.10.2", "linux", "true", "2025-03-16 15:45", "c-2", "OTEL", "darwin"},
 		},
 		{
-			name:       "wide format adds CREATED_AT",
+			name:       "wide format adds timestamps and attributes",
 			codec:      fleet.CollectorTableCodec{Wide: true},
-			wantHeader: []string{"ID", "NAME", "TYPE", "ENABLED", "CREATED_AT"},
-			wantValues: []string{"c-1", "coll-1", "alloy", "true", "2025-03-15 14:30"},
+			wantHeader: []string{"CREATED_AT", "MARKED_INACTIVE_AT", "LOCAL_ATTRIBUTES", "REMOTE_ATTRIBUTES"},
+			wantValues: []string{"2025-03-15 14:30", "2025-03-17 16:00", "collector.os=linux, collector.version=1.10.2", "env=production"},
 		},
 	}
 

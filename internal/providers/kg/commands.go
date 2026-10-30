@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,13 +17,14 @@ import (
 	"sync"
 	"time"
 
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -598,8 +600,7 @@ type rulesListOpts struct {
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &RuleWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, RuleTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -651,52 +652,14 @@ func ruleSpecStats(obj unstructured.Unstructured) ruleStats {
 	return s
 }
 
-// RuleTableCodec renders rule files as a compact table: name + group/rule counts.
-type RuleTableCodec struct{}
-
-func (c *RuleTableCodec) Format() format.Format { return "table" }
-
-func (c *RuleTableCodec) Encode(w io.Writer, v any) error {
-	objs, ok := v.([]unstructured.Unstructured)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []unstructured.Unstructured")
-	}
-	t := style.NewTable("NAME", "GROUPS", "RULES")
-	for _, obj := range objs {
-		s := ruleSpecStats(obj)
-		t.Row(obj.GetName(), strconv.Itoa(s.groups), strconv.Itoa(s.rules))
-	}
-	return t.Render(w)
-}
-
-func (c *RuleTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// RuleWideTableCodec adds alert/recording breakdowns to the basic table view.
-type RuleWideTableCodec struct{}
-
-func (c *RuleWideTableCodec) Format() format.Format { return "wide" }
-
-func (c *RuleWideTableCodec) Encode(w io.Writer, v any) error {
-	objs, ok := v.([]unstructured.Unstructured)
-	if !ok {
-		return errors.New("invalid data type for wide codec: expected []unstructured.Unstructured")
-	}
-	t := style.NewTable("NAME", "GROUPS", "RULES", "ALERTS", "RECORDING")
-	for _, obj := range objs {
-		s := ruleSpecStats(obj)
-		t.Row(obj.GetName(),
-			strconv.Itoa(s.groups),
-			strconv.Itoa(s.rules),
-			strconv.Itoa(s.alerts),
-			strconv.Itoa(s.recording))
-	}
-	return t.Render(w)
-}
-
-func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("wide format does not support decoding")
+func RuleTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{Columns: []cmdio.Column[unstructured.Unstructured]{
+		{Header: "NAME", Content: func(obj unstructured.Unstructured) string { return obj.GetName() }},
+		{Header: "GROUPS", Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).groups) }},
+		{Header: "RULES", Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).rules) }},
+		{Header: "ALERTS", Visible: cmdio.WideOnly, Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).alerts) }},
+		{Header: "RECORDING", Visible: cmdio.WideOnly, Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).recording) }},
+	}}
 }
 
 // ---------------------------------------------------------------------------
@@ -835,7 +798,7 @@ type modelRulesListOpts struct {
 }
 
 func (o *modelRulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ModelRulesNameTableCodec{})
+	cmdio.RegisterTable(&o.IO, ModelRulesNameTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -849,25 +812,10 @@ func (o *modelRulesGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// ModelRulesNameTableCodec renders model rule names as a single-column table.
-type ModelRulesNameTableCodec struct{}
-
-func (c *ModelRulesNameTableCodec) Format() format.Format { return "table" }
-
-func (c *ModelRulesNameTableCodec) Encode(w io.Writer, v any) error {
-	names, ok := v.([]string)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []string")
-	}
-	t := style.NewTable("NAME")
-	for _, n := range names {
-		t.Row(n)
-	}
-	return t.Render(w)
-}
-
-func (c *ModelRulesNameTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func ModelRulesNameTable() cmdio.Table[string] {
+	return cmdio.Table[string]{Columns: []cmdio.Column[string]{
+		{Header: "NAME", Content: func(n string) string { return n }},
+	}}
 }
 
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
@@ -1076,7 +1024,11 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 
 Applies the entries in the input file, creating each config when absent or
 updating it when present. Remote configs absent from the file are never
-deleted.`,
+deleted.
+
+The input may be an alertConfigs wrapper, one bare config, or a bare list of
+configs, so YAML output from notifications get or list can be edited and passed
+back directly. Field names are case-sensitive, and unknown fields are rejected.`,
 		Example: `  gcx kg notifications upsert -f notifications.yaml
 
   echo 'alertConfigs:
@@ -1093,14 +1045,14 @@ deleted.`,
 			if err != nil {
 				return err
 			}
-			var configs AlertConfigs
-			if err := yaml.Unmarshal(data, &configs); err != nil {
+			configs, err := parseNotificationConfigs(data)
+			if err != nil {
 				return fmt.Errorf("failed to parse notifications file: %w", err)
 			}
-			if len(configs.AlertConfigs) == 0 {
+			if len(configs) == 0 {
 				return errors.New("no notification configs found in file")
 			}
-			for i, ac := range configs.AlertConfigs {
+			for i, ac := range configs {
 				if ac.Name == "" {
 					return fmt.Errorf("notification config %d has an empty name", i)
 				}
@@ -1113,9 +1065,9 @@ deleted.`,
 			if err != nil {
 				return err
 			}
-			total := len(configs.AlertConfigs)
+			total := len(configs)
 			result := cmdio.NewBatchMutation("upserted")
-			for i, ac := range configs.AlertConfigs {
+			for i, ac := range configs {
 				if err := client.UpsertNotification(cmd.Context(), ac); err != nil {
 					failure := fmt.Errorf("failed to upsert notification config %q (%d/%d succeeded): %w", ac.Name, i, total, err)
 					if i == 0 {
@@ -1168,6 +1120,71 @@ deleted.`,
 	return cmd
 }
 
+// parseNotificationConfigs accepts the shapes notifications get and list print
+// (one config, or a list of configs) as well as an alertConfigs wrapper, and
+// rejects unknown fields so a misspelled key isn't silently dropped.
+func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, err
+	}
+	if len(document.Content) == 0 {
+		return nil, nil
+	}
+
+	root := document.Content[0]
+	decodeStrict := func(v any) error {
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(v); err != nil {
+			return err
+		}
+		// Reject later documents instead of dropping them, so joined get output
+		// can't silently lose every config after the first. yaml.v3 decodes a
+		// trailing "---" as an empty null document, which is allowed.
+		for {
+			var extra yaml.Node
+			err := decoder.Decode(&extra)
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if len(extra.Content) > 0 && extra.Content[0].Tag != "!!null" {
+				return errors.New("multiple YAML documents are not supported; put the configs in one list")
+			}
+		}
+	}
+
+	switch root.Kind {
+	case yaml.SequenceNode:
+		var configs []AlertConfig
+		if err := decodeStrict(&configs); err != nil {
+			return nil, err
+		}
+		return configs, nil
+	case yaml.MappingNode:
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Value != "alertConfigs" {
+				continue
+			}
+			var wrapped AlertConfigs
+			if err := decodeStrict(&wrapped); err != nil {
+				return nil, err
+			}
+			return wrapped.AlertConfigs, nil
+		}
+		var config AlertConfig
+		if err := decodeStrict(&config); err != nil {
+			return nil, err
+		}
+		return []AlertConfig{config}, nil
+	default:
+		return nil, errors.New("expected a notification config, a list of configs, or an alertConfigs wrapper")
+	}
+}
+
 type notificationsListOpts struct {
 	Category string
 	IO       cmdio.Options
@@ -1175,7 +1192,7 @@ type notificationsListOpts struct {
 
 func (o *notificationsListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Category, "category", "", "Filter by category: request, resource, health, or slo.")
-	o.IO.RegisterCustomCodec("table", &NotificationTableCodec{})
+	cmdio.RegisterTable(&o.IO, NotificationTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -1226,25 +1243,13 @@ func (c *NotificationsUpsertTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
 }
 
-// NotificationTableCodec renders alert notification configs as a table.
-type NotificationTableCodec struct{}
-
-func (c *NotificationTableCodec) Format() format.Format { return "table" }
-
-func (c *NotificationTableCodec) Encode(w io.Writer, v any) error {
-	configs, ok := v.([]AlertConfig)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []AlertConfig")
-	}
-	t := style.NewTable("NAME", "MATCH LABELS", "FOR", "SILENCED")
-	for _, ac := range configs {
-		t.Row(ac.Name, scopeStr(ac.MatchLabels), ac.For, strconv.FormatBool(ac.Silenced))
-	}
-	return t.Render(w)
-}
-
-func (c *NotificationTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func NotificationTable() cmdio.Table[AlertConfig] {
+	return cmdio.Table[AlertConfig]{Columns: []cmdio.Column[AlertConfig]{
+		{Header: "NAME", Content: func(ac AlertConfig) string { return ac.Name }},
+		{Header: "MATCH LABELS", Content: func(ac AlertConfig) string { return scopeStr(ac.MatchLabels) }},
+		{Header: "FOR", Content: func(ac AlertConfig) string { return ac.For }},
+		{Header: "SILENCED", Content: func(ac AlertConfig) string { return strconv.FormatBool(ac.Silenced) }},
+	}}
 }
 
 type suppressionsCreateOpts struct {
@@ -1715,30 +1720,16 @@ type suppressionsListOpts struct {
 }
 
 func (o *suppressionsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &SuppressionTableCodec{})
+	cmdio.RegisterTable(&o.IO, SuppressionTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-// SuppressionTableCodec renders suppressions as a table.
-type SuppressionTableCodec struct{}
-
-func (c *SuppressionTableCodec) Format() format.Format { return "table" }
-
-func (c *SuppressionTableCodec) Encode(w io.Writer, v any) error {
-	suppressions, ok := v.([]Suppression)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Suppression")
-	}
-	t := style.NewTable("NAME", "MATCH LABELS")
-	for _, s := range suppressions {
-		t.Row(s.Name, scopeStr(s.MatchLabels))
-	}
-	return t.Render(w)
-}
-
-func (c *SuppressionTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func SuppressionTable() cmdio.Table[Suppression] {
+	return cmdio.Table[Suppression]{Columns: []cmdio.Column[Suppression]{
+		{Header: "NAME", Content: func(s Suppression) string { return s.Name }},
+		{Header: "MATCH LABELS", Content: func(s Suppression) string { return scopeStr(s.MatchLabels) }},
+	}}
 }
 
 func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
@@ -1811,23 +1802,31 @@ func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
 		// nothing on stdout (an advisory note goes to stderr).
 		return nil
 	}
-	rawRules, _ := group["rules"].([]any)
-	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
-	for _, r := range rawRules {
-		rule, _ := r.(map[string]any)
-		if rule == nil {
-			continue
-		}
-		t.Row(
-			stringField(rule["selector"]),
-			stringField(rule["target_label"]),
-			joinStringSlice(rule["join_labels"]),
-			joinStringSlice(rule["ranked_choice"]),
-			stringField(rule["replacement"]),
-			boolField(rule["drop"]),
-		)
+	return relabelRuleTable().Codec(cmdio.FormatTable).Encode(w, group)
+}
+
+func relabelRuleTable() cmdio.TableAdapter[map[string]any, map[string]any] {
+	return cmdio.TableAdapter[map[string]any, map[string]any]{
+		Table: cmdio.Table[map[string]any]{Columns: []cmdio.Column[map[string]any]{
+			{Header: "SELECTOR", Content: func(r map[string]any) string { return stringField(r["selector"]) }},
+			{Header: "TARGET LABEL", Content: func(r map[string]any) string { return stringField(r["target_label"]) }},
+			{Header: "JOIN LABELS", Content: func(r map[string]any) string { return joinStringSlice(r["join_labels"]) }},
+			{Header: "RANKED CHOICE", Content: func(r map[string]any) string { return joinStringSlice(r["ranked_choice"]) }},
+			{Header: "REPLACEMENT", Content: func(r map[string]any) string { return stringField(r["replacement"]) }},
+			{Header: "DROP", Content: func(r map[string]any) string { return boolField(r["drop"]) }},
+		}},
+		Rows: func(group map[string]any) ([]map[string]any, error) {
+			rawRules, _ := group["rules"].([]any)
+			rules := make([]map[string]any, 0, len(rawRules))
+			for _, r := range rawRules {
+				rule, _ := r.(map[string]any)
+				if rule != nil {
+					rules = append(rules, rule)
+				}
+			}
+			return rules, nil
+		},
 	}
-	return t.Render(w)
 }
 
 func (c *RelabelRuleTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1891,7 +1890,8 @@ Pick the read verb by what you start with:
   inspect    Root-cause analysis only — heavy: insight timeline + related
              entities. Don't use it just to read an entity's properties (use
              'list'); reach for it only when you need the RCA view.
-  query      Arbitrary Cypher over the graph.`,
+  query      Deprecated legacy entity/edge search. For Cypher projections,
+             aggregates, and paths, use 'gcx kg graph query'.`,
 	}
 
 	// list subcommand
@@ -2000,35 +2000,24 @@ type entitiesListOpts struct {
 }
 
 func (o *entitiesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
+	cmdio.RegisterTable(&o.IO, EntityTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate)")
 }
 
-// EntityTableCodec renders search results as a table.
-type EntityTableCodec struct{}
-
-func (c *EntityTableCodec) Format() format.Format { return "table" }
-
-func (c *EntityTableCodec) Encode(w io.Writer, v any) error {
-	results, ok := v.([]SearchResult)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []SearchResult")
-	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE", "ACTIVE")
-	for _, r := range results {
-		typ := r.Type
-		if typ == "" {
-			typ = r.EntityType
-		}
-		t.Row(typ, r.Name, scopeStr(r.Scope), strconv.FormatBool(r.Active))
-	}
-	return t.Render(w)
-}
-
-func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func EntityTable() cmdio.Table[SearchResult] {
+	return cmdio.Table[SearchResult]{Columns: []cmdio.Column[SearchResult]{
+		{Header: "TYPE", Content: func(r SearchResult) string {
+			if r.Type != "" {
+				return r.Type
+			}
+			return r.EntityType
+		}},
+		{Header: "NAME", Content: func(r SearchResult) string { return r.Name }},
+		{Header: "SCOPE", Content: func(r SearchResult) string { return scopeStr(r.Scope) }},
+		{Header: "ACTIVE", Content: func(r SearchResult) string { return strconv.FormatBool(r.Active) }},
+	}}
 }
 
 // ---------------------------------------------------------------------------
@@ -2553,14 +2542,16 @@ func (o *inspectOpts) resolveInsightFilters(flags *pflag.FlagSet) (int, int) {
 
 // rcaWorkbenchURL builds a deep link to the Asserts RCA Workbench for a single entity.
 // start/end use the relative expression (e.g. "now-24h"/"now") when since is set,
-// otherwise fall back to millisecond epoch timestamps.
+// otherwise fall back to millisecond epoch timestamps. The relative expression
+// goes through dsquery.DatemathFrom rather than a bare "now-"+since: PromQL
+// durations permit compound units (e.g. "1h30m") that datemath doesn't accept.
 func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, startMs, endMs int64, since string) string {
 	if host == "" {
 		return ""
 	}
 	start, end := strconv.FormatInt(startMs, 10), strconv.FormatInt(endMs, 10)
 	if since != "" {
-		start, end = "now-"+since, "now"
+		start, end = dsquery.DatemathFrom(since), "now"
 	}
 
 	q := url.Values{}
@@ -2767,8 +2758,14 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &cypherOpts{}
 	cmd := &cobra.Command{
 		Use:   "query <cypher-query>",
-		Short: "Query entities by running a read-only Cypher query against the Knowledge Graph.",
+		Short: "Query entities with the legacy Cypher API (Deprecated: use gcx kg graph query).",
 		Long: `Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Deprecated: use 'gcx kg graph query' for new workflows. That command returns
+columns/rows/stats, requires a literal LIMIT, and does not support --page or
+--insights-only. Update queries and output parsing when migrating.
+This command retains its search endpoint, entities/edges response, and flags
+through v1.x; it will not be removed before the next major release.
 
 Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
 
@@ -2799,6 +2796,8 @@ Tips:
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
+			// Cobra's Deprecated field writes to stdout and would corrupt JSON output.
+			logging.FromContext(cmd.Context()).Warn("gcx kg entities query is deprecated; migrate to gcx kg graph query (columns/rows/stats; requires LIMIT; no --page or --insights-only). The legacy command remains supported through v1.x.")
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -2838,35 +2837,27 @@ type cypherOpts struct {
 }
 
 func (o *cypherOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, cypherTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-// CypherTableCodec renders a CypherSearchResponse as a table of entities.
-type CypherTableCodec struct{}
-
-func (c *CypherTableCodec) Format() format.Format { return "table" }
-
-func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*CypherSearchResponse)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
+func cypherTable() cmdio.TableAdapter[*CypherSearchResponse, CypherEntity] {
+	return cmdio.TableAdapter[*CypherSearchResponse, CypherEntity]{
+		Table: cmdio.Table[CypherEntity]{Columns: []cmdio.Column[CypherEntity]{
+			{Header: "TYPE", Content: func(e CypherEntity) string { return e.Type }},
+			{Header: "NAME", Content: func(e CypherEntity) string { return e.Name }},
+			{Header: "SCOPE", Content: func(e CypherEntity) string {
+				parts := make([]string, 0, len(e.Scope))
+				for k, val := range e.Scope {
+					parts = append(parts, fmt.Sprintf("%s=%v", k, val))
+				}
+				sort.Strings(parts)
+				return strings.Join(parts, ", ")
+			}},
+		}},
+		Rows: func(resp *CypherSearchResponse) ([]CypherEntity, error) { return resp.Entities, nil },
 	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE")
-	for _, e := range resp.Entities {
-		var parts []string
-		for k, val := range e.Scope {
-			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
-		}
-		sort.Strings(parts)
-		t.Row(e.Type, e.Name, strings.Join(parts, ", "))
-	}
-	return t.Render(w)
-}
-
-func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -2975,7 +2966,7 @@ type correlateOpts struct {
 }
 
 func (o *correlateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AlertCorrelateTableCodec{})
+	cmdio.RegisterTable(&o.IO, AlertCorrelateTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -3039,36 +3030,20 @@ func parseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
 	return nil, errors.New(`no alert labels found in input: expected an Alertmanager envelope {"alerts":[{"labels":{...}}]} or a bare array [{"labels":{...}}]`)
 }
 
-// AlertCorrelateTableCodec renders the correlated entities as a table with
-// their connected-entity impact counts.
-type AlertCorrelateTableCodec struct{}
-
-func (c *AlertCorrelateTableCodec) Format() format.Format { return "table" }
-
-func (c *AlertCorrelateTableCodec) Encode(w io.Writer, v any) error {
-	entities, ok := v.([]GraphEntity)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []GraphEntity")
-	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE", "CONNECTED")
-	for _, e := range entities {
-		var scopeParts []string
-		for k, val := range e.Scope {
-			scopeParts = append(scopeParts, fmt.Sprintf("%s=%s", k, val))
-		}
-		sort.Strings(scopeParts)
-		var connParts []string
-		for k, n := range e.ConnectedEntityTypes {
-			connParts = append(connParts, fmt.Sprintf("%s=%d", k, n))
-		}
-		sort.Strings(connParts)
-		t.Row(e.Type, e.Name, strings.Join(scopeParts, ", "), strings.Join(connParts, ", "))
-	}
-	return t.Render(w)
-}
-
-func (c *AlertCorrelateTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func AlertCorrelateTable() cmdio.Table[GraphEntity] {
+	return cmdio.Table[GraphEntity]{Columns: []cmdio.Column[GraphEntity]{
+		{Header: "TYPE", Content: func(e GraphEntity) string { return e.Type }},
+		{Header: "NAME", Content: func(e GraphEntity) string { return e.Name }},
+		{Header: "SCOPE", Content: func(e GraphEntity) string { return scopeStr(e.Scope) }},
+		{Header: "CONNECTED", Content: func(e GraphEntity) string {
+			parts := make([]string, 0, len(e.ConnectedEntityTypes))
+			for k, n := range e.ConnectedEntityTypes {
+				parts = append(parts, fmt.Sprintf("%s=%d", k, n))
+			}
+			sort.Strings(parts)
+			return strings.Join(parts, ", ")
+		}},
+	}}
 }
 
 // ---------------------------------------------------------------------------
@@ -3348,6 +3323,25 @@ func newDescribeSchemaCmd(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "schema",
 		Short: "Show entity types, properties, and relationships.",
+		Long: `Show the entity types with their properties, and the relationships between
+them as 'A --TYPE--> B', for the requested window (the last hour by default;
+pass --from/--to for older data, the same window as your queries).
+
+The JSON output nests everything under .schema: .schema.entityTypes[] is
+{type, properties} and .schema.relationships[] is a string. Filter it with the
+built-in --jq rather than an external parser; -o text prints one line per type
+with its properties, then one line with every relationship.`,
+		Example: `  # Show the schema for an incident window
+  gcx kg meta schema --from <start> --to <end>
+
+  # Print one line per entity type with its properties, then every relationship
+  gcx kg meta schema --since 1h -o text
+
+  # List the properties of one entity type
+  gcx kg meta schema --since 1h --jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'
+
+  # List the relationships that involve one entity type
+  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

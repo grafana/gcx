@@ -56,14 +56,22 @@ right group:
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
+| Metric names, labels, metadata | `metrics` | `gcx metrics list-names -d <uid> --contains <term> -o json` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
 | Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
-| Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
+| Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides get` |
+
+Each signal group has its own discovery commands, for example `gcx metrics labels`,
+`gcx logs labels`, and `gcx traces labels`; `gcx help-tree <group> --depth 1 -o text`
+lists them. Some command areas also have a workflow skill:
+`gcx help-tree --depth 1 -o text` marks them with `# skill:`, `gcx <group> --help`
+lists them under Related skills, and `gcx agent skills get <name> -o text` prints
+one your harness hasn't loaded. Dashboard authoring uses `create-dashboard`.
 
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.
@@ -79,14 +87,16 @@ Similarly, prefer `gcx metrics query` over `gcx datasources query <prometheus-ui
 for PromQL queries — the signal-specific command handles datasource resolution
 automatically.
 
-## Verify Context First
+## Target Context
 
-Before any operation, confirm which environment is targeted:
-- `gcx config check` — validates the active context and tests connectivity
-- `gcx config view` — shows full config (secrets redacted; use `--raw` to reveal)
-- `gcx config current-context` — shows just the active context name
-- `gcx config use-context <name>` — switch contexts
-- `--context <name>` flag on any command — target a specific context without switching
+When the target context is known, pass `--context <name>` directly;
+no separate configuration or connectivity check is needed.
+Inspect configuration only when the target is ambiguous or a request fails
+with a configuration, authentication, or connectivity error:
+- `gcx config list-contexts` — list configured contexts and their servers
+- `gcx config current-context` — show the active context name
+- `gcx config check` — validate the active context and test connectivity
+- `gcx config view` — inspect configuration with secrets redacted
 
 ## Output Control
 
@@ -175,52 +185,89 @@ gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
 
 # Full trace body in Tempo's LLM-friendly trace encoding.
 gcx traces get -d <tempo-uid> <trace-id> --llm -o json
+# When the search's time range is known:
+gcx traces get -d <tempo-uid> <trace-id> --from <search-from> --to <search-to> --llm -o json
 # equivalent legacy path:
 gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
 ```
 
 Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
 `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
-a selected trace. Omit `--llm` only when the user explicitly needs raw Tempo/OTLP
-JSON or the standard `tagValues: [{type, value}]` shape for schema/debugging work.
+a selected trace. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
+to make the lookup much faster. Omit them when the time range is unknown; a
+range that misses the trace returns not found.
+Omit `--llm` only when the user explicitly needs raw Tempo/OTLP JSON or the
+standard `tagValues: [{type, value}]` shape for schema/debugging work.
+
+### Shrinking large traces before analysis
+
+`gcx traces get` supports V2 filtering and span pruning (both experimental) —
+reach for these before manually truncating a huge `--llm` payload yourself:
+
+```bash
+# Only error spans, plus each match's ancestor path to the root.
+gcx traces get -d <tempo-uid> <trace-id> --filter '{ status = error }' --keep-hierarchy --llm -o json
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Safe to combine with --filter.
+gcx traces get -d <tempo-uid> <trace-id> --prune --llm -o json
+```
+
+`--filter` takes a TraceQL spanset filter; `--match-depth`/`--ancestor-depth`
+tune how many descendant/ancestor levels around each match are kept and are
+ignored without `--filter`. `--prune` is a bool, off unless set. 
+`--prune-group-by`/`--prune-min-spans`/`--prune-max-parent-depth`
+tune the pruning behavior and apply only when `--prune` enables pruning. Run
+`gcx traces get --help` for full flag details.
+
+If a response is too large for `-o agents`, it spills to a file with a hint
+to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
 
 ## Grafana Assistant
 
-gcx provides direct access to the Grafana Assistant — use it for **reasoning
-and exploration**, not data retrieval. Deterministic commands are faster and
-cheaper for known queries; the Assistant adds value when you need intelligence.
+Grafana Assistant is a separate AI agent in Grafana that gcx can hand work to.
+Handing work to it is the user's choice, so start Assistant work when the user
+asks for Grafana Assistant (a prompt, a conversation, an Assistant investigation,
+or a Watcher), or when you are continuing an Assistant workflow the user or
+project has set up. Continuing an authorized workflow does not need fresh
+confirmation each time.
 
-| Situation | Use | Example |
-|-----------|-----|---------|
-| You know the exact query | Deterministic command | `gcx metrics query 'rate(http_requests_total[5m])'` |
-| You don't know which metrics/labels exist | `gcx assistant prompt` | `"What metrics exist for the checkout service?"` |
-| You need cross-signal root cause analysis | `gcx assistant investigations` | Multi-agent parallel exploration across metrics, logs, traces, profiles |
-| You need a precise, repeatable data point | Deterministic command | `gcx slo definitions status`, `gcx alert instances list --state firing` |
-| You need to understand service dependencies | `gcx assistant prompt` | `"How are services in namespace X connected?"` — Assistant Memories know your stack topology |
+Everything else stays on direct commands: discovery, queries, resource
+operations, and requests to investigate or root-cause a problem. Direct commands
+return the data for you to reason over, give repeatable results, and start no
+Assistant work. None of these is a reason to start Assistant work:
+- You don't yet know which metrics or labels exist, or a query comes back empty:
+  keep discovering with the signal's own commands (see Discover Before You Act).
+- A request fails with 401/403: check the context as described in Target Context,
+  then name the missing permission or credential and what would grant it.
+- Data or a capability is genuinely missing: say what is missing and what would
+  fix it.
 
-### Commands
+For incident and root-cause work, `investigate-alert` and `debug-with-grafana`
+cover the direct workflow.
+
+When the user or project rules out Grafana Assistant, don't start Assistant work
+at all. Reading results the user points you to, such as
+`gcx assistant investigations get <id>` or `gcx assistant conversation get <id>`,
+does not start new work.
+
+Starting Assistant work (`gcx assistant prompt`; creating or resuming an
+investigation; creating, starting, or running a Watcher;
+`gcx instrumentation check --fix-plan=assistant`) consumes Assistant tokens,
+which can be billed; see
+[Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md).
 
 ```bash
-# Ask a question (Assistant uses Infrastructure Memories for context)
-gcx assistant prompt "What services are unhealthy in namespace checkout?"
-
-# Follow up on the previous conversation
+# Start Assistant work
+gcx assistant prompt "Why is checkout-latency firing?" --json
 gcx assistant prompt "Dig into the database connection issue" --continue
+# v1 stacks require --title and v2 stacks require --instruction; pass both
+gcx assistant investigations create --title="Checkout latency" --instruction="Checkout latency spike after deploy"
 
-# Launch a deep investigation (multi-agent, parallel signal exploration)
-gcx assistant investigations create --title="Checkout latency spike"
-
-# Monitor and read results
+# Read existing results without starting new work
 gcx assistant investigations get <id>
 gcx assistant investigations get-narrative <id>
 ```
-
-### Recommended Workflow: Interleave Both
-
-1. **Detect** with deterministic commands — `gcx alert instances list --state firing`
-2. **Understand** with the Assistant — `gcx assistant prompt "Why is checkout-latency firing?"`
-3. **Investigate** if needed — `gcx assistant investigations create --title="..."`
-4. **Verify fix** with deterministic commands — `gcx slo definitions status <uuid>`
 
 ## Provider Commands
 

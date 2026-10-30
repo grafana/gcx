@@ -125,7 +125,7 @@ func TestGrafanaCredentialRejectionFailsBeforeRESTConfigConstruction(t *testing.
 	require.ErrorAs(t, err, &rejected)
 	assert.Equal(t, credentials.FieldGrafanaToken, rejected.Field)
 	assert.Contains(t, err.Error(), "before network use")
-	assert.Contains(t, err.Error(), `--config "/tmp/config.yaml"`)
+	assert.Contains(t, err.Error(), "--config "+quoteConfigPath("/tmp/config.yaml"))
 }
 
 func TestRejectedGrafanaTokenCannotFallThroughToEmptyBasicAuth(t *testing.T) {
@@ -317,7 +317,7 @@ func TestKeychainReadRejectionReasonNamesTheLockedKeychain(t *testing.T) {
 }
 
 func TestKeychainReadRejectionReasonNamesTheDeliberateOptOut(t *testing.T) {
-	assert.Equal(t, "keychain use is disabled by GCX_KEYCHAIN", keychainReadRejectionReason(credentials.ErrDisabled))
+	assert.Equal(t, "keychain use is disabled by the effective credential-storage policy", keychainReadRejectionReason(credentials.ErrDisabled))
 	assert.Equal(t, "the OS keychain is locked", keychainReadRejectionReason(credentials.ErrLocked),
 		"ErrDisabled wraps ErrUnavailable, so its branch must not shadow the locked one")
 	assert.Equal(t, "the OS keychain could not be read", keychainReadRejectionReason(credentials.ErrUnavailable))

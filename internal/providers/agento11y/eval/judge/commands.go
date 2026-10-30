@@ -2,15 +2,12 @@ package judge
 
 import (
 	"errors"
-	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -46,7 +43,7 @@ type providersOpts struct {
 }
 
 func (o *providersOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ProvidersTableCodec{})
+	cmdio.RegisterTable(&o.IO, ProvidersTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -84,7 +81,7 @@ type modelsOpts struct {
 }
 
 func (o *modelsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ModelsTableCodec{})
+	cmdio.RegisterTable(&o.IO, ModelsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Provider, "provider", "", "Provider ID (required, see 'judge list-providers')")
@@ -125,50 +122,24 @@ func newModelsCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- table codecs ---
 
-// ProvidersTableCodec renders judge providers as a text table.
-type ProvidersTableCodec struct{}
-
-func (c *ProvidersTableCodec) Format() format.Format { return "table" }
-
-func (c *ProvidersTableCodec) Encode(w io.Writer, v any) error {
-	providers, ok := v.([]eval.JudgeProvider)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []JudgeProvider")
-	}
-
-	t := style.NewTable("ID", "NAME", "TYPE")
-	for _, p := range providers {
-		t.Row(p.ID, p.Name, p.Type)
-	}
-	return t.Render(w)
+func ProvidersTable() cmdio.Table[eval.JudgeProvider] {
+	return cmdio.Table[eval.JudgeProvider]{Columns: []cmdio.Column[eval.JudgeProvider]{
+		{Header: "ID", Content: func(r eval.JudgeProvider) string { return r.ID }},
+		{Header: "NAME", Content: func(r eval.JudgeProvider) string { return r.Name }},
+		{Header: "TYPE", Content: func(r eval.JudgeProvider) string { return r.Type }},
+	}}
 }
 
-func (c *ProvidersTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// ModelsTableCodec renders judge models as a text table.
-type ModelsTableCodec struct{}
-
-func (c *ModelsTableCodec) Format() format.Format { return "table" }
-
-func (c *ModelsTableCodec) Encode(w io.Writer, v any) error {
-	models, ok := v.([]eval.JudgeModel)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []JudgeModel")
-	}
-
-	t := style.NewTable("ID", "NAME", "PROVIDER", "CONTEXT WINDOW")
-	for _, m := range models {
-		ctx := "-"
-		if m.ContextWindow > 0 {
-			ctx = strconv.Itoa(m.ContextWindow)
-		}
-		t.Row(m.ID, m.Name, m.Provider, ctx)
-	}
-	return t.Render(w)
-}
-
-func (c *ModelsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func ModelsTable() cmdio.Table[eval.JudgeModel] {
+	return cmdio.Table[eval.JudgeModel]{Columns: []cmdio.Column[eval.JudgeModel]{
+		{Header: "ID", Content: func(r eval.JudgeModel) string { return r.ID }},
+		{Header: "NAME", Content: func(r eval.JudgeModel) string { return r.Name }},
+		{Header: "PROVIDER", Content: func(r eval.JudgeModel) string { return r.Provider }},
+		{Header: "CONTEXT WINDOW", Content: func(r eval.JudgeModel) string {
+			if r.ContextWindow > 0 {
+				return strconv.Itoa(r.ContextWindow)
+			}
+			return "-"
+		}},
+	}}
 }

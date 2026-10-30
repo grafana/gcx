@@ -223,10 +223,10 @@ func TestAlertGroupList_RichPath_EndToEndHTTP_DrainedOvershoot(t *testing.T) {
 	if meta.Cap != 0 {
 		t.Errorf("list_meta.cap = %d, want 0 (the user's limit was the bound)", meta.Cap)
 	}
-	if meta.Continue != "gcx irm oncall alert-groups list --limit 0" {
+	if meta.Continue != alertGroupListContinuation(0) {
 		t.Errorf("list_meta.continue = %q, want --limit 0 (total observed and retrievable)", meta.Continue)
 	}
-	want := "hint: showing first 3 of 4. See all results with: gcx irm oncall alert-groups list --limit 0"
+	want := "hint: showing first 3 of 4. See all results with: " + alertGroupListContinuation(0)
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr missing known-total truncation hint %q:\n%s", want, stderr)
 	}
@@ -356,7 +356,7 @@ func TestAlertGroupList_RichPath_LargeObservedTotalAttached(t *testing.T) {
 	if meta.Total == nil || *meta.Total != total {
 		t.Fatalf("list_meta.total = %v, want %d (observed on the drained source)", meta.Total, total)
 	}
-	if meta.Continue != "gcx irm oncall alert-groups list --limit 0" {
+	if meta.Continue != alertGroupListContinuation(0) {
 		t.Errorf("list_meta.continue = %q, want --limit 0 (the observed total is retrievable)", meta.Continue)
 	}
 	if strings.Contains(stderr, "safety cap") {

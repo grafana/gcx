@@ -134,6 +134,26 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				return opts.IO.Encode(stdout, &ServiceLabelsResponse{})
 			},
 		},
+		{
+			name: "operations get",
+			encode: func(t *testing.T, stdout io.Writer) error {
+				t.Helper()
+				opts := &operationDetailOpts{}
+				opts.IO.ErrWriter = io.Discard
+				opts.setup(pflag.NewFlagSet("get", pflag.ContinueOnError))
+				return opts.IO.Encode(stdout, &OperationDetail{})
+			},
+		},
+		{
+			name: "operations list",
+			encode: func(t *testing.T, stdout io.Writer) error {
+				t.Helper()
+				opts := &fleetOperationsListOpts{}
+				opts.IO.ErrWriter = io.Discard
+				opts.setup(pflag.NewFlagSet("list", pflag.ContinueOnError))
+				return opts.IO.Encode(stdout, &FleetOperationsResponse{})
+			},
+		},
 	}
 
 	for _, tc := range tests {

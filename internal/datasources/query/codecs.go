@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/opensearch"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	querysql "github.com/grafana/gcx/internal/query/sql"
@@ -37,8 +38,12 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTable(w, resp)
 	case *loki.MetricQueryResponse:
 		return loki.FormatMetricQueryTable(w, resp)
+	case *loki.PatternsResponse:
+		return loki.FormatPatternsTable(w, resp)
 	case *pyroscope.QueryResponse:
 		return pyroscope.FormatQueryTable(w, resp)
+	case *pyroscope.DiffResult:
+		return pyroscope.FormatDiffTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.BaselineResult:
@@ -71,6 +76,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return cloudmonitoring.FormatTable(w, resp)
 	case *elasticsearch.MetricsResponse:
 		return elasticsearch.FormatMetricsTable(w, resp)
+	case *opensearch.MetricsResponse:
+		return opensearch.FormatMetricsTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatTable(w, resp)
 	case *azuremonitor.TableResponse:
@@ -92,10 +99,14 @@ func (c *queryWideCodec) Format() format.Format {
 
 func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
+	case *pyroscope.DiffResult:
+		return pyroscope.FormatDiffTable(w, resp)
 	case *prometheus.QueryResponse:
 		return prometheus.FormatWideTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
+	case *loki.PatternsResponse:
+		return loki.FormatPatternsTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.BaselineResult:
@@ -120,6 +131,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return cloudmonitoring.FormatWide(w, resp)
 	case *elasticsearch.MetricsResponse:
 		return elasticsearch.FormatMetricsTable(w, resp)
+	case *opensearch.MetricsResponse:
+		return opensearch.FormatMetricsTable(w, resp)
 	case *azuremonitor.QueryResponse:
 		return azuremonitor.FormatWide(w, resp)
 	case *azuremonitor.TableResponse:
@@ -143,39 +156,27 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 	var chartData *graph.ChartData
 	var err error
 
+	// Each success case only assigns chartData/err; the single check below
+	// the switch (rather than one per case) is what keeps this dispatch
+	// table's complexity flat as datasource kinds are added — a repeated
+	// "if err != nil { return err }" per case was pushing gocyclo over its
+	// threshold on every new kind, when the cases never disagree on how to
+	// react to an error.
 	switch resp := data.(type) {
 	case *prometheus.QueryResponse:
 		chartData, err = graph.FromPrometheusResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *loki.QueryResponse:
-		return errors.New("graph output is not supported for log stream queries; use -o table/json/yaml or use 'gcx logs metrics' for time-series data")
+		chartData, err = graph.FromLokiLogVolumeResponse(resp)
 	case *loki.MetricQueryResponse:
 		chartData, err = graph.FromLokiMetricResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *pyroscope.QueryResponse:
 		chartData, err = graph.FromPyroscopeResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *cloudwatch.QueryResponse:
 		chartData, err = graph.FromCloudWatchResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *cloudmonitoring.QueryResponse:
 		chartData, err = graph.FromCloudMonitoringResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *azuremonitor.QueryResponse:
 		chartData, err = graph.FromAzureMonitorResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *azuremonitor.TableResponse:
 		return errors.New("graph output is not supported for KQL table results; use -o table/json/yaml")
 	case *tempo.SearchResponse:
@@ -184,19 +185,12 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for Infinity queries; use -o table/json/yaml")
 	case *tempo.MetricsResponse:
 		chartData, err = graph.FromTempoMetricsResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *influxdb.QueryResponse:
 		chartData, err = graph.FromInfluxDBResponse(resp)
-		if err != nil {
-			return err
-		}
 	case *elasticsearch.MetricsResponse:
 		chartData, err = graph.FromElasticsearchResponse(resp)
-		if err != nil {
-			return err
-		}
+	case *opensearch.MetricsResponse:
+		chartData, err = graph.FromOpenSearchResponse(resp)
 	case *querysql.QueryResponse:
 		return errors.New("graph output is not supported for SQL datasource queries; use -o table/json/yaml")
 	case []clickhouse.TableInfo:
@@ -213,6 +207,9 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for BigQuery describe-table; use -o table/json/yaml")
 	default:
 		return errors.New("invalid data type for graph codec")
+	}
+	if err != nil {
+		return err
 	}
 
 	opts := graph.DefaultChartOptions()

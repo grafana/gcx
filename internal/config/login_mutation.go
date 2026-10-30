@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -49,6 +48,13 @@ type LoginMutationGuard struct {
 	expectCloud          string
 	verifyDiscovery      bool
 	discoveredSources    []loginMutationSourceSnapshot
+
+	// keychainPolicy is the credential-storage decision the config this guard
+	// was built from already resolved. The guarded reload reads only the
+	// selected owner, so without carrying the policy it would re-derive one
+	// from that single file and could silently revert an opt-out declared in
+	// another trusted layer.
+	keychainPolicy keychainPolicy
 }
 
 type loginMutationSourceSnapshot struct {
@@ -71,6 +77,7 @@ func (config *Config) NewLoginMutationGuard(contextName string, intent LoginMuta
 		expectSourceAbsent: config.expectSourceAbsent,
 		contextName:        contextName,
 		intent:             intent,
+		keychainPolicy:     config.keychainPolicy,
 	}
 	if ctx := config.Contexts[contextName]; ctx != nil {
 		guard.expectContextPresent = true
@@ -104,6 +111,9 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 	loadOpts := loadOptions{
 		layer:                        configLayerFromCtx(ctx),
 		suppressMigrationPersistence: true,
+	}
+	if guard.keychainPolicy.source != "" {
+		loadOpts = loadOpts.withKeychainPolicy(guard.keychainPolicy)
 	}
 	if snapshot != nil {
 		loadOpts = loadOpts.withSourceSnapshot(guard.sourcePath, snapshot)
@@ -178,6 +188,11 @@ func (guard LoginMutationGuard) WithDiscoverySnapshot(effective *Config) (LoginM
 		return guard, errors.New("capture login discovery snapshot: nil effective config")
 	}
 	guard.verifyDiscovery = true
+	// The effective layered config resolved the policy across every trusted
+	// layer; the guard was built from one owner. Prefer the layered answer.
+	if effective.keychainPolicy.source != "" {
+		guard.keychainPolicy = effective.keychainPolicy
+	}
 	guard.discoveredSources = make([]loginMutationSourceSnapshot, 0, len(effective.Sources))
 	for _, source := range effective.Sources {
 		contents := source.snapshot
@@ -291,7 +306,7 @@ func (guard LoginMutationGuard) changedDuringPlanningError(reason string) error 
 		),
 		Suggestions: []string{
 			"Review the changed config and retry login",
-			"Or re-run with --config " + strconv.Quote(guard.sourcePath) + " after reviewing that owner",
+			"Or re-run with --config " + quoteConfigPath(guard.sourcePath) + " after reviewing that owner",
 		},
 	}
 }
@@ -306,7 +321,7 @@ func (guard LoginMutationGuard) changedDuringAuthenticationError(reason string) 
 		),
 		Suggestions: []string{
 			"Review the changed config and retry login",
-			"Or re-run with --config " + strconv.Quote(guard.sourcePath) + " after reviewing that owner",
+			"Or re-run with --config " + quoteConfigPath(guard.sourcePath) + " after reviewing that owner",
 		},
 	}
 }
@@ -589,7 +604,7 @@ func VerifyLoginMutationBindings(
 		),
 		Suggestions: []string{
 			"Review the changed config and retry",
-			"Or re-run with --config " + strconv.Quote(target.Path) + " to select this owner explicitly",
+			"Or re-run with --config " + quoteConfigPath(target.Path) + " to select this owner explicitly",
 		},
 	}
 }
@@ -628,7 +643,7 @@ func (config *Config) LoginCloudMutationSafety(contextName string, target Config
 func (config *Config) loginMutationTargetError(contextName, details string) error {
 	suggestions := make([]string, 0, len(config.Sources)+1)
 	for _, source := range config.Sources {
-		suggestions = append(suggestions, "Review the owner, then re-run with --config "+strconv.Quote(source.Path))
+		suggestions = append(suggestions, "Review the owner, then re-run with --config "+quoteConfigPath(source.Path))
 	}
 	if contextName != "" {
 		suggestions = append(suggestions, fmt.Sprintf("Keep stack and Cloud bindings for context %q together in one config file", contextName))

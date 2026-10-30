@@ -10,10 +10,13 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 
 ### 1.1 Built-in Codecs
 
-Every command gets `json`, `yaml`, and `agents` output for free via `io.Options`.
-The `json` and `yaml` codecs produce the full resource object as returned by
-the API — no envelope wrapping, no field filtering. This output is stable.
-The `agents` codec is described in [§ 1.1.1](#111-agents-codec) below.
+Commands using `io.Options` get `json`, `yaml`, and `agents` codecs; commands
+with a different declared protocol may restrict them (see § 11). JSON/YAML
+serialize the value passed to `Encode`, without adding a resource envelope.
+Commands supply their registered resource or domain response according to
+[Pattern 17](../architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget).
+Explicit `--json`/`--jq` may transform that value; the default preserves all
+fields. The `agents` codec is described in [§ 1.1.1](#111-agents-codec).
 
 ```go
 ioOpts := &io.Options{}
@@ -45,15 +48,25 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 }
 ```
 
+**Redirected to a file** — spilling is skipped and the full payload is written
+inline, however large it is, when stdout is a **regular file on disk** (the
+`gcx ... > out.json` case). The threshold exists to protect an agent's context
+window; a caller who named a destination file has already said where the bytes
+belong, and a receipt pointing at a different temp file is never what they
+asked for. A pipe, a terminal and `/dev/null` are not regular files, so a
+harness capturing stdout — as `os/exec` does for any non-`*os.File` writer —
+keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
+
 | Field | Always present | Description |
 |-------|---------------|-------------|
 | `type` | yes | Fixed discriminator `gcx.spill_reference` — the receipt shape differs from the domain result, so consumers dispatch on this marker instead of heuristics |
 | `schema_version` | yes | Version of the receipt shape itself (currently `1`) |
-| `content_format` | yes | Media type of the spilled file's content (`json`) |
+| `content_format` | yes | `json` for documents; `jsonl` for jq streams (see § 1.6) |
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
 | `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape |
-| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
+| `total_values` | only for jq streams | Yielded-value count, not list elements; replaces `total_items` |
+| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes and jq streams. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
 
 **Override:** `-o json` forces the full document inline to stdout regardless
@@ -61,7 +74,9 @@ of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
-`102400`). Invalid or missing values fall back to the default.
+`102400`). `0` disables spilling: output is always written in full, for
+callers that cannot read gcx's temp files (e.g. gcx embedded in a sandbox).
+Invalid or missing values fall back to the default.
 
 **Guidance for provider authors:** Do **not** pre-truncate output for agent
 mode. The codec handles oversized payloads. Pre-truncation defeats the spill
@@ -80,6 +95,30 @@ ioOpts.RegisterCustomCodec("text", myTableCodec)
 ioOpts.DefaultFormat("text")   // makes "text" the default instead of "json"
 ```
 
+CSV is opt-in through `output.RegisterCSV(&opts.IO)` before binding flags.
+Results implement `output.CSVMarshaler`; `output.CSV[T]` also accepts typed
+projections. Both supply export columns and rows independently of terminal tables.
+
+CloudWatch, Cloud Monitoring, Azure Monitor, Elasticsearch, and OpenSearch metric
+CSV exports use `timestamp_rfc3339`: UTC RFC3339 with exactly nine fractional
+digits, including zeros for whole-second samples. This preserves timestamp
+precision and chronological ordering when sorting the column as text. Prometheus
+and Loki retain their source epoch representations in `timestamp_unix_seconds`
+and `timestamp_unix_nano`, respectively. Tempo range metrics use
+`timestamp_unix_ms`; instant metrics omit the timestamp column because the API
+returns no sample timestamp. Tempo search and baseline rows use
+`start_time_unix_nano`.
+
+Azure Log Analytics and Resource Graph time columns retain UTC RFC3339 strings,
+including fractional seconds when present in the source timestamps.
+
+CSV preserves cell values, including formula prefixes. Spreadsheet applications
+may interpret untrusted log messages or label values as formulas; import those
+columns as text rather than opening the CSV directly. Missing Prometheus and Loki
+metric samples are represented as `NaN`, not zero. Their graph output skips
+non-finite samples. Null metric samples from CloudWatch, Cloud Monitoring, Azure
+Monitor, Elasticsearch, and OpenSearch are represented as empty CSV cells.
+
 **Data fetching is format-agnostic.** Commands must fetch all available data
 in `RunE` regardless of the `--output` value. The output format controls
 **presentation**, not **data acquisition**. Table/wide codecs select which
@@ -91,14 +130,30 @@ JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 
 | Command type | Default format | Rationale |
 |-------------|---------------|-----------|
-| `list`, `get` | `text` (with table codec) | Human-scannable |
+| `list`, `get` | a narrow table codec — `text` or `table` | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
-| `push`, `pull`, `delete` | Status messages only | Operations, not data |
+| `push`, `delete` | a structured summary (see [§ 12](#12-mutation-command-output)) | Operations, not data |
+| `resources pull` | `json` (pinned; selects the *file* format, see [§ 14](#14-pull-format-consistency)) | Files are the output; deprecated SLO pulls retain fixed YAML |
 | Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 100 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
 
-When building a new command: call `ioOpts.DefaultFormat("text")` for data
-display commands and register a table codec. Don't leave `json` as the default
-for interactive commands.
+**There is no repo-wide format set.** `text` and `table` are both sanctioned
+names for the narrow table codec and both ship today; `agents` is the agent-mode
+default for display commands but is *rejected* by `resources pull` and
+`resources edit`, which write files the pipeline reads back. Some `get` commands legitimately default
+to `yaml` with no table codec at all.
+
+When building a new command: register a narrow table codec and make it the
+default with `ioOpts.DefaultFormat(...)`, using **the same name its siblings in
+the same command area already use**. Don't leave `json` as the default for
+interactive commands, and don't rename a released format to make a checklist
+uniform. To find what any command actually supports, read its own `-o` line:
+
+```bash
+GCX_AGENT_MODE=false gcx <command> --help | grep -- '-o, --output'
+```
+
+The prefix prevents agent detection from replacing a display command's human
+default in help. Commands with pinned formats keep their own defaults.
 
 ### 1.4 Status Messages
 
@@ -106,13 +161,23 @@ Use the `cmdio` functions for operation feedback — they use Unicode symbols
 and respect `color.NoColor`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "Pushed %d resources", count)  // ✔
-cmdio.Warning(cmd.OutOrStdout(), "Skipped %d resources", count) // ⚠
-cmdio.Error(cmd.OutOrStdout(), "Failed %d resources", count)    // ✘
-cmdio.Info(cmd.OutOrStdout(), "Using context %q", ctx)          // 🛈
+cmdio.Success(cmd.ErrOrStderr(), "Pushed %d resources", count)  // ✔
+cmdio.Warning(cmd.ErrOrStderr(), "Skipped %d resources", count) // ⚠
+cmdio.Error(cmd.ErrOrStderr(), "Failed %d resources", count)    // ✘
+cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // 🛈
 ```
 
-Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
+**Status messages go to stderr**, per
+`CONSTITUTION.md` § Output — stdout is the result, stderr
+is the diagnostic. A status line on stdout lands inside a caller's redirected
+output. Errors (via `DetailedError`) also go to stderr.
+
+The command's declared protocol matters: interactive prompts and server startup
+messages can be the result themselves, while `EmitArtifactResult` writes a
+structured receipt to stdout (see § 12). Check
+`cmd/gcx/root/testdata/output_classes.json` before changing these paths.
+Existing finite-command no-data notices on stdout, such as those in SLO status
+and Synth checks status, are known nonconforming behavior, not examples to copy.
 
 Reference: `internal/output/messages.go`
 
@@ -170,64 +235,84 @@ resource object. `--json` is an independent mechanism (NC-002).
 
 ### 1.6 JQ Transformation
 
-The `--jq` flag applies a [jq](https://jqlang.github.io/jq/) expression to the
-command's JSON output before it reaches stdout. This eliminates the need to
-pipe gcx output into external scripts for grouping, reducing, or filtering — a
-common pain point when agents drive investigations and resort to generated
-Python.
+`--jq` transforms the full command result **before** formatting or spilling,
+never a spill receipt.
 
 ```bash
-# Count items
-gcx resources get dashboards --jq '.items | length'
+# Count contexts, with compact/spill handling
+gcx config list-contexts --jq '.contexts | length' -o agents
 
-# Extract names
+# Yield one value per dashboard
 gcx resources get dashboards --jq '.items[] | .metadata.name'
-
-# Reshape into a custom collection
-gcx resources get dashboards --jq '[.items[] | {name: .metadata.name, title: .spec.title}]'
 ```
 
-**Flag semantics:**
+| Combination | Behavior |
+|-------------|----------|
+| Bare `--jq` or `-o json --jq` | Pretty-printed JSON values, no spill, including in agent mode |
+| `-o agents --jq` | Compact JSONL, without HTML escaping, with aggregate spilling |
+| Other `-o` formats or `--json` with `--jq` | Rejected |
+| Invalid syntax | Validation error before command execution |
+| Empty/whitespace expression or unknown function | jq evaluation error |
 
-| Value | Behavior |
-|-------|----------|
-| `--jq '<expr>'` | Run the jq expression against the full JSON output |
-| `--jq` + `-o json` (or `-o` unset) | Allowed; auto-flips to JSON when `-o` is unset |
-| `--jq` + `-o <non-json>` | Usage error — jq operates on JSON input |
-| `--jq` + `--json ...` | Usage error — jq supersedes field selection |
-| Invalid jq expression | Validation error (syntax fails fast at flag parse time) |
+**Shape:** Zero values emit nothing; one or many values (including primitives)
+remain separate, never implicitly wrapped in an array. A yielded `null` emits
+`null\n`. Pretty-printed JSON can span lines; only agents output is JSONL.
 
-**Output shape:** Real-jq-compatible NDJSON. Each yielded value is
-pretty-printed JSON on its own line, so filters like `.items[]` stream one
-object per line — matching what users intuit from real `jq`. Empty result sets
-emit nothing.
+**Spilling with explicit `-o agents`:**
+- `GCX_AGENT_SPILL_BYTES` (default 100 KiB) limits the **entire transformed
+  stream**, including newlines—not each value or the original payload.
+- At or below the threshold, stdout gets the complete stream. Above it, the
+  same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
+  only a spill receipt, and stderr gets a hint.
+- `GCX_AGENT_SPILL_BYTES=0` disables spilling: stdout always gets the complete
+  stream, and no file, receipt or hint is produced.
+- The receipt uses `content_format: "jsonl"`, `total_values`, no `total_items`,
+  and `preview_sample: null` to avoid unbounded previews. Its fixed metadata
+  may exceed a very small threshold. `gcx agent prune` includes JSONL spills.
+- Evaluation/encoding errors discard buffered output and partial spill files;
+  I/O errors propagate without an inline fallback. Bare jq and `-o json`
+  retain already-emitted values on a later error.
 
-**Relationship to `--json`:** `--jq` strictly subsumes `--json` field
-selection. Combining the two is rejected to keep the model simple — anything
-`--json field1,field2` does, `{field1: .field1, field2: .field2}` does in jq.
-
-**Agents codec:** `--jq` bypasses the agents codec's spill-to-tempfile
-behavior. A caller using `--jq` wants the transformed results in-stream, not a
-"spilled to /tmp" summary.
-
-**Implementation:** `internal/output/jq.go` (`JQCodec`). Flag parsing and
-mutual-exclusion enforcement in `internal/output/format.go` (`applyJQFlag`).
-Library: [`github.com/itchyny/gojq`](https://github.com/itchyny/gojq).
+**Implementation:** `internal/output/{format,jq,agents}.go`, using
+[gojq](https://github.com/itchyny/gojq).
 
 ---
 
 ## 11. Codec Requirements by Command Type
 
-| Command type | `text` (table) | `wide` | `json` | `yaml` | Domain-specific |
+| Command type | narrow table (`text` or `table`) | `wide` | `json` | `yaml` | Domain-specific |
 |---|---|---|---|---|---|
-| CRUD data (list, get) | Required, default | Required | Built-in | Built-in | — |
-| CRUD mutation (push, pull, delete) | Required, default (summary) | Required (summary) | Built-in (summary) | Built-in (summary) | — |
+| CRUD data — `list` | Required, default | If it adds columns | Built-in | Built-in | — |
+| CRUD data — `get` | Expected, default; `yaml` where a single object reads better | If it adds columns | Built-in | Built-in | — |
+| CRUD mutation (push, delete) | Required, default (summary) | If it adds columns | Built-in (summary) | Built-in (summary) | — |
+| Artifact files — new commands and `resources pull` | — files are the output | — | Required, pinned default | Required | — |
 | Extension (status, timeline...) | Required, default | Optional | Built-in | Built-in | Optional (e.g. graph) |
 
-All data-display and mutation commands must register a `text` table codec
-and call `DefaultFormat("text")`. The `text` codec is the human default;
-`agents` becomes the default in agent mode (compact JSON with spill — see
-[§ 1.1.1](#111-agents-codec)).
+A `list` command always gets a narrow table. A `get` command usually should, but
+`yaml` is a legitimate default for one object a user is about to edit — that is
+what `slo definitions get` does (`agents,json,yaml`, defaulting to `yaml`), and
+it is not a defect. Everything else registers a narrow table codec and makes it
+the default.
+
+The narrow codec is the human default; `agents` becomes the default in agent
+mode (compact JSON with spill — see [§ 1.1.1](#111-agents-codec)).
+
+**The `artifact` class is the exception, and it has no table at all.** Its real
+output is files the push pipeline reads back. For `resources pull`, `-o`
+selects the *file* format: it offers `json, yaml` only, pins the default with
+`PinDefaultFormat`, and rejects `-o agents` (`cmd/gcx/resources/pull.go`). A
+narrow table codec there would produce a file nothing can read back. See
+[§ 14](#14-pull-format-consistency). Deprecated `slo definitions pull` and
+`slo reports pull` preserve their fixed `Kind/name.yaml` files and
+`--output-dir` option; they expose no `-o` flag. Their terminal receipts still
+use the shared artifact protocol.
+
+`wide` is **not** a separate obligation. Most commands register it by hand with
+`RegisterCustomCodec("wide", ...)`, and that is fine. For a command built on
+`Table[T]`, prefer `RegisterTableAs` (`internal/output/table.go`): it adds
+`wide` when — and only when — some column is marked `WideOnly`, so the narrow
+and wide renderings cannot drift apart. Either way, a command with nothing extra
+to show in `wide` should not have one, and that is correct.
 
 Codec registration happens in `setup(flags)`, not in `RunE`.
 
@@ -235,50 +320,118 @@ Codec registration happens in `setup(flags)`, not in `RunE`.
 
 ## 12. Mutation Command Output
 
-### 12.1 Summary Table
+### 12.1 Shared Result Family
 
-CRUD mutation commands (push, pull, delete) output a structured summary
-through the codec system. The summary replaces ad-hoc `cmdio.Success/Warning`
-status messages as the primary output.
+New finite mutations encode structured results through `io.Options`. Use the
+constructors in `internal/output/mutation.go` so `type` and `schema_version`
+are always populated. Select the shape that fits the operation:
 
-**STDOUT** — summary table grouped by resource kind:
-
-| RESOURCE KIND | TOTAL | SUCCEEDED | SKIPPED | FAILED |
-|---|---|---|---|---|
-| Dashboard | 2452 | 2440 | 2 | 10 |
-| Folder | 48 | 48 | 0 | 0 |
-
-**STDERR** — failures enumerated individually with error detail:
-
-| RESOURCE | ERROR |
+| Constructor | Purpose |
 |---|---|
-| dashboards/revenue-overview | 409 conflict: resource modified server-side |
-| dashboards/checkout-funnel | 413 payload too large |
+| `NewSingleMutation(action, target)` | One target; optional `changed`, `dry_run`, and `error` |
+| `NewBatchMutation(action)` | Counts for the whole batch and an always-present `failures` array |
+| `NewArtifactReceipt(action, format)` | Files produced, their format, counts, and failures |
 
-**Rules:**
-- Successes are counted, never enumerated individually.
-- Failures are always enumerated individually — they require action.
-- Skipped resources are enumerated if count < 20, otherwise grouped.
-- `cmdio.Success/Warning/Error` remain for progress feedback *during*
-  execution. The summary table is the *final* output.
+Batch counts cover every matched target exactly once. Successes and skips are
+counted; zero `skipped` is omitted.
 
-### 12.2 JSON Summary Shape
+Batch results and artifact receipts always include `failures` (`[]` when
+empty). Each failure contains `target` and `error`. The optional `source`
+field identifies the input file when available; it is omitted when the
+source path is empty. `source` is independent of `target.name`, which remains
+the API address. `resources push` and file-based `resources delete` populate
+`source` from the failed resource's local source path. Artifact receipts
+leave it absent when the failed resource has no input path.
+
+`gcx.mutation_batch` and `gcx.artifact_receipt` may include a top-level
+`skipped_reasons` object mapping each skip reason to its count. It is omitted
+when no skips were recorded and is additive within schema version `1`.
+`summary.skipped` remains the total count. Human summaries show the counts by
+reason; JSON output, including the agent-mode default, exposes the same map so
+agents can distinguish read-only skips from other skips. Current reasons
+include `read-only`, `not server-verified`, and `not listable`.
+
+The optional fields are additive within schema version `1`; consumers should
+tolerate optional fields.
+
+The shared family does not add a success array for `-v` or `-o wide`.
+Human codecs render the command's summary on stdout, with progress and advisory
+diagnostics on stderr. Agent output includes the failure detail in its result;
+a caller must not need stderr to understand the outcome. If the command has
+already emitted a complete failure result, use `gcxerrors.EmittedError` to
+prevent a second document and preserve the appropriate nonzero exit code.
+
+For artifact commands whose `-o` selects the file format, pass the receipt to
+`EmitArtifactResult`: it writes JSON in agent mode and invokes the command's
+human renderer otherwise. Do not send the receipt through the file codec.
+
+These shapes are not a universal replacement for released provider contracts.
+IRM OnCall action envelopes and skills receipts retain their existing forms;
+instrumentation's existing `MutationResult` carries additive discriminators.
+See `CONSTITUTION.md` § Dual-Purpose Design.
+
+### 12.2 JSON Examples
+
+A single result from `NewSingleMutation("deleted", MutationTarget{Kind:
+"dashboard", Name: "revenue-overview"})`:
 
 ```json
 {
-  "summary": [
-    {"kind": "Dashboard", "total": 2452, "succeeded": 2440, "skipped": 2, "failed": 10}
-  ],
+  "type": "gcx.mutation",
+  "schema_version": "1",
+  "action": "deleted",
+  "target": {"kind": "dashboard", "name": "revenue-overview"}
+}
+```
+
+A populated `NewBatchMutation("pushed")` result:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 2, "failed": 1, "skipped": 1},
+  "skipped_reasons": {"read-only": 1},
   "failures": [
-    {"name": "dashboards/revenue-overview", "error": "409 conflict: resource modified server-side"}
-  ],
-  "skipped": [
-    {"name": "dashboards/archived-q3", "reason": "no changes detected"}
+    {
+      "target": {"kind": "dashboard", "name": "revenue-overview"},
+      "error": "409 conflict: resource modified server-side"
+    }
   ]
 }
 ```
 
-Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
+For example, a failed unnamed manifest can be located without inventing
+an API name:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 0, "failed": 1},
+  "failures": [{
+    "target": {"kind": "TemplateGroup"},
+    "error": "spec.kind must be grafana or mimir",
+    "source": "./manifests/group.yaml"
+  }]
+}
+```
+
+A populated `NewArtifactReceipt("pulled", "json")` result:
+
+```json
+{
+  "type": "gcx.artifact_receipt",
+  "schema_version": "1",
+  "action": "pulled",
+  "format": "json",
+  "files": [{"path": "dashboards/revenue-overview.json", "kind": "dashboard"}],
+  "summary": {"succeeded": 1, "failed": 0},
+  "failures": []
+}
+```
 
 ---
 
@@ -302,7 +455,7 @@ Files are written as `plural.version.group/name.{ext}` where `{ext}` is the
 chosen format name (`.json` or `.yaml`).
 
 Because the output format doubles as the on-disk file extension and the
-encoder, file-writing commands pin their default with
+encoder, `resources pull` and `resources edit` pin their default with
 `Options.PinDefaultFormat`: agent mode must not flip their default to the
 `agents` display codec (which would write `<name>.agents` files containing
 spill-summary envelopes for large resources). `resources pull` and
@@ -315,12 +468,7 @@ change that landed this contract.
 
 ## 15. List Truncation Contract [PROPOSED — #387 Track C]
 
-> **Status: proposed.** Implemented as an opt-in shared contract in
-> `internal/output/listmeta.go` and migrated to two exemplar commands
-> (`datasources list`, `irm oncall alert-groups list`).
-> Not yet a repo-wide requirement; see
-> `docs/research/2026-07-17-global-limit-investigation.md` for the migration
-> plan and open questions.
+> **Status: proposed.** Implemented as an opt-in shared contract in `internal/output/listmeta.go` and migrated to two exemplar commands (`datasources list`, `irm oncall alert-groups list`). Not yet a repo-wide requirement; apply the contract below when migrating other list commands.
 
 List commands must never truncate silently. All truncation flows through the
 shared helpers in `internal/output/listmeta.go` — do not roll per-command
@@ -459,19 +607,7 @@ The reserved key is transparent to field selection and discovery
 Only the reserved `list_meta` key gets this treatment; envelopes with other
 extra keys keep the pre-existing selection behavior.
 
-These guarantees hold for typed envelope structs and for envelopes assembled
-as dynamic `map[string]any` values — for dynamic maps, the reserved key
-itself is the opt-in signal: a map without `list_meta` keeps whole-object
-selection and as-is discovery even when it happens to be items-shaped, so raw
-passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic
-maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope
-handling JSON-normalizes the map first, so producers don't have to
-pre-flatten to the JSON-decoded representation. An empty dynamic envelope has
-no element type to reflect on, so discovery degrades to the envelope's own
-keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not
-part of the contract yet — no producer attaches truncation metadata to
-unstructured lists; that lands with the resources-pipeline migration (see the
-research doc's remaining-migration section).
+These guarantees hold for typed envelope structs and for envelopes assembled as dynamic `map[string]any` values — for dynamic maps, the reserved key itself is the opt-in signal: a map without `list_meta` keeps whole-object selection and as-is discovery even when it happens to be items-shaped, so raw passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope handling JSON-normalizes the map first, so producers don't have to pre-flatten to the JSON-decoded representation. An empty dynamic envelope has no element type to reflect on, so discovery degrades to the envelope's own keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not part of the contract yet — no producer attaches truncation metadata to unstructured lists. A resources-pipeline migration would need to establish that contract.
 
 ### 15.6 Reference migrations
 
@@ -482,8 +618,10 @@ research doc's remaining-migration section).
   `--limit 0` drains every `next` cursor) and over-fetch-by-one
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
 
-`alert rules list` is deliberately not migrated yet: its JSON/YAML output is
-a bare array (no envelope to carry `list_meta`) and its `--limit` counts
-different units per format (flattened rules in the table, groups in JSON).
-The envelope and unit decisions are tracked in
-`docs/research/2026-07-17-global-limit-investigation.md` §6–7.
+`alert rules list` is deliberately not migrated yet: its JSON/YAML output is a bare array (no envelope to carry `list_meta`) and its `--limit` counts different units per format (flattened rules in the table, groups in JSON). The envelope shape and counting unit need to be settled before migration.
+
+### 15.7 IRM bulk-by-filter mutations
+
+**Implemented behavior:** IRM alert-group bulk-by-filter mutations retain a separate 1000-item target-enumeration cap (`alertGroupBulkTargetCap` in `internal/providers/irm/oncall_actions.go`). `resolveBulkTargets` limits enumeration to the first 1000 matching raw items, deduplicates the returned targets, and discards pagination metadata. When more matches exist, the mutation proceeds on that bounded set without disclosing the truncation; `summary.matched` counts the selected targets, not all matching groups. This cap does not apply to the read-only `irm oncall alert-groups list` command, whose `--limit 0` follows cursors to exhaustion.
+
+**Open decision:** whether a truncated bulk mutation should warn, refuse to proceed, or disclose partial targeting another way remains unresolved. The proposed list-output contract above does not settle this mutation behavior; this subsection records the current implementation and the decision still needed, without prescribing a runtime change.

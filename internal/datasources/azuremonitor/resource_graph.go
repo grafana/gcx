@@ -23,6 +23,7 @@ type resourceGraphOpts struct {
 }
 
 func (opts *resourceGraphOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	opts.Share.Setup(flags, "executed query")

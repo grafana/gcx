@@ -83,27 +83,43 @@ func buildGcx(t *testing.T) string {
 	return buildPath
 }
 
-// runGcx runs the built binary with agent mode enabled, an isolated HOME and
-// XDG environment, telemetry off, and stdin closed. It returns stdout and the
-// exit code; stderr is captured only to keep it out of stdout.
-func runGcx(t *testing.T, args ...string) (string, int) {
-	t.Helper()
-	bin := buildGcx(t)
-
-	home := t.TempDir()
-	cmd := exec.CommandContext(context.Background(), bin, args...)
-	cmd.Env = []string{
+func conformanceEnv(home string) []string {
+	return []string{
 		"HOME=" + home,
+		"USERPROFILE=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
 		// swept commands run for real: agent prune deletes from os.TempDir(),
 		// so the host temp dir must not leak in
 		"TMPDIR=" + home,
+		"TEMP=" + home,
+		"TMP=" + home,
 		"PATH=" + os.Getenv("PATH"),
+		// This is a production binary. The Go test Keychain guard does not apply.
+		"GCX_KEYCHAIN=off",
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
 	}
+}
+
+// runGcx runs the built binary with agent mode enabled, an isolated HOME and
+// XDG environment, telemetry off, and stdin closed. It returns stdout and the
+// exit code; stderr is captured only to keep it out of stdout.
+func runGcx(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	stdout, _, code := runGcxStreams(t, args...)
+	return stdout, code
+}
+
+// runGcxStreams runs runGcx's isolated binary and returns stdout and stderr
+// separately along with the exit code.
+func runGcxStreams(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
+	bin := buildGcx(t)
+
+	cmd := exec.CommandContext(context.Background(), bin, args...)
+	cmd.Env = conformanceEnv(t.TempDir())
 	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 
 	var outBuf, errBuf bytes.Buffer
@@ -117,7 +133,7 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 	} else if err != nil {
 		t.Fatalf("running gcx %v: %v", args, err)
 	}
-	return outBuf.String(), code
+	return outBuf.String(), errBuf.String(), code
 }
 
 // assertOneJSONValue decodes stdout and fails unless it holds exactly one
@@ -134,6 +150,56 @@ func assertOneJSONValue(t *testing.T, stdout string) any {
 		t.Fatalf("stdout must contain exactly one JSON value; second decode = %v\nstdout:\n%s", err, stdout)
 	}
 	return first
+}
+
+// Both subprocess helpers must keep test credentials out of the host Keychain.
+func TestAgentConformance_CredentialWritesStayInTemporaryConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	for _, tc := range []struct {
+		name     string
+		isolated bool
+	}{
+		{name: "runGcx"},
+		{name: "runGcxIsolated", isolated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			contents := []byte("version: 1\nstacks:\n  test:\n    grafana:\n      server: https://example.invalid\n")
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			const token = "synthetic-conformance-token"
+			args := []string{"config", "set", "--config", path, "stacks.test.grafana.token", token}
+			var stdout string
+			var code int
+			if tc.isolated {
+				var timedOut bool
+				stdout, code, timedOut = runGcxIsolated(t, buildGcx(t), args)
+				if timedOut {
+					t.Fatal("credential write timed out")
+				}
+			} else {
+				stdout, code = runGcx(t, args...)
+			}
+			if code != 0 {
+				t.Fatalf("credential write failed: exit %d; stdout: %s", code, stdout)
+			}
+			assertOneJSONValue(t, stdout)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(raw, []byte(token)) {
+				t.Fatal("test credential must stay in the temporary config as plaintext")
+			}
+			if bytes.Contains(raw, []byte("keychain:gcx:")) {
+				t.Fatal("test credential must not reach the credential store")
+			}
+		})
+	}
 }
 
 func TestAgentConformance_FiniteCommandsEmitOneJSONValue(t *testing.T) {
@@ -196,6 +262,37 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	}
 }
 
+// Late jq errors must emit only the error document, even after spilling.
+func TestAgentConformance_JQAgentsRuntimeError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configFile, []byte("version: 1\ncontexts: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{`1, error("boom")`, `("x" * 102400), error("boom")`} {
+		t.Run(query, func(t *testing.T) {
+			stdout, code := runGcx(t, "config", "list-contexts", "--config", configFile,
+				"--jq", query, "-o", "agents")
+			if code == 0 {
+				t.Fatalf("expected runtime failure, got success:\n%s", stdout)
+			}
+			obj, ok := assertOneJSONValue(t, stdout).(map[string]any)
+			if !ok || obj["type"] != "gcx.error" {
+				t.Fatalf("expected gcx.error, got:\n%s", stdout)
+			}
+			errField, ok := obj["error"].(map[string]any)
+			if !ok || errField["exitCode"] != float64(code) {
+				t.Fatalf("error exit code disagrees with process code %d:\n%s", code, stdout)
+			}
+			if !strings.Contains(stdout, "boom") {
+				t.Fatalf("runtime error was lost:\n%s", stdout)
+			}
+		})
+	}
+}
+
 // TestAgentConformance_InvalidStackSlugIsUsageError pins the client-side slug
 // validation added for issue #950: an invalid slug fails before the dry-run
 // preview with a single gcx.error document and a usage exit code, in both the
@@ -205,7 +302,7 @@ func TestAgentConformance_InvalidStackSlugIsUsageError(t *testing.T) {
 		t.Skip("builds the gcx binary; skipped with -short")
 	}
 
-	stdout, code := runGcx(t, "cloud", "stacks", "create",
+	stdout, code := runGcx(t, "cloud", "stacks", "create", "--org", "example-org",
 		"--name", "t", "--slug", "my-gcx-eval", "--dry-run")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (usage error)\nstdout:\n%s", code, stdout)
@@ -354,18 +451,7 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = t.TempDir() // no ./resources or other cwd pickups
-	cmd.Env = []string{
-		"HOME=" + home,
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
-		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
-		// swept commands run for real: agent prune deletes from os.TempDir(),
-		// so the host temp dir must not leak in
-		"TMPDIR=" + home,
-		"PATH=" + os.Getenv("PATH"),
-		"GCX_AGENT_MODE=1",
-		"GCX_TELEMETRY=off",
-		"DO_NOT_TRACK=1",
-	}
+	cmd.Env = conformanceEnv(home)
 	cmd.Stdin = nil
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
@@ -402,5 +488,61 @@ func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
 	}
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
 		t.Fatalf("explicit -o yaml produced JSON-shaped output — override not honored:\n%s", stdout)
+	}
+}
+
+// An explicit human-format -o overrides agent mode for errors too: the
+// failure is rendered on stderr and stdout carries no error document. JSON
+// selections keep the in-band gcx.error document.
+func TestAgentConformance_ExplicitOutputOverridesErrors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	// Each command registers the format codec it is given, and fails before
+	// producing a result: a missing config context, or a missing flag.
+	for _, args := range [][]string{
+		{"datasources", "get", "some-uid", "-o", "text"},
+		{"instrumentation", "check", "-o", "wide"},
+		{"resources", "get", "folders", "-o", "yaml"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, args...)
+			if code == 0 {
+				t.Fatalf("expected a non-zero exit code\nstdout:\n%s", stdout)
+			}
+			if strings.TrimSpace(stdout) != "" {
+				t.Fatalf("an explicit human -o must not write an error document to stdout:\n%s", stdout)
+			}
+			if !strings.HasPrefix(stderr, "Error:") || strings.Contains(stderr, "gcx.error") {
+				t.Fatalf("expected the human-formatted error on stderr, got:\n%s", stderr)
+			}
+		})
+	}
+
+	// -o json, --json and --jq select JSON. For the artifact class -o does not
+	// choose the stdout format: it is the file format (resources pull, -o pprof)
+	// or not a format at all (dev lint new -o <dir>), so stdout stays JSON.
+	for _, args := range [][]string{
+		{"datasources", "list", "-o", "json"},
+		{"datasources", "list", "--json", "name"},
+		{"datasources", "list", "--jq", "."},
+		{"resources", "pull", "-o", "yaml"},
+		{"datasources", "pyroscope", "query", "-o", "pprof"},
+		{"dev", "lint", "new", "dashboard", "BAD_NAME", "-o", "custom-rules"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, args...)
+			if code == 0 {
+				t.Fatalf("expected a non-zero exit code\nstdout:\n%s", stdout)
+			}
+			obj, ok := assertOneJSONValue(t, stdout).(map[string]any)
+			if !ok || obj["type"] != "gcx.error" {
+				t.Fatalf("expected in-band gcx.error on stdout, got:\n%s", stdout)
+			}
+			if strings.TrimSpace(stderr) != "" {
+				t.Fatalf("in-band error must not duplicate on stderr:\n%s", stderr)
+			}
+		})
 	}
 }

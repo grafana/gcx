@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
@@ -147,7 +150,7 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewPipelineAdapterFactory(loader),
 			Descriptor:  PipelineDescriptor(),
 			GVK:         PipelineDescriptor().GroupVersionKind(),
-			Schema:      pipelineSchema(),
+			Schema:      pipelineSchema,
 			Example:     pipelineExample(),
 			URLTemplate: "/a/grafana-fleet-app/pipelines/{name}",
 		},
@@ -155,7 +158,7 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewCollectorAdapterFactory(loader),
 			Descriptor:  CollectorDescriptor(),
 			GVK:         CollectorDescriptor().GroupVersionKind(),
-			Schema:      collectorSchema(),
+			Schema:      collectorSchema,
 			Example:     collectorExample(),
 			URLTemplate: "/a/grafana-fleet-app/collectors/{name}",
 		},
@@ -272,15 +275,14 @@ type pipelineListOpts struct {
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &PipelineTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, PipelineTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
-func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector get — distinct resource types.
+func (h *fleetHelper) newPipelineGetCommand() *cobra.Command {
 	opts := &pipelineGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id|name>",
@@ -317,14 +319,19 @@ func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // 
 
 // resolvePipeline looks up a pipeline by slug-id, plain ID, or name.
 func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline, error) {
+	var missingErr error
 	// Try extracting a numeric ID from the reference (handles "name-123" and "123").
 	if id, ok := extractIDFromSlug(ref); ok {
 		p, err := client.GetPipeline(ctx, id)
 		if err == nil {
 			return p, nil
 		}
+		if !isFleetNotFoundResponse(err) {
+			return nil, err
+		}
+		missingErr = err
 	}
-	// Fall back to name-based lookup.
+	// Fall back to name-based lookup only when the requested ID is absent.
 	pipelines, err := client.ListPipelines(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, err)
@@ -334,15 +341,22 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 			return &pipelines[i], nil
 		}
 	}
-	return nil, fmt.Errorf("pipeline %q not found", ref)
+	if missingErr != nil {
+		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, missingErr)
+	}
+	return nil, &fleetbase.PipelineNotFoundError{Name: ref}
 }
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.
 func resolveCollector(ctx context.Context, client *Client, ref string) (*Collector, error) {
 	// Collector IDs are arbitrary strings. Try the input as the canonical ID
 	// before interpreting it as a rendered resource name or collector name.
-	if collector, err := client.GetCollector(ctx, ref); err == nil {
+	collector, missingErr := client.GetCollector(ctx, ref)
+	if missingErr == nil {
 		return collector, nil
+	}
+	if !isFleetNotFoundResponse(missingErr) {
+		return nil, missingErr
 	}
 
 	// Older rendered resources encode a numeric ID as a slug suffix.
@@ -351,8 +365,12 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		if err == nil {
 			return c, nil
 		}
+		if !isFleetNotFoundResponse(err) {
+			return nil, err
+		}
+		missingErr = err
 	}
-	// Fall back to name-based lookup.
+	// Fall back to name-based lookup only when the requested IDs are absent.
 	collectors, err := client.ListCollectors(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, err)
@@ -362,7 +380,15 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 			return &collectors[i], nil
 		}
 	}
-	return nil, fmt.Errorf("collector %q not found", ref)
+	return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, missingErr)
+}
+
+// isFleetNotFoundResponse permits alternative lookups after an HTTP 404.
+// Identifier misses can have different bodies across deployments; transport,
+// cancellation, authentication and other HTTP failures must remain failures.
+func isFleetNotFoundResponse(err error) bool {
+	var httpErr *fleetbase.HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
 }
 
 type pipelineGetOpts struct {
@@ -581,41 +607,56 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List collectors.",
+		Long: `List Fleet Management collectors and their reported health attributes.
+
+Use --limit 0 for a complete fleet audit. Structured output includes local and
+remote attributes plus the timestamps that the Fleet API reports.`,
+		Example: `  # List a bounded collector summary
+  gcx fleet collectors list
+
+  # Audit versions and operating systems across the complete fleet
+  gcx fleet collectors list --limit 0 --json spec.id,spec.local_attributes,spec.updated_at
+
+  # Build a compact version inventory
+  gcx fleet collectors list --limit 0 --jq '[.[] | {id: .spec.id, version: .spec.local_attributes["collector.version"], os: (.spec.local_attributes["collector.os"] // .spec.local_attributes["os.type"]), updated_at: .spec.updated_at}]'`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
+			if opts.IO.JSONDiscovery {
+				return writeCollectorFieldPaths(cmd.OutOrStdout())
+			}
 
 			ctx := cmd.Context()
-			client, namespace, err := h.loadClient(ctx)
+			crud, _, err := NewCollectorTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			collectors, err := client.ListCollectors(ctx)
+			collectors, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
 
-			collectors = adapter.TruncateSlice(collectors, opts.Limit)
+			collectors, meta := cmdio.TruncateCompleteList(collectors, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			// Table codec operates on raw []Collector for direct field access.
-			// Other formats (yaml/json) convert to K8s envelope Resources
-			// for consistency with get/pull and round-trip support.
+			var encodeErr error
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), collectors)
-			}
-
-			var objs []unstructured.Unstructured
-			for _, col := range collectors {
-				res, err := CollectorToResource(col, namespace)
-				if err != nil {
-					return fmt.Errorf("failed to convert collector %s to resource: %w", col.ID, err)
+				rows := make([]Collector, len(collectors))
+				for i := range collectors {
+					rows[i] = collectors[i].Spec
 				}
-				objs = append(objs, res.ToUnstructured())
+				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), rows)
+			} else {
+				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), collectors)
 			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if encodeErr != nil {
+				return encodeErr
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -624,7 +665,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 
 type collectorListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
@@ -632,39 +673,50 @@ func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "collectors", 50)
 }
 
-func (h *fleetHelper) newCollectorGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline get — distinct resource types.
+func (h *fleetHelper) newCollectorGetCommand() *cobra.Command {
 	opts := &collectorGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id|name>",
 		Short: "Get a collector by ID or name.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Get one Fleet Management collector by ID or name.
+
+Structured output includes local and remote attributes plus the timestamps that
+the Fleet API reports. Use table or wide output for a human-readable health view.`,
+		Example: `  # Get the full collector resource
+  gcx fleet collectors get <id>
+
+  # Show the collector health fields as a table
+  gcx fleet collectors get <id> -o wide
+
+  # Select attributes and update time
+  gcx fleet collectors get <id> --json spec.local_attributes,spec.remote_attributes,spec.updated_at`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
+			if opts.IO.JSONDiscovery {
+				return writeCollectorFieldPaths(cmd.OutOrStdout())
+			}
 
 			ctx := cmd.Context()
-			client, namespace, err := h.loadClient(ctx)
+			crud, _, err := NewCollectorTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			collector, err := resolveCollector(ctx, client, args[0])
+			collector, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			res, err := CollectorToResource(*collector, namespace)
-			if err != nil {
-				return fmt.Errorf("failed to convert collector to resource: %w", err)
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), []Collector{collector.Spec})
 			}
-
-			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(cmd.OutOrStdout(), collector)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -676,6 +728,8 @@ type collectorGetOpts struct {
 }
 
 func (o *collectorGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &CollectorTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }
@@ -885,59 +939,19 @@ func (o *tenantLimitsOpts) setup(flags *pflag.FlagSet) {
 // Table codecs
 // ---------------------------------------------------------------------------
 
-// PipelineTableCodec renders pipelines as a tabular table.
-type PipelineTableCodec struct {
-	Wide bool
-}
-
-// Format returns the codec's format identifier.
-func (c *PipelineTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-// Encode writes the pipeline list as a table.
-func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
-	pipelines, ok := v.([]Pipeline)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Pipeline")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "ENABLED", "CONFIG TYPE", "MATCHERS")
-	} else {
-		t = style.NewTable("ID", "NAME", "ENABLED")
-	}
-
-	for _, p := range pipelines {
-		enabled := "-"
-		if p.Enabled != nil {
-			enabled = strconv.FormatBool(*p.Enabled)
-		}
-		if c.Wide {
-			matchers := strings.Join(p.Matchers, ", ")
-			if matchers == "" {
-				matchers = "-"
+func PipelineTable() cmdio.Table[Pipeline] {
+	return cmdio.Table[Pipeline]{Columns: []cmdio.Column[Pipeline]{
+		{Header: "ID", Content: func(p Pipeline) string { return p.ID }},
+		{Header: "NAME", Content: func(p Pipeline) string { return p.Name }},
+		{Header: "ENABLED", Content: func(p Pipeline) string {
+			if p.Enabled == nil {
+				return "-"
 			}
-			configType := p.ConfigType
-			if configType == "" {
-				configType = "-"
-			}
-			t.Row(p.ID, p.Name, enabled, configType, matchers)
-		} else {
-			t.Row(p.ID, p.Name, enabled)
-		}
-	}
-
-	return t.Render(w)
-}
-
-// Decode is not supported for table format.
-func (c *PipelineTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return strconv.FormatBool(*p.Enabled)
+		}},
+		{Header: "CONFIG TYPE", Visible: cmdio.WideOnly, Content: func(p Pipeline) string { return cmdio.OrDash(p.ConfigType) }},
+		{Header: "MATCHERS", Visible: cmdio.WideOnly, Content: func(p Pipeline) string { return cmdio.OrDash(strings.Join(p.Matchers, ", ")) }},
+	}}
 }
 
 // CollectorTableCodec renders collectors as a tabular table.
@@ -962,9 +976,12 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("ID", "NAME", "TYPE", "ENABLED", "CREATED_AT")
+		t = style.NewTable(
+			"ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT",
+			"CREATED_AT", "MARKED_INACTIVE_AT", "LOCAL_ATTRIBUTES", "REMOTE_ATTRIBUTES",
+		).MultilineCells(true)
 	} else {
-		t = style.NewTable("ID", "NAME", "TYPE", "ENABLED")
+		t = style.NewTable("ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT")
 	}
 
 	for _, col := range collectors {
@@ -973,19 +990,19 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 			enabled = strconv.FormatBool(*col.Enabled)
 		}
 
-		colType := col.CollectorType
-		if colType == "" {
-			colType = "-"
-		}
+		colType := formatCollectorType(col.CollectorType)
+		version := collectorAttribute(col.LocalAttributes, "collector.version")
+		operatingSystem := collectorAttribute(col.LocalAttributes, "collector.os", "os.type")
+		updatedAt := formatCollectorTime(col.UpdatedAt)
 
 		if c.Wide {
-			createdAt := "-"
-			if col.CreatedAt != nil {
-				createdAt = col.CreatedAt.Format("2006-01-02 15:04")
-			}
-			t.Row(col.ID, col.Name, colType, enabled, createdAt)
+			t.Row(
+				col.ID, col.Name, colType, version, operatingSystem, enabled, updatedAt,
+				formatCollectorTime(col.CreatedAt), formatCollectorTime(col.MarkedInactiveAt),
+				formatCollectorAttributes(col.LocalAttributes), formatCollectorAttributes(col.RemoteAttributes),
+			)
 		} else {
-			t.Row(col.ID, col.Name, colType, enabled)
+			t.Row(col.ID, col.Name, colType, version, operatingSystem, enabled, updatedAt)
 		}
 	}
 
@@ -995,6 +1012,49 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 // Decode is not supported for table format.
 func (c *CollectorTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+func collectorAttribute(attributes map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := attributes[key]; value != "" {
+			return value
+		}
+	}
+	return "-"
+}
+
+func formatCollectorType(value string) string {
+	value = strings.TrimPrefix(value, "COLLECTOR_TYPE_")
+	if value == "" || value == "UNSPECIFIED" {
+		return "-"
+	}
+	return value
+}
+
+func formatCollectorTime(value *time.Time) string {
+	if value == nil {
+		return "-"
+	}
+	return value.UTC().Format("2006-01-02 15:04")
+}
+
+func formatCollectorAttributes(attributes map[string]string) string {
+	if len(attributes) == 0 {
+		return "-"
+	}
+	keys := make([]string, 0, len(attributes))
+	for key := range attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		// Quote escapes control characters before the table adds line separators.
+		quotedKey := strconv.Quote(key)
+		quotedValue := strconv.Quote(attributes[key])
+		pairs = append(pairs, quotedKey[1:len(quotedKey)-1]+"="+quotedValue[1:len(quotedValue)-1])
+	}
+	return strings.Join(pairs, "\n")
 }
 
 // Slug helpers — thin wrappers around adapter.SlugifyName / adapter.ExtractIDFromSlug.
@@ -1405,6 +1465,20 @@ func pipelineExample() json.RawMessage {
 }
 
 func collectorSchema() json.RawMessage {
+	stringMap := map[string]any{
+		"type":                 "object",
+		"additionalProperties": map[string]any{"type": "string"},
+	}
+	readOnlyStringMap := map[string]any{
+		"type":                 "object",
+		"additionalProperties": map[string]any{"type": "string"},
+		"readOnly":             true,
+	}
+	readOnlyTimestamp := map[string]any{
+		"type":     "string",
+		"format":   "date-time",
+		"readOnly": true,
+	}
 	s := map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"$id":     "https://grafana.com/schemas/fleet/Collector",
@@ -1422,12 +1496,18 @@ func collectorSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id":                map[string]any{"type": "string"},
-					"name":              map[string]any{"type": "string"},
-					"collector_type":    map[string]any{"type": "string"},
-					"enabled":           map[string]any{"type": "boolean"},
-					"remote_attributes": map[string]any{"type": "object"},
-					"local_attributes":  map[string]any{"type": "object"},
+					"id":   map[string]any{"type": "string"},
+					"name": map[string]any{"type": "string"},
+					"collector_type": map[string]any{
+						"type": "string",
+						"enum": []string{"COLLECTOR_TYPE_UNSPECIFIED", "COLLECTOR_TYPE_ALLOY", "COLLECTOR_TYPE_OTEL"},
+					},
+					"enabled":            map[string]any{"type": "boolean"},
+					"remote_attributes":  stringMap,
+					"local_attributes":   readOnlyStringMap,
+					"created_at":         readOnlyTimestamp,
+					"updated_at":         readOnlyTimestamp,
+					"marked_inactive_at": readOnlyTimestamp,
 				},
 			},
 		},
@@ -1440,6 +1520,52 @@ func collectorSchema() json.RawMessage {
 	return b
 }
 
+func writeCollectorFieldPaths(w io.Writer) error {
+	fields, err := collectorFieldPaths()
+	if err != nil {
+		return err
+	}
+	for _, field := range fields {
+		fmt.Fprintln(w, field)
+	}
+	return nil
+}
+
+func collectorFieldPaths() ([]string, error) {
+	var schemaDoc map[string]any
+	if err := json.Unmarshal(collectorSchema(), &schemaDoc); err != nil {
+		return nil, fmt.Errorf("fleet: decode collector schema for field discovery: %w", err)
+	}
+	properties, ok := schemaDoc["properties"].(map[string]any)
+	if !ok {
+		return nil, errors.New("fleet: collector schema has no properties")
+	}
+
+	var fields []string
+	collectSchemaPropertyPaths(properties, "", &fields)
+	sort.Strings(fields)
+	return fields, nil
+}
+
+func collectSchemaPropertyPaths(properties map[string]any, prefix string, fields *[]string) {
+	for name, raw := range properties {
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		*fields = append(*fields, path)
+
+		property, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		children, ok := property["properties"].(map[string]any)
+		if ok {
+			collectSchemaPropertyPaths(children, path, fields)
+		}
+	}
+}
+
 func collectorExample() json.RawMessage {
 	example := map[string]any{
 		"apiVersion": CollectorAPIVersion,
@@ -1450,7 +1576,7 @@ func collectorExample() json.RawMessage {
 		"spec": map[string]any{
 			"id":             "my-collector-id",
 			"name":           "my-collector",
-			"collector_type": "alloy",
+			"collector_type": "COLLECTOR_TYPE_ALLOY",
 			"enabled":        true,
 			"remote_attributes": map[string]string{
 				"env": "production",

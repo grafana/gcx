@@ -12,16 +12,19 @@ import (
 // goldenApps covers both a fully populated app and one that leaves every
 // optional field empty, so the golden pins the dash placeholders too.
 func goldenApps() []faro.FaroApp {
+	runtime := "android-native"
 	return []faro.FaroApp{
 		{
 			ID:                    "42",
+			AppType:               "mobile",
+			Runtime:               &runtime,
 			Name:                  "my-app",
 			AppKey:                "abc123",
 			CollectEndpointURL:    "https://faro.example.com/collect/abc123",
 			OTLPIngestEndpointURL: "https://faro.example.com/otlp",
 			CORSOrigins:           []faro.CORSOrigin{{URL: "https://app.example.com"}},
 			ExtraLogLabels:        map[string]string{"team": "frontend"},
-			Settings:              &faro.FaroAppSettings{GeolocationEnabled: true, GeolocationLevel: "country"},
+			Settings:              &faro.FaroAppSettings{GeolocationEnabled: new(true), GeolocationLevel: "country"},
 		},
 		{
 			ID:   "7",
@@ -50,4 +53,10 @@ func TestAppTableGoldenEmpty(t *testing.T) {
 	require.NoError(t, codec.Encode(&buf, toTypedObjs(nil)))
 
 	testutils.Golden(t, "apps_table_empty", buf.String())
+}
+
+func TestSourcemapTableGolden(t *testing.T) {
+	testutils.AssertTableGolden(t, faro.SourcemapTable(), faro.SourcemapBundle{
+		ID: "bundle-2", Created: "2026-09-01T12:00:00Z", Updated: "2026-09-02T12:00:00Z",
+	}, "text")
 }

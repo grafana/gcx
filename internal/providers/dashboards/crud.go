@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
@@ -135,8 +136,8 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", newDashboardTableCodec(false, ""))
-	o.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, ""))
+	o.IO.RegisterCustomCodec("table", dashboardListTable("").Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec("wide", dashboardListTable("").Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -165,7 +166,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
 			ctx := cmd.Context()
@@ -192,7 +193,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// Wide output needs the Grafana URL for link synthesis. Re-register
 			// with runtime context after cfg is loaded.
 			if opts.IO.OutputFormat == "wide" {
-				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
+				opts.IO.RegisterCustomCodec("wide", dashboardListTable(cfg.GrafanaURL).Codec(cmdio.FormatWide))
 			}
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), list); err != nil {
@@ -240,8 +241,8 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", newDashboardTableCodec(false, ""))
-	o.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, ""))
+	o.IO.RegisterCustomCodec("table", dashboardGetTable("").Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec("wide", dashboardGetTable("").Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -263,7 +264,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
 			ctx := cmd.Context()
@@ -290,7 +291,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// Wide codec needs the Grafana URL for link synthesis.
 			// Re-register with the real URL after cfg is loaded.
 			if opts.IO.OutputFormat == "wide" {
-				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
+				opts.IO.RegisterCustomCodec("wide", dashboardGetTable(cfg.GrafanaURL).Codec(cmdio.FormatWide))
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), item)
@@ -345,7 +346,7 @@ func newCreateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 		Short: "Create a dashboard from a manifest",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
 			ctx := cmd.Context()
@@ -430,7 +431,7 @@ Recommended workflow:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
 			ctx := cmd.Context()
@@ -505,7 +506,7 @@ func newDeleteCommandWithDeps(deps *mutationDeps) *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
 			name := args[0]

@@ -1,15 +1,10 @@
 package templates
 
 import (
-	"errors"
-	"io"
-
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -45,8 +40,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Scope, "scope", "", `Filter by scope: "global" or "tenant"`)
@@ -132,7 +126,7 @@ type versionsOpts struct {
 }
 
 func (o *versionsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &VersionsTableCodec{})
+	cmdio.RegisterTable(&o.IO, VersionsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -164,78 +158,23 @@ func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- table codecs ---
 
-// TableCodec renders template list as a text table.
-type TableCodec struct {
-	Wide bool
+func Table() cmdio.Table[eval.TemplateDefinition] {
+	return cmdio.Table[eval.TemplateDefinition]{Columns: []cmdio.Column[eval.TemplateDefinition]{
+		{Header: "ID", Content: func(r eval.TemplateDefinition) string { return r.TemplateID }},
+		{Header: "SCOPE", Content: func(r eval.TemplateDefinition) string { return r.Scope }},
+		{Header: "KIND", Content: func(r eval.TemplateDefinition) string { return r.Kind }},
+		{Header: "LATEST VERSION", Content: func(r eval.TemplateDefinition) string { return cmdio.OrDash(r.LatestVersion) }},
+		{Header: "DESCRIPTION", Content: func(r eval.TemplateDefinition) string { return agento11yhttp.Truncate(r.Description, 40) }},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.TemplateDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.TemplateDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }
 
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	templates, ok := v.([]eval.TemplateDefinition)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []TemplateDefinition")
-	}
-
-	var tb *style.TableBuilder
-	if c.Wide {
-		tb = style.NewTable("ID", "SCOPE", "KIND", "LATEST VERSION", "DESCRIPTION", "CREATED BY", "CREATED AT")
-	} else {
-		tb = style.NewTable("ID", "SCOPE", "KIND", "LATEST VERSION", "DESCRIPTION")
-	}
-
-	for _, t := range templates {
-		desc := agento11yhttp.Truncate(t.Description, 40)
-		version := t.LatestVersion
-		if version == "" {
-			version = "-"
-		}
-
-		if c.Wide {
-			createdBy := t.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
-			}
-			tb.Row(t.TemplateID, t.Scope, t.Kind, version, desc, createdBy, agento11yhttp.FormatTime(t.CreatedAt))
-		} else {
-			tb.Row(t.TemplateID, t.Scope, t.Kind, version, desc)
-		}
-	}
-	return tb.Render(w)
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// VersionsTableCodec renders template versions as a text table.
-type VersionsTableCodec struct{}
-
-func (c *VersionsTableCodec) Format() format.Format { return "table" }
-
-func (c *VersionsTableCodec) Encode(w io.Writer, v any) error {
-	versions, ok := v.([]eval.TemplateVersion)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []TemplateVersion")
-	}
-
-	t := style.NewTable("VERSION", "CHANGELOG", "CREATED BY", "CREATED AT")
-	for _, ver := range versions {
-		changelog := agento11yhttp.Truncate(ver.Changelog, 50)
-		createdBy := ver.CreatedBy
-		if createdBy == "" {
-			createdBy = "-"
-		}
-		t.Row(ver.Version, changelog, createdBy, agento11yhttp.FormatTime(ver.CreatedAt))
-	}
-	return t.Render(w)
-}
-
-func (c *VersionsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func VersionsTable() cmdio.Table[eval.TemplateVersion] {
+	return cmdio.Table[eval.TemplateVersion]{Columns: []cmdio.Column[eval.TemplateVersion]{
+		{Header: "VERSION", Content: func(r eval.TemplateVersion) string { return r.Version }},
+		{Header: "CHANGELOG", Content: func(r eval.TemplateVersion) string { return agento11yhttp.Truncate(r.Changelog, 50) }},
+		{Header: "CREATED BY", Content: func(r eval.TemplateVersion) string { return cmdio.OrDash(r.CreatedBy) }},
+		{Header: "CREATED AT", Content: func(r eval.TemplateVersion) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }

@@ -42,7 +42,7 @@ User input string
 └──────────────────────────────────────────────────────────┘
 ```
 
-`Resource` (line 28) wraps two complementary representations:
+`Resource` wraps two complementary representations:
 
 - **`Object`**: the raw `unstructured.Unstructured` map (`map[string]any`) from `k8s.io/apimachinery`. This is what gets serialized to JSON/YAML and sent to the API.
 - **`Raw`**: a `GrafanaMetaAccessor` — Grafana's typed accessor layer over the unstructured object. It provides methods like `GetManagerProperties()`, `SetManagerProperties()`, `GetSourceProperties()`, `GetFolder()` that would otherwise require manual map traversal.
@@ -56,7 +56,7 @@ type SourceInfo struct {
 }
 ```
 
-Every `Resource` carries a `SourceInfo` (line 374) recording where it came from. This enables:
+Every `Resource` carries a `SourceInfo` recording where it came from. This enables:
 - Round-trip fidelity: pulled YAML stays YAML on push
 - Error messages: "error in file://./resources/dashboards.yaml"
 - The `ServerFieldsStripper` processor to preserve the path annotation
@@ -64,11 +64,26 @@ Every `Resource` carries a `SourceInfo` (line 374) recording where it came from.
 ### Manager Metadata
 
 Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
-- `grafana.app/manager-kind` — which tool manages the resource (gcx uses `utils.ManagerKindKubectl` as placeholder, line 19)
-- `grafana.app/manager-identity` — identity string ("gcx")
-- `grafana.app/source-path` — original file path
+- `grafana.app/managedBy` — manager kind (`kubectl` for gcx).
+- `grafana.app/managerId` — stable identity `gcx` for new resources.
+- `grafana.app/managerAllowsEdits` — set to `true` by the manager processor.
+- `grafana.app/sourcePath` — original file path.
 
-`IsManaged()` (line 161) returns true when the manager kind matches `ResourceManagerKind`. Resources managed by the UI (with `grafana.app/saved-from-ui` annotation) or other tools are protected from accidental overwrites unless `--include-managed` is passed.
+On update, the pusher preserves the live manager identity when both the local and
+live resources have the `kubectl` manager kind. This includes resources created
+by `grafanactl`, older gcx releases, and gcx releases that stored a version in the
+identity. Grafana rejects identity changes for this manager kind. The rule also
+applies when the pusher finds the target by its natural key.
+
+The gcx version is not part of the manager identity. Changing the client version
+must not change resource ownership.
+
+gcx leaves the source checksum and timestamp empty. Grafana uses these fields
+to reconcile a resource from a source over time. gcx pushes once per command.
+
+`IsManaged()` returns true when the manifest has the `kubectl` manager kind or
+has no manager. The push pipeline skips manifests with another manager kind
+unless `--include-managed` is set. Grafana still enforces its ownership rules.
 
 ### ResourceRef — the Collection Key
 
@@ -77,7 +92,14 @@ type ResourceRef string
 // Format: "group/version/kind/namespace-name"
 ```
 
-`Ref()` (line 89) generates a unique stable key used as the map key in `Resources`.
+`Ref()` generates the map key used in `Resources`. Named resources keep the
+existing API-address key. Unnamed TimeInterval and TemplateGroup resources use a
+separately tagged GVK/namespace/logical-identity key, including template kind;
+equivalent identities deduplicate while different titles and kinds remain
+separate. Invalid unnamed native inputs use a source-path key when available, so reading
+the same file twice deduplicates while distinct malformed files remain separate.
+Source-less inputs use a per-resource in-memory key to retain each failure;
+non-opted-in resources retain their existing keys.
 
 ### The Resources Collection
 
@@ -89,9 +111,9 @@ type Resources struct {
 ```
 
 Key operations:
-- `Add()` — deduplicates: adding the same resource twice overwrites (line 235)
+- `Add()` — deduplicates: adding the same resource twice overwrites
 - `ForEach()` — sequential iteration with error propagation
-- `ForEachConcurrently(ctx, maxInflight, fn)` — bounded-concurrency iteration via `errgroup.SetLimit` (line 283)
+- `ForEachConcurrently(ctx, maxInflight, fn)` — bounded-concurrency iteration via `errgroup.SetLimit`
 - `GroupByKind()` — returns `map[string]*Resources` for writer grouping
 - `Merge()` — merge two collections (used by serve command for live reload)
 - `OnChange(cb)` — event hook called on every `Add()` (used by serve for live updates)
@@ -113,7 +135,7 @@ type Descriptor struct {
 }
 ```
 
-It provides both `GroupVersionKind()` (for API calls) and `GroupVersionResource()` (for k8s client routing, which uses the plural form). The `Matches(gvk)` method (line 64) is used by `Filter.Matches()` to check if a resource belongs to a filter.
+It provides both `GroupVersionKind()` (for API calls) and `GroupVersionResource()` (for k8s client routing, which uses the plural form). The `Matches(gvk)` method is used by `Filter.Matches()` to check if a resource belongs to a filter.
 
 String representation: `dashboards.v1alpha1.dashboard.grafana.app`
 
@@ -135,10 +157,12 @@ type Selector struct {
 }
 ```
 
-`PartialGVK` (line 140) accepts any level of specificity:
+`PartialGVK` accepts any level of specificity:
 
 ```
-Input string format:  <resource>[.<version>.<group>][/<uid1>[,<uid2>...]]
+Input string formats:
+  <resource>[.<group>][/<uid1>[,<uid2>...]]
+  <resource>.<version>.<group>[/<uid1>[,<uid2>...]]
 
 Parsing rules (SplitN on "."):
   1 part:  "dashboards"               → Resource="dashboards"
@@ -148,7 +172,18 @@ Parsing rules (SplitN on "."):
                                         Group="dashboard.grafana.app"
 ```
 
-FilterType is assigned during parsing (line 102-125):
+For three or more dot-separated segments, discovery first tries the parsed
+`resource.version.group` reading. If that resource is not served at the given
+group and version, `PartialGVK.GroupOnlyCandidate()` supplies the alternate group
+name retained in the parsed selector's `FallbackGroup`, with no version. For example,
+`dashboards.dashboard.grafana.app` resolves to group `dashboard.grafana.app`
+without a version. This also works when a group's first label looks like a
+version, and applies to both discovered resources and static provider adapters.
+If neither reading resolves, the selector error describes both candidates.
+Structured `PartialGVK` values leave `FallbackGroup` empty, so explicitly supplied
+group/version pairs (such as dashboards `--api-version`) require an exact match.
+
+FilterType is assigned during parsing:
 - No UID → `FilterTypeAll`
 - One UID → `FilterTypeSingle`
 - Multiple UIDs (comma-separated) → `FilterTypeMultiple`
@@ -178,25 +213,26 @@ type Filter struct {
 }
 ```
 
-`Filter.Matches(res Resource)` (line 65) checks both the descriptor (GVK equality) and the UIDs list. `Filters.Matches(res)` (line 89) returns true if any filter in the list matches — empty filters match all resources.
+`Filter.Matches(res Resource)` checks both the descriptor (GVK equality) and the UIDs list. `Filters.Matches(res)` returns true if any filter in the list matches — empty filters match all resources.
 
 ### The Resolution Step: Registry.MakeFilters
 
-**File:** `internal/resources/discovery/registry.go`, line 80
+**File:** `internal/resources/discovery/registry.go`
 
 ```
 Selector (PartialGVK)
       |
       v  registry.MakeFilters(opts)
       |
-      ├── version specified? ──── LookupPartialGVK ─────────→ single Descriptor → Filter
-      |
-      ├── preferredVersionOnly? ─ LookupPartialGVK ─────────→ single Descriptor → Filter
+      ├── preferredVersionOnly? ─ LookupPreferredPerGroup ─→ []Descriptor → []Filters
       |
       └── all versions? ───────── LookupAllVersionsForPartialGVK → []Descriptor → []Filters
 ```
 
-`MakeFiltersOptions.PreferredVersionOnly` controls whether to resolve to one filter per type (pull uses all versions; push uses preferred).
+`MakeFiltersOptions.PreferredVersionOnly` controls whether to resolve to the
+preferred version per group or all served versions. A supported explicit version
+returns a single descriptor in either mode. If only the group-only candidate
+resolves, the same preferred/all-version policy applies to that group.
 
 ---
 
@@ -230,28 +266,19 @@ Grafana API (/apis endpoint)
 
 **File:** `internal/resources/discovery/registry_index.go`
 
-The index resolves a partial name string to candidates via `getKindCandidates()` (line 258), which checks three maps in order: `kindNames` → `singularNames` → `pluralNames`. This means `"Dashboard"`, `"dashboard"`, and `"dashboards"` all resolve to the same candidates.
+The index resolves a partial name string to candidates via `getKindCandidates()`, which checks three maps in order: `kindNames` → `singularNames` → `pluralNames`. This means `"Dashboard"`, `"dashboard"`, and `"dashboards"` all resolve to the same candidates.
 
-`filterCandidates()` (line 271) then narrows by group and version, falling back to `preferredVersions` when version is omitted.
+`filterCandidates()` then narrows by group and version, falling back to `preferredVersions` when version is omitted.
 
-Short group names work: `"folders.folder"` resolves `"folder"` via `shortGroups` to `"folder.grafana.app"` (line 280-283). The short name is the first DNS label: `makeShortName("folder.grafana.app") → "folder"`.
+Short group names work: `"folders.folder"` resolves `"folder"` via `shortGroups` to `"folder.grafana.app"`. The short name is the first DNS label: `makeShortName("folder.grafana.app") → "folder"`.
 
 ### Ignored Resource Groups
 
-The `ignoredResourceGroups` global (line 19) excludes these groups from discovery:
+Discovery excludes internal, identity, storage, and read-only service groups that are outside the managed-resource surface. The group policy lives in [the discovery registry](../../internal/resources/discovery/registry.go).
 
-```
-apiregistration.k8s.io          — internal K8s
-featuretoggle.grafana.app       — read-only feature flags
-service.grafana.app             — internal service registry
-userstorage.grafana.app         — internal user storage
-notifications.alerting.grafana.app — pending decision
-iam.grafana.app                 — identity/access management
-```
+For partially exposed groups, `partiallyExposedGroups` retains the group's `APIGroup` entry and preferred version while hiding resources outside its allowlist. This preserves native version selection without exposing the entire group.
 
-Additionally, `FilterDiscoveryResults()` (line 181) excludes:
-- Non-namespaced resources (line 207) — all Grafana resources are namespaced
-- Subresources (containing `/` in name, line 212) — e.g. `dashboards/status`
+`FilterDiscoveryResults()` also excludes non-namespaced resources and subresources such as `dashboards/status`. Keep these filters when adding registrations or changing discovery.
 
 ### Preferred Versions
 
@@ -276,7 +303,7 @@ Processors transform resources in-place before push or after pull. They are pass
 
 **File:** `internal/resources/process/managerfields.go`
 
-Applied during push (wired in `cmd/gcx/resources/push.go` line 148). Writes manager metadata into annotations on resources that are managed by gcx:
+Applied during push. Writes manager metadata into annotations on resources that are managed by gcx:
 
 ```
 r.Raw.SetManagerProperties({Kind: ResourceManagerKind, Identity: "gcx"})
@@ -290,7 +317,7 @@ Skipped entirely when `--omit-manager-fields` CLI flag is set.
 
 **File:** `internal/resources/process/serverfields.go`
 
-Applied during pull (wired in `cmd/gcx/resources/pull.go` line 121). Removes server-generated ephemeral fields to produce clean, round-trippable files:
+Applied during pull. Removes server-generated ephemeral fields to produce clean, round-trippable files:
 
 Annotations removed:
 - `grafana.app/createdBy`, `grafana.app/updatedBy`, `grafana.app/updatedTimestamp` — always
@@ -305,7 +332,7 @@ Also reconstructs the object as a clean minimal structure (`apiVersion`, `kind`,
 
 **File:** `internal/resources/process/namespace.go`
 
-Always applied first in the push pipeline (line 145 in push.go). Overwrites the `metadata.namespace` of every resource with the target context's namespace. This enables pulling from one org/stack and pushing to another without manually editing files.
+Always applied first in the push pipeline. Overwrites the `metadata.namespace` of every resource with the target context's namespace. This enables pulling from one org/stack and pushing to another without manually editing files.
 
 ### Pull Output Directory Structure
 
@@ -360,6 +387,32 @@ ResourceAdapter interface
 constructor that is only called on first use and its result cached for the router's
 lifetime.
 
+SLO definitions and reports match `spec.name` through their registered natural-key
+extractor, which slugifies names. Both generic resource push and the deprecated
+SLO push commands reject multiple remote matches instead of choosing one; supply
+an explicit `metadata.name` UUID to disambiguate. Legacy push only matches names
+when the UUID is omitted and caches remote resources across its file batch,
+including successful writes. Its dry-run remains a local manifest preview.
+
+### Adapter-owned read and mutation policies
+
+Adapters may provide an optional per-pull preflight that runs before identity-keyed
+insertion, and a multi-reference reader that retains successful items with a
+partial-read report. Provider packages own resource identities, collision rules
+and diagnostic metadata; the router and generic pipeline dispatch these contracts
+without importing concrete provider types. Ordinary collection errors remain
+fatal under the selected error policy. Adapters can opt in to `adapter.ErrUnavailable`
+for unavailable collection APIs: selector-free get/pull counts those types as
+skipped, while explicit selections and per-item failures retain their error
+behavior.
+
+Registration may also supply a configuration-free mutation guard. Push and delete
+invoke it before resource reads so a read-only resource is refused even when its
+collection is empty or its configuration cannot be exported. Unregistered native
+resources retain their existing mutation paths.
+
+Optional `PushPreflighter` and `EnvelopePusher` contracts let an owned adapter resolve the full local batch and dispatch complete envelopes before generic existence or natural-key probes. The reader retains same-name objects only for kinds opting into batch preflight. `DeleteSelector` returns minimal identity envelopes before full configuration reads or deduplication; file-based selection can therefore enforce annotated IDs exactly. Shared resource code does not own product identity or reconciliation. Kinds without these hooks retain their existing behavior. See [RFC 027](../rfcs/027-provider-owned-resource-hooks.md) for the sanctioned dispatch exception.
+
 ### TypedCRUD and ResourceIdentity
 
 Most providers use `TypedCRUD[T]` to implement `ResourceAdapter` without hand-writing
@@ -371,6 +424,11 @@ the marshal/unmarshal boilerplate. `TypedCRUD` wraps typed Go functions (`ListFn
 - Converting between typed domain objects and `unstructured.Unstructured`
 - Stripping server-managed fields (`StripFields`)
 - Client-side get-by-name fallback when `GetFn` is nil (lists + filters)
+
+List methods retain partial items alongside an error for callers that explicitly
+handle incomplete coverage. The error must still be handled; partial items do
+not establish a complete collection. The get-by-name fallback requires a
+successful full list and returns any list error without selecting a partial item.
 
 The type constraint `ResourceNamer` (value-type subset of `ResourceIdentity`)
 requires domain types to implement `GetResourceName() string`. The full
@@ -421,17 +479,47 @@ func Register(p Provider) {
 }
 ```
 
-`TypedRegistration[T]` bridges `TypedCRUD` to the `Registration` system:
+`Registration` carries the static metadata and lazy factory for one adapter:
 
 ```go
-TypedRegistration[T ResourceNamer]
+Registration
   +-- Descriptor, Aliases, GVK, Schema, Example
-  +-- Factory func(ctx) (*TypedCRUD[T], error)
-  +-- ToRegistration() → Registration   // wraps Factory to return ResourceAdapter
+  +-- Factory func(ctx) (ResourceAdapter, error)
 ```
+
+Provider commands bind the same declaration through `Resource.TypedCRUD(client,
+namespace)`, sharing capability dispatch, descriptor, stripping, and examples
+with generic resource factories. Grafana-backed providers can use
+`providers.BindGrafanaResource(loader, declaration).Load(ctx)` to construct the client
+and return the resolved config snapshot for auxiliary queries. Convert manifests
+with `TypedCRUD.ToUnstructured` / `FromUnstructured`; a nil-client binding supports
+offline conversion without loading credentials.
+
+Providers can derive a registration from an `adapter.Resource[T]` declaration
+through `adapter.NewProvider`. Providers whose client methods need explicit
+adapters use `adapter.BuildRegistration[T, C]` instead.
+
+| Registration path | Use when |
+|---|---|
+| `Resource[T]` through `NewProvider` | Client methods implement the capability interfaces directly. |
+| `BuildRegistration` | Client methods need explicit per-verb adaptation. |
+| Handwritten `Registration` | Required metadata or factory behavior is not supported by either builder. |
 
 This replaces the old pattern where providers called `adapter.Register()` directly
 in their `init()` functions alongside `providers.Register()`.
+
+`Registration.GroupAliases` accepts old API groups for an exact kind and version.
+Unlike `Aliases` (resource names), it applies to manifests and group-qualified
+selectors. Registration adds aliases to `resources` without extra discovery entries.
+File filtering, push, and delete accept old manifests; discovery accepts full and
+short group names. Descriptor matching uses the same GVK normalisation as routing,
+including per-plugin datasource groups. Output uses the descriptor's group.
+
+Agent Observability uses `agento11y.ext.grafana.app/v1alpha1` for `evaluators`,
+`evalrules`, `hookrules`, and `collections`. Its `sigil.ext.grafana.app` alias keeps
+old manifests and selectors such as `evalrules.sigil` working. Resource commands
+warn on stderr when an old group is used in a selector or a selected local manifest.
+Warnings name the replacement group and do not change stdout.
 
 ### ResourceClientRouter
 
@@ -451,6 +539,8 @@ Provider descriptors are injected into the `RegistryIndex` via `RegisterStatic(d
 so that provider types appear in `resources list-types` output and resolve correctly from
 selector strings like `"slos"` or `"rules"`.
 
+Native discovery retains the group's preferred version. If that version lacks a requested kind, unversioned lookup and preferred-resource enumeration use the first registered provider descriptor for that group/kind. A native kind present in the preferred version takes precedence. Explicit version requests remain exact and never use this fallback.
+
 ---
 
 ## 6. Why the Kubernetes Resource Model
@@ -467,67 +557,55 @@ Given that reality, using `k8s.io/client-go` and `k8s.io/apimachinery` directly 
 
 ---
 
-## 7. Type Relationship Summary
+## Server-derived native names
 
-```
-PartialGVK                         Descriptor
-┌─────────────────────┐            ┌──────────────────────────────┐
-│ Group   string       │  ──via──→  │ GroupVersion  schema.GV      │
-│ Version string       │  registry  │ Kind          string          │
-│ Resource string      │            │ Singular      string          │
-└─────────────────────┘            │ Plural        string          │
-                                   └──────────────────────────────┘
-         │                                       │
-         │                                       │
-         v                                       v
-      Selector                               Filter
-┌─────────────────────┐            ┌──────────────────────────────┐
-│ Type   FilterType    │  ──via──→  │ Type         FilterType      │
-│ GVK    PartialGVK    │  registry  │ Descriptor   Descriptor      │
-│ UIDs   []string      │            │ ResourceUIDs []string        │
-└─────────────────────┘            └──────────────────────────────┘
-                                                │
-                                                │ used by
-                                                v
-                                           Resource
-                                   ┌──────────────────────────────┐
-                                   │ Raw    GrafanaMetaAccessor    │
-                                   │ Object unstructured.Unstruct  │
-                                   │ Source SourceInfo             │
-                                   └──────────────────────────────┘
-                                                │
-                                                │ collected into
-                                                v
-                                           Resources
-                                   ┌──────────────────────────────┐
-                                   │ collection map[ResourceRef]   │
-                                   │ ForEachConcurrently(...)      │
-                                   │ GroupByKind() → map[string]   │
-                                   └──────────────────────────────┘
-```
+`internal/resources/native_identity.go` opts TimeInterval and TemplateGroup into
+logical identity matching independently of API version. Time intervals match
+`spec.name`; template groups match kind and `spec.title`, with absent historical
+kind treated as `grafana` for matching only. Local manifests validate known kinds
+strictly. Unknown template kinds returned by the server remain readable: tables
+show their raw kind and an unknown read-only status, and logical matching ignores
+items whose identity cannot be parsed. A known-kind title filter excludes them;
+unfiltered title lookup keeps them as candidates.
+
+The shared `IsReadOnlyNative` rule applies to both kinds: `spec.kind: mimir` or
+`grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file`.
+Absent provenance and `api` remain writable. Generic pull includes read-only objects by default; `--skip-read-only` excludes
+them and counts the read-only reason. Push and delete always skip them, while
+reads still return them. Generic
+edit rejects them before opening an editor, and dedicated mutations reject them
+before a write. Unknown kinds alone are not assumed to be read-only.
+
+During push, a supplied API name is a lookup hint. A GET result is used only when
+its logical identity agrees with the manifest; otherwise the cached destination
+list is matched, rejecting ambiguity. Updates use the destination name and current
+resource version. A writable local identity that matches a read-only destination
+fails before update, preserving the destination and explaining how to manage its
+source or choose another local identity. Creates remove server identity and
+concurrency metadata on a deep copy while preserving spec, annotations, labels, and destination namespace.
+GCX computes no encoded names, because template encoding changed within
+`v0alpha1`. Ordinary kinds retain their caller-selected names.
+
+Dedicated `update <current-title>` explicitly selects the existing object and
+may rename it using the caller's fetched resource version. Generic push ensures
+the manifest's desired identity exists and leaves any old identity untouched.
+Neither path rewrites local files. Generic delete requires the actual
+`metadata.name`: an unnamed writable manifest fails before any request for that
+file, with a hint to use the dedicated title-based delete command or a pulled
+manifest. Read-only files are skipped first. Both kinds remain outside the
+server-dry-run allowlist; previews report skipped/unverified and send no mutation by default.
 
 ---
 
-## Key Files Reference
+## 7. Type Relationship Summary
 
-| File | Purpose |
-|------|---------|
-| `internal/resources/resources.go` | `Resource`, `Resources`, `SourceInfo`, `ResourceRef` types |
-| `internal/resources/descriptor.go` | `Descriptor`, `Descriptors` types |
-| `internal/resources/selector.go` | `Selector`, `PartialGVK`, `ParseSelectors()` |
-| `internal/resources/filter.go` | `Filter`, `Filters`, `FilterType` |
-| `internal/resources/discovery/registry.go` | `Registry`, `MakeFilters()`, `FilterDiscoveryResults()` |
-| `internal/resources/discovery/registry_index.go` | `RegistryIndex`, lookup/resolution logic |
-| `internal/resources/remote/remote.go` | `Processor` interface |
-| `internal/resources/process/managerfields.go` | `ManagerFieldsAppender` |
-| `internal/resources/process/serverfields.go` | `ServerFieldsStripper` |
-| `internal/resources/process/namespace.go` | `NamespaceOverrider` |
-| `cmd/gcx/resources/push.go` | Push pipeline wiring (processors, registry, filters) |
-| `cmd/gcx/resources/pull.go` | Pull pipeline wiring (processors, registry, filters) |
-| `internal/resources/adapter/adapter.go` | `ResourceAdapter` interface and `Factory` type |
-| `internal/resources/adapter/identity.go` | `ResourceIdentity` and `ResourceNamer` interfaces |
-| `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]`, `TypedRegistration[T]` — generic adapter framework |
-| `internal/resources/adapter/register.go` | Global `Register()`, `AllRegistrations()` for self-registration |
-| `internal/resources/adapter/router.go` | `ResourceClientRouter` — routes CRUD to adapter or dynamic client |
-| `internal/resources/discovery/openapi.go` | `SchemaFetcher` — fetches OpenAPI v3 schemas with disk caching; used by `resources list-types` |
-| `internal/config/context.go` | `ContextWithName` / `ContextNameFromCtx` — threads config context name through `context.Context` to adapter factories |
+```mermaid
+flowchart LR
+    Selector[Selector: partial type and names] -->|discovery resolution| Filter[Filter: descriptor and names]
+    Filter -->|fetch or local matching| Resource[Resource: object, metadata access, source]
+    Resource -->|deduplicate by GVK and name| Resources[Resources collection]
+```
+
+## Implementation Boundary
+
+[internal/resources](../../internal/resources/) defines the shared model, selection, and identity policies. Its discovery, adapter, local I/O, processor, and remote-operation packages implement the boundaries described above. [Resource commands](../../cmd/gcx/resources/) compose those pieces; see [data flows](data-flows.md) for execution order and mutation guards.

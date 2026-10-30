@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"reflect"
 	"strings"
 
@@ -170,10 +169,9 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 			}
 			hasLegacy = true
 		} else {
-			decoded := &Config{}
-			codec := &format.YAMLCodec{BytesAsBase64: true}
-			if err := codec.Decode(bytes.NewReader(contents), decoded); err != nil {
-				return UnmarshalError{File: source.Path, Err: err}
+			decoded, err := decodeCurrentMigrationLayer(source, contents)
+			if err != nil {
+				return err
 			}
 			layer.current = decoded
 			allLegacy = false
@@ -217,6 +215,19 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 	return nil
 }
 
+func decodeCurrentMigrationLayer(source ConfigSource, contents []byte) (*Config, error) {
+	decodeContents, err := typedConfigContents(contents, source.Type)
+	if err != nil {
+		return nil, UnmarshalError{File: source.Path, Err: err}
+	}
+	decoded := &Config{}
+	codec := &format.YAMLCodec{BytesAsBase64: true}
+	if err := codec.Decode(bytes.NewReader(decodeContents), decoded); err != nil {
+		return nil, UnmarshalError{File: source.Path, Err: err}
+	}
+	return decoded, nil
+}
+
 // reconstructInterruptedLegacyLayers proves that a mixed configuration is an
 // interrupted migration rather than an arbitrary combination of current and
 // legacy files. Every current layer must have a secure legacy backup whose
@@ -229,14 +240,7 @@ func reconstructInterruptedLegacyLayers(layers []migrationLayer) ([]migrationLay
 			continue
 		}
 		backupPath := layer.source.Path + legacyBackupSuffix
-		info, err := os.Lstat(backupPath)
-		if err != nil {
-			return nil, fmt.Errorf("inspect migration backup %s: %w", backupPath, err)
-		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			return nil, fmt.Errorf("migration backup %s is not a private regular file", backupPath)
-		}
-		contents, err := os.ReadFile(backupPath)
+		contents, err := readPrivateLegacyBackup(backupPath)
 		if err != nil {
 			return nil, fmt.Errorf("read migration backup %s: %w", backupPath, err)
 		}

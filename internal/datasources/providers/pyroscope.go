@@ -11,10 +11,13 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		"pyroscope",
 		"Query Pyroscope datasources",
 		pyroscope.QueryCmd,
+		pyroscope.DiffCmd,
 		pyroscope.LabelsCmd,
 		pyroscope.ListProfileTypesCmd,
 		pyroscope.MetricsCmd,
 		pyroscope.ExemplarsCmd,
 		pyroscope.DataRangeCmd,
+		pyroscope.SeriesCmd,
+		pyroscope.AnomaliesCmd,
 	))
 }

@@ -15,14 +15,20 @@ import (
 // ErrNotFound is returned when a requested check does not exist (HTTP 404).
 var ErrNotFound = errors.New("check not found")
 
+// ErrValidateUnsupported is returned when the SM API has no check/validate
+// endpoint (HTTP 404/405), i.e. it predates synthetic-monitoring-api v0.98.0.
+var ErrValidateUnsupported = errors.New("this Synthetic Monitoring API does not support check validation (requires synthetic-monitoring-api v0.98.0 or later)")
+
 // SM API paths, relative to the SM API v1 root. They are forwarded verbatim by
 // the datasource-proxy `sm` route and prefixed with /api/v1 on the direct path.
 const (
 	checkListPath      = "check/list"
 	checkAddPath       = "check/add"
 	checkUpdatePath    = "check/update"
+	checkValidatePath  = "check/validate"
 	checkByIDPathFmt   = "check/%d"
 	checkDeletePathFmt = "check/delete/%d"
+	checkAdHocPath     = "check/adhoc"
 	tenantPath         = "tenant"
 	probeListPath      = "probe/list"
 )
@@ -140,6 +146,92 @@ func (c *Client) Update(ctx context.Context, check Check) (*Check, error) {
 	}
 
 	return &updated, nil
+}
+
+// Validate asks the SM API whether spec would be accepted as a new check, or —
+// when id is non-zero — as an update of that check. It never persists anything.
+//
+// The server answers 200 for a valid check and 422 with per-field findings for
+// an invalid one; both decode into a ValidateResult, so an invalid check is not
+// an error here. Callers decide what to do with result.Valid / result.Error().
+// ErrValidateUnsupported is returned when the server predates the endpoint.
+func (c *Client) Validate(ctx context.Context, spec CheckSpec, id int64) (*ValidateResult, error) {
+	reqBody, err := json.Marshal(ValidateRequest{CheckSpec: spec, ID: id})
+	if err != nil {
+		return nil, fmt.Errorf("marshalling check for validation: %w", err)
+	}
+
+	status, body, err := c.t.Do(ctx, http.MethodPost, checkValidatePath, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("validating check: %w", err)
+	}
+
+	switch status {
+	case http.StatusOK, http.StatusUnprocessableEntity:
+		var result ValidateResult
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("decoding validation response (HTTP %d): %w", status, err)
+		}
+		// A 422 that carries no findings did not come from the validator (e.g.
+		// a gateway); surface its body rather than a contentless "invalid".
+		if status == http.StatusUnprocessableEntity && len(result.Findings) == 0 {
+			return nil, providers.FormatError(status, body)
+		}
+		return &result, nil
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		return nil, ErrValidateUnsupported
+	default:
+		return nil, providers.FormatError(status, body)
+	}
+}
+
+// AdHocCheckRequest is the payload for POST check/adhoc. It carries the same
+// settings/target/probes shape as Check, minus the fields that only make
+// sense for a persisted, scheduled check (job, frequency, enabled, labels).
+type AdHocCheckRequest struct {
+	Timeout  int64         `json:"timeout"`
+	Settings CheckSettings `json:"settings"`
+	Probes   []int64       `json:"probes"`
+	Target   string        `json:"target"`
+}
+
+// AdHocCheckResponse is returned by POST check/adhoc. ID is a server-assigned
+// UUID (not a check ID) used to correlate results in Loki.
+type AdHocCheckResponse struct {
+	ID       string        `json:"id"`
+	TenantID int64         `json:"tenantId"`
+	Timeout  int64         `json:"timeout"`
+	Settings CheckSettings `json:"settings"`
+	Probes   []int64       `json:"probes"`
+	Target   string        `json:"target"`
+}
+
+// RunAdhoc submits a one-off check execution against the given probes. The
+// check is executed immediately and is never saved — call PollAdHocResults
+// with the returned ID to retrieve results. Ad-hoc checks are never
+// persisted — the server never writes a DB row for them — so there is no
+// corresponding get/update/delete path.
+func (c *Client) RunAdhoc(ctx context.Context, req AdHocCheckRequest) (*AdHocCheckResponse, error) {
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling ad-hoc check: %w", err)
+	}
+
+	status, body, err := c.t.Do(ctx, http.MethodPost, checkAdHocPath, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("running ad-hoc check: %w", err)
+	}
+
+	if status != http.StatusOK {
+		return nil, providers.FormatError(status, body)
+	}
+
+	var resp AdHocCheckResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decoding ad-hoc check response: %w", err)
+	}
+
+	return &resp, nil
 }
 
 // Delete deletes a check by ID.

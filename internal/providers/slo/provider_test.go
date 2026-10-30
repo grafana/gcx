@@ -1,6 +1,8 @@
 package slo_test
 
 import (
+	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/slo"
@@ -10,7 +12,7 @@ import (
 )
 
 func TestSLOProvider_Interface(t *testing.T) {
-	p := &slo.SLOProvider{}
+	p := slo.NewSLOProvider()
 
 	assert.Equal(t, "slo", p.Name())
 	assert.NotEmpty(t, p.ShortDesc())
@@ -20,7 +22,7 @@ func TestSLOProvider_Interface(t *testing.T) {
 }
 
 func TestSLOProvider_Commands(t *testing.T) {
-	p := &slo.SLOProvider{}
+	p := slo.NewSLOProvider()
 	cmds := p.Commands()
 	require.Len(t, cmds, 1)
 
@@ -80,4 +82,62 @@ func TestSLOProvider_Commands(t *testing.T) {
 	assert.Contains(t, reportSubNames, "push")
 	assert.Contains(t, reportSubNames, "pull")
 	assert.Contains(t, reportSubNames, "delete")
+}
+
+func TestSLOProvider_CommandsReturnFreshTrees(t *testing.T) {
+	p := slo.NewSLOProvider()
+	firstCommands := p.Commands()
+	secondCommands := p.Commands()
+	require.Len(t, firstCommands, 1)
+	require.Len(t, secondCommands, 1)
+	assert.NotSame(t, firstCommands[0], secondCommands[0], "each Commands call must return a fresh Cobra tree")
+
+	firstRoot := &cobra.Command{Use: "first"}
+	secondRoot := &cobra.Command{Use: "second"}
+	var firstOutput, secondOutput bytes.Buffer
+	firstRoot.SetOut(&firstOutput)
+	secondRoot.SetOut(&secondOutput)
+	firstRoot.AddCommand(firstCommands...)
+	secondRoot.AddCommand(secondCommands...)
+
+	definitions := firstCommands[0].Commands()[0]
+	var list *cobra.Command
+	for _, sub := range definitions.Commands() {
+		if sub.Name() == "list" {
+			list = sub
+			break
+		}
+	}
+	require.NotNil(t, list)
+	list.RunE = func(cmd *cobra.Command, _ []string) error {
+		_, err := fmt.Fprint(cmd.OutOrStdout(), "first tree")
+		return err
+	}
+
+	firstRoot.SetArgs([]string{"slo", "definitions", "list"})
+	require.NoError(t, firstRoot.Execute())
+	assert.Equal(t, "first tree", firstOutput.String())
+	assert.Empty(t, secondOutput.String())
+}
+
+func TestSLOProvider_Resources(t *testing.T) {
+	registrations := slo.NewSLOProvider().TypedRegistrations()
+	require.Len(t, registrations, 2)
+	for _, registration := range registrations {
+		assert.True(t, registration.Schema != nil && len(registration.Schema()) > 0, "Schema should not be empty")
+		assert.NotEmpty(t, registration.Example)
+		assert.NotNil(t, registration.Factory)
+	}
+}
+
+func TestSLOProvider_InheritsRootHook(t *testing.T) {
+	calls := 0
+	root := &cobra.Command{Use: "gcx", PersistentPreRun: func(_ *cobra.Command, _ []string) { calls++ }}
+	root.AddCommand(slo.NewSLOProvider().Commands()...)
+	cmd, _, err := root.Find([]string{"slo", "reports", "list"})
+	require.NoError(t, err)
+	cmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+	root.SetArgs([]string{"slo", "reports", "list"})
+	require.NoError(t, root.Execute())
+	assert.Equal(t, 1, calls)
 }

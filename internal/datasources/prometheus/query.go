@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
@@ -21,6 +22,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	drilldown := &dsquery.DrilldownLinkOpts{}
 	var datasource string
 
 	cmd := &cobra.Command{
@@ -31,8 +33,16 @@ func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobr
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Metrics Drilldown URL (only
+available for a bare metric or a single function/aggregation wrapper around
+one metric; expressions referencing more than one metric fall back to the
+Explore URL).`,
 		Example: `
   # Instant query using configured default datasource
   gcx datasources prometheus query 'up{job="grafana"}'
@@ -48,6 +58,12 @@ open it in your browser after the query succeeds.`,
 
   # Print a Grafana Explore share link for the executed query
   gcx datasources prometheus query 'up' --share-link
+
+  # Export samples as CSV
+  gcx datasources prometheus query -d UID 'up' -o csv
+
+  # Print a Grafana Metrics Drilldown link for the executed query
+  gcx datasources prometheus query 'rate(http_requests_total[5m])' --drilldown-link
 
   # Output as JSON
   gcx datasources prometheus query -d UID 'up' -o json`,
@@ -94,6 +110,7 @@ open it in your browser after the query succeeds.`,
 					return fmt.Errorf("invalid --time value: %w", err)
 				}
 				start = t
+				end = t
 			}
 
 			client, err := prometheus.NewClient(cfg)
@@ -113,7 +130,6 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
-
 			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -126,13 +142,32 @@ open it in your browser after the query succeeds.`,
 			})
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+			if err := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
-			})
+			}); err != nil {
+				return err
+			}
+
+			var drilldownURL string
+			if drilldown.Enabled() {
+				drilldownURL, _ = MetricsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+			}
+			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Metrics Drilldown")
+			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
+				*share, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
+				return err
+			}
+
+			if shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+				})
+			}
+			return nil
 		},
 	}
 
@@ -141,10 +176,13 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources prometheus query -d UID 'up{job="grafana"}' -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	shared.SetupInstantFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
 	share.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query", "Metrics Drilldown")
 
 	return cmd
 }

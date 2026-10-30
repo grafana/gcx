@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/spf13/cobra"
@@ -19,6 +20,7 @@ type queryOpts struct {
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.influxdb is configured)")
 }

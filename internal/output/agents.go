@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 	"reflect"
 	"sort"
@@ -21,21 +22,17 @@ const (
 	defaultSpillBytes               = 100 * 1024 // 100 KiB
 	spillPreviewItems               = 3
 
-	// SpillFilePattern is the glob pattern for agent spill files. Exported so
-	// companion commands (e.g. gcx agent prune) can locate them.
+	// SpillFilePattern matches document spills for gcx agent prune.
 	SpillFilePattern = "gcx-results-*.json"
+	// SpillStreamFilePattern is the equivalent pattern for jq JSONL streams.
+	SpillStreamFilePattern = "gcx-results-*.jsonl"
 )
 
 type agentsCodec struct {
 	errWriter io.Writer
 }
 
-// spillSummary is the receipt written to stdout instead of an oversized
-// payload. Because the codec's output SHAPE changes at the spill threshold,
-// the receipt carries collision-resistant discriminators so a consumer can
-// tell it apart from domain results without heuristics: Type is the fixed
-// marker, SchemaVersion versions this receipt shape, and ContentFormat names
-// the media type of the spilled file's content.
+// spillSummary replaces oversized output with a typed, versioned file reference.
 type spillSummary struct {
 	Type          string `json:"type"`
 	SchemaVersion string `json:"schema_version"`
@@ -45,6 +42,7 @@ type spillSummary struct {
 	PreviewSample any    `json:"preview_sample"`
 	Message       string `json:"message"`
 	TotalItems    *int   `json:"total_items,omitempty"`
+	TotalValues   *int   `json:"total_values,omitempty"` // jq stream values, not array elements
 }
 
 const (
@@ -75,12 +73,74 @@ func (c *agentsCodec) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	if buf.Len() <= spillThreshold() {
+	if threshold := SpillThreshold(); threshold == 0 || buf.Len() <= threshold || isRegularFile(dst) {
 		_, err := io.Copy(dst, &buf)
 		return err
 	}
 
 	return c.spill(dst, value, buf.Bytes())
+}
+
+// encodeJQ budgets the whole JSONL stream and delays stdout until evaluation
+// succeeds, so late errors leave neither partial output nor a success receipt.
+func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	threshold := SpillThreshold()
+	if isRegularFile(dst) {
+		threshold = 0
+	}
+	var f *os.File
+	success := false
+	defer func() {
+		if f != nil {
+			f.Close()
+			if !success {
+				os.Remove(f.Name())
+			}
+		}
+	}()
+
+	count, size := 0, 0
+	for value, err := range results {
+		if err != nil {
+			return err
+		}
+		if err := enc.Encode(value); err != nil {
+			return err
+		}
+		count++
+		if f == nil && threshold > 0 && buf.Len() > threshold {
+			f, err = os.CreateTemp("", SpillStreamFilePattern)
+			if err != nil {
+				return fmt.Errorf("create spill file: %w", err)
+			}
+		}
+		if f != nil {
+			size += buf.Len()
+			if _, err := io.Copy(f, &buf); err != nil {
+				return fmt.Errorf("write spill file: %w", err)
+			}
+		}
+	}
+
+	if f == nil {
+		_, err := io.Copy(dst, &buf)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close spill file: %w", err)
+	}
+	// Omit previews: a single yielded value could make the receipt unbounded.
+	err := c.writeSpillSummary(dst, spillSummary{
+		SpilledTo:     f.Name(),
+		Bytes:         size,
+		ContentFormat: "jsonl",
+		TotalValues:   &count,
+	})
+	success = err == nil
+	return err
 }
 
 func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
@@ -97,42 +157,69 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		return fmt.Errorf("close spill file: %w", err)
 	}
 
-	msg := fmt.Sprintf(
-		"Response too large for stdout (%d bytes). Full data written to %s. Read that file for complete results, or rerun with -o json to force inline output.",
-		len(payload), f.Name(),
-	)
-
 	s := spillSummary{
-		Type:          SpillReferenceType,
-		SchemaVersion: spillSchemaVersion,
 		SpilledTo:     f.Name(),
 		Bytes:         len(payload),
 		ContentFormat: "json",
 		PreviewSample: previewOf(value),
-		Message:       msg,
 	}
 	if n, ok := itemCount(value); ok {
 		s.TotalItems = &n
 	}
+	return c.writeSpillSummary(dst, s)
+}
 
-	// Typed hint diagnostic: on a TTY this renders the familiar
-	// "hint: ..." line; in agent mode it must be a JSONL
-	// {"class":"hint",...} record so the stderr stream stays
-	// machine-parseable (FR-104). The command argument is empty because the
-	// summary already embeds the spill file path.
-	emitHint(c.errWriter,
-		fmt.Sprintf("response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline",
-			len(payload), f.Name()),
-		"")
+func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
+	s.Type = SpillReferenceType
+	s.SchemaVersion = spillSchemaVersion
+	s.Message = fmt.Sprintf(
+		"Response too large for stdout (%d bytes). Full data written to %s. Read that file for complete results, or rerun with -o json to force inline output.",
+		s.Bytes, s.SpilledTo,
+	)
 
 	out := json.NewEncoder(dst)
 	out.SetEscapeHTML(false)
-	return out.Encode(s)
+	if err := out.Encode(s); err != nil {
+		return err
+	}
+
+	emitHint(c.errWriter,
+		fmt.Sprintf("response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline",
+			s.Bytes, s.SpilledTo),
+		"")
+
+	return nil
 }
 
-func spillThreshold() int {
+// isRegularFile reports whether w writes to a regular file on disk, which is
+// what a shell redirect such as `gcx ... > out.json` produces. A terminal, a
+// pipe and /dev/null are not regular files, so a harness capturing stdout —
+// as os/exec does for any non-*os.File writer — reads false here.
+//
+// The agents codec spills oversized payloads to protect an agent's context
+// window, but a caller who named a destination file has already said where the
+// bytes belong, and a receipt pointing at a different temp file is never what
+// they asked for. Any stat error reports false, keeping the protective
+// behavior as the default.
+func isRegularFile(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
+}
+
+// SpillThreshold is the encoded-payload size in bytes above which the agents
+// codec spills to a file, or 0 when GCX_AGENT_SPILL_BYTES=0 disables
+// spilling (e.g. when gcx is embedded and its caller cannot read the spill
+// file). Exported so tests outside this package can assert the resolved value.
+func SpillThreshold() int {
 	if v := os.Getenv(agentsSpillEnv); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			return n
 		}
 	}

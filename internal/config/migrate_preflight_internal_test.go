@@ -29,6 +29,7 @@ func newLayeredMigrationFixture(t *testing.T) layeredMigrationFixture {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CONFIG_DIRS", systemRoot)
 	t.Setenv(ConfigFileEnvVar, "")
@@ -44,6 +45,42 @@ func writeLayeredMigrationFixture(t *testing.T, path, contents string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
+}
+
+// TestLoadForWriteUserLegacyUsesResolvedSystemOffPolicy pins that the policy
+// is a whole-load decision, not a per-layer one: the layer being written
+// declares no policy at all, so re-deriving it from that layer's own bytes
+// would resolve "on" and push its plaintext into the real credential store,
+// contradicting the system layer the user actually configured.
+func TestLoadForWriteUserLegacyUsesResolvedSystemOffPolicy(t *testing.T) {
+	store := withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	t.Setenv(envKeychain, "")
+	writeLayeredMigrationFixture(t, fixture.system, `
+version: 1
+credentials:
+  keychain: off
+contexts:
+  default: {}
+current-context: default
+`)
+	writeLayeredMigrationFixture(t, fixture.user, `
+contexts:
+  legacy-user:
+    grafana:
+      server: https://legacy.example.invalid
+      token: legacy-plaintext-token
+`)
+
+	_, _, err := LoadForWrite(t.Context(), "", "user")
+	require.NoError(t, err)
+	assert.Zero(t, store.calls, "resolved off policy must bypass the credential store during migration")
+
+	raw, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	assert.False(t, isLegacyConfig(raw))
+	assert.Contains(t, string(raw), "legacy-plaintext-token")
+	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
 }
 
 func TestPreflightLayeredSourcesRejectsPartialLegacyStackOverlay(t *testing.T) {
@@ -335,20 +372,23 @@ func TestLoadLayeredConsolidatedWarningPreservesCredentialStoreBlocker(t *testin
 	store := withFakeKeychain(t)
 	store.getErr = credentials.ErrUnavailable
 	fixture := newLayeredMigrationFixture(t)
-	writeLayeredMigrationFixture(t, fixture.user, `
+	require.NoError(t, os.MkdirAll(filepath.Dir(fixture.user), 0o700))
+	writePrivateMigrationFixture(t, fixture.user, []byte(`
 contexts:
   prod:
     grafana:
       server: https://prod.example
       token: keychain:gcx:prod:grafana-token
 current-context: prod
-`)
+`))
 	writeLayeredMigrationFixture(t, fixture.local, `
 contexts:
   staging:
     grafana:
       server: https://staging.example
 `)
+
+	require.True(t, trustedDiscoveredUserLegacySource(fixture.user), "the fixture must be a trusted user source")
 
 	var warnings bytes.Buffer
 	ctx := ContextWithWarningWriter(t.Context(), &warnings)
@@ -496,7 +536,7 @@ current-context: prod
 `
 	writeLayeredMigrationFixture(t, fixture.user, user)
 	writeLayeredMigrationFixture(t, fixture.local, local)
-	require.NoError(t, os.WriteFile(fixture.user+legacyBackupSuffix, []byte(staleBackup), 0o600))
+	writePrivateMigrationFixture(t, fixture.user+legacyBackupSuffix, []byte(staleBackup))
 
 	_, err := LoadLayered(t.Context(), "")
 	var incomplete *layeredMigrationIncompleteError

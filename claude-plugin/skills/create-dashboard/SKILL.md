@@ -1,13 +1,10 @@
 ---
 name: create-dashboard
-description: >
-  Designs and creates Grafana dashboards with gcx, using `gcx dashboards
-  snapshot` as a visual feedback loop. Use when the user wants to create a
-  new Grafana dashboard, add panels, variables, or annotations to an existing
-  dashboard, design dashboard panels, variables, queries, or layout, or make
-  a material visual redesign. Triggers on "create dashboard", "new dashboard",
-  "build dashboard", "dashboard for <service>", "add panels", "add variable",
-  "add annotation", "improve this dashboard", or "iterate on a dashboard".
+description: >-
+  Designs and creates Grafana dashboards with gcx, with `gcx dashboards
+  snapshot` as a visual feedback loop. Use to build a new dashboard, add panels,
+  variables, or annotations, or redesign a dashboard. Not for inventory, audit,
+  or pull/push of existing dashboards (use manage-dashboards).
 ---
 
 # Create Dashboard
@@ -130,7 +127,7 @@ gcx datasources list -o json
 | Pyroscope | `gcx datasources pyroscope list-profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
 
 Prometheus also has `gcx datasources prometheus metadata -d <uid>` for metric type and help text.
-For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/uid/<uid>/api/v1/label/<label>/values?match[]=<selector>"` — use the datasource `uid` from `gcx datasources list`; the list output has no numeric id.
+For Prometheus scoped label lookups, narrow with one `--match` selector or `--metric` (repeated `--match` selectors combine as a union): `gcx datasources prometheus labels -d <uid> --label <label> --match '{job="api"}'`.
 Other datasource types may have their own discovery subcommands — check `gcx datasources <type> --help` before using `gcx api`.
 
 Check units, histogram buckets, status labels, route/operation labels, cluster

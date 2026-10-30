@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
@@ -70,7 +71,7 @@ func ValidateTimelineFlags(cmd *cobra.Command) error {
 	return nil
 }
 
-func newTimelineCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newTimelineCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 	opts := &timelineOpts{}
 	cmd := &cobra.Command{
 		Use:   "timeline [UUID]",
@@ -113,7 +114,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, cfg, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}

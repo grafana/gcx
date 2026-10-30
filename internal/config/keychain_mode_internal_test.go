@@ -3,8 +3,11 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -13,6 +16,42 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// A malformed GCX_KEYCHAIN must remain an explicit safe default even when a
+// trusted configuration tries to opt out. The loader policy test proves that
+// precedence; this test pins the one-warning behavior of the environment
+// decision itself.
+func TestKeychainModeForProcess_InvalidValueWarnsOnce(t *testing.T) {
+	previousAgentMode := agent.IsAgentMode()
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(previousAgentMode) })
+	warnUnrecognisedKeychainValueOnce = sync.Once{}
+	t.Setenv(envKeychain, "invalid")
+
+	stderr := captureKeychainModeStderr(t, func() {
+		assert.Equal(t, keychainModeEnabled, keychainModeForProcess())
+		assert.Equal(t, keychainModeEnabled, keychainModeForProcess())
+	})
+
+	assert.Equal(t, 1, strings.Count(stderr, "warn:"), stderr)
+	assert.Contains(t, stderr, `GCX_KEYCHAIN="invalid"`)
+}
+
+func captureKeychainModeStderr(t *testing.T, run func()) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	previous := os.Stderr
+	os.Stderr = writer
+	t.Cleanup(func() { os.Stderr = previous })
+
+	run()
+	require.NoError(t, writer.Close())
+	output, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	return string(output)
+}
 
 // Exercises the real GCX_KEYCHAIN read, not an injected getenv: without this,
 // dropping the environment lookup would leave every other test passing.
@@ -55,6 +94,7 @@ func TestParseKeychainEnvReportsTheRejectedValue(t *testing.T) {
 	}{
 		{name: "unset warns about nothing", wantMode: keychainModeEnabled},
 		{name: "off warns about nothing", value: "off", wantMode: keychainModeDisabled},
+		{name: "on warns about nothing", value: " On ", wantMode: keychainModeEnabled},
 		{name: "whitespace only warns about nothing", value: "   ", wantMode: keychainModeEnabled},
 		{name: "disabled is reported", value: "disabled", wantMode: keychainModeEnabled, wantRejected: "disabled"},
 		{name: "typo is reported", value: "of", wantMode: keychainModeEnabled, wantRejected: "of"},
@@ -116,6 +156,52 @@ func TestKeychainModeIgnoresUnrelatedMalformedOptions(t *testing.T) {
 	_, err := LoadCLIOptions()
 	require.Error(t, err, "guards the premise: a bad bool must still fail CLI option parsing")
 	assert.Equal(t, keychainModeDisabled, keychainModeForProcess())
+}
+
+// A Config carrying a Credentials.Keychain value but no propagated
+// keychainPolicy is a caller bug: it must fail loudly rather than silently
+// adopt that value as the resolved mode, which would trust an unverified
+// layer (for example the auto-discovered local one, exempt from validation).
+func TestResolveKeychainPolicyForWriteErrorsWhenPolicyNotPropagated(t *testing.T) {
+	cfg := &Config{
+		Credentials: &CredentialsConfig{Keychain: "off"},
+		sourceLayer: "local",
+	}
+
+	_, err := resolveKeychainPolicyForWrite(cfg, "/tmp/example.yaml")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keychain policy not resolved")
+}
+
+// A Config with no keychain-related value at all (the common case for a
+// freshly constructed Config that has never been through Load) still needs a
+// usable policy, since Write always binds a credential store: there is
+// nothing unverified to adopt here, so the safe default applies instead of
+// erroring.
+func TestResolveKeychainPolicyForWriteDefaultsWhenNothingToAdopt(t *testing.T) {
+	cfg := &Config{}
+
+	policy, err := resolveKeychainPolicyForWrite(cfg, "/tmp/example.yaml")
+
+	require.NoError(t, err)
+	assert.Equal(t, keychainModeEnabled, policy.mode)
+}
+
+// A local-layer typo must not hard-fail the write: resolveKeychainPolicy
+// already ignores this layer's value during load, so validating it again
+// here would reject an unrelated write to the same file.
+func TestResolveKeychainPolicyForWriteIgnoresInvalidLocalLayerValue(t *testing.T) {
+	cfg := &Config{
+		Credentials:    &CredentialsConfig{Keychain: "offf"},
+		sourceLayer:    "local",
+		keychainPolicy: keychainPolicy{mode: keychainModeEnabled, source: "higher-priority-policy"},
+	}
+
+	policy, err := resolveKeychainPolicyForWrite(cfg, "/tmp/example.yaml")
+
+	require.NoError(t, err)
+	assert.Equal(t, cfg.keychainPolicy, policy)
 }
 
 // The disabled mode must never reach credentials.Open, so this asserts the

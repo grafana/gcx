@@ -2,11 +2,16 @@ package loki_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -26,6 +31,7 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		path string
 	}{
 		{"labels", c.BuildLabelsPath(uid)},
+		{"patterns", c.BuildPatternsPath(uid)},
 		{"labelValues", c.BuildLabelValuesPath(uid, "job")},
 		{"series", c.BuildSeriesPath(uid)},
 	}
@@ -39,6 +45,90 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClient_Labels_Query(t *testing.T) {
+	var capturedPath string
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["app","job"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	resp, err := client.Labels(context.Background(), "loki-uid", `{app="backstage"}`)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/loki-uid/resources/labels", capturedPath)
+	assert.Equal(t, `{app="backstage"}`, capturedQuery.Get("query"))
+	assert.Equal(t, []string{"app", "job"}, resp.Data)
+}
+
+func TestClient_Labels_NoQuery(t *testing.T) {
+	var capturedRawQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["app","job"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	_, err = client.Labels(context.Background(), "loki-uid", "")
+	require.NoError(t, err)
+
+	assert.Empty(t, capturedRawQuery)
+}
+
+func TestClient_LabelValues_Query(t *testing.T) {
+	var capturedPath string
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["backstage"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	resp, err := client.LabelValues(context.Background(), "loki-uid", "app", `{app="backstage"}`)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/loki-uid/resources/label/app/values", capturedPath)
+	assert.Equal(t, `{app="backstage"}`, capturedQuery.Get("query"))
+	assert.Equal(t, []string{"backstage"}, resp.Data)
+}
+
+func TestClient_LabelValues_NoQuery(t *testing.T) {
+	var capturedRawQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["backstage"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	_, err = client.LabelValues(context.Background(), "loki-uid", "app", "")
+	require.NoError(t, err)
+
+	assert.Empty(t, capturedRawQuery)
 }
 
 func TestQuery_FallsBackOn403(t *testing.T) {
@@ -97,4 +187,199 @@ func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 	assert.Equal(t, "parse error at line 1, col 12: syntax error: unexpected IDENTIFIER, expecting STRING", apiErr.Message)
 	assert.Equal(t, "downstream", apiErr.ErrorSource)
+}
+
+func TestQuery_SendsMaxLines(t *testing.T) {
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	start := time.Unix(1, 0)
+	end := time.Unix(2, 0)
+	_, err = client.Query(context.Background(), "loki-uid", loki.QueryRequest{
+		Query: `{job="grafana"}`,
+		Start: start,
+		End:   end,
+		Limit: 1000,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, gotBody)
+
+	var payload struct {
+		Queries []map[string]any `json:"queries"`
+	}
+	require.NoError(t, json.Unmarshal(gotBody, &payload))
+	require.Len(t, payload.Queries, 1)
+	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
+}
+
+func TestClient_Patterns(t *testing.T) {
+	var capturedPath string
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[
+{"pattern":"<_> started <_>","samples":[[1711839260,3]]},
+{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},
+{"pattern":"frequent <_>","samples":[[1711839260,5]]}
+]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	start := time.Unix(1711839260, 0)
+	end := time.Unix(1711839280, 0)
+	resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, start, end, "10s")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/loki-uid/resources/patterns", capturedPath)
+	assert.Equal(t, `{job="varlogs"}`, capturedQuery.Get("query"))
+	assert.Equal(t, strconv.FormatInt(start.UnixNano(), 10), capturedQuery.Get("start"))
+	assert.Equal(t, strconv.FormatInt(end.UnixNano(), 10), capturedQuery.Get("end"))
+	assert.Equal(t, "10s", capturedQuery.Get("step"))
+
+	assert.Equal(t, "success", resp.Status)
+	assert.Equal(t, []loki.Pattern{
+		{Pattern: "frequent <_>", Samples: [][]int64{{1711839260, 5}}, TotalCount: 5},
+		{Pattern: "<_> level=error <_>", Level: "error", Samples: [][]int64{{1711839260, 1}, {1711839270, 2}}, TotalCount: 3},
+		{Pattern: "<_> started <_>", Samples: [][]int64{{1711839260, 3}}, TotalCount: 3},
+	}, resp.Data)
+}
+
+func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {
+	var capturedRawQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+	require.NoError(t, err)
+
+	assert.NotContains(t, capturedRawQuery, "step=")
+	assert.Equal(t, []loki.Pattern{}, resp.Data, "an empty data array must not become null")
+}
+
+func TestClient_Patterns_RejectsReversedTimeRange(t *testing.T) {
+	var requested bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	start := time.Unix(1711839280, 0)
+	end := time.Unix(1711839260, 0) // before start
+	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, start, end, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be before end")
+	assert.False(t, requested, "no request should be sent for an invalid time range")
+}
+
+func TestClient_Patterns_RejectsEqualStartAndEnd(t *testing.T) {
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: "https://example.invalid"}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	same := time.Unix(1711839260, 0)
+	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, same, same, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be before end")
+}
+
+func TestClient_Patterns_UnavailableEndpointIsAnErrorNotEmptySuccess(t *testing.T) {
+	for _, body := range []string{"404 page not found", `{"message":"pattern querier is disabled"}`} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, body, http.StatusNotFound)
+		}))
+		client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+		require.NoError(t, err)
+
+		resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+		server.Close()
+
+		require.Error(t, err, body)
+		assert.Nil(t, resp, body)
+		assert.Contains(t, err.Error(), "HTTP 404 can mean the patterns endpoint is unavailable", body)
+
+		var apiErr *queryerror.APIError
+		require.ErrorAs(t, err, &apiErr, body)
+		assert.Equal(t, http.StatusNotFound, apiErr.StatusCode, body)
+		assert.True(t, apiErr.Experimental, "must be flagged so the CLI can explain a route-absent response")
+	}
+}
+
+func TestClient_Patterns_NonNotFoundErrorsAreNotLabelledUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"parse error"}`, http.StatusBadRequest)
+	}))
+	defer server.Close()
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "HTTP 404")
+}
+
+func TestMetricQueryPreservesSampleValues(t *testing.T) {
+	for _, count := range []int{1, 2} {
+		for _, tc := range []struct{ name, value, want string }{
+			{"null", "null", "NaN"}, {"nan", `"NaN"`, "NaN"}, {"invalid", `"invalid"`, "invalid"},
+			{"zero", "0", "0"}, {"infinity", `"+Inf"`, "+Inf"}, {"negative", "-3.5", "-3.5"},
+		} {
+			t.Run(fmt.Sprintf("%s/points=%d", tc.name, count), func(t *testing.T) {
+				timestamps, values := "1250", tc.value
+				if count == 2 {
+					timestamps += ",2500"
+					values += "," + tc.value
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					fmt.Fprintf(w, `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number"}]},"data":{"values":[[%s],[%s]]}}]}}}`, timestamps, values)
+				}))
+				defer server.Close()
+				client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+				require.NoError(t, err)
+				resp, err := client.MetricQuery(context.Background(), "uid", loki.QueryRequest{Query: "count_over_time({app=\"api\"}[5m])"})
+				require.NoError(t, err)
+				_, rows, err := resp.CSVRecords()
+				require.NoError(t, err)
+				require.Len(t, rows, count)
+				assert.Equal(t, []string{"1.25", tc.want}, rows[0])
+				if count == 2 {
+					assert.Equal(t, []string{"2.5", tc.want}, rows[1])
+				}
+				encoded, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), strconv.Quote(tc.want))
+			})
+		}
+	}
 }

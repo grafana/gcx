@@ -9,6 +9,7 @@ import (
 	"time"
 
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
+	"github.com/grafana/gcx/internal/httputils"
 	skillops "github.com/grafana/gcx/internal/skills"
 )
 
@@ -19,7 +20,7 @@ const (
 )
 
 // MaybeNotifySkills runs the default skills notifier check and writes a message
-// to dst only when installed gcx skills can be updated. The check is throttled
+// to dst when installed gcx skills can be updated or retired copies remain. The check is throttled
 // via persisted state; repeated calls within the interval are silent.
 func MaybeNotifySkills(dst io.Writer) error {
 	root, err := skillops.ResolveInstallRoot("")
@@ -27,16 +28,18 @@ func MaybeNotifySkills(dst io.Writer) error {
 		return err
 	}
 
-	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), dst, StatePath(), root, time.Now())
+	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), claudeplugin.SkillsCatalog(), dst, StatePath(), root, time.Now())
 }
 
 // MaybeNotifyVersion runs the default gcx version update check. Network errors
 // are treated as silent misses so notification checks never affect CLI commands.
 func MaybeNotifyVersion(ctx context.Context, dst io.Writer, currentVersion string) error {
-	return maybeNotifyVersionAt(ctx, dst, StatePath(), currentVersion, time.Now(), http.DefaultClient, latestReleaseURL)
+	// No retry: the check has a short budget and misses are silent.
+	client := httputils.NewClient(httputils.ClientOpts{DisableRetry: true})
+	return maybeNotifyVersionAt(ctx, dst, StatePath(), currentVersion, time.Now(), client, latestReleaseURL)
 }
 
-func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, now time.Time) error {
+func maybeNotifySkillsAt(source fs.FS, catalog []byte, dst io.Writer, statePath, root string, now time.Time) error {
 	state, err := LoadState(statePath)
 	if err != nil {
 		return err
@@ -45,7 +48,7 @@ func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, no
 		return nil
 	}
 
-	msg, err := SkillsUpdateMessage(source, root)
+	msg, err := SkillsUpdateMessage(source, catalog, root)
 	if err != nil {
 		return err
 	}

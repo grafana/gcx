@@ -45,6 +45,7 @@ type Options struct {
 	defaultFormat       string
 	defaultFormatPinned bool
 	hiddenFormats       map[string]bool // formats removed from the advertised menu (see HideFormat)
+	artifactFormats     []string        // formats whose codec writes a file, not stdout (see MarkArtifactFormat)
 	flags               *pflag.FlagSet
 	jsonFieldValidator  func(fields []string) error // optional; invoked before field extraction when --json is used
 	jqQuery             *gojq.Query                 // compiled --jq query; nil when flag not set
@@ -84,6 +85,9 @@ func (opts *Options) DefaultFormat(name string) {
 // write `<name>.agents` files — and, for payloads above the spill threshold,
 // write a spill-summary envelope instead of the resource content. An explicit
 // -o flag from the user still wins over the pinned default.
+//
+// A pinned command's -o selects the file or buffer format, not the stdout
+// protocol, so BindFlags marks its output flag with PinnedFormatAnnotation.
 func (opts *Options) PinDefaultFormat(name string) {
 	opts.defaultFormat = name
 	opts.defaultFormatPinned = true
@@ -102,6 +106,34 @@ func (opts *Options) HideFormat(name string) {
 		opts.hiddenFormats = make(map[string]bool)
 	}
 	opts.hiddenFormats[name] = true
+}
+
+// Annotations BindFlags puts on the output flag so code that sees only the
+// parsed flag (the root error reporter) can tell whether an explicit -o chose
+// the stdout format.
+const (
+	// FormatFlagAnnotation marks a -o/--output flag bound by BindFlags as an
+	// output-format selector. A command that binds its own -o (a destination
+	// directory, say) does not carry it.
+	FormatFlagAnnotation = "gcx.grafana.com/output-format-flag"
+
+	// PinnedFormatAnnotation marks the output flag of a command whose default
+	// format was pinned with PinDefaultFormat. Such commands write their result
+	// to disk or an editor buffer and keep stdout for a JSON receipt in agent
+	// mode, so an explicit -o there does not choose the stdout format.
+	PinnedFormatAnnotation = "gcx.grafana.com/output-format-pinned"
+
+	// ArtifactFormatsAnnotation lists the formats (see MarkArtifactFormat)
+	// whose codec writes a file rather than stdout.
+	ArtifactFormatsAnnotation = "gcx.grafana.com/output-artifact-formats"
+)
+
+// MarkArtifactFormat declares that the named format's codec writes a file and
+// leaves stdout to an artifact receipt (see EmitArtifactResult), so selecting
+// it with -o does not choose the stdout format. Call it next to the codec's
+// RegisterCustomCodec, before BindFlags.
+func (opts *Options) MarkArtifactFormat(name string) {
+	opts.artifactFormats = append(opts.artifactFormats, name)
 }
 
 func (opts *Options) BindFlags(flags *pflag.FlagSet) {
@@ -125,6 +157,13 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	opts.NoTruncate = terminal.NoTruncate()
 
 	flags.StringVarP(&opts.OutputFormat, "output", "o", defaultFormat, "Output format. One of: "+strings.Join(opts.allowedCodecs(), ", "))
+	_ = flags.SetAnnotation("output", FormatFlagAnnotation, []string{"true"})
+	if opts.defaultFormatPinned {
+		_ = flags.SetAnnotation("output", PinnedFormatAnnotation, []string{"true"})
+	}
+	if len(opts.artifactFormats) > 0 {
+		_ = flags.SetAnnotation("output", ArtifactFormatsAnnotation, opts.artifactFormats)
+	}
 	flags.String("json", "", "Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields")
 	flags.String("jq", "", "jq expression to apply to JSON output. Mutually exclusive with --json.")
 
@@ -192,17 +231,8 @@ func (opts *Options) applyJSONFlag() error {
 	return nil
 }
 
-// applyJQFlag processes the --jq flag. The flag is mutually exclusive with
-// --json (both field selection and discovery): jq strictly supersedes those
-// mechanisms, so combining them adds confusion without value. Also, the two
-// resources/* commands that bypass Options.Encode() and construct
-// FieldSelectCodec directly (get.go, schemas.go) only fire when JSONFields or
-// JSONDiscovery is set — mutual exclusion preserves correctness there.
-//
-// When -o is unset, --jq auto-flips OutputFormat to "json" (mirrors --json).
-// An explicit non-JSON -o is rejected because jq operates on JSON input.
-// The expression is parsed eagerly so syntax errors surface during validation,
-// not encoding.
+// applyJQFlag validates --jq and its output format, rejecting --json.
+// Bare --jq selects JSON even in agent mode; explicit -o agents keeps spilling.
 func (opts *Options) applyJQFlag() error {
 	if opts.flags == nil {
 		return nil
@@ -219,8 +249,12 @@ func (opts *Options) applyJQFlag() error {
 	}
 
 	outputFlag := opts.flags.Lookup("output")
-	if outputFlag != nil && outputFlag.Changed && outputFlag.Value.String() != "json" {
-		return fmt.Errorf("--jq requires JSON output, but -o %s was specified", outputFlag.Value.String())
+	if outputFlag != nil && outputFlag.Changed {
+		switch outputFlag.Value.String() {
+		case "json", "agents":
+		default:
+			return fmt.Errorf("--jq requires JSON output (json or agents), but -o %s was specified", outputFlag.Value.String())
+		}
 	}
 
 	query, err := gojq.Parse(jqFlag.Value.String())
@@ -229,13 +263,14 @@ func (opts *Options) applyJQFlag() error {
 	}
 
 	opts.jqQuery = query
-	opts.OutputFormat = "json"
+	if outputFlag == nil || !outputFlag.Changed {
+		opts.OutputFormat = "json"
+	}
 	return nil
 }
 
-// JQActive reports whether a --jq transformation is in effect. Commands that
-// build fused envelopes (bypassing Options.Encode) must not do so when jq is
-// active — the envelope would silently drop the user's transformation.
+// JQActive reports whether jq is active. Callers must not bypass Options.Encode
+// with a fused envelope that would drop the transformation.
 func (opts *Options) JQActive() bool {
 	return opts.jqQuery != nil
 }
@@ -253,26 +288,20 @@ func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
 	return codec, nil
 }
 
+// IsJSONFormat reports whether a format carries JSON results and in-band errors.
+func IsJSONFormat(name string) bool {
+	return name == string(format.JSON) || name == string(agentsFormat)
+}
+
 func (opts *Options) Encode(dst io.Writer, value any) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
 	}
 
-	// In agent mode, nudge toward --json field selection / --jq transformation
-	// whenever the resolved codec is JSON-like (json or agents format). The
-	// hint still fires when --json field1,field2 is in use — the caller may
-	// not realize --jq exists for transformation (group_by, filter, count).
-	// Suppressed when --jq is already in use (caller already has the more
-	// powerful tool) or when --json list is requested (discovery output is
-	// not a transformation target). Also suppressed for pinned-default
-	// (file-writing) commands: their encode fills a file or editor buffer,
-	// not stdout, and they reject --json/--jq — recommending those flags
-	// would contradict the command's own validation. Emitted once per
-	// invocation to stderr (never pollutes stdout) as JSONL
-	// {"class":"hint",...} via emitHint (FR-104). Suppressed outside agent
-	// mode to avoid noise on TTYs.
-	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
+	// Nudge agents toward jq once, even with field selection. Pinned file-output
+	// commands reject --json/--jq, so recommending those flags would be wrong.
+	isJSONLike := IsJSONFormat(string(codec.Format()))
 	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil && !opts.defaultFormatPinned {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
@@ -285,22 +314,22 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		)
 	}
 
-	// Intercept JSON field discovery, field selection, and jq transformation
-	// when the resolved codec is JSON-like. Commands that already check
-	// JSONFields/JSONDiscovery before calling Encode() will never reach here
-	// (they return early), so there is no double-application risk. --jq is
-	// mutually exclusive with --json (enforced in applyJQFlag), so the order
-	// of the branches below does not matter for correctness.
-	if isJSONLike {
-		if opts.jqQuery != nil {
-			return NewJQCodec(opts.jqQuery).Encode(dst, value)
+	// Apply JSON transformations before encoding or spilling.
+	if !isJSONLike {
+		return codec.Encode(dst, value)
+	}
+	if opts.jqQuery != nil {
+		jq := NewJQCodec(opts.jqQuery)
+		if agents, ok := codec.(*agentsCodec); ok {
+			return agents.encodeJQ(dst, jq.results(value))
 		}
-		if opts.JSONDiscovery {
-			return opts.encodeDiscovery(dst, value)
-		}
-		if len(opts.JSONFields) > 0 {
-			return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
-		}
+		return jq.Encode(dst, value)
+	}
+	if opts.JSONDiscovery {
+		return opts.encodeDiscovery(dst, value)
+	}
+	if len(opts.JSONFields) > 0 {
+		return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
 	}
 
 	return codec.Encode(dst, value)

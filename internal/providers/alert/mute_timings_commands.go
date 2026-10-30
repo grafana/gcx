@@ -1,16 +1,12 @@
 package alert
 
 import (
-	"errors"
-	"io"
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -39,7 +35,7 @@ type muteTimingsListOpts struct {
 }
 
 func (o *muteTimingsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &MuteTimingsTableCodec{})
+	cmdio.RegisterTable(&o.IO, MuteTimingsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -75,25 +71,12 @@ func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// MuteTimingsTableCodec renders mute timings as a tabular table.
-type MuteTimingsTableCodec struct{}
-
-func (c *MuteTimingsTableCodec) Format() format.Format { return "table" }
-
-func (c *MuteTimingsTableCodec) Encode(w io.Writer, v any) error {
-	timings, ok := v.([]MuteTiming)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []MuteTiming")
-	}
-	t := style.NewTable("NAME", "INTERVALS", "SUMMARY")
-	for _, mt := range timings {
-		t.Row(mt.Name, strconv.Itoa(len(mt.TimeIntervals)), summarizeIntervals(mt.TimeIntervals))
-	}
-	return t.Render(w)
-}
-
-func (c *MuteTimingsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func MuteTimingsTable() cmdio.Table[MuteTiming] {
+	return cmdio.Table[MuteTiming]{Columns: []cmdio.Column[MuteTiming]{
+		{Header: "NAME", Content: func(r MuteTiming) string { return r.Name }},
+		{Header: "INTERVALS", Content: func(r MuteTiming) string { return strconv.Itoa(len(r.TimeIntervals)) }},
+		{Header: "SUMMARY", Content: func(r MuteTiming) string { return summarizeIntervals(r.TimeIntervals) }},
+	}}
 }
 
 func summarizeIntervals(intervals []TimeInterval) string {
@@ -148,14 +131,16 @@ func newMuteTimingsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type muteTimingsMutateOpts struct {
-	IO   cmdio.Options
-	File string
+	IO             cmdio.Options
+	File           string
+	AllowUIUpdates bool
 }
 
 func (o *muteTimingsMutateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the mute timing definition (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.AllowUIUpdates, "allow-ui-updates", true, "Keep the mute timing editable in the Grafana UI (false disables UI edits)")
 }
 
 func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -163,6 +148,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new mute timing.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -180,7 +166,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			created, err := client.CreateMuteTiming(ctx, mt)
+			created, err := client.CreateMuteTiming(ctx, mt, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}
@@ -214,7 +200,7 @@ func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			updated, err := client.UpdateMuteTiming(ctx, args[0], mt)
+			updated, err := client.UpdateMuteTiming(ctx, args[0], mt, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}

@@ -1,0 +1,3 @@
+UID  NAME          STATE   HEALTH  PAUSED
+r1   High latency  firing  ok      yes
+r2                                 no

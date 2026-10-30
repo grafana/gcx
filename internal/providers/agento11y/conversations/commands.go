@@ -4,18 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -53,8 +50,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of conversations to return (0 for no limit)")
@@ -131,8 +127,7 @@ type searchOpts struct {
 }
 
 func (o *searchOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &SearchTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &SearchTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, SearchTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Filters, "filters", "", "Filter expression for conversation search")
@@ -205,101 +200,33 @@ shown when more results are available.`,
 
 // --- list table codec (Conversation — upstream fields) ---
 
-type TableCodec struct {
-	Wide bool
-}
-
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	convs, ok := v.([]Conversation)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Conversation")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "TITLE", "GENERATIONS", "CREATED", "LAST ACTIVITY")
-	} else {
-		t = style.NewTable("ID", "TITLE", "GENERATIONS", "LAST ACTIVITY")
-	}
-
-	for _, conv := range convs {
-		title := agento11yhttp.Truncate(conv.Title, 40)
-		lastActivity := agento11yhttp.FormatTime(conv.LastGenerationAt)
-
-		if c.Wide {
-			created := agento11yhttp.FormatTime(conv.CreatedAt)
-			t.Row(conv.ID, title, strconv.Itoa(conv.GenerationCount), created, lastActivity)
-		} else {
-			t.Row(conv.ID, title, strconv.Itoa(conv.GenerationCount), lastActivity)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func Table() cmdio.Table[Conversation] {
+	return cmdio.Table[Conversation]{Columns: []cmdio.Column[Conversation]{
+		{Header: "ID", Content: func(r Conversation) string { return r.ID }},
+		{Header: "TITLE", Content: func(r Conversation) string { return agento11yhttp.Truncate(r.Title, 40) }},
+		{Header: "GENERATIONS", Content: func(r Conversation) string { return strconv.Itoa(r.GenerationCount) }},
+		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(r Conversation) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+		{Header: "LAST ACTIVITY", Content: func(r Conversation) string { return agento11yhttp.FormatTime(r.LastGenerationAt) }},
+	}}
 }
 
 // --- search table codec (SearchResult — plugin fields) ---
 
-type SearchTableCodec struct {
-	Wide bool
-}
-
-func (c *SearchTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *SearchTableCodec) Encode(w io.Writer, v any) error {
-	results, ok := v.([]SearchResult)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []SearchResult")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "TITLE", "GENERATIONS", "MODELS", "AGENTS", "ERRORS", "LAST ACTIVITY")
-	} else {
-		t = style.NewTable("ID", "TITLE", "GENERATIONS", "MODELS", "LAST ACTIVITY")
-	}
-
-	for _, r := range results {
-		title := agento11yhttp.Truncate(r.ConversationTitle, 40)
-		models := strings.Join(r.Models, ", ")
-		if models == "" {
-			models = "-"
-		}
-		lastActivity := agento11yhttp.FormatTime(r.LastGenerationAt)
-
-		if c.Wide {
-			agents := strings.Join(r.Agents, ", ")
-			if agents == "" {
-				agents = "-"
-			}
-			errCount := "-"
+func SearchTable() cmdio.Table[SearchResult] {
+	return cmdio.Table[SearchResult]{Columns: []cmdio.Column[SearchResult]{
+		{Header: "ID", Content: func(r SearchResult) string { return r.ConversationID }},
+		{Header: "TITLE", Content: func(r SearchResult) string { return agento11yhttp.Truncate(r.ConversationTitle, 40) }},
+		{Header: "GENERATIONS", Content: func(r SearchResult) string { return strconv.Itoa(r.GenerationCount) }},
+		{Header: "MODELS", Content: func(r SearchResult) string { return cmdio.OrDash(strings.Join(r.Models, ", ")) }},
+		{Header: "AGENTS", Visible: cmdio.WideOnly, Content: func(r SearchResult) string { return cmdio.OrDash(strings.Join(r.Agents, ", ")) }},
+		{Header: "ERRORS", Visible: cmdio.WideOnly, Content: func(r SearchResult) string {
 			if r.ErrorCount > 0 {
-				errCount = strconv.Itoa(r.ErrorCount)
+				return strconv.Itoa(r.ErrorCount)
 			}
-			t.Row(r.ConversationID, title, strconv.Itoa(r.GenerationCount), models, agents, errCount, lastActivity)
-		} else {
-			t.Row(r.ConversationID, title, strconv.Itoa(r.GenerationCount), models, lastActivity)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *SearchTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return "-"
+		}},
+		{Header: "LAST ACTIVITY", Content: func(r SearchResult) string { return agento11yhttp.FormatTime(r.LastGenerationAt) }},
+	}}
 }
 
 // --- annotations ---
@@ -311,8 +238,7 @@ type annotationsListOpts struct {
 }
 
 func (o *annotationsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AnnotationsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &AnnotationsTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, AnnotationsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Number of annotations to request")
@@ -469,46 +395,18 @@ func parseAnnotationMetadata(raw string) (map[string]any, error) {
 	return metadata, nil
 }
 
-// AnnotationsTableCodec renders conversation annotations.
-type AnnotationsTableCodec struct {
-	Wide bool
-}
-
-func (c *AnnotationsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *AnnotationsTableCodec) Encode(w io.Writer, v any) error {
-	annotations, ok := v.([]ConversationAnnotation)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []ConversationAnnotation")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "TYPE", "BODY", "TAGS", "OPERATOR", "GENERATION", "CREATED")
-	} else {
-		t = style.NewTable("ID", "TYPE", "BODY", "OPERATOR", "CREATED")
-	}
-
-	for _, annotation := range annotations {
-		body := agento11yhttp.Truncate(annotation.Body, 56)
-		operator := firstNonEmpty(annotation.OperatorName, annotation.OperatorLogin, annotation.OperatorID, "-")
-		created := agento11yhttp.FormatTime(annotation.CreatedAt)
-		if c.Wide {
-			t.Row(annotation.AnnotationID, annotation.AnnotationType, body, formatTags(annotation.Tags), operator, firstNonEmpty(annotation.GenerationID, "-"), created)
-		} else {
-			t.Row(annotation.AnnotationID, annotation.AnnotationType, body, operator, created)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *AnnotationsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func AnnotationsTable() cmdio.Table[ConversationAnnotation] {
+	return cmdio.Table[ConversationAnnotation]{Columns: []cmdio.Column[ConversationAnnotation]{
+		{Header: "ID", Content: func(r ConversationAnnotation) string { return r.AnnotationID }},
+		{Header: "TYPE", Content: func(r ConversationAnnotation) string { return r.AnnotationType }},
+		{Header: "BODY", Content: func(r ConversationAnnotation) string { return agento11yhttp.Truncate(r.Body, 56) }},
+		{Header: "TAGS", Visible: cmdio.WideOnly, Content: func(r ConversationAnnotation) string { return formatTags(r.Tags) }},
+		{Header: "OPERATOR", Content: func(r ConversationAnnotation) string {
+			return firstNonEmpty(r.OperatorName, r.OperatorLogin, r.OperatorID, "-")
+		}},
+		{Header: "GENERATION", Visible: cmdio.WideOnly, Content: func(r ConversationAnnotation) string { return firstNonEmpty(r.GenerationID, "-") }},
+		{Header: "CREATED", Content: func(r ConversationAnnotation) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }
 
 func formatTags(tags map[string]string) string {

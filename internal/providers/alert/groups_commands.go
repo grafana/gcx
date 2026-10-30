@@ -1,14 +1,11 @@
 package alert
 
 import (
-	"errors"
 	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -37,7 +34,7 @@ type groupsListOpts struct {
 }
 
 func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &GroupsTableCodec{})
+	cmdio.RegisterTable(&o.IO, GroupsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -78,27 +75,14 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// GroupsTableCodec renders alert rule groups as a tabular table.
-type GroupsTableCodec struct{}
-
-func (c *GroupsTableCodec) Format() format.Format { return "table" }
-
-func (c *GroupsTableCodec) Encode(w io.Writer, v any) error {
-	groups, ok := v.([]RuleGroup)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RuleGroup")
-	}
-
-	t := style.NewTable("NAME", "FOLDER", "RULES", "INTERVAL")
-	for _, g := range groups {
+func GroupsTable() cmdio.Table[RuleGroup] {
+	return cmdio.Table[RuleGroup]{Columns: []cmdio.Column[RuleGroup]{
+		{Header: "NAME", Content: func(r RuleGroup) string { return r.Name }},
+		{Header: "FOLDER", Content: func(r RuleGroup) string { return r.FolderUID }},
+		{Header: "RULES", Content: func(r RuleGroup) string { return strconv.Itoa(len(r.Rules)) }},
 		// Interval is in seconds per the Prometheus/Grafana ruler API contract.
-		t.Row(g.Name, g.FolderUID, strconv.Itoa(len(g.Rules)), strconv.Itoa(g.Interval)+"s")
-	}
-	return t.Render(w)
-}
-
-func (c *GroupsTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+		{Header: "INTERVAL", Content: func(r RuleGroup) string { return strconv.Itoa(r.Interval) + "s" }},
+	}}
 }
 
 type groupsGetOpts struct {
@@ -106,8 +90,8 @@ type groupsGetOpts struct {
 }
 
 func (o *groupsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &GroupRulesTableCodec{})
-	o.IO.DefaultFormat("table")
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, GroupRulesTable().Codec(cmdio.FormatTable))
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 }
 
@@ -148,30 +132,11 @@ func newGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// GroupRulesTableCodec renders a group's rules as a table.
-type GroupRulesTableCodec struct{}
-
-func (c *GroupRulesTableCodec) Format() format.Format { return "table" }
-
-func (c *GroupRulesTableCodec) Encode(w io.Writer, v any) error {
-	group, ok := v.(*RuleGroup)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *RuleGroup")
+func GroupRulesTable() cmdio.TableAdapter[*RuleGroup, RuleStatus] {
+	return cmdio.TableAdapter[*RuleGroup, RuleStatus]{
+		Table: RulesTable(),
+		Rows:  func(group *RuleGroup) ([]RuleStatus, error) { return group.Rules, nil },
 	}
-
-	t := style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
-	for _, r := range group.Rules {
-		paused := "no"
-		if r.IsPaused {
-			paused = "yes"
-		}
-		t.Row(r.UID, r.Name, r.State, r.Health, paused)
-	}
-	return t.Render(w)
-}
-
-func (c *GroupRulesTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
 }
 
 type groupsStatusOpts struct {
@@ -179,7 +144,7 @@ type groupsStatusOpts struct {
 }
 
 func (o *groupsStatusOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &GroupsStatusTableCodec{})
+	cmdio.RegisterTable(&o.IO, GroupsStatusTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -235,51 +200,40 @@ func newGroupsStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// GroupsStatusTableCodec renders alert rule group status summaries as a tabular table.
-type GroupsStatusTableCodec struct{}
-
-func (c *GroupsStatusTableCodec) Format() format.Format { return "table" }
-
-func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
-	groups, ok := v.([]RuleGroup)
-	if !ok {
-		return errors.New("invalid data type for status table codec: expected []RuleGroup")
+func GroupsStatusTable() cmdio.Table[RuleGroup] {
+	return cmdio.Table[RuleGroup]{
+		Columns: []cmdio.Column[RuleGroup]{
+			{Header: "GROUP", Content: func(g RuleGroup) string { return g.Name }},
+			{Header: "RULES", Content: func(g RuleGroup) string { return strconv.Itoa(len(g.Rules)) }},
+			{Header: "FIRING", Content: func(g RuleGroup) string { return groupStateCount(g, StateFiring) }},
+			{Header: "PENDING", Content: func(g RuleGroup) string { return groupStateCount(g, StatePending) }},
+			{Header: "INACTIVE", Content: func(g RuleGroup) string { return groupStateCount(g, StateInactive) }},
+			{Header: "LAST_EVAL", Content: func(g RuleGroup) string {
+				if g.LastEvaluation == "0001-01-01T00:00:00Z" {
+					return "never"
+				}
+				return g.LastEvaluation
+			}},
+		},
+		// Keep prose in the table codec so JSON, YAML and agents still encode [].
+		Empty: func(w io.Writer) error {
+			cmdio.Info(w, "No alert rule groups found.")
+			return nil
+		},
 	}
-
-	if len(groups) == 0 {
-		// Human empty state: the exact styled line the command has always
-		// printed. The check lives in the table codec so only human output
-		// gets prose — json/yaml/agents encode [] instead.
-		cmdio.Info(w, "No alert rule groups found.")
-		return nil
-	}
-
-	t := style.NewTable("GROUP", "RULES", "FIRING", "PENDING", "INACTIVE", "LAST_EVAL")
-	for _, g := range groups {
-		firing, pending, inactive := 0, 0, 0
-		for _, r := range g.Rules {
-			switch r.State {
-			case StateFiring:
-				firing++
-			case StatePending:
-				pending++
-			case StateInactive:
-				inactive++
-			default:
-				// The Grafana alerting API only returns firing/pending/inactive,
-				// but count unexpected states as inactive defensively.
-				inactive++
-			}
-		}
-		lastEval := g.LastEvaluation
-		if lastEval == "0001-01-01T00:00:00Z" {
-			lastEval = "never"
-		}
-		t.Row(g.Name, strconv.Itoa(len(g.Rules)), strconv.Itoa(firing), strconv.Itoa(pending), strconv.Itoa(inactive), lastEval)
-	}
-	return t.Render(w)
 }
 
-func (c *GroupsStatusTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("status table codec does not support decoding")
+func groupStateCount(g RuleGroup, state string) string {
+	count := 0
+	for _, r := range g.Rules {
+		ruleState := r.State
+		// Preserve the status summary's treatment of unexpected states as inactive.
+		if ruleState != StateFiring && ruleState != StatePending {
+			ruleState = StateInactive
+		}
+		if ruleState == state {
+			count++
+		}
+	}
+	return strconv.Itoa(count)
 }

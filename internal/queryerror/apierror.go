@@ -20,6 +20,13 @@ type APIError struct {
 	Message     string
 	ErrorSource string
 
+	// TransportStatus is the HTTP status the transport actually returned, kept
+	// before FromBody may replace StatusCode with a query-level status embedded
+	// in a 2xx body. Telemetry reads this and never StatusCode: a query failure
+	// inside an HTTP 200 must not report a failure status. It is zero for errors
+	// built by New, whose statuses are body-level or synthesized.
+	TransportStatus int
+
 	// CloudOnly and Experimental are optional deployment-availability facts
 	// about the endpoint (zero value = no hints). Callers of Cloud-only or
 	// experimental endpoints set these via WithAvailability so the CLI can
@@ -59,11 +66,14 @@ func New(datasource, operation string, statusCode int, message, errorSource stri
 // error (4xx/5xx), it is kept as the authoritative signal so auth, proxy, and
 // gateway failures are not misclassified by downstream-supplied status codes.
 func FromBody(datasource, operation string, statusCode int, body []byte) *APIError {
+	transportStatus := statusCode
 	message, errorSource, parsedStatus := extractMessage(body)
 	if parsedStatus != 0 && statusCode >= 200 && statusCode < 300 {
 		statusCode = parsedStatus
 	}
-	return New(datasource, operation, statusCode, message, errorSource)
+	apiErr := New(datasource, operation, statusCode, message, errorSource)
+	apiErr.TransportStatus = transportStatus
+	return apiErr
 }
 
 func (e *APIError) Error() string {
@@ -83,6 +93,35 @@ func (e *APIError) Error() string {
 func (e *APIError) IsParseError() bool {
 	msg := strings.ToLower(e.Message)
 	return strings.Contains(msg, "parse error") || strings.Contains(msg, "syntax error")
+}
+
+// IsPermissionError reports whether the message describes a permission denial
+// from the datasource or the provider behind it, rather than a problem with the
+// query itself.
+//
+// It exists because a datasource that proxies a cloud provider tunnels that
+// provider's authorization failure through the body of an HTTP 200 or 400:
+// BigQuery answers an unauthorized project with "googleapi: Error 403: Access
+// Denied: ... accessDenied" inside a 400, so classifying on StatusCode alone
+// reports a permission problem as a malformed query.
+func (e *APIError) IsPermissionError() bool {
+	msg := strings.ToLower(e.Message)
+	for _, marker := range []string{
+		"access denied",
+		"accessdenied",
+		"permission denied",
+		"permission_denied",
+		"insufficient permission",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+
+	// GCP's long form, e.g. "User does not have bigquery.jobs.create
+	// permission in project X". Both halves are required so an ordinary
+	// message mentioning a permission by name is not misread.
+	return strings.Contains(msg, "does not have") && strings.Contains(msg, "permission")
 }
 
 type grafanaQueryEnvelope struct {

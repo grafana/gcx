@@ -1,217 +1,159 @@
-# Contributing Guidelines
+# Contributing to gcx
 
-This document is a guide to help you through the process of contributing to `gcx`.
+You can contribute to gcx by participating in discussions, helping us triage existing issues, improving documentation, reporting bugs, suggesting new functionality or submitting code. We welcome your help, whether this is your first contribution or you've worked on gcx before.
 
-Before implementing features or commands, read:
+For discussions, join `#gcx` on [Grafana Community Slack](https://grafana.slack.com/archives/C0AUPDVAGSC) or use [the GitHub discussions platform](https://github.com/grafana/gcx/discussions).
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture, pipeline diagrams, ADR index
-- [DESIGN.md](DESIGN.md) — CLI UX design: command grammar, output model, taste rules
-- [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
-- [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
+## Contents
 
-Naming a command? Start with the
-[command naming and placement guide](docs/design/command-naming.md).
+- [Triaging issues](#triaging-issues)
+- [Reporting bugs](#reporting-bugs)
+- [Proposing new functionality](#proposing-new-functionality)
+- [Contributing code](#contributing-code)
+  - [Submitting a pull request](#submitting-a-pull-request)
+  - [Using AI to contribute](#using-ai-to-contribute)
+  - [Code ownership](#code-ownership)
+- [Making changes](#making-changes)
+  - [Development environment](#development-environment)
+  - [Testing against a real Grafana API](#testing-against-a-real-grafana-api)
+- [Releasing gcx](#releasing-gcx)
 
-Adding, extending, or reviewing a gcx capability — a provider, datasource kind,
-resource adapter, cloud command, or bundled skill? Ask your coding agent to use
-the [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) skill. It
-settles whether a new command is warranted at all and where it belongs, then
-designs the command's agent-facing contract before any code gets written. It
-hands implementation off to `add-provider` or `add-datasource` where those
-apply, and runs a pre-review self-check over the finished diff.
+## Triaging issues
 
-## Issue Tracking
+You can help us triage existing issues by voting for feature requests, reproducing bugs, identifying duplicates, or adding useful context in comments. This helps us prioritize and focus on the most important work.
 
-Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
-Use the issue templates when creating new issues — they set the correct issue
-type and labels automatically.
+You can also open new issues, but before you do so, please make sure to check the [existing issues](https://github.com/grafana/gcx/issues) and [pull requests](https://github.com/grafana/gcx/pulls). If you find a match, please add any useful context there, instead of opening new issues, to help us keep the discussion together.
 
-### Issue types
+## Reporting bugs
 
-GitHub's native issue types classify issues. Don't add type prefixes to titles.
+Please use the [Bug report form](https://github.com/grafana/gcx/issues/new?template=1-bug-report.yml). Describe what happened, what you expected, and the steps to reproduce it. Include your gcx version, the command you ran, and relevant error output. If you can't reproduce the problem reliably, share what you've observed. Please remove credentials and replace identifying details with placeholders before posting.
 
-| Type | When to use |
-|------|-------------|
-| **Bug** | Something is broken or behaving unexpectedly |
-| **Task** | A specific piece of implementation work |
-| **Feature** | New functionality or capability |
-| **Enhancement** | Improvement to existing functionality |
-| **Epic** | Large effort spanning multiple issues |
+Please report security vulnerabilities privately through the [security policy](https://github.com/grafana/gcx/security/policy).
 
-### Issue title convention
+## Proposing new functionality
 
-Write clear, concise titles. The style depends on the issue type:
+Have an idea for gcx? Use the [Feature proposal form](https://github.com/grafana/gcx/issues/new?template=2-feature-proposal.yml) to explain the problem you want to solve and show how the feature would work, with usage examples where helpful. The [project vision](VISION.md) and [design guidelines](DESIGN.md) can help you shape your proposal.
 
-| Type | Style | Good | Bad |
-|------|-------|------|-----|
-| Task / Feature | **Imperative verb** | "Add OnCall provider" | "OnCall provider" |
-| Enhancement | **Imperative verb** | "Improve cold-start latency" | "[Enhancement]: cold start is slow" |
-| Bug | **Descriptive symptom** | "Excessive warnings for unconfigured resources" | "[Bug]: warnings" |
-| Epic | **Noun phrase (scope)** | "OAuth authentication via Grafana Assistant" | "Epic: do OAuth stuff" |
+For a new command, consider its [name and placement](docs/design/command-naming.md) and whether it should be [experimental](docs/design/experimental-commands.md). If you have a technical approach in mind, include a short outline that fits the [architecture](ARCHITECTURE.md). You don't need a complete design to suggest an idea.
 
-Rules:
-- No type prefixes (`[Bug]:`, `Epic:`, `[Feature]:`) — the issue type field handles this
-- Start with a capital letter
-- Be specific — someone should understand the scope from the title alone
-- Tasks and features start with a verb: Add, Implement, Port, Create, Fix, Improve, etc.
+If you're unsure where your idea fits, ask us in Slack or [GitHub discussions](https://github.com/grafana/gcx/discussions). We're happy to help you work through it.
 
-### Labels
+## Contributing code
 
-| Prefix | Purpose |
-|--------|---------|
-| `area/` | Codebase area (providers, cli-ux, core, skills, docs) |
-| `priority/` | Severity (critical, high, medium, low, none) |
-| `action/` | Workflow state (needs-triage) |
+You're welcome to open a PR directly for documentation changes and bug fixes, without an accepted issue. Please link an existing issue if there is one.
 
-### Milestones
+For other code contributions, please start with an issue accepted by the team. Leave a comment to let us know you would like to work on it so we can coordinate implementation and review with you.
 
-Issues are grouped into milestones representing release targets. Check the
-[milestones page](https://github.com/grafana/gcx/milestones) for current targets.
+For new features, please submit an RFC as a PR using the [RFC template](.agents/skills/create-rfc/references/rfc-template.md) before you start coding. This gives us a chance to agree on the design and how it fits with the rest of the project. See the [RFC guide](docs/rfcs/README.md) for details and [Code ownership](#code-ownership) for the product-team exception.
 
-## Development environment
+### Submitting a pull request
 
-`gcx` relies on [`mise`](https://mise.jdx.dev/) to manage all
-the tools required to work on it.
+To help us review your PR, please:
 
-Install mise and set up the project:
+1. Add or update tests and documentation for the behavior you changed.
+2. Run `GCX_AGENT_MODE=false mise run all` to check skills, lint, tests, the build, the Docker image, and documentation. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
+3. Sign your commits. See Grafana's [signed-commit requirement](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
+4. Use a descriptive PR title such as `fix(traces): handle empty results` or `docs: clarify setup` and the repository's [PR template](.github/pull_request_template.md).
+
+Before we can merge your PR, the required CI checks need to pass and a code owner needs to approve it. Please work through actionable feedback from automated review and human reviewers, and ask if anything is unclear. If you are contributing from a fork, a maintainer may need to approve the CI runs.
+
+### Using AI to contribute
+
+You're welcome to use AI tools when contributing. Please make sure you understand, review, and test the changes you submit, just as you would with any contribution.
+
+The repository's [`contribute`](.agents/skills/contribute/SKILL.md) skill can help your agent find the relevant guidance. Contributor skills live in `.agents/skills`; `.claude/skills` is a relative symlink to that directory, so both tools read the same files without a sync command. Edit skills in `.agents/skills` and preserve the symlink. As with `CLAUDE.md`, your Git checkout needs symlink support. You can use whichever development tools and planning approach work for you.
+
+### Code ownership
+
+[CODEOWNERS](.github/CODEOWNERS) identifies the teams responsible for each area. The @grafana/grafana-gcx team owns the overall architecture and shared features.
+
+Grafana product teams can contribute within their existing owned area without prior agreement from the gcx team. Proposals are welcome there, but optional. The same review and quality requirements apply. Changes to shared commands, new top-level areas, or work outside the team's area need maintainer agreement.
+
+If ownership is unclear or CODEOWNERS needs updating, please ask the gcx team in Slack or [GitHub discussions](https://github.com/grafana/gcx/discussions), or propose a CODEOWNERS change.
+
+## Making changes
+
+### Development environment
+
+`gcx` relies on [`mise`](https://mise.jdx.dev/) for tooling and [Docker](https://docs.docker.com/get-started/get-docker/) for local development dependencies.
+
+Install mise and set up the project. For macOS:
 
 ```console
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go and Python dependencies
+$ mise run deps            # install Go modules
 ```
 
-All development commands use `mise run`:
+Run `mise run deps` before `mise run all`. The Docker image and documentation builds require Docker.
+`mise run docs` builds `docs/sources` using Grafana’s website image without
+regenerating reference files; `mise run serve-docs` starts a local preview.
+
+Some mise commands for local development:
 
 ```console
 $ mise run build           # build to bin/gcx
 $ mise run lint            # run golangci-lint
 $ mise run tests           # run all tests
-$ mise run all             # lint + tests + build + docs
+$ mise run all             # lint + tests + build + docker:build + docs
 $ mise tasks               # list all available tasks
 ```
 
-See the [mise documentation](https://mise.jdx.dev/) for shell integration and further options.
+For native Windows development, install Go at the version in `go.mod`. Run
+these commands in PowerShell:
 
-## Testing against a real Grafana API
+```powershell
+$env:GCX_AGENT_MODE = 'false'
+go test ./...
+New-Item -ItemType Directory -Path bin -Force | Out-Null
+go build -buildvcs=false -o bin/gcx.exe ./cmd/gcx/
+./bin/gcx.exe --version
+./scripts/install_test.ps1
+```
+
+Run the installer tests in PowerShell 7 and Windows PowerShell 5.1 on AMD64.
+The Windows CI job also runs the Go tests, build, and PowerShell 7 installer
+tests on ARM64. The `mise run build` and `mise run install` tasks use Bash and
+Unix paths. Use the commands above for a native Windows build.
+
+### Testing against a real Grafana API
 
 While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `gcx` works correctly with the actual Grafana API.
 
-### Quick Start
+#### Start the test environment
 
 The repository includes a `docker-compose.yml` file that sets up a complete test environment with:
 
-- **Grafana 12.2** (latest stable release)
-- **MySQL 8.0** (as the backend database)
+- Grafana
+- MySQL for storage
 - Pre-configured with `admin:admin` credentials
 - The `kubernetesDashboards` feature toggle enabled (required for `gcx`)
 
-### Starting the test environment
-
-Start the services:
+Run this with:
 
 ```console
 $ mise run test-env-up
 ```
 
-This will start both Grafana and MySQL, wait for them to be healthy, and display the connection information.
-
-You can also start the services manually:
-
-```console
-$ docker-compose up -d
-```
-
-Check the status of the services:
+Check the status of the services with:
 
 ```console
 $ mise run test-env-status
 ```
 
-Or manually:
-
-```console
-$ docker-compose ps
-```
-
-You should see both `gcx-grafana` and `gcx-mysql` in a `healthy` state.
-
-Verify Grafana is accessible:
-
-```console
-$ curl -u admin:admin http://localhost:3000/api/health
-```
-
-You should receive a JSON response indicating Grafana is running.
-
-### Testing with gcx
-
-The repository includes a pre-configured test config file at `testdata/integration-test-config.yaml` that you can use to test `gcx` against the local Grafana instance.
-
-#### View the test configuration
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
-```
-
-#### List available resources
+You can use the provided config file to get gcx to use the local Grafana instance. For example:
 
 ```console
 $ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
-#### Create a test dashboard
-
-1. Create a dashboard YAML file (e.g., `test-dashboard.yaml`):
-
-```yaml
-apiVersion: dashboard.grafana.app/v1beta1
-kind: Dashboard
-metadata:
-  name: test-dashboard
-  namespace: default
-spec:
-  title: Test Dashboard
-  tags: [test]
-  timezone: browser
-  schemaVersion: 36
-```
-
-2. Push it to Grafana:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources push -p test-dashboard.yaml
-```
-
-3. Pull it back to verify:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
-```
-
-#### Testing the serve command
-
-The `serve` command allows you to develop dashboards locally with live reload:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
-```
-
-Then open your browser to the URL shown in the output (typically `http://localhost:8080`).
-
-### Stopping the test environment
+#### Stop the test environment
 
 When you're done testing, stop the services:
 
 ```console
 $ mise run test-env-down
-```
-
-Or manually:
-
-```console
-$ docker-compose down
 ```
 
 To remove all data (including database volumes):
@@ -220,41 +162,35 @@ To remove all data (including database volumes):
 $ mise run test-env-clean
 ```
 
-Or manually:
+#### Customize the test environment
 
-```console
-$ docker-compose down -v
-```
+##### Modify Grafana configuration
 
-### Customizing the test environment
-
-#### Modifying Grafana configuration
-
-The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. You can modify this file to change Grafana's behavior. After making changes, restart the services:
+The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. After editing this file, restart the service:
 
 ```console
 $ docker-compose restart grafana
 ```
 
-#### Using a different Grafana version
+##### Use a different Grafana version
 
 To test against a different Grafana version, modify the `image` field in `docker-compose.yml`:
 
 ```yaml
 services:
   grafana:
-    image: grafana/grafana:12.1  # or any other version
+    image: grafana/grafana:12.1 # or any other version
 ```
 
-Then restart the services:
+Then restart the service:
 
 ```console
 $ docker-compose up -d --force-recreate grafana
 ```
 
-#### Viewing logs
+#### View Grafana logs
 
-To view logs from both services:
+To view logs from all services:
 
 ```console
 $ mise run test-env-logs
@@ -266,65 +202,11 @@ To view logs from a specific service:
 $ docker-compose logs -f grafana
 ```
 
-Or for MySQL:
-
-```console
-$ docker-compose logs -f mysql
-```
-
-### Troubleshooting
-
-#### Grafana won't start or is unhealthy
-
-Check the logs for errors:
-
-```console
-$ docker-compose logs grafana
-```
-
-Common issues:
-- MySQL not fully initialized yet - wait a few more seconds and check again
-- Port 3000 already in use - stop any other Grafana instances or change the port in `docker-compose.yml`
-
-#### Cannot connect to Grafana from gcx
-
-Verify Grafana is accessible:
-
-```console
-$ curl -u admin:admin http://localhost:3000/api/health
-```
-
-If this fails, check:
-- Services are running: `docker-compose ps`
-- Firewall settings are not blocking port 3000
-- Check Grafana logs: `docker-compose logs grafana`
-
-#### Database connection errors
-
-Check MySQL is healthy:
-
-```console
-$ docker-compose ps mysql
-```
-
-If MySQL is not healthy, check the logs:
-
-```console
-$ docker-compose logs mysql
-```
-
-You may need to remove the volume and recreate it:
-
-```console
-$ docker-compose down -v
-$ docker-compose up -d
-```
-
 ## Releasing gcx
 
 ### Generating a changelog and tagging
 
-Releases are automated via `mise run tag`. It requires the `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Releases are automated via `mise run tag`. It requires the `claude` CLI; `svu` is installed by `mise install`.
 
 ```console
 $ mise run tag -- patch   # or minor, major

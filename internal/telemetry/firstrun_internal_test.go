@@ -3,6 +3,7 @@ package telemetry
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -43,7 +44,8 @@ func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
 		content []byte
 	}{
 		{"pre-revision empty file", nil},
-		{"older revision", []byte("1\n")},
+		{"revision 1", []byte("1\n")},
+		{"revision 2", []byte("2\n")},
 	} {
 		t.Run(stale.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
@@ -83,6 +85,26 @@ func TestFirstRunNoticeDisclosesBatchSizeCategories(t *testing.T) {
 		"dry_run must be disclosed alongside the sizes")
 	assert.Contains(t, firstRunNotice, "output format",
 		"output_format is derived from --output and must be disclosed")
+}
+
+// The notice must disclose what revision 3 added: the Grafana authentication
+// category and the failure status/reason fields. The auth disclosure is kept
+// separate from the failure disclosure because they answer different
+// questions — what connected, and what went wrong — and only the failure
+// fields are suppressed for partial failures and cancellations.
+func TestFirstRunNoticeDisclosesAuthMethodAndFailureFields(t *testing.T) {
+	assert.Contains(t, firstRunNotice, "authentication category",
+		"the auth method is the new always-eligible collection in this revision")
+	assert.Contains(t, firstRunNotice, "oauth, token, basic, mtls, anonymous, or unknown",
+		"the vocabulary is closed and small enough to state in full")
+	assert.Contains(t, firstRunNotice, "never credentials",
+		"the notice must say credential values are not collected")
+	assert.Contains(t, firstRunNotice, "4xx/5xx HTTP status",
+		"the failure status must be disclosed as a bounded protocol value")
+	assert.Contains(t, firstRunNotice, "Kubernetes reason category",
+		"the reason travels as a fixed category, never a raw server string")
+	assert.Contains(t, firstRunNotice, "omitted for partial failures and cancellations",
+		"the suppression rule is part of the disclosure")
 }
 
 // The notice states what is not collected without enumerating exceptions. An
@@ -155,6 +177,7 @@ func TestFirstRunNoticeSuppressedWhenModeNotEnabled(t *testing.T) {
 func TestFirstRunNoticeSkippedWhenStateHomeUnknown(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	assert.Empty(t, FirstRunNoticePath(), "unknown state home must not yield a relative path")
 
 	var out strings.Builder
@@ -184,15 +207,17 @@ func TestFirstRunNoticeSkippedWhenStateFileUnreadable(t *testing.T) {
 // revised disclosure ships under the consent people already accepted. Nothing
 // mechanical tied the two together: every other assertion in this file is a
 // Contains, so a contributor could add a newly collected field to the notice,
-// leave the revision at 2, and no test would fail.
+// leave the revision at 3, and no test would fail.
 //
 // Pinning the exact text closes that. Any edit fails here, which forces the
 // author to make the revision decision deliberately instead of by omission.
 func TestFirstRunNoticeTextIsPinnedToItsRevision(t *testing.T) {
-	const pinnedRevision = "2"
+	const pinnedRevision = "4"
 	const pinnedNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect arguments, free-form flag values, or resource names, and no raw batch or resource counts. Flags you set are recorded by name only.
 
 For the resource commands that work on batches, we record fixed size categories for the operation's succeeded, failed and skipped portions, rather than numbers. What each portion counts depends on the command: for some it is individual resources, for others whole resource types. Two of those categories, "0" and "1", cover a single value each; the rest are ranges. We also record the output format used, and whether the operation ran in dry-run mode.
+
+For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations. For gcx signup, we record the last step it reached, such as browser or complete.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
@@ -209,14 +234,28 @@ Find out more at https://grafana.com/docs/grafana/latest/as-code/observability-a
 }
 
 func TestFirstRunNoticeSkippedWhenStateDirUnwritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions do not apply to Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("permission checks do not apply to root")
 	}
-	readonly := filepath.Join(t.TempDir(), "readonly")
-	require.NoError(t, os.MkdirAll(readonly, 0o500))
-	path := filepath.Join(readonly, "gcx", firstRunNoticeFileName)
+	stateHome := t.TempDir()
+	require.NoError(t, os.Chmod(stateHome, 0o500))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(stateHome, 0o700)) })
+	path := filepath.Join(stateHome, "gcx", firstRunNoticeFileName)
 
 	var out strings.Builder
 	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
-	assert.Empty(t, out.String(), "unwritable flag file must skip the notice, not repeat it")
+	assert.Empty(t, out.String(), "unwritable state directory must skip the notice")
+}
+
+func TestFirstRunNoticeSkippedWhenStateHomeIsFile(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("file, not directory"), 0o600))
+	path := filepath.Join(blocked, "gcx", firstRunNoticeFileName)
+
+	var out strings.Builder
+	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+	assert.Empty(t, out.String(), "state home file must skip the notice")
 }

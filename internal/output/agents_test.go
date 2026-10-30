@@ -3,7 +3,9 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,6 +14,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func setSpillTempDir(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir)
+	t.Setenv("TEMP", dir)
+}
 
 func TestAgentsCodec_BelowThreshold(t *testing.T) {
 	codec := cmdio.NewAgentsCodecForTesting()
@@ -31,7 +40,7 @@ func TestAgentsCodec_BelowThreshold(t *testing.T) {
 
 func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -95,7 +104,7 @@ func TestAgentsCodec_Spill_ListEnvelope(t *testing.T) {
 	// A ListEnvelope spill must preview and count the items under the
 	// declared key, not treat the envelope as an opaque struct.
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -129,7 +138,7 @@ func TestAgentsCodec_Spill_ListEnvelope(t *testing.T) {
 
 func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -147,7 +156,7 @@ func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 
 func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -177,7 +186,7 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 
 func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	type listValue struct {
 		Items []map[string]any
@@ -205,6 +214,26 @@ func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	assert.LessOrEqual(t, len(preview), 3)
 }
 
+func TestAgentsCodec_ZeroThresholdDisablesSpill(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "0")
+	dir := t.TempDir()
+	setSpillTempDir(t, dir)
+
+	codec := cmdio.NewAgentsCodecForTesting()
+	data := map[string]string{"payload": strings.Repeat("x", 512*1024)}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, data))
+
+	var got map[string]string
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got), "stdout carries the full payload, not a spill receipt")
+	assert.Equal(t, data, got)
+	files, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, files, "no spill file")
+	assert.Equal(t, 0, cmdio.SpillThreshold())
+}
+
 func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "not-a-number")
 
@@ -224,7 +253,7 @@ func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 
 func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
@@ -241,7 +270,7 @@ func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {
 
 func TestAgentsCodec_SpillEnvelope_UsesPreviewSample(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
@@ -258,7 +287,7 @@ func TestAgentsCodec_SpillEnvelope_UsesPreviewSample(t *testing.T) {
 
 func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	var errBuf bytes.Buffer
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
@@ -277,7 +306,7 @@ func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {
 
 func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	// TTY mode: the hint stays a plain "hint: ..." line.
 	agent.SetFlag(false)
@@ -304,7 +333,7 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 // raw prose — a bare "hint: ..." line would break agent stderr parsing.
 func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })
@@ -350,4 +379,78 @@ func TestAgentsCodec_DecodeReturnsError(t *testing.T) {
 	codec := cmdio.NewAgentsCodecForTesting()
 	err := codec.Decode(strings.NewReader("{}"), &map[string]any{})
 	require.Error(t, err)
+}
+
+// oversizedRecords is a payload comfortably above the 50-byte threshold the
+// redirect tests set, so the only thing deciding spill vs inline is the
+// destination writer.
+func oversizedRecords() []map[string]any {
+	return []map[string]any{
+		{"name": "alpha", "kind": "Dashboard"},
+		{"name": "beta", "kind": "Dashboard"},
+		{"name": "gamma", "kind": "Dashboard"},
+		{"name": "delta", "kind": "Dashboard"},
+		{"name": "epsilon", "kind": "Dashboard"},
+	}
+}
+
+// TestAgentsCodec_RegularFileDestination_DoesNotSpill covers `gcx ... > f.json`
+// in agent mode: the caller named the destination, so the file must hold the
+// data rather than a receipt pointing at a temp file somewhere else.
+func TestAgentsCodec_RegularFileDestination_DoesNotSpill(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
+	spillDir := t.TempDir()
+	setSpillTempDir(t, spillDir)
+
+	dst, err := os.Create(filepath.Join(t.TempDir(), "out.json"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dst.Close() })
+
+	var stderr bytes.Buffer
+	codec := cmdio.NewAgentsCodecWithErrWriter(&stderr)
+	data := oversizedRecords()
+	require.NoError(t, codec.Encode(dst, data))
+	require.NoError(t, dst.Close())
+
+	written, err := os.ReadFile(dst.Name())
+	require.NoError(t, err)
+
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal(written, &got), "the redirect target must hold the payload, not a spill receipt")
+	assert.Equal(t, data, got)
+	assert.NotContains(t, string(written), cmdio.SpillReferenceType)
+
+	// No receipt means no stderr hint telling the caller to read elsewhere,
+	// and no stray temp file left behind.
+	assert.Empty(t, stderr.String())
+	entries, err := os.ReadDir(spillDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "nothing should be spilled when the destination is a file")
+}
+
+// TestAgentsCodec_PipeDestination_StillSpills is the other half of the
+// contract: a harness capturing stdout gets a pipe, and its context budget
+// stays protected.
+func TestAgentsCodec_PipeDestination_StillSpills(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
+	setSpillTempDir(t, t.TempDir())
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = r.Close() })
+
+	read := make(chan []byte, 1)
+	go func() {
+		out, _ := io.ReadAll(r)
+		read <- out
+	}()
+
+	codec := cmdio.NewAgentsCodecForTesting()
+	require.NoError(t, codec.Encode(w, oversizedRecords()))
+	require.NoError(t, w.Close())
+
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(<-read, &summary))
+	assert.Equal(t, cmdio.SpillReferenceType, summary["type"])
+	assert.NotEmpty(t, summary["spilled_to"])
 }

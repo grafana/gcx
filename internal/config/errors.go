@@ -3,6 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/credentials"
 )
@@ -62,11 +66,27 @@ func (e CredentialRejectedError) Error() string {
 		return message + "; unlock the keychain in this session, then retry"
 	}
 	if e.Source != "" {
-		message += fmt.Sprintf("; review the file and re-authenticate with --config %q", e.Source)
+		message += "; review the file and re-authenticate with --config " + quoteConfigPath(e.Source)
 	} else {
 		message += "; re-authenticate with an explicitly selected --config file"
 	}
 	return message
+}
+
+// quoteConfigPath formats a config path for command hints. Windows hints use
+// PowerShell syntax when an argument needs quotes.
+func quoteConfigPath(path string) string {
+	return quoteConfigPathForOS(path, runtime.GOOS)
+}
+
+func quoteConfigPathForOS(path, goos string) string {
+	if goos == "windows" {
+		// PowerShell 5.1 can lose a trailing backslash when it calls a native
+		// command. Forward slashes preserve that separator in this path fragment.
+		path = strings.ReplaceAll(filepath.ToSlash(path), `\`, "/")
+		return "'" + strings.ReplaceAll(path, "'", "''") + "'"
+	}
+	return strconv.Quote(path)
 }
 
 func (e CredentialRejectedError) Unwrap() error {
@@ -78,6 +98,27 @@ func (e UnsupportedVersionError) Error() string {
 		e.Version, e.File, ConfigVersion)
 }
 
-func ContextNotFound(name string) error {
-	return fmt.Errorf("invalid context \"%s\": %w", name, ErrContextNotFound)
+// ContextNotFoundError reports that a named context could not be found in the
+// loaded configuration. Available lists the context names that do exist, so
+// callers can surface valid alternatives to the user.
+type ContextNotFoundError struct {
+	Name      string
+	Available []string
+}
+
+func (e *ContextNotFoundError) Error() string {
+	return fmt.Sprintf("invalid context \"%s\": %s", e.Name, ErrContextNotFound.Error())
+}
+
+func (e *ContextNotFoundError) Unwrap() error {
+	return ErrContextNotFound
+}
+
+// ContextNotFound builds a ContextNotFoundError for the given context name.
+// available is the set of context names that exist in the config; when
+// non-empty it is surfaced to the user as valid alternatives. The parameter is
+// required (pass nil when the caller has no list to offer) so that every call
+// site is an explicit decision the compiler enumerates.
+func ContextNotFound(name string, available []string) error {
+	return &ContextNotFoundError{Name: name, Available: available}
 }

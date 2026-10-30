@@ -442,7 +442,7 @@ func detectMissingEntities(in OrientationInput, scope *scopeFlags) *MatchedScena
 		Reasoning:  "The scope filter you applied returned no workload entities — either the scope is genuinely empty or the asserts_env mapping does not cover it.",
 		NextCommands: []string{
 			"gcx kg diagnose labels",
-			"gcx kg entities query \"MATCH (n) WHERE n.name CONTAINS 'X' RETURN n LIMIT 10\"",
+			"gcx kg graph query \"MATCH (n) WHERE n.name CONTAINS 'X' RETURN n LIMIT 10\"",
 		},
 	}
 }
@@ -488,7 +488,7 @@ func buildStartingPoints(scope ScopeSummary) []StartingPoint {
 		{
 			ID:      StartingPointByNamePattern,
 			Label:   "By service name pattern",
-			Command: "gcx kg entities query \"MATCH (s:Service) WHERE s.name CONTAINS 'X' RETURN s LIMIT 20\"",
+			Command: "gcx kg graph query \"MATCH (s:Service) WHERE s.name CONTAINS 'X' RETURN s LIMIT 20\"",
 		},
 		{
 			ID:      StartingPointBySingleService,

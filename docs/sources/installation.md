@@ -14,7 +14,7 @@ weight: 2
 
 ## Quick install using the script
 
-The fastest way to install `gcx` on Linux or macOS is with the script:
+The fastest way to install `gcx` on Linux or macOS is with the install script:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
@@ -27,6 +27,10 @@ The script:
 - Verifies the SHA-256 checksum.
 - Installs the binary to `~/.local/bin`.
 
+The checksum check catches a corrupted download, but it does not prove the
+archive came from the gcx release workflow. To check that, refer to
+[Verify a release](#verify-a-release).
+
 ### Upgrade
 
 To upgrade, run the same command again. The script always installs the latest release.
@@ -37,7 +41,7 @@ Check the result:
 gcx --version
 ```
 
-If the version does not change, refer to [The version does not change after an upgrade](#the-version-does-not-change-after-an-upgrade).
+If the version doesn't change, refer to [The version does not change after an upgrade](#the-version-does-not-change-after-an-upgrade).
 
 ### Installer configuration options
 
@@ -75,6 +79,97 @@ To remove `gcx`, delete the binary:
 rm ~/.local/bin/gcx
 ```
 
+## Install on Windows
+
+`gcx` is compatible with Windows 10+ or Windows Server 2016+, on AMD64 and ARM64 processors.
+
+To install it, run this command in PowerShell 7 or Windows PowerShell 5.1:
+
+```powershell
+irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
+gcx --version
+```
+
+The script:
+
+1. Detects the processor type: AMD64 or ARM64.
+1. Downloads the matching Windows ZIP file from the latest release.
+1. Verifies the SHA-256 checksum before installation.
+1. Installs `gcx.exe` in `$env:LOCALAPPDATA\gcx\bin` by default.
+1. Also adds that directory to your user `PATH` and to the current PowerShell process.
+
+### Run `gcx` in Windows
+
+You can run `gcx` from PowerShell or Command Prompt (`cmd.exe`).
+
+- Simple command hints work in both shells.
+- Hints with quoted arguments use PowerShell syntax, so use PowerShell to run them.
+
+### Install a specific version using environment variables
+
+To install a specific version or use another directory, set the environment variables before you run the command:
+
+```powershell
+$env:GCX_VERSION = '0.2.4'
+$env:GCX_INSTALL_DIR = 'C:\Tools\gcx'
+irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
+```
+
+The following environment variables are available:
+
+- Use `GCX_VERSION` to set a release version.
+- Use `GCX_INSTALL_DIR` to set the directory for `gcx.exe`.
+- Use `VERSION` and `INSTALL_DIR` for compatibility. The `GCX_` names take precedence.
+
+Remove these environment variables to return to the defaults.
+
+### Upgrade
+
+To upgrade, run the install command again.
+
+### Uninstall
+
+> If you set `GCX_INSTALL_DIR`, use that directory in the uninstall commands.
+
+To uninstall the default installation, remove the file and its `PATH` entry:
+
+```powershell
+$installDir = Join-Path $env:LOCALAPPDATA 'gcx\bin'
+Remove-Item (Join-Path $installDir 'gcx.exe')
+$key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+try {
+    $userPath = $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $newPath = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $installDir }) -join ';'
+    $key.SetValue('Path', $newPath, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+} finally {
+    $key.Dispose()
+}
+$env:Path = ($env:Path -split ';' | Where-Object { $_ -and $_ -ne $installDir }) -join ';'
+```
+
+The commands leave other files in the directory in place. Sign out of Windows and sign in again to refresh `PATH` in new applications.
+
+### Install a Windows ZIP file manually
+
+To install manually:
+
+1. Download the `gcx_<version>_windows_amd64.zip` or `gcx_<version>_windows_arm64.zip` file from the
+[release page](https://github.com/grafana/gcx/releases/latest).
+1. Download the matching `gcx_<version>_checksums.txt` file.
+1. Compare the ZIP file's SHA-256 value with the value in that file:
+
+```powershell
+Get-FileHash .\gcx_0.2.4_windows_amd64.zip -Algorithm SHA256
+```
+
+Replace the example version and architecture with the names of the files you downloaded.
+
+Confirm that the hash matches the checksum file. Then extract `gcx.exe` from the ZIP file. Put it in a directory on your `PATH`, and run `gcx --version` to check it.
+
+### Install `gcx` in Windows Subsystem for Linux
+
+If you use Windows Subsystem for Linux, run the Linux install command inside WSL. The Linux installer installs a Linux binary.
+
 ## Install `gcx` with Homebrew (macOS and Linux)
 
 To install `gcx` with Homebrew run:
@@ -107,20 +202,39 @@ Install `gcx` from one source only. Two Homebrew formulas with the same name con
 
 Both Homebrew methods avoid the macOS Gatekeeper problem. Homebrew does not set the quarantine attribute on the files that it installs, so you do not need to work around notarisation.
 
+## Install `gcx` with asdf
+
+The [asdf-gcx](https://github.com/grafana/asdf-gcx) plugin installs the prebuilt release binaries for macOS and Linux, on amd64 and arm64.
+
+To install `gcx` with asdf:
+
+```bash
+asdf plugin add gcx https://github.com/grafana/asdf-gcx.git
+asdf install gcx latest
+asdf set -u gcx latest
+gcx --version
+```
+
+On asdf releases before 0.16, use `asdf global gcx latest` instead of `asdf set -u gcx latest`.
+
 ## Install a prebuilt binary
 
-Prebuilt binaries are available for a variety of systems and architectures. Refer to the [release versions on GitHub](https://github.com/grafana/gcx/releases/latest) for more details.
+Prebuilt binaries are available for a variety of systems and architectures. Refer to the [release versions on GitHub](https://github.com/grafana/gcx/releases/latest) for more details. For Windows ZIP files, use the [Windows instructions](#install-a-windows-zip-file-manually).
 
 To install a prebuilt binary:
 
-1. Download the archive for the operating system and architecture you need.
+1. Download the archive for the operating system and architecture you need from the [releases page](https://github.com/grafana/gcx/releases/latest).
 1. Extract the archive.
 1. Move the executable to the directory where you want to keep it.
 1. Make sure that directory is in your `PATH`.
-1. Make sure the file has execute permission.
+1. On Linux or macOS, make sure the file has execute permission.
 
-If you use macOS, a manually downloaded binary might be blocked by Gatekeeper.
-For more information, refer to [macOS Gatekeeper and killed: 9](#macos-gatekeeper-and-killed-9).
+```bash
+tar xzf gcx_*.tar.gz
+chmod +x gcx && sudo mv gcx /usr/local/bin/
+```
+
+If you use macOS, a manually downloaded binary might be blocked by Gatekeeper. For more information, refer to [macOS Gatekeeper and killed: 9](#macos-gatekeeper-and-killed-9).
 
 ## Install `gcx` from source
 
@@ -135,18 +249,143 @@ To install, run:
 go install github.com/grafana/gcx/cmd/gcx@latest
 ```
 
-## The version does not change after an upgrade
+## Shell completion
 
-This page lists several install methods, and they write `gcx` to different
-directories. If you use two methods, you get two copies. Your shell runs the
-copy in the directory that comes first in `PATH`, and an upgrade of the other
-copy changes nothing that you can see.
+To run shell completion:
+
+```bash
+gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
+gcx completion bash > /etc/bash_completion.d/gcx  # bash
+gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
+```
+
+## Run `gcx` in a container
+
+Each release publishes the same multi-arch (`linux/amd64`, `linux/arm64`) image to two registries:
+
+- `docker.io/grafana/gcx` (Docker Hub)
+- `ghcr.io/grafana/gcx` (GitHub Container Registry)
+
+Both carry identical tags and the same image digests. The entrypoint is `gcx`.
+
+From Docker Hub:
+
+```sh
+docker run --rm docker.io/grafana/gcx:latest --version
+```
+
+From GitHub Container Registry:
+
+```sh
+docker run --rm ghcr.io/grafana/gcx:latest --version
+```
+
+Pass credentials through `GRAFANA_*` environment variables, or mount a config
+file and point `GCX_CONFIG` at it, for example
+`-v "$HOME/.config/gcx:/gcx:ro" -e GCX_CONFIG=/gcx/config.yaml`.
+To pin a release in CI, use an exact tag such as `v1.5.0`. The `v1.5` and
+`v1` tags follow the latest patch and minor release of that line. Prereleases
+only get their exact tag.
+
+The image is based on distroless and has no shell, so run `gcx` directly, not
+through `sh -c`.
+
+## Verify a release
+
+Releases after v1.6.0 are signed keylessly with [Sigstore](https://www.sigstore.dev/).
+Earlier releases have no signatures, and `cosign` reports `no matching signatures` for them.
+There is no gcx public key to fetch: the release workflow signs with a
+short-lived certificate issued against its GitHub Actions OIDC token, so a
+signature proves an artifact came out of `.github/workflows/release.yaml` in
+`grafana/gcx` on a `v*` tag.
+
+Verification needs [`cosign`](https://docs.sigstore.dev/cosign/installation/)
+v3 or later.
+
+Two values appear in every command below:
+
+- `--certificate-identity` — the signing workflow, including the tag it ran on.
+- `--certificate-oidc-issuer` — always `https://token.actions.githubusercontent.com` for GitHub Actions.
+
+Check both. A signature with a valid certificate but a different identity was
+made by a different workflow.
+
+### Verify the image
+
+Replace `v1.5.0` with the tag you pulled:
+
+```sh
+cosign verify \
+  --certificate-identity 'https://github.com/grafana/gcx/.github/workflows/release.yaml@refs/tags/v1.5.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/grafana/gcx:v1.5.0
+```
+
+The floating tags (`latest`, `v1.5`, `v1`) move between releases, so you do not
+know up front which tag signed the image behind them. Match any `v*` tag with
+an anchored regular expression instead:
+
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/grafana/gcx/\.github/workflows/release\.yaml@refs/tags/v.*$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/grafana/gcx:latest
+```
+
+Keep the `^` and `$` anchors and the escaped dots. An unanchored pattern also
+matches identities from other repositories and other workflows.
+
+### Verify the archives
+
+The release signs the checksums file rather than each archive, and that file
+covers every archive in the release. Download the archive you want,
+`gcx_<version>_checksums.txt`, and `gcx_<version>_checksums.txt.sigstore.json`
+from the [release page](https://github.com/grafana/gcx/releases/latest) into
+the same directory.
+
+Verify the checksums file first:
+
+```sh
+cosign verify-blob \
+  --certificate-identity 'https://github.com/grafana/gcx/.github/workflows/release.yaml@refs/tags/v1.5.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --bundle gcx_1.5.0_checksums.txt.sigstore.json \
+  gcx_1.5.0_checksums.txt
+```
+
+Only once that passes, check the archive against it:
+
+```sh
+sha256sum --check --ignore-missing gcx_1.5.0_checksums.txt
+```
+
+On macOS, use `shasum -a 256 --check --ignore-missing` instead.
+
+Doing it in this order matters. `sha256sum` on its own only proves the archive
+matches the checksums file next to it; verifying the signature first is what
+ties that file to the release workflow.
+
+### What the signature does and does not prove
+
+A keyless signature proves which workflow built the artifact. It is therefore
+only as strong as the controls on who can push `v*` tags and who can change
+`.github/workflows/` in `grafana/gcx`. It says nothing about the contents of
+the code itself.
+
+## Troubleshooting
+
+### The version does not change after an upgrade
+
+This page lists several install methods, and they write `gcx` to different directories. If you use two methods, you get two copies. Your shell runs the copy in the directory that comes first in `PATH`, and an upgrade of the other copy changes nothing that you can see.
 
 List every copy:
 
 ```sh
 which -a gcx
 ```
+
+On Windows, use `Get-Command gcx -All` in PowerShell. It lists each copy in
+your `PATH`.
 
 The first line is the copy that your shell runs. Remove the copies that you do
 not want:
@@ -158,17 +397,15 @@ not want:
 | `/opt/homebrew/bin/gcx`, `/home/linuxbrew/.../gcx` | Homebrew | `brew uninstall gcx` |
 | `~/go/bin/gcx` | `go install` | `rm ~/go/bin/gcx` |
 
-After you remove a copy, your shell can still hold the old path in its command
-hash table. Open a new terminal, or run:
+After you remove a copy, your shell can still hold the old path in its command hash table. Open a new terminal, or run:
 
 ```sh
 hash -r
 ```
 
-The install script reports this problem for you. It names both paths and both
-versions, and it gives the removal command.
+The install script reports this problem for you. It names both paths and both versions, and it gives the removal command.
 
-## macOS Gatekeeper and killed 9
+### macOS Gatekeeper and killed 9
 
 macOS quarantines any downloaded binary by default. Since `gcx` release binaries are not yet Apple-notarised, macOS may block it the first time you run it. If this happens, you'll see one of these two symptoms:
 
@@ -177,7 +414,7 @@ macOS quarantines any downloaded binary by default. Since `gcx` release binaries
 
 **Homebrew users are not affected**. Homebrew does not set the `xattr` on the files that it installs.
 
-### Bypass the macOS gatekeeper
+#### Bypass the macOS gatekeeper
 
 In manual downloads, bypass this by clearing the `xattr` and ad-hoc sign the binary so Apple Silicon accepts it:
 
@@ -189,5 +426,3 @@ codesign --sign - --force "$(command -v gcx)"   # required on Apple Silicon
 Next, run `gcx --version` again; subsequent invocations should succeed without the block. 
 
 Note that these steps will no longer be necessary once `gcx` release binaries are Apple-notarised.
-
-

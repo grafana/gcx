@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/cmd/gcx/dev"
+	docscmd "github.com/grafana/gcx/cmd/gcx/docs"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
 	instrumentationcmd "github.com/grafana/gcx/cmd/gcx/instrumentation"
 	logincmd "github.com/grafana/gcx/cmd/gcx/login"
@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/notifier"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/agento11y"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"           // Provider registrations — blank imports trigger init() self-registration.
@@ -72,6 +73,22 @@ var jsonFlagActive atomic.Bool
 // on the command that was actually executed. Safe for concurrent use.
 func IsJSONFlagActive() bool {
 	return jsonFlagActive.Load()
+}
+
+// humanOutputFlagActive is set to true in PersistentPreRun when the user
+// explicitly asked for a human-oriented output format (-o text, wide, yaml, ...)
+// on the resolved command. reportError() in main.go uses it to let the explicit
+// format override agent mode for errors, as it already does for results.
+//
+//nolint:gochecknoglobals
+var humanOutputFlagActive atomic.Bool
+
+// IsHumanOutputFlagActive reports whether the user explicitly selected a
+// non-JSON output format with -o on the command that was actually executed.
+// Always false when --json or --jq is set: those keep JSON error documents.
+// Safe for concurrent use.
+func IsHumanOutputFlagActive() bool {
+	return humanOutputFlagActive.Load()
 }
 
 func shouldNotifySkills(cmd *cobra.Command) bool {
@@ -151,13 +168,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			jsonFlagActive.Store(false)
-			// Track whether --json was explicitly set on the resolved command.
-			// Only mark active when the command actually declares a --json flag,
-			// preventing false positives for subcommands that don't support it.
-			if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
-				jsonFlagActive.Store(true)
-			}
+			jsonFlagActive.Store(output.IsJSONFlagActive(cmd))
+			humanOutputFlagActive.Store(output.IsHumanOutputFlagActive(cmd))
 
 			// Detect TTY state first so all downstream decisions can use it.
 			terminal.Detect()
@@ -202,13 +214,17 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			ctx = internalconfig.ContextWithWarningWriter(ctx, cmd.ErrOrStderr())
 
 			// Thread --context into Go context so provider config loaders
-			// can discover it via config.ContextNameFromCtx().
+			// can discover it via config.ContextNameFromCtx(). GCX_CONTEXT is
+			// the flag's environment equivalent and applies when it is unset.
+			if contextName == "" {
+				contextName = os.Getenv(internalconfig.ContextEnvVar)
+			}
 			if contextName != "" {
 				ctx = internalconfig.ContextWithName(ctx, contextName)
 			}
 
 			if insecureLogHTTPPayload {
-				fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: --insecure-log-http-payload is set. Authorization tokens, cookies, OAuth refresh tokens, and request bodies will be written to debug logs. Do not share or ship these logs.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: --insecure-log-http-payload is set. Authorization tokens, cookies, OAuth refresh tokens, and request bodies will be written to debug logs when using -vvv. Do not share or ship these logs.")
 				ctx = httputils.WithPayloadLogging(ctx, true)
 			}
 
@@ -228,15 +244,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		},
 	}
 
-	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		if strings.Contains(err.Error(), "--log-http-payload") && strings.Contains(err.Error(), "flag has been renamed") {
-			return errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
+			err = errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
 		}
-		return err
+		return commandUsageError(cmd, err)
 	})
-
-	defaultHelp := rootCmd.HelpFunc()
-	rootCmd.SetHelpFunc(style.HelpFunc(defaultHelp))
 
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
@@ -246,10 +259,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(cloudcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
+	rootCmd.AddCommand(logincmd.SignupCommand())
 	rootCmd.AddCommand(config.Command())
-	rootCmd.AddCommand(dev.Command())
+	addDevCommand(rootCmd)
 	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(versioncmd.Command())
+	rootCmd.AddCommand(docscmd.Command())
 	rootCmd.AddCommand(instrumentationcmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
@@ -282,11 +297,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
 	rootCmd.PersistentFlags().BoolVar(&noTruncate, "no-truncate", false, "Disable table column truncation (auto-enabled when stdout is piped)")
-	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.")
+	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 	rootCmd.PersistentFlags().BoolVar(&insecureLogHTTPPayload, "insecure-log-http-payload", false,
-		"Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.")
+		"Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.")
 	// Hard error on the old flag name so engineers see the migration message.
 	rootCmd.PersistentFlags().Var(&renamedFlag{newName: "insecure-log-http-payload"}, "log-http-payload", "")
 	if err := rootCmd.PersistentFlags().MarkHidden("log-http-payload"); err != nil {
@@ -297,7 +312,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// traversing the command tree before ExecuteContext() sees the same shape
 	// that Cobra will execute.
 	rootCmd.InitDefaultHelpCmd()
+	topics := registerHelpTopics(rootCmd)
+	rootCmd.SetHelpFunc(style.HelpFunc(rootCmd.HelpFunc(), topics...))
 	rootCmd.InitDefaultCompletionCmd()
+
+	wrapArgumentErrors(rootCmd)
 
 	// Apply centralized agent annotations (token_cost, llm_hint) to the
 	// full command tree. Must run after all commands are registered.

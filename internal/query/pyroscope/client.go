@@ -69,8 +69,6 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	if len(req.SpanIDs) > 0 {
 		resourcePath = "querier.v1.QuerierService/SelectMergeSpanProfile"
 	}
-	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
-
 	start, end := DefaultTimeRange(req.Start, req.End)
 
 	// Build request body
@@ -106,34 +104,38 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	var result QueryResponse
+	if err := c.postQuery(ctx, datasourceUID, resourcePath, "query", body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// postQuery shares the bounded, authenticated RPC transport for profile queries.
+func (c *Client) postQuery(ctx context.Context, datasourceUID, resourcePath, operation string, body []byte, result any) error {
+	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
-
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer resp.Body.Close()
-
 	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return fmt.Errorf("failed to read response: %w", err)
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("pyroscope", "query", resp.StatusCode, respBody)
+		return queryerror.FromBody("pyroscope", operation, resp.StatusCode, respBody)
 	}
 
-	var result QueryResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := json.Unmarshal(respBody, result); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
 	}
-
-	return &result, nil
+	return nil
 }
 
 // GetProfileStats returns ingestion stats from the datasource: whether any
@@ -322,6 +324,109 @@ func (c *Client) LabelValues(ctx context.Context, datasourceUID string, req Labe
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	return &result, nil
+}
+
+// Series returns unique profile label sets from the datasource.
+func (c *Client) Series(ctx context.Context, datasourceUID string, req SeriesRequest) (*SeriesResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/Series")
+
+	start, end := DefaultTimeRange(req.Start, req.End)
+	bodyMap := map[string]any{
+		"start": strconv.FormatInt(start.UnixMilli(), 10),
+		"end":   strconv.FormatInt(end.UnixMilli(), 10),
+	}
+	if len(req.Matchers) > 0 {
+		bodyMap["matchers"] = req.Matchers
+	}
+	if len(req.LabelNames) > 0 {
+		bodyMap["labelNames"] = req.LabelNames
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal series request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create series request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute series request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read series response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", "profile series query", resp.StatusCode, respBody)
+	}
+
+	var result SeriesResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse series response: %w", err)
+	}
+	if result.LabelsSet == nil {
+		result.LabelsSet = []Labels{}
+	}
+	return &result, nil
+}
+
+func (c *Client) QueryAnomalies(ctx context.Context, datasourceUID string, req QueryAnomaliesRequest) (*QueryAnomaliesResponse, error) {
+	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/QueryAnomalies")
+
+	start, end := DefaultTimeRange(req.Start, req.End)
+	anomalyTypes := req.AnomalyTypes
+	if len(anomalyTypes) == 0 {
+		anomalyTypes = []string{AnomalyTypeStacktrace}
+	}
+
+	bodyMap := map[string]any{
+		"profileTypeID": req.ProfileTypeID,
+		"labelSelector": req.LabelSelector,
+		"start":         strconv.FormatInt(start.UnixMilli(), 10),
+		"end":           strconv.FormatInt(end.UnixMilli(), 10),
+		"anomalyTypes":  anomalyTypes,
+	}
+
+	body, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal query anomalies request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create query anomalies request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query anomalies request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read query anomalies response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", "profile anomalies query", resp.StatusCode, respBody)
+	}
+
+	var result QueryAnomaliesResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse query anomalies response: %w", err)
+	}
+	if result.StacktraceAnomalies == nil {
+		result.StacktraceAnomalies = []StacktraceAnomaly{}
+	}
 	return &result, nil
 }
 

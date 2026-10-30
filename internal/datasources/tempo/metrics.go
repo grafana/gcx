@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/spf13/cobra"
@@ -28,31 +29,33 @@ func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 TRACEQL is the TraceQL metrics expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+Metrics queries support arithmetic (+, -, *, /) with other queries or numeric
+scalars on supported Tempo backends. Wrap each metrics subquery in parentheses.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query. Use --instant to force an instant query
 even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every TraceQL metrics query uses a pipeline stage
+like "| rate()", which Traces Drilldown's filter model can never
+represent — use 'tempo query' for Drilldown links.`,
 		Example: `
   # Instant query over the last hour (default, no time flags)
   gcx datasources tempo metrics '{ } | rate()'
 
-  # Range query with relative window
-  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' --since 1h
-
-  # Print a Grafana Explore share link for the query
-  gcx datasources tempo metrics '{ } | rate()' --share-link
-
   # Instant query with explicit time range
   gcx datasources tempo metrics '{ } | rate()' --instant --since 1h
 
-  # Range query with explicit time range and step
-  gcx datasources tempo metrics '{ } | rate()' --from now-1h --to now --step 30s
+  # Range query with explicit bounds, step, and an Explore share link
+  gcx datasources tempo metrics '{ } | rate()' --from now-1h --to now --step 30s --share-link
 
-  # Output as JSON
-  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' -o json`,
+  # Error percentage among observed server spans (not unsampled traffic)
+  gcx datasources tempo metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
+
+  # Each service's share of observed server-span throughput
+  gcx datasources tempo metrics '100 * ({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -97,7 +100,6 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("metrics query failed: %w", err)
 			}
-
 			from := shared.From
 			to := shared.To
 			if from == "" && !req.Start.IsZero() {
@@ -117,13 +119,22 @@ open it in your browser after the query succeeds.`,
 			}, 20)
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metrics query")
 
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+			if err := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
-			})
+			}); err != nil {
+				return err
+			}
+
+			if shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: req.Start, End: req.End,
+				})
+			}
+			return nil
 		},
 	}
 
@@ -132,7 +143,9 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources tempo metrics -d UID '{ } | rate()' --since 1h -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().BoolVar(&instant, "instant", false, "Run an instant query over the selected time range instead of a range query")
 	share.Setup(cmd.Flags(), "executed query")

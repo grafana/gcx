@@ -3,7 +3,6 @@ package dynamic
 import (
 	"errors"
 	"fmt"
-	"net/http"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +29,8 @@ func (e APIError) Status() metav1.Status {
 	return e.status
 }
 
-// ParseStatusError parses a Kubernetes API status from an error.
+// ParseStatusError wraps errors carrying a Kubernetes API status for display.
+// Other errors are returned unchanged to preserve transport and cancellation chains.
 func ParseStatusError(err error) error {
 	if err == nil {
 		return nil
@@ -40,12 +40,5 @@ func ParseStatusError(err error) error {
 		return APIError{status.Status()}
 	}
 
-	return APIError{
-		status: metav1.Status{
-			Status:  metav1.StatusFailure,
-			Reason:  metav1.StatusReasonUnknown,
-			Code:    http.StatusInternalServerError,
-			Message: err.Error(),
-		},
-	}
+	return err
 }

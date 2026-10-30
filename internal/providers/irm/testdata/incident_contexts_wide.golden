@@ -1,0 +1,3 @@
+CONTEXTID  TYPE        STATUS  ALERTGROUPID  TITLE                                                                CREATED
+ctx-1      alertGroup  firing  ag-99         Checkout latency regression affecting EU customers since the deploy  2026-03-14T09:26
+ctx-2      -           -       -             -                                                                    -

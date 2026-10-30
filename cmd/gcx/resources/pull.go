@@ -25,7 +25,9 @@ type pullOpts struct {
 	IO             cmdio.Options
 	OnError        OnErrorMode
 	IncludeManaged bool
+	SkipReadOnly   bool
 	Path           string
+	FilenameBy     FilenameByMode
 
 	// flags is the bound flag set, kept so Validate can reject flags that
 	// cannot round-trip as on-disk resource files (--json, --jq).
@@ -56,6 +58,8 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
+	flags.StringVar((*string)(&opts.FilenameBy), "filename-by", string(FilenameByName), "Name files by 'name' (metadata.name) or 'title' (slug of spec.title, falling back to metadata.name)")
+	flags.BoolVar(&opts.SkipReadOnly, "skip-read-only", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
 	flags.BoolVar(
 		&opts.IncludeManaged,
 		"include-managed",
@@ -65,6 +69,10 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (opts *pullOpts) Validate() error {
+	if err := opts.FilenameBy.Validate(); err != nil {
+		return &fail.UsageError{Message: err.Error()}
+	}
+
 	// The pull-specific typed rejections run BEFORE the shared IO.Validate:
 	// the shared errors are untyped (exit 1 today, repo-wide), so a mixed
 	// invocation like `pull -o yaml --json x` must hit the typed exit-2
@@ -122,15 +130,19 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources pull dashboards
 	gcx resources pull dashboards folders
 
+	# Name dashboard files by title:
+
+	gcx resources pull dashboards --filename-by=title
+
 	# Single resource kind, one or more resource instances:
 
 	gcx resources pull dashboards/foo
 	gcx resources pull dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources pull dashboard.dashboards/foo
-	gcx resources pull dashboard.dashboards/foo,bar
+	gcx resources pull dashboards.dashboard.grafana.app/foo
+	gcx resources pull dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -142,20 +154,23 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources pull dashboards/foo folders/qux
 	gcx resources pull dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources pull dashboard.dashboards/foo folder.folders/qux
-	gcx resources pull dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources pull dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources pull dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
 	gcx resources pull dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources pull slo -p ./slo-defs/
-	gcx resources pull checks -p ./checks/
-	gcx resources pull rules -p ./rules/`,
+	gcx resources pull checks.syntheticmonitoring -p ./checks/
+
+	# Native Grafana alert rules:
+
+	gcx resources pull alertrules -p ./alertrules/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -174,7 +189,9 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			res, err := FetchResources(ctx, FetchRequest{
-				Config: cfg,
+				ExcludeReadOnly: opts.SkipReadOnly,
+				Config:          cfg,
+				Warn:            cmd.ErrOrStderr(),
 				// Strip server fields from the resources.
 				// This includes fields like `resourceVersion`, `uid`, etc.
 				Processors: []remote.Processor{
@@ -196,9 +213,17 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 			written := map[string]*dirGroup{}
 			var writeFailures []cmdio.MutationFailure
+			plurals := local.PluralsFromFilters(res.Filters)
+			namer := local.GroupResourcesByKind(opts.IO.OutputFormat, plurals)
+			if opts.FilenameBy == FilenameByTitle {
+				namer, err = local.GroupResourcesByKindTitle(opts.Path, opts.IO.OutputFormat, plurals, res.Resources.AsList(), cmd.ErrOrStderr())
+				if err != nil {
+					return err
+				}
+			}
 			writer := local.FSWriter{
 				Path:        opts.Path,
-				Namer:       local.GroupResourcesByKind(opts.IO.OutputFormat, local.PluralsFromFilters(res.Filters)),
+				Namer:       namer,
 				Encoder:     codec,
 				StopOnError: opts.OnError.StopOnError(),
 				OnWritten: func(path string, resource *resources.Resource) {
@@ -230,6 +255,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			receipt := cmdio.NewArtifactReceipt("pulled", opts.IO.OutputFormat)
 			receipt.Dir = opts.Path
+			receipt.SkippedReasons = pullSummary.SkippedReasons()
 			receipt.Summary = cmdio.MutationSummary{
 				// Succeeded means "on disk": fetched resources whose write
 				// failed move from succeeded to failed.
@@ -283,7 +309,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 
 				if skipped := pullSummary.SkippedCount(); skipped > 0 {
-					printer(w, "%d resources pulled, %d errors (%d resource types skipped — not listable)", succeeded, failed, skipped)
+					printer(w, "%d resources pulled, %d errors (%s)", succeeded, failed, formatSkipReasons(receipt.SkippedReasons))
 				} else {
 					printer(w, "%d resources pulled, %d errors", succeeded, failed)
 				}

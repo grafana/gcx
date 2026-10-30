@@ -383,3 +383,40 @@ func (m *listTrackingMockClient) List(
 	m.mu.Unlock()
 	return m.mockPushClient.List(ctx, desc, opts)
 }
+
+func TestPusher_SLOAmbiguousNaturalKey(t *testing.T) {
+	for _, kind := range []string{"SLO", "Report"} {
+		t.Run(kind, func(t *testing.T) {
+			desc := resources.Descriptor{
+				GroupVersion: schema.GroupVersion{Group: "slo.ext.grafana.app", Version: "v1alpha1"},
+				Kind:         kind,
+			}
+			gvk := desc.GroupVersionKind()
+			adapter.RegisterNaturalKey(gvk, adapter.SpecFieldKey("name"))
+			for _, secondName := range []string{"HTTP Availability", "http-availability!"} {
+				t.Run(secondName, func(t *testing.T) {
+					local := resources.MustFromObject(map[string]any{
+						"apiVersion": desc.GroupVersion.String(), "kind": kind,
+						"metadata": map[string]any{}, "spec": map[string]any{"name": "HTTP Availability"},
+					}, resources.SourceInfo{})
+					first := local.Object.DeepCopy()
+					first.SetName("first")
+					second := local.Object.DeepCopy()
+					second.SetName("second")
+					second.Object["spec"] = map[string]any{"name": secondName}
+					client := &mockPushClient{listResults: map[schema.GroupVersionKind]*unstructured.UnstructuredList{
+						gvk: {Items: []unstructured.Unstructured{*first, *second}},
+					}}
+					registry := &mockPushRegistry{supportedResources: []resources.Descriptor{desc}}
+					summary, err := remote.NewPusher(client, registry).Push(t.Context(), remote.PushRequest{
+						Resources: resources.NewResources(local), MaxConcurrency: 1,
+						IncludeManaged: true, StopOnError: true,
+					})
+					require.ErrorContains(t, err, `multiple `+kind+` resources have natural key "http-availability"`)
+					require.Equal(t, 1, summary.FailedCount())
+					require.Empty(t, client.operations, "ambiguous names must not create or update")
+				})
+			}
+		})
+	}
+}

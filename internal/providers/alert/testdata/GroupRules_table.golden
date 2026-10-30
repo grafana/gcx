@@ -1,0 +1,3 @@
+UID     NAME          STATE     HEALTH  PAUSED
+rule-1  High latency  firing    ok      no
+rule-2  Low traffic   inactive  error   yes

@@ -79,6 +79,7 @@ func listExamplesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 				filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 					Selectors:            sels,
+					Warn:                 cmd.ErrOrStderr(),
 					PreferredVersionOnly: true,
 				})
 				if err != nil {
@@ -188,10 +189,8 @@ func examplesToNested(descs resources.Descriptors, examples map[schema.GroupVers
 	return result
 }
 
-// resolveExample returns the example for a GVK. Checks the cheap global
-// registry first (all current providers register examples there), then falls
-// back to instantiating the adapter factory (for future providers that inject
-// examples via TypedRegistration). Returns nil if no example is registered.
+// resolveExample returns the example registered for a GVK, or nil if no
+// example is registered.
 func resolveExample(_ context.Context, _ *discovery.Registry, gvk schema.GroupVersionKind) json.RawMessage {
 	return adapter.ExampleForGVK(gvk)
 }
