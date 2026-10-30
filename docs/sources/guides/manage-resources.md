@@ -91,5 +91,5 @@ gcx dashboards snapshot my-dashboard --panel 1 --output-dir ./images -o json
 ```
 
 The JSON and YAML receipts report the saved PNG's actual `width` and `height`.
-The renderer can adjust requested dimensions, for example to enforce a minimum
-width or capture a dashboard's full page height.
+The dimensions can differ from the request when the renderer adjusts the image
+size or captures a dashboard's full page height.

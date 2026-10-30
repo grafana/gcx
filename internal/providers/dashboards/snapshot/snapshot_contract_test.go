@@ -245,8 +245,8 @@ func TestSnapshot_HumanDefaultByteIdentical(t *testing.T) {
 	renderErr := snapshot.RenderSnapshotTableForTest(&expected, []dashboards.SnapshotResult{{
 		UID:      "dash-a",
 		FilePath: wantPath,
-		Width:    1920,
-		Height:   -1,
+		Width:    1,
+		Height:   1,
 		Theme:    "dark",
 		FileSize: int64(len(testPNG)),
 	}})
@@ -401,8 +401,8 @@ func assertSuccessOnlyTable(t *testing.T, stdout, outputDir string) {
 	if renderErr := snapshot.RenderSnapshotTableForTest(&expected, []dashboards.SnapshotResult{{
 		UID:      "dash-a",
 		FilePath: wantPath,
-		Width:    1920,
-		Height:   -1,
+		Width:    1,
+		Height:   1,
 		Theme:    "dark",
 		FileSize: int64(len(testPNG)),
 	}}); renderErr != nil {
