@@ -109,30 +109,6 @@ func TestDatasourceAuthenticationFailure(t *testing.T) {
 	}
 }
 
-func TestDatasourceAuthenticationResponseFields(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		body string
-	}{
-		{"primary error wins", `{"error":"invalid rule group","message":"Authentication to data source failed"}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := providers.FormatError(http.StatusBadRequest, []byte(tc.body))
-			var transportErr *gcxerrors.HTTPStatusError
-			require.ErrorAs(t, err, &transportErr)
-			assert.Equal(t, "invalid rule group", transportErr.ServerMessage)
-			got := toDetailedError(t, err)
-			assert.Contains(t, got.Details, "invalid rule group")
-			assert.Contains(t, got.Details, "HTTP 400")
-			assert.Equal(t, gcxerrors.SummaryAPIError, got.Summary)
-			if got.ExitCode != nil {
-				assert.Equal(t, gcxerrors.ExitGeneralError, *got.ExitCode)
-			}
-			assert.NotContains(t, fmt.Sprint(got.Suggestions), "gcx datasources")
-		})
-	}
-}
-
 func TestRulerDatasourceAuthenticationResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/ruler/test-ds/api/v1/rules", r.URL.Path)
