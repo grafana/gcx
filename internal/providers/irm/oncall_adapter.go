@@ -159,7 +159,7 @@ func validateScheduleType(value any) error {
 }
 
 func validateWebhookTrigger(value any) error {
-	if value == nil || value == "" {
+	if value == nil {
 		return nil // A preset can control the trigger.
 	}
 	if err := validateNonNegativeInteger(value, "webhook trigger_type"); err != nil {
@@ -177,7 +177,7 @@ func validateShiftValues(shift *Shift) error {
 		{"type", shift.Type, false},
 		{"frequency", shift.Frequency, true},
 	} {
-		if field.value == nil || field.value == "" {
+		if field.value == nil {
 			if field.optional {
 				continue
 			}
@@ -443,9 +443,6 @@ func onCallNumericFieldSchema(base func() json.RawMessage, fields ...onCallNumer
 		document, properties := onCallSchemaFields(base)
 		for _, field := range fields {
 			pattern := `^(0|[1-9][0-9]*)$`
-			if field.allowUnset {
-				pattern = `^(0|[1-9][0-9]*)?$`
-			}
 			options := []any{
 				map[string]any{"type": "integer", "minimum": 0},
 				map[string]any{"type": "string", "pattern": pattern},

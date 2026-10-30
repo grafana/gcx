@@ -288,6 +288,8 @@ func TestWebhookCreateTriggerValidation(t *testing.T) {
 		{"unknown name", `"escalation"`, true},
 		{"future numeric value", "21", false},
 		{"negative value", "-1", true},
+		{"empty string", `""`, true},
+		{"null trigger", "null", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -371,6 +373,8 @@ func TestShiftCreateValidatesNumericFields(t *testing.T) {
 		{"future frequency", "2", "4", false},
 		{"negative type", "-1", "1", true},
 		{"nonnumeric frequency", "2", `"daily"`, true},
+		{"empty frequency", "2", `""`, true},
+		{"null frequency", "2", "null", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -389,6 +393,34 @@ func TestShiftCreateValidatesNumericFields(t *testing.T) {
 			}
 			if err != nil || fake.gotShift.Name != "my-shift" {
 				t.Fatalf("valid choices did not reach API: error = %v, value = %#v", err, fake.gotShift)
+			}
+		})
+	}
+}
+
+func TestOptionalOnCallNumericFieldsMarshal(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		item  func(any) any
+	}{
+		{"webhook trigger", "trigger_type", func(value any) any { return Webhook{TriggerType: value} }},
+		{"shift frequency", "frequency", func(value any) any { return ShiftRequest{Frequency: value} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, value := range []any{nil, ""} {
+				data, err := json.Marshal(tc.item(value))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var fields map[string]any
+				if err := json.Unmarshal(data, &fields); err != nil {
+					t.Fatal(err)
+				}
+				_, present := fields[tc.field]
+				if wantPresent := value != nil; present != wantPresent {
+					t.Errorf("%s present = %t for %#v, want %t", tc.field, present, value, wantPresent)
+				}
 			}
 		})
 	}

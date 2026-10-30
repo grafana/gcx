@@ -66,7 +66,6 @@ func TestOnCallSchemaContract(t *testing.T) {
 			wantPattern := `^(0|[1-9][0-9]*)$`
 			if optional {
 				wantBranches = 3
-				wantPattern = `^(0|[1-9][0-9]*)?$`
 			}
 			if len(choice.OneOf) != wantBranches || choice.OneOf[0].Type != "integer" || choice.OneOf[0].Minimum == nil || *choice.OneOf[0].Minimum != 0 || choice.OneOf[1].Type != "string" || choice.OneOf[1].Pattern != wantPattern {
 				t.Errorf("%s %s numeric schema = %#v", registration.GVK.Kind, field, choice)
