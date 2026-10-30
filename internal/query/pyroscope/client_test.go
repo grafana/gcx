@@ -449,14 +449,14 @@ func TestClient_Pprof(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		req      pyroscope.PprofRequest
+		req      pyroscope.QueryRequest
 		handler  http.HandlerFunc
 		wantGzip bool
 		wantErr  bool
 	}{
 		{
 			name: "returns gzip-compressed profile proto",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{service_name="frontend"}`,
 			},
@@ -496,7 +496,7 @@ func TestClient_Pprof(t *testing.T) {
 		},
 		{
 			name: "max_nodes field encoded when set",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 				MaxNodes:      512,
@@ -529,7 +529,7 @@ func TestClient_Pprof(t *testing.T) {
 		},
 		{
 			name: "trace_id_selector fields encoded when set",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 				TraceIDs:      []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"},
@@ -561,7 +561,7 @@ func TestClient_Pprof(t *testing.T) {
 		},
 		{
 			name: "server error is surfaced",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 			},
@@ -579,7 +579,8 @@ func TestClient_Pprof(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			got, err := client.Pprof(context.Background(), "test-uid", tt.req)
+			tt.req.Format = pyroscope.ProfileFormatPprof
+			got, err := client.Query(context.Background(), "test-uid", tt.req)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -589,7 +590,7 @@ func TestClient_Pprof(t *testing.T) {
 
 			if tt.wantGzip {
 				// Verify the response is gzip-compressed and decompresses to our proto.
-				gz, err := gzip.NewReader(bytes.NewReader(got))
+				gz, err := gzip.NewReader(bytes.NewReader(got.Pprof))
 				require.NoError(t, err, "response should be gzip-compressed")
 				decompressed, err := io.ReadAll(gz)
 				require.NoError(t, err)
@@ -755,7 +756,7 @@ func TestClient_PprofInvalidResponse(t *testing.T) {
 			}))
 			defer server.Close()
 
-			got, err := newTestClient(t, server).Pprof(context.Background(), "test-uid", pyroscope.PprofRequest{})
+			got, err := newTestClient(t, server).Query(context.Background(), "test-uid", pyroscope.QueryRequest{Format: pyroscope.ProfileFormatPprof})
 			require.ErrorContains(t, err, tt.wantErr)
 			assert.Nil(t, got)
 		})

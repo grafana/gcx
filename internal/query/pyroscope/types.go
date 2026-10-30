@@ -351,9 +351,6 @@ func (p TimePoint) FloatValue() float64 {
 	return v
 }
 
-// PprofRequest is retained as an alias for callers exporting pprof profiles.
-type PprofRequest = QueryRequest
-
 // PprofWriteResult is the structured output emitted after writing a pprof binary to disk.
 type PprofWriteResult struct {
 	Path string `json:"path"`
