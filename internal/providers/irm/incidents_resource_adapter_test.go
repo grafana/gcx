@@ -251,15 +251,17 @@ func TestResourceAdapter_Update(t *testing.T) {
 }
 
 func TestResourceAdapter_Delete(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("incident delete must not send a request")
 	}))
 	defer server.Close()
 
 	a := newTestAdapter(t, server, "stack-123")
-	err := a.Delete(t.Context(), "inc-1", metav1.DeleteOptions{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not supported")
+	for _, opts := range []metav1.DeleteOptions{{}, {DryRun: []string{metav1.DryRunAll}}} {
+		err := a.Delete(t.Context(), "inc-1", opts)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported operation")
+	}
 }
 
 func TestResourceAdapter_RoundTrip(t *testing.T) {
