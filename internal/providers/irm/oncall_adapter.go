@@ -345,6 +345,11 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		shiftSwapCRUDOpts()...,
 	))
 
+	// 17. PersonalNotificationRule — full CRUD
+	meta = oncallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules")
+	meta.Example = personalNotificationRuleExample()
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
+		listPersonalNotificationRules, getPersonalNotificationRule, personalNotificationRuleCRUDOpts()...))
 	return regs
 }
 
@@ -491,4 +496,12 @@ func mustMarshal(v any) json.RawMessage {
 		panic(fmt.Sprintf("irm: failed to marshal example: %v", err))
 	}
 	return b
+}
+
+func personalNotificationRuleExample() json.RawMessage {
+	return mustMarshal(map[string]any{
+		"apiVersion": APIVersion, "kind": "PersonalNotificationRule",
+		"metadata": map[string]any{"name": "my-wait-rule"},
+		"spec":     map[string]any{"user": "<user-id>", "important": false, "step": 0, "notify_by": nil, "wait_delay": "300.0"},
+	})
 }
