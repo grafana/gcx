@@ -95,7 +95,10 @@ The last typed converter matches concrete `gcxerrors.HTTPStatusError` values
 with `errors.As`, after domain-specific converters. HTTP 401 means
 `Authentication failed` (exit 3); 403 means `Authorization failed` (exit 3);
 404 means `Resource not found`; 409 means `Resource conflict`; other statuses
-mean `API error` (exit 1). Parsed server messages and trace IDs appear once in
+mean `API error` (exit 1). The exact HTTP 400 server message
+`Authentication to data source failed` reports `Authentication failed` (exit 3)
+with datasource credential and ruler configuration guidance instead of a login suggestion.
+Parsed server messages and trace IDs appear once in
 details, with caller context. Transport `Message` text and the method set stay
 unchanged. `gcx api` retains its complete raw body.
 
@@ -241,7 +244,7 @@ not in the summary.
 |---|---|
 | `Invalid command usage` | Wrong flags, conflicting flags, missing required args or flags |
 | `Invalid configuration` | Bad or unparseable config file, unresolvable context, missing non-credential settings (e.g. SM URL, Cloud stack slug) |
-| `Authentication failed` | gcx has no credential, or the server rejected it: HTTP 401, expired or missing token, missing Cloud credentials or an SM token whose auto-discovery cannot start. Suggestions point at `gcx login` or setting a token |
+| `Authentication failed` | gcx has no credential, or the server rejected it: HTTP 401, expired or missing token, missing Cloud credentials or an SM token whose auto-discovery cannot start. Suggestions point at `gcx login` or setting a token. The shared transport converter also recognizes the exact datasource-authentication HTTP 400 message; its remediation concerns the datasource connection |
 | `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
 | `Keychain unavailable` | The OS keychain cannot be reached, so gcx cannot store or use the credential without an explicit plaintext-storage opt-out |
 | `OS credential store access is restricted` | The credential store is available, but the current execution session cannot write to it |
