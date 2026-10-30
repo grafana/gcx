@@ -60,14 +60,15 @@ func TestResourceAdapter_NoAliases(t *testing.T) {
 
 func TestResourceAdapter_List(t *testing.T) {
 	tests := []struct {
-		name          string
-		namespace     string
-		handler       http.HandlerFunc
-		wantLen       int
-		wantErr       bool
-		wantAPIVer    string
-		wantKind      string
-		wantNamespace string
+		name            string
+		namespace       string
+		handler         http.HandlerFunc
+		wantLen         int
+		wantErr         bool
+		wantAPIVer      string
+		wantKind        string
+		wantNamespace   string
+		wantDescription string
 	}{
 		{
 			name:      "returns resources with correct GVK and namespace",
@@ -75,16 +76,17 @@ func TestResourceAdapter_List(t *testing.T) {
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, map[string]any{
 					"incidentPreviews": []map[string]any{
-						{"incidentID": "inc-1", "title": "Outage 1", "status": "active"},
+						{"incidentID": "inc-1", "title": "Outage 1", "status": "active", "description": "Visible details"},
 						{"incidentID": "inc-2", "title": "Outage 2", "status": "resolved"},
 					},
 					"cursor": map[string]any{"hasMore": false},
 				})
 			},
-			wantLen:       2,
-			wantAPIVer:    irm.IncidentAPIVersion,
-			wantKind:      irm.IncidentKind,
-			wantNamespace: "stack-123",
+			wantLen:         2,
+			wantAPIVer:      irm.IncidentAPIVersion,
+			wantKind:        irm.IncidentKind,
+			wantNamespace:   "stack-123",
+			wantDescription: "Visible details",
 		},
 		{
 			name:      "returns empty list",
@@ -129,6 +131,11 @@ func TestResourceAdapter_List(t *testing.T) {
 				assert.Equal(t, tt.wantAPIVer, item.GetAPIVersion())
 				assert.Equal(t, tt.wantKind, item.GetKind())
 				assert.Equal(t, tt.wantNamespace, item.GetNamespace())
+				if tt.wantDescription != "" {
+					spec, ok := item.Object["spec"].(map[string]any)
+					require.True(t, ok)
+					assert.Equal(t, tt.wantDescription, spec["description"])
+				}
 			}
 		})
 	}
@@ -136,11 +143,12 @@ func TestResourceAdapter_List(t *testing.T) {
 
 func TestResourceAdapter_Get(t *testing.T) {
 	tests := []struct {
-		name     string
-		id       string
-		handler  http.HandlerFunc
-		wantName string
-		wantErr  bool
+		name            string
+		id              string
+		handler         http.HandlerFunc
+		wantName        string
+		wantDescription string
+		wantErr         bool
 	}{
 		{
 			name: "returns resource with correct name",
@@ -148,10 +156,11 @@ func TestResourceAdapter_Get(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Contains(t, r.URL.Path, "IncidentsService.GetIncident")
 				writeJSON(w, map[string]any{
-					"incident": map[string]any{"incidentID": "inc-123", "title": "My Incident", "status": "active"},
+					"incident": map[string]any{"incidentID": "inc-123", "title": "My Incident", "status": "active", "description": "Visible details"},
 				})
 			},
-			wantName: "inc-123",
+			wantName:        "inc-123",
+			wantDescription: "Visible details",
 		},
 		{
 			name: "propagates not found error",
@@ -180,6 +189,9 @@ func TestResourceAdapter_Get(t *testing.T) {
 			assert.Equal(t, tt.wantName, result.GetName())
 			assert.Equal(t, irm.IncidentAPIVersion, result.GetAPIVersion())
 			assert.Equal(t, irm.IncidentKind, result.GetKind())
+			spec, ok := result.Object["spec"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantDescription, spec["description"])
 		})
 	}
 }
@@ -382,6 +394,7 @@ func TestBothAccessPathsEmitTheSameSpecKeys(t *testing.T) {
 	assert.Equal(t, adapterKeys, providerKeys, "the two access paths must emit the same spec keys")
 	assert.NotContains(t, adapterKeys, "severityID")
 	assert.NotContains(t, adapterKeys, "incidentID")
+	assert.Contains(t, adapterKeys, "description")
 }
 
 // specKeys returns the sorted spec keys of a manifest.

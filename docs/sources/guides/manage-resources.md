@@ -39,6 +39,14 @@ Configure this path with the `--path`/`-p` flags.
     Resources are pulled and pushed from the `./resources` directory by default.
     Configure this path with the `--path`/`-p` flags.
 
+Incident descriptions remain visible in get and list results. Pull omits them
+from saved manifests. The documented Incident API has no description field on
+create and no method to change it. An incident backup made with
+`gcx resources pull` cannot restore descriptions. Old backup files can contain
+`spec.description`. Remove that field before you push the file to create an
+incident or to change an incident with a different description. A file with a
+description that equals the current incident value can still update other fields.
+
 ## Name pulled files by title
 
 By default, `gcx resources pull` names each file using the resource's
