@@ -103,6 +103,9 @@ func newFakeGrafana(t *testing.T, name string) *fakeGrafana {
 		case "/bootdata": // gcx discovers the stack namespace before anything else
 			_, _ = w.Write([]byte(`{"settings":{"namespace":"stacks-12345"}}`))
 			return
+		case "/docs-index":
+			_, _ = io.WriteString(w, "## Grafana documentation\n- [Example dashboard](https://grafana.com/docs/grafana/latest/dashboards/): Example dashboard guide\n")
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"database":"ok","version":"fake"}`))
@@ -291,6 +294,25 @@ func TestRun(t *testing.T) {
 			t.Errorf("took %v to stop", d)
 		}
 	})
+}
+
+func TestDocsSearchHostTransport(t *testing.T) {
+	srv := newFakeGrafana(t, "docs")
+	rt := newRuntime(t, sandbox.Config{Transport: multiTransport(srv)})
+	inv, _ := invocation(srv, "docs-token", "docs", "search", "example", "--limit", "1", "-o", "json")
+	inv.Env["DOCS_INDEX_URL"] = srv.url() + "/docs-index"
+	var stdout, stderr bytes.Buffer
+	inv.Stdout, inv.Stderr = &stdout, &stderr
+	res, err := rt.Run(context.Background(), inv)
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("exit %d, err %v, stderr:\n%s", res.ExitCode, err, stderr.String())
+	}
+	if !srv.saw("GET /docs-index") || !strings.Contains(stdout.String(), "Example dashboard") {
+		t.Fatalf("docs search did not return the host's index: %s", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "Error enabling Transport HTTP/2 support") {
+		t.Fatalf("host transport caused HTTP/2 registration failure: %s", stderr.String())
+	}
 }
 
 // TestRunIO covers what an invocation passes in besides args and env.
