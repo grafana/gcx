@@ -296,7 +296,7 @@ func TestIncidentsCreateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
 	stdout, stderr, err := runIncidentCmd(t, func() *cobra.Command {
 		return irm.NewCreateCommand(incidentLoader(server))
 	}, manifest, "-f", "-")
-	if err == nil || !strings.Contains(err.Error(), "spec.description is not supported by gcx incident create") {
+	if err == nil || !strings.Contains(err.Error(), "spec.description is read-only") {
 		t.Fatalf("expected unsupported description error, got %v", err)
 	}
 	if stdout != "" || strings.Contains(stderr, "Created incident") {
