@@ -34,11 +34,9 @@ var incidentStaticDescriptor = resources.Descriptor{
 // manifest that carries both makes an edit of the label unreachable. The
 // identifiers are also specific to one organization, so a manifest that
 // carries one does not push to a second stack.
-// Description is read-only through the documented Incident API. Remove it
-// from pulled manifests so they can be pushed to another stack.
 //
 //nolint:gochecknoglobals // Static list shared by the two access paths.
-var incidentStripFields = []string{"incidentID", "severityID", "description"}
+var incidentStripFields = []string{"incidentID", "severityID"}
 
 // incidentSchema returns a JSON Schema for the Incident resource type.
 func IncidentSchema() json.RawMessage {
@@ -75,7 +73,7 @@ func IncidentSchema() json.RawMessage {
 					"description": map[string]any{
 						"type":        "string",
 						"readOnly":    true,
-						"description": "Read-only incident description. The documented create request has no description field; gcx rejects a non-empty value before creating an incident.",
+						"description": "Incident description. Reads include it, but the documented API cannot create or change it. Pull omits it from portable manifests.",
 					},
 					"labels": map[string]any{"type": "array"},
 				},

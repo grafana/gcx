@@ -75,7 +75,7 @@ func TestResourceAdapter_List(t *testing.T) {
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, map[string]any{
 					"incidentPreviews": []map[string]any{
-						{"incidentID": "inc-1", "title": "Outage 1", "status": "active"},
+						{"incidentID": "inc-1", "title": "Outage 1", "status": "active", "description": "Visible details"},
 						{"incidentID": "inc-2", "title": "Outage 2", "status": "resolved"},
 					},
 					"cursor": map[string]any{"hasMore": false},
@@ -129,6 +129,11 @@ func TestResourceAdapter_List(t *testing.T) {
 				assert.Equal(t, tt.wantAPIVer, item.GetAPIVersion())
 				assert.Equal(t, tt.wantKind, item.GetKind())
 				assert.Equal(t, tt.wantNamespace, item.GetNamespace())
+				if tt.name == "returns resources with correct GVK and namespace" {
+					spec, ok := item.Object["spec"].(map[string]any)
+					require.True(t, ok)
+					assert.Equal(t, "Visible details", spec["description"])
+				}
 			}
 		})
 	}
@@ -148,7 +153,7 @@ func TestResourceAdapter_Get(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Contains(t, r.URL.Path, "IncidentsService.GetIncident")
 				writeJSON(w, map[string]any{
-					"incident": map[string]any{"incidentID": "inc-123", "title": "My Incident", "status": "active"},
+					"incident": map[string]any{"incidentID": "inc-123", "title": "My Incident", "status": "active", "description": "Visible details"},
 				})
 			},
 			wantName: "inc-123",
@@ -180,6 +185,9 @@ func TestResourceAdapter_Get(t *testing.T) {
 			assert.Equal(t, tt.wantName, result.GetName())
 			assert.Equal(t, irm.IncidentAPIVersion, result.GetAPIVersion())
 			assert.Equal(t, irm.IncidentKind, result.GetKind())
+			spec, ok := result.Object["spec"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "Visible details", spec["description"])
 		})
 	}
 }
@@ -298,7 +306,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, originalInc.Title, restored.Title)
 	assert.Equal(t, originalInc.Status, restored.Status)
 	assert.Equal(t, originalInc.Severity, restored.Severity)
-	assert.Empty(t, restored.Description, "read-only description must not enter a pulled manifest")
+	assert.Equal(t, originalInc.Description, restored.Description)
 }
 
 // TestResourceAdapter_PullDropsSeverityID proves that a pulled manifest
@@ -382,7 +390,7 @@ func TestBothAccessPathsEmitTheSameSpecKeys(t *testing.T) {
 	assert.Equal(t, adapterKeys, providerKeys, "the two access paths must emit the same spec keys")
 	assert.NotContains(t, adapterKeys, "severityID")
 	assert.NotContains(t, adapterKeys, "incidentID")
-	assert.NotContains(t, adapterKeys, "description")
+	assert.Contains(t, adapterKeys, "description")
 }
 
 // specKeys returns the sorted spec keys of a manifest.
