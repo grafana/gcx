@@ -9,9 +9,10 @@ type SnapshotResult struct {
 	PanelID  *int   `json:"panel_id"`
 	FilePath string `json:"file_path"`
 
-	// Width and Height are the decoded PNG dimensions in pixels.
-	Width      int       `json:"width"`
-	Height     int       `json:"height"`
+	// Width and Height are the saved PNG dimensions in pixels.
+	Width  int `json:"width"`
+	Height int `json:"height"`
+
 	Theme      string    `json:"theme"`
 	RenderedAt time.Time `json:"rendered_at"`
 	FileSize   int64     `json:"-"`

@@ -490,9 +490,9 @@ func TestSnapshot_ReceiptUsesRenderedImageDimensions(t *testing.T) {
 		wantWidth  string
 		wantHeight string
 	}{
-		{name: "panel renderer adjusts width", args: []string{"--panel", "7"}, wantWidth: "800", wantHeight: "600"},
-		{name: "dashboard full page height", wantWidth: "1920", wantHeight: "-1"},
-		{name: "explicit dimensions", args: []string{"--width", "400", "--height", "300"}, wantWidth: "400", wantHeight: "300"},
+		{name: "panel request defaults", args: []string{"--panel", "7"}, wantWidth: "800", wantHeight: "600"},
+		{name: "dashboard request defaults", wantWidth: "1920", wantHeight: "-1"},
+		{name: "explicit dimension flags", args: []string{"--width", "400", "--height", "300"}, wantWidth: "400", wantHeight: "300"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
