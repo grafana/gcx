@@ -46,10 +46,10 @@ example scenario for each code. The topic is generated from the ordered
 - Exit code 4 (partial failure) is set by `convertPartialFailureErrors` when
   push, pull, delete, or validate operations have mixed success/failure results.
   Commands return a `PartialFailureError` when `--on-error=fail` (default) and
-  `FailedCount > 0`. Lint reports containing violations also exit 4.
-  It also covers a single Watcher whose definition was saved
+  `FailedCount > 0`. It also covers a single Watcher whose definition was saved
   but enrollment or readback failed. Dedicated commands emit its saved identity
   and stage outcomes before returning an `EmittedError` with exit 4.
+  Lint reports containing violations also exit 4.
 - Exit code 5 (cancelled) has several producers, and the taxonomy is about the
   final exit code rather than about any one of them. `isSilentCancellation` in
   `main.go` exits 5 without printing an error for an interrupted invocation.

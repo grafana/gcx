@@ -29,11 +29,11 @@ report contains violation if {
 	some i
 	invalid_queries[i]
 
-	violation := result.fail(rego.metadata.chain(), sprintf("panel %v, query %s: %s\n%s", [invalid_queries[i].panel, invalid_queries[i].ref_id, invalid_queries[i].expr, invalid_queries[i].result]))
+	violation := result.fail(rego.metadata.chain(), sprintf("panel %v, query '%s': %s\n%s", [invalid_queries[i].panel, invalid_queries[i].ref_id, invalid_queries[i].expr, invalid_queries[i].result]))
 }
 
 _prometheus_targets_v1(panels) := prom_targets if {
-	targets := [{"panel": object.get(panels[i], "id", i), "target": target} | target := panels[i].targets[j]]
+	targets := [{"panel": object.get(panels[i], "id", sprintf("index %d", [i])), "target": target} | target := panels[i].targets[j]]
 
 	# TODO: handle cases where no datasource is defined at the target level
 	prom_targets := [target | targets[i].target.datasource.type == "prometheus"; target := targets[i]]
@@ -58,7 +58,7 @@ report contains violation if {
 	some i
 	invalid_queries[i]
 
-	violation := result.fail(rego.metadata.chain(), sprintf("panel %v, query %s: %s\n%s", [invalid_queries[i].panel, invalid_queries[i].ref_id, invalid_queries[i].expr, invalid_queries[i].result]))
+	violation := result.fail(rego.metadata.chain(), sprintf("panel '%s', query '%s': %s\n%s", [invalid_queries[i].panel, invalid_queries[i].ref_id, invalid_queries[i].expr, invalid_queries[i].result]))
 }
 
 _prometheus_targets_v2(panels, variables) := prom_targets if {
@@ -75,5 +75,6 @@ _query_group_v2(target, variables) := variable.spec.pluginId if {
 	target.spec.query.datasource.name in {
 		sprintf("$%s", [variable.spec.name]),
 		sprintf("${%s}", [variable.spec.name]),
+		sprintf("[[%s]]", [variable.spec.name]),
 	}
 } else := target.spec.query.group

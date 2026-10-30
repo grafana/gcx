@@ -152,7 +152,7 @@ test_dashboard_v1_with_invalid_panel if {
 	assert_reports_match(report, {{
 		"category": "bug",
 		"description": "Checks that Prometheus targets defined in dashboard panels use valid PromQL queries.",
-		"details": "panel 4, query A: invalid promql\n1:9: parse error: unexpected identifier \"promql\"",
+		"details": "panel 4, query 'A': invalid promql\n1:9: parse error: unexpected identifier \"promql\"",
 		"related_resources": [{"description": "documentation", "ref": "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/dashboard/target-valid-promql.md"}],
 		"resource_type": "dashboard",
 		"rule": "target-valid-promql",
@@ -203,7 +203,7 @@ test_dashboard_v2_with_invalid_panel if {
 	assert_reports_match(report, {{
 		"category": "bug",
 		"description": "Checks that Prometheus targets defined in dashboard panels use valid PromQL queries.",
-		"details": "panel panel-1, query A: invalid promql\n1:9: parse error: unexpected identifier \"promql\"",
+		"details": "panel 'panel-1', query 'A': invalid promql\n1:9: parse error: unexpected identifier \"promql\"",
 		"related_resources": [{"description": "documentation", "ref": "https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/dashboard/target-valid-promql.md"}],
 		"resource_type": "dashboard",
 		"rule": "target-valid-promql",
@@ -228,6 +228,7 @@ _test_v2_resource(query, datasource, group, variables) := resource if {
 test_dashboard_v2_datasource_variable_language[tc.name] if {
 	some tc in [
 		{"name": "loki variable", "datasource": "$logs", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
+		{"name": "legacy loki variable", "datasource": "[[logs]]", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
 		{"name": "braced loki variable", "datasource": "${logs}", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
 		{"name": "prometheus variable", "datasource": "$logs", "group": "loki", "kind": "DatasourceVariable", "plugin": "prometheus", "expr": "invalid promql", "count": 1},
 		{"name": "valid prometheus variable", "datasource": "$logs", "group": "loki", "kind": "DatasourceVariable", "plugin": "prometheus", "expr": "up", "count": 0},
@@ -250,7 +251,7 @@ test_dashboard_v1_missing_panel_id_is_still_linted if {
 	report := rule.report with input as resource
 	count(report) == 1
 	some violation in report
-	startswith(violation.details, "panel 0, query A:")
+	startswith(violation.details, "panel index 0, query 'A':")
 }
 
 test_dashboard_v2_identical_invalid_queries_keep_both_panels if {
@@ -261,6 +262,19 @@ test_dashboard_v2_identical_invalid_queries_keep_both_panels if {
 			"panel-1": _test_v2_panel("invalid promql"),
 			"panel-2": _test_v2_panel("invalid promql"),
 		}},
+	}
+	report := rule.report with input as resource
+	count(report) == 2
+}
+
+test_dashboard_v1_missing_panel_id_does_not_collide_with_real_id if {
+	resource := {
+		"kind": "Dashboard",
+		"apiVersion": "dashboard.grafana.app/v1beta1",
+		"spec": {"panels": [
+			object.union(_test_v1_panel("invalid promql"), {"id": 1}),
+			object.remove(_test_v1_panel("invalid promql"), ["id"]),
+		]},
 	}
 	report := rule.report with input as resource
 	count(report) == 2
