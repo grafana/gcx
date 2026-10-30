@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
@@ -255,5 +258,18 @@ func Truncate(s string, maxLen int) string {
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
 func HandleErrorResponse(resp *http.Response) error {
-	return providers.HandleErrorResponse(resp)
+	err := providers.HandleErrorResponse(resp)
+	var statusErr *gcxerrors.HTTPStatusError
+	if errors.As(err, &statusErr) && statusErr.Status == http.StatusNotFound {
+		message := strings.TrimSpace(statusErr.ServerMessage)
+		if message == "Plugin not found" || message == "Plugin not found, no installed plugin with id grafana-agento11y-app" {
+			return &gcxerrors.DetailedError{
+				Summary:     gcxerrors.SummaryEndpointNotAvailable,
+				Details:     "Agent Observability plugin (grafana-agento11y-app) is not available on this Grafana instance",
+				Parent:      err,
+				Suggestions: []string{"Confirm the selected instance with gcx config current-context, then check that Agent Observability is installed and enabled there"},
+			}
+		}
+	}
+	return err
 }

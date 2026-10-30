@@ -3,11 +3,15 @@ package agento11yhttp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -206,4 +210,36 @@ func TestListAll_ErrorResponse(t *testing.T) {
 	_, err := agento11yhttp.ListAll[testItem](context.Background(), client, "/query/items", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
+}
+
+func TestHandleErrorResponsePluginUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      int
+		body        string
+		unavailable bool
+	}{
+		{"plugin absent JSON", http.StatusNotFound, `{"message":"Plugin not found"}`, true},
+		{"plugin absent text", http.StatusNotFound, "Plugin not found, no installed plugin with id grafana-agento11y-app", true},
+		{"resource absent", http.StatusNotFound, `{"message":"experiment not found"}`, false},
+		{"unknown route", http.StatusNotFound, "404 page not found", false},
+		{"unrelated status", http.StatusForbidden, `{"message":"Plugin not found"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(tc.body))}
+			err := agento11yhttp.HandleErrorResponse(resp)
+			require.Error(t, err)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, tc.status, statusErr.HTTPStatusCode())
+			var detailed *gcxerrors.DetailedError
+			assert.Equal(t, tc.unavailable, errors.As(err, &detailed))
+			if tc.unavailable {
+				require.NotNil(t, detailed)
+				assert.Equal(t, gcxerrors.SummaryEndpointNotAvailable, detailed.Summary)
+				assert.Contains(t, detailed.Details, "Agent Observability")
+				assert.Contains(t, strings.Join(detailed.Suggestions, " "), "installed and enabled")
+			}
+		})
+	}
 }

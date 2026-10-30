@@ -117,6 +117,14 @@ credentials or stack configuration is authentication failure, register/install
 permission denial is authorization failure, and service/network outages remain
 API/network errors. Details identify the token discovery failure.
 
+#### Agent Observability plugin availability
+
+Agent Observability's plugin client recognizes the Grafana proxy's explicit
+`Plugin not found` HTTP 404 response. It reports `Endpoint not available`, names
+`grafana-agento11y-app`, and suggests checking that Agent Observability is installed
+and enabled on the selected Grafana instance. Other HTTP 404 responses retain
+their resource or API error handling.
+
 #### Fleet Management HTTP errors
 
 The `convertFleetHTTPErrors` converter handles typed `fleet.HTTPError` values
