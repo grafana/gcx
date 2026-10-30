@@ -496,6 +496,8 @@ gcx api /api/dashboards/uid/my-dashboard/versions -o yaml
 gcx api /api/dashboards/calculate-diff -X POST -d @diff-request.json
 ```
 
+`gcx api` accepts paths on the configured Grafana stack. It rejects absolute URLs. Use `gcx irm` commands for IRM resources.
+
 ## Usage statistics
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don’t exist, so we can make the product better.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -77,7 +78,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api PATH",
 		Short: "Make direct HTTP requests to the Grafana API",
-		Long:  "Send arbitrary HTTP requests to any Grafana API endpoint using the configured authentication. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.",
+		Long:  "Send HTTP requests to a path on the configured Grafana stack using its authentication. PATH must be stack-relative, such as /api/health. Absolute URLs are not supported. Use gcx irm commands for IRM resources. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.",
 		Example: `  # List all datasources
   gcx api /api/datasources
 
@@ -105,6 +106,9 @@ func Command() *cobra.Command {
 			}
 
 			path := args[0]
+			if err := validateAPIPath(path); err != nil {
+				return gcxerrors.NewCommandUsageError(cmd, err.Error(), err)
+			}
 			if !strings.HasPrefix(path, "/") {
 				path = "/" + path
 			}
@@ -139,6 +143,14 @@ func Command() *cobra.Command {
 	configOpts.BindFlags(cmd.PersistentFlags())
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+func validateAPIPath(path string) error {
+	parsed, err := url.Parse(path)
+	if strings.TrimSpace(path) == "" || err != nil || parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(path, "//") {
+		return fmt.Errorf("invalid PATH %q: use a path relative to the configured stack, such as 'gcx api /api/health'; use 'gcx irm' commands for IRM resources", path)
+	}
+	return nil
 }
 
 // resolveBody returns the request body bytes, or nil when no body was given.

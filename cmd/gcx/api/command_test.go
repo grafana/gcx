@@ -320,6 +320,37 @@ func TestCommand_RecordsAPIRequestBeforeConfigLoad(t *testing.T) {
 	assert.Equal(t, "/api/dashboards/uid/{uid}", got.Route)
 }
 
+func TestCommand_RejectsAbsoluteURLBeforeConfigLoad(t *testing.T) {
+	t.Setenv("GCX_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
+	for _, path := range []string{
+		"https://example.invalid/api/health",
+		"http:/api/health",
+		"//example.invalid/api/health",
+		"https://",
+		" ",
+		"/api/%zz",
+	} {
+		t.Run(path, func(t *testing.T) {
+			cmd := Command()
+			cmd.SetArgs([]string{path})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid PATH")
+			assert.Contains(t, err.Error(), path)
+			assert.Contains(t, err.Error(), "gcx api /api/health")
+			assert.NotContains(t, err.Error(), "missing.yaml")
+		})
+	}
+}
+
+func TestValidateAPIPath_RelativePaths(t *testing.T) {
+	for _, path := range []string{"/api/health", "api/health", "/api/dashboards?limit=1"} {
+		require.NoError(t, validateAPIPath(path))
+	}
+}
+
 func TestApiOpts_EffectiveMethod(t *testing.T) {
 	tests := []struct {
 		name     string
