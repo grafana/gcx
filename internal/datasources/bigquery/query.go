@@ -19,7 +19,7 @@ const (
 
 // QueryCmd returns the `query` subcommand for a BigQuery datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
+	shared := &dsquery.SQLQueryOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
 	var limit int
@@ -29,7 +29,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a SQL query against a BigQuery datasource",
 		Long: `Execute a GoogleSQL query against a BigQuery datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --filename. Use --filename - to read SQL from stdin.
+File input executes verbatim without the default row limit and cannot be combined
+with --limit. Put any row limit in the SQL file itself.
 Datasource is resolved from -d flag or datasources.bigquery in your context.
 Reference tables as ` + "`project.dataset.table`" + `; when the project is omitted
 the datasource's default project is used.
@@ -56,7 +59,10 @@ open it in your browser after the query succeeds.`,
   gcx datasources bigquery query 'SELECT 1' --share-link
 
   # Disable limit enforcement
-  gcx datasources bigquery query 'SELECT * FROM ` + "`my_dataset.big_table`" + `' --limit 0`,
+  gcx datasources bigquery query 'SELECT * FROM ` + "`my_dataset.big_table`" + `' --limit 0
+
+  # Execute SQL from a file without rewriting it
+  gcx datasources bigquery query -d UID -f ./query.sql -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -66,10 +72,11 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("--limit must be >= 0, got %d", limit)
 			}
 
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := shared.ResolveExpr(cmd, args, 0)
 			if err != nil {
 				return err
 			}
+			limit = shared.RowLimit(limit)
 
 			ctx := cmd.Context()
 

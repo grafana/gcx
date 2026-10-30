@@ -19,7 +19,7 @@ const (
 
 // QueryCmd returns the `query` subcommand for an Athena datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
+	shared := &dsquery.SQLQueryOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
 	var limit int
@@ -32,7 +32,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a SQL query against an Athena datasource",
 		Long: `Execute a SQL query against an Amazon Athena datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --filename. Use --filename - to read SQL from stdin.
+File input executes verbatim without the default row limit and cannot be combined
+with --limit. Put any row limit in the SQL file itself.
 Datasource is resolved from -d flag or datasources.athena in your context.
 Server-side macros ($__timeFilter, $__dateFilter, etc.) are supported.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -46,6 +49,9 @@ open it in your browser after the query succeeds.`,
 
   # With connection overrides
   gcx datasources athena query -d UID 'SELECT 1' --region us-west-2 --database analytics
+
+  # Read a long query from a file
+  gcx datasources athena query -d UID --filename ./query.sql -o json
 
   # Enable result reuse (Athena engine v3)
   gcx datasources athena query -d UID 'SELECT count(*) FROM events' --result-reuse --ttl-minutes 60
@@ -61,10 +67,11 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("--limit must be >= 0, got %d", limit)
 			}
 
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := shared.ResolveExpr(cmd, args, 0)
 			if err != nil {
 				return err
 			}
+			limit = shared.RowLimit(limit)
 
 			ctx := cmd.Context()
 
