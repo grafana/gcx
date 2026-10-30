@@ -29,6 +29,7 @@ func TestAgento11yPluginUnavailableAtCommandBoundary(t *testing.T) {
 			assert.Contains(t, detailed.Details, "Agent Observability")
 			assert.Contains(t, detailed.Details, "grafana-agento11y-app")
 			assert.Contains(t, strings.Join(detailed.Suggestions, " "), "gcx config current-context")
+			assert.Contains(t, detailed.Suggestions, "Check that Agent Observability is installed and enabled: gcx api /api/plugins/grafana-agento11y-app/settings")
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, detailed, &statusErr)
 			assert.Equal(t, http.StatusNotFound, statusErr.Status)

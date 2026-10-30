@@ -435,10 +435,13 @@ func convertAgento11yPluginUnavailable(err error) (*gcxerrors.DetailedError, boo
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{
-		Parent:      err,
-		Summary:     gcxerrors.SummaryEndpointNotAvailable,
-		Details:     err.Error(),
-		Suggestions: []string{"Confirm the selected instance with gcx config current-context, then check that Agent Observability is installed and enabled there"},
+		Parent:  err,
+		Summary: gcxerrors.SummaryEndpointNotAvailable,
+		Details: err.Error(),
+		Suggestions: []string{
+			"Confirm the selected instance with gcx config current-context",
+			"Check that Agent Observability is installed and enabled: gcx api /api/plugins/grafana-agento11y-app/settings",
+		},
 	}, true
 }
 
