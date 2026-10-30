@@ -68,7 +68,7 @@ func TestOnCallTableGolden(t *testing.T) {
 		},
 		{
 			name: "schedules",
-			spec: map[string]any{"name": "weekday", "type": int64(0), "time_zone": "Europe/London", "team": "sre"},
+			spec: map[string]any{"name": "weekday", "type": float64(0), "time_zone": "Europe/London", "team": "sre"},
 			table: func(wide bool) format.Codec {
 				return scheduleTable().Codec(oncallFormat(wide))
 			},
@@ -76,7 +76,7 @@ func TestOnCallTableGolden(t *testing.T) {
 		},
 		{
 			name: "shifts",
-			spec: map[string]any{"name": "morning", "type": int64(2), "shift_start": "2026-03-14T09:00:00Z", "shift_end": "2026-03-14T17:00:00Z", "frequency": int64(0), "interval": int64(2)},
+			spec: map[string]any{"name": "morning", "type": float64(2), "shift_start": "2026-03-14T09:00:00Z", "shift_end": "2026-03-14T17:00:00Z", "frequency": float64(0), "interval": float64(2)},
 			table: func(wide bool) format.Codec {
 				return shiftTable().Codec(oncallFormat(wide))
 			},

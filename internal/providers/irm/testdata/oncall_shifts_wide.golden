@@ -1,3 +1,3 @@
 ID     NAME     TYPE  START                 END                   FREQUENCY  INTERVAL
-row-1  morning  2     2026-03-14T09:00:00Z  2026-03-14T17:00:00Z  0          0
+row-1  morning  2     2026-03-14T09:00:00Z  2026-03-14T17:00:00Z  0          2
 row-2                 -                     -                     -          0
