@@ -7,11 +7,9 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -59,7 +57,7 @@ type entityCreateOpts struct {
 }
 
 func (o *entityCreateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &EntityWriteTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, entityWriteTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
@@ -223,31 +221,25 @@ func neverExpire() *int64 {
 	return &v
 }
 
-// EntityWriteTableCodec renders one or more EntityWriteResponses as an
-// identity table (one row per upserted entity).
-type EntityWriteTableCodec struct{}
-
-func (c *EntityWriteTableCodec) Format() format.Format { return "table" }
-
-func (c *EntityWriteTableCodec) Encode(w io.Writer, v any) error {
-	var responses []*EntityWriteResponse
-	switch resp := v.(type) {
-	case *EntityWriteResponse:
-		responses = []*EntityWriteResponse{resp}
-	case []*EntityWriteResponse:
-		responses = resp
-	default:
-		return errors.New("invalid data type for table codec: expected *EntityWriteResponse")
+func entityWriteTable() cmdio.TableAdapter[any, *EntityWriteResponse] {
+	return cmdio.TableAdapter[any, *EntityWriteResponse]{
+		Table: cmdio.Table[*EntityWriteResponse]{Columns: []cmdio.Column[*EntityWriteResponse]{
+			{Header: "DOMAIN", Content: func(r *EntityWriteResponse) string { return r.Domain }},
+			{Header: "TYPE", Content: func(r *EntityWriteResponse) string { return r.Type }},
+			{Header: "NAME", Content: func(r *EntityWriteResponse) string { return r.Name }},
+			{Header: "SCOPE", Content: func(r *EntityWriteResponse) string { return scopeStr(r.Scope) }},
+		}},
+		Rows: func(v any) ([]*EntityWriteResponse, error) {
+			switch resp := v.(type) {
+			case *EntityWriteResponse:
+				return []*EntityWriteResponse{resp}, nil
+			case []*EntityWriteResponse:
+				return resp, nil
+			default:
+				return nil, errors.New("invalid data type for table codec: expected *EntityWriteResponse")
+			}
+		},
 	}
-	t := style.NewTable("DOMAIN", "TYPE", "NAME", "SCOPE")
-	for _, resp := range responses {
-		t.Row(resp.Domain, resp.Type, resp.Name, scopeStr(resp.Scope))
-	}
-	return t.Render(w)
-}
-
-func (c *EntityWriteTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 func newEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
@@ -412,7 +404,7 @@ type relCreateOpts struct {
 }
 
 func (o *relCreateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RelationshipWriteTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, relationshipWriteTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
@@ -574,33 +566,28 @@ func validateRelFileRef(ref EntityRef, side string) error {
 	return validateKgKeys(ref.Scope, side+".scope")
 }
 
-// RelationshipWriteTableCodec renders one or more RelationshipWriteResponses
-// as a table (one row per upserted edge).
-type RelationshipWriteTableCodec struct{}
-
-func (c *RelationshipWriteTableCodec) Format() format.Format { return "table" }
-
-func (c *RelationshipWriteTableCodec) Encode(w io.Writer, v any) error {
-	var responses []*RelationshipWriteResponse
-	switch resp := v.(type) {
-	case *RelationshipWriteResponse:
-		responses = []*RelationshipWriteResponse{resp}
-	case []*RelationshipWriteResponse:
-		responses = resp
-	default:
-		return errors.New("invalid data type for table codec: expected *RelationshipWriteResponse")
+func relationshipWriteTable() cmdio.TableAdapter[any, *RelationshipWriteResponse] {
+	return cmdio.TableAdapter[any, *RelationshipWriteResponse]{
+		Table: cmdio.Table[*RelationshipWriteResponse]{Columns: []cmdio.Column[*RelationshipWriteResponse]{
+			{Header: "TYPE", Content: func(r *RelationshipWriteResponse) string { return r.Type }},
+			{Header: "FROM", Content: func(r *RelationshipWriteResponse) string {
+				return fmt.Sprintf("%s/%s/%s", r.From.Domain, r.From.Type, r.From.Name)
+			}},
+			{Header: "TO", Content: func(r *RelationshipWriteResponse) string {
+				return fmt.Sprintf("%s/%s/%s", r.To.Domain, r.To.Type, r.To.Name)
+			}},
+		}},
+		Rows: func(v any) ([]*RelationshipWriteResponse, error) {
+			switch resp := v.(type) {
+			case *RelationshipWriteResponse:
+				return []*RelationshipWriteResponse{resp}, nil
+			case []*RelationshipWriteResponse:
+				return resp, nil
+			default:
+				return nil, errors.New("invalid data type for table codec: expected *RelationshipWriteResponse")
+			}
+		},
 	}
-	t := style.NewTable("TYPE", "FROM", "TO")
-	for _, resp := range responses {
-		t.Row(resp.Type,
-			fmt.Sprintf("%s/%s/%s", resp.From.Domain, resp.From.Type, resp.From.Name),
-			fmt.Sprintf("%s/%s/%s", resp.To.Domain, resp.To.Type, resp.To.Name))
-	}
-	return t.Render(w)
-}
-
-func (c *RelationshipWriteTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {

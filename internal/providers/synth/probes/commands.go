@@ -13,7 +13,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -46,7 +45,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &probeTableCodec{})
+	cmdio.RegisterTable(&o.IO, probeTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -633,30 +632,12 @@ func newDeployCommand() *cobra.Command {
 	return cmd
 }
 
-type probeTableCodec struct{}
-
-func (c *probeTableCodec) Format() format.Format { return "table" }
-
-func (c *probeTableCodec) Encode(w io.Writer, v any) error {
-	probeList, ok := v.([]Probe)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Probe")
-	}
-
-	t := style.NewTable("ID", "NAME", "REGION", "PUBLIC", "ONLINE")
-
-	for _, p := range probeList {
-		t.Row(
-			strconv.FormatInt(p.ID, 10),
-			p.Name,
-			p.Region,
-			strconv.FormatBool(p.Public),
-			strconv.FormatBool(p.Online))
-	}
-
-	return t.Render(w)
-}
-
-func (c *probeTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+func probeTable() cmdio.Table[Probe] {
+	return cmdio.Table[Probe]{Columns: []cmdio.Column[Probe]{
+		{Header: "ID", Content: func(p Probe) string { return strconv.FormatInt(p.ID, 10) }},
+		{Header: "NAME", Content: func(p Probe) string { return p.Name }},
+		{Header: "REGION", Content: func(p Probe) string { return p.Region }},
+		{Header: "PUBLIC", Content: func(p Probe) string { return strconv.FormatBool(p.Public) }},
+		{Header: "ONLINE", Content: func(p Probe) string { return strconv.FormatBool(p.Online) }},
+	}}
 }

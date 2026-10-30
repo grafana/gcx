@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,9 +26,10 @@ func TestMCPServerListFailureRenderingIgnoresUnavailableMarker(t *testing.T) {
 		name        string
 		status      int
 		unavailable bool
+		summary     string
 	}{
-		{name: "not found", status: http.StatusNotFound, unavailable: true},
-		{name: "server error", status: http.StatusInternalServerError},
+		{name: "not found", status: http.StatusNotFound, unavailable: true, summary: gcxerrors.SummaryResourceNotFound},
+		{name: "server error", status: http.StatusInternalServerError, summary: gcxerrors.SummaryAPIError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -45,9 +47,12 @@ func TestMCPServerListFailureRenderingIgnoresUnavailableMarker(t *testing.T) {
 
 			converted := fail.ErrorToDetailedError(err)
 			require.NotNil(t, converted)
-			assert.Equal(t, "Failed to list MCP servers", converted.Summary)
-			require.Error(t, converted.Parent)
-			assert.Equal(t, fmt.Sprintf("request failed with status %d: collection unavailable", tc.status), converted.Parent.Error())
+			assert.Equal(t, tc.summary, converted.Summary)
+			require.NoError(t, converted.Parent)
+			assert.Contains(t, converted.Details, "list MCP servers")
+			assert.Contains(t, converted.Details, "collection unavailable")
+			assert.Contains(t, converted.Details, fmt.Sprintf("HTTP %d", tc.status))
+			assert.Nil(t, converted.ExitCode)
 		})
 	}
 }

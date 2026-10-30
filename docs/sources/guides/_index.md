@@ -14,7 +14,7 @@ keywords:
   - dashboards
   - resources
   - diagnostics
-weight: 10
+weight: 80
 ---
 
 # `gcx` user guides 

@@ -120,7 +120,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // Usage text for the browser OAuth flags that `gcx login` and `gcx signup`
 // share.
 const (
-	oauthCallbackPortUsage = "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser"
+	oauthCallbackPortUsage = "Fixed local port for the OAuth callback server (default: auto-pick an ephemeral port). Useful when only specific ports are forwarded between a remote host and your browser"
 	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
 )
 
@@ -257,6 +257,7 @@ Auth sources (for non-interactive use):
 
 //nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
+	capture.SetLoginStage("preflight")
 	ctx := cmd.Context()
 	// The auto-discovered-config credential rejection below is the earliest gate
 	// that can end a login, and it runs before any config is read — so there is
@@ -795,12 +796,7 @@ func (command destinationRecoveryCommand) args() []string {
 }
 
 func (command destinationRecoveryCommand) String() string {
-	return "gcx config set --config " + shellQuote(command.ConfigFile) + " " +
-		shellQuote(command.Path) + " " + shellQuote(command.Value)
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return cmdio.ShellCommand([]string{"gcx", "config", "set", "--config", command.ConfigFile, command.Path, command.Value})
 }
 
 func runtimeOnlyBearerDestinationError(
@@ -967,12 +963,20 @@ func runtimeOnlyDestinationEditorRecoveryError(
 		),
 		Parent: cause,
 		Suggestions: []string{
-			"If the explicit config does not exist yet, initialize it: gcx config set --config " + shellQuote(configFile) + " version '1'",
-			"Open the selected config: gcx config edit --config " + shellQuote(configFile),
+			"If the explicit config does not exist yet, initialize it: " + editorRecoveryInitCommand(configFile),
+			"Open the selected config: " + editorRecoveryEditCommand(configFile),
 			"Then rerun the same gcx login command",
 			"Or unset the listed GRAFANA_* overrides and retry if they were not intended for this context",
 		},
 	}
+}
+
+func editorRecoveryInitCommand(configFile string) string {
+	return cmdio.ShellCommand([]string{"gcx", "config", "set", "--config", configFile, "version", "1"})
+}
+
+func editorRecoveryEditCommand(configFile string) string {
+	return cmdio.ShellCommand([]string{"gcx", "config", "edit", "--config", configFile})
 }
 
 func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName string) (config.Config, *config.Context, string, error) {

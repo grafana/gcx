@@ -10,12 +10,10 @@ import (
 	"maps"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,7 +29,7 @@ import (
 
 // legacyBackupSuffix is appended to the config filename when the loader backs
 // up a legacy-format file before migrating it. The backup is a write-once,
-// byte-for-byte 0600 copy, so restoring it fully rolls back the migration.
+// byte-for-byte private copy, so restoring it fully rolls back the migration.
 const legacyBackupSuffix = ".legacy.bak"
 
 // legacyConfig mirrors the pre-versioned config format, where every context
@@ -877,7 +875,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		deferredReason = "credential storage is disabled by configuration"
 	}
 
-	// The backup is an exact 0600 rollback copy. Plaintext is intentionally not
+	// The backup is an exact private rollback copy. Plaintext is intentionally not
 	// pushed through predictable legacy account names: doing so could overwrite
 	// a credential owned by another config source. The converted v1 Write below
 	// stores plaintext under source-bound v2 account names.
@@ -1020,7 +1018,7 @@ func secureLegacyConfigIdentity(filename string) (string, bool) {
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
-	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm()&0o022 != 0 || !legacyConfigOwnedByCurrentUser(opened) {
+	if err != nil || !opened.Mode().IsRegular() || !secureLegacyConfigFile(file, opened) {
 		return "", false
 	}
 	current, err := os.Stat(filename)
@@ -1036,34 +1034,6 @@ func secureLegacyConfigIdentity(filename string) (string, bool) {
 		return "", false
 	}
 	return canonical, true
-}
-
-// legacyConfigOwnedByCurrentUser checks Unix-style FileInfo ownership when the
-// platform exposes a numeric Uid field. Platforms without that metadata retain
-// the regular-file and permission checks above.
-func legacyConfigOwnedByCurrentUser(info os.FileInfo) bool {
-	stat := reflect.ValueOf(info.Sys())
-	if !stat.IsValid() {
-		return true
-	}
-	if stat.Kind() == reflect.Pointer {
-		if stat.IsNil() {
-			return true
-		}
-		stat = stat.Elem()
-	}
-	if stat.Kind() != reflect.Struct {
-		return true
-	}
-	uid := stat.FieldByName("Uid")
-	if !uid.IsValid() || !uid.CanUint() {
-		return true
-	}
-	current, err := user.Current()
-	if err != nil {
-		return false
-	}
-	return current.Uid == strconv.FormatUint(uid.Uint(), 10)
 }
 
 // migrationFailedError wraps a migration failure with the two things the user
@@ -1151,7 +1121,7 @@ func configLayerFromCtx(ctx context.Context) string {
 func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec) (bool, error) {
 	backupPath := filename + legacyBackupSuffix
 
-	backup, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
+	backup, err := createPrivateLegacyBackup(backupPath)
 	if errors.Is(err, os.ErrExist) {
 		if err := validateExistingLegacyBackup(backupPath, contents, codec); err != nil {
 			return false, err
@@ -1188,17 +1158,7 @@ func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec
 // symlinked path as rollback safety. A prior complete legacy backup is valid;
 // anything else leaves migration in memory and the original source untouched.
 func validateExistingLegacyBackup(path string, expected []byte, codec *format.YAMLCodec) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return fmt.Errorf("could not inspect existing legacy config backup %s: %w", path, err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("existing legacy config backup is not a regular file: %s", path)
-	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("existing legacy config backup has insecure permissions: %s (mode %s)", path, info.Mode().Perm())
-	}
-	contents, err := os.ReadFile(path)
+	contents, err := readPrivateLegacyBackup(path)
 	if err != nil {
 		return fmt.Errorf("could not read existing legacy config backup %s: %w", path, err)
 	}

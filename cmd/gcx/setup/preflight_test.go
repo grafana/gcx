@@ -91,7 +91,7 @@ func TestCollectorAppRow(t *testing.T) {
 			if product != "fleet-management" {
 				t.Fatalf("product = %q, want fleet-management", product)
 			}
-			if enabled != tt.wantEnabled {
+			if enabled == nil || *enabled != tt.wantEnabled {
 				t.Fatalf("enabled = %v, want %v", enabled, tt.wantEnabled)
 			}
 			if health != tt.wantHealth {
@@ -113,8 +113,8 @@ func TestUnknownPluginRow(t *testing.T) {
 	if product != "fleet-management" {
 		t.Fatalf("product = %q, want fleet-management", product)
 	}
-	if enabled {
-		t.Fatal("enabled = true, want false")
+	if enabled != nil {
+		t.Fatal("enabled is known, want unknown")
 	}
 	if health != "unknown" {
 		t.Fatalf("health = %q, want unknown", health)

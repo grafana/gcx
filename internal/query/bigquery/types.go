@@ -16,14 +16,68 @@ const (
 	// QueryFormatTable selects the datasource query API's table (row/column)
 	// response format, matching the other SQL datasources.
 	QueryFormatTable = 1
-	// MetadataRowLimit caps the rows returned by the INFORMATION_SCHEMA
-	// discovery queries (list-datasets, list-tables, describe-table).
+	// MetadataRowLimit is the default --limit for the INFORMATION_SCHEMA
+	// discovery queries (list-datasets, list-tables, describe-table). It is a
+	// default, not a ceiling: --limit raises or lowers it and --limit 0
+	// removes the cap entirely.
 	MetadataRowLimit = 1000
 )
 
-// EscapeSQLString escapes single quotes for use in SQL string literals.
+// EscapeSQLString escapes a value for use inside a BigQuery single-quoted
+// string literal.
+//
+// Backslashes are escaped before quotes, and both are required: BigQuery
+// processes backslash escape sequences inside quoted literals, so doubling the
+// quotes alone leaves a trailing backslash free to consume the first of the
+// doubled quotes and terminate the literal early (a value such as `x\' OR 1=1`
+// would continue as SQL rather than stay a string).
 func EscapeSQLString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
 	return strings.ReplaceAll(s, "'", "''")
+}
+
+// MetadataFilterClause builds a case-insensitive substring predicate against an
+// INFORMATION_SCHEMA column, or "" when filter is empty (callers pass the empty
+// clause to MetadataQuery, which drops it).
+//
+// STRPOS is used rather than LIKE so the filter is always matched as a literal
+// substring. BigQuery's LIKE has no ESCAPE clause and treats backslash as its
+// own escape character inside the pattern, so a filter containing %, _ or \
+// would silently behave as a wildcard pattern instead of the text the user
+// typed.
+func MetadataFilterClause(column, filter string) string {
+	if filter == "" {
+		return ""
+	}
+	return fmt.Sprintf("STRPOS(LOWER(%s), '%s') > 0", column, EscapeSQLString(strings.ToLower(filter)))
+}
+
+// MetadataQuery assembles one INFORMATION_SCHEMA discovery statement from its
+// parts, dropping empty predicates and clauses. When limit is positive it
+// requests limit+1 rows so the caller can tell a complete result from a capped
+// one (see warnIfMetadataTruncated); limit 0 emits no LIMIT at all, returning
+// every matching row.
+func MetadataQuery(selectFrom string, predicates []string, orderBy string, limit int) string {
+	parts := []string{selectFrom}
+
+	kept := make([]string, 0, len(predicates))
+	for _, predicate := range predicates {
+		if predicate != "" {
+			kept = append(kept, predicate)
+		}
+	}
+	if len(kept) > 0 {
+		parts = append(parts, "WHERE "+strings.Join(kept, " AND "))
+	}
+
+	if orderBy != "" {
+		parts = append(parts, "ORDER BY "+orderBy)
+	}
+	if limit > 0 {
+		parts = append(parts, fmt.Sprintf("LIMIT %d", limit+1))
+	}
+
+	return strings.Join(parts, " ")
 }
 
 var (

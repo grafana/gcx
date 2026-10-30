@@ -86,11 +86,14 @@ func buildGcx(t *testing.T) string {
 func conformanceEnv(home string) []string {
 	return []string{
 		"HOME=" + home,
+		"USERPROFILE=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
 		// swept commands run for real: agent prune deletes from os.TempDir(),
 		// so the host temp dir must not leak in
 		"TMPDIR=" + home,
+		"TEMP=" + home,
+		"TMP=" + home,
 		"PATH=" + os.Getenv("PATH"),
 		// This is a production binary. The Go test Keychain guard does not apply.
 		"GCX_KEYCHAIN=off",
@@ -105,11 +108,18 @@ func conformanceEnv(home string) []string {
 // exit code; stderr is captured only to keep it out of stdout.
 func runGcx(t *testing.T, args ...string) (string, int) {
 	t.Helper()
+	stdout, _, code := runGcxStreams(t, args...)
+	return stdout, code
+}
+
+// runGcxStreams runs runGcx's isolated binary and returns stdout and stderr
+// separately along with the exit code.
+func runGcxStreams(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
 	bin := buildGcx(t)
 
-	home := t.TempDir()
 	cmd := exec.CommandContext(context.Background(), bin, args...)
-	cmd.Env = conformanceEnv(home)
+	cmd.Env = conformanceEnv(t.TempDir())
 	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 
 	var outBuf, errBuf bytes.Buffer
@@ -123,7 +133,7 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 	} else if err != nil {
 		t.Fatalf("running gcx %v: %v", args, err)
 	}
-	return outBuf.String(), code
+	return outBuf.String(), errBuf.String(), code
 }
 
 // assertOneJSONValue decodes stdout and fails unless it holds exactly one
@@ -478,5 +488,61 @@ func TestAgentConformance_ExplicitOverrideWins(t *testing.T) {
 	}
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
 		t.Fatalf("explicit -o yaml produced JSON-shaped output — override not honored:\n%s", stdout)
+	}
+}
+
+// An explicit human-format -o overrides agent mode for errors too: the
+// failure is rendered on stderr and stdout carries no error document. JSON
+// selections keep the in-band gcx.error document.
+func TestAgentConformance_ExplicitOutputOverridesErrors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	// Each command registers the format codec it is given, and fails before
+	// producing a result: a missing config context, or a missing flag.
+	for _, args := range [][]string{
+		{"datasources", "get", "some-uid", "-o", "text"},
+		{"instrumentation", "check", "-o", "wide"},
+		{"resources", "get", "folders", "-o", "yaml"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, args...)
+			if code == 0 {
+				t.Fatalf("expected a non-zero exit code\nstdout:\n%s", stdout)
+			}
+			if strings.TrimSpace(stdout) != "" {
+				t.Fatalf("an explicit human -o must not write an error document to stdout:\n%s", stdout)
+			}
+			if !strings.HasPrefix(stderr, "Error:") || strings.Contains(stderr, "gcx.error") {
+				t.Fatalf("expected the human-formatted error on stderr, got:\n%s", stderr)
+			}
+		})
+	}
+
+	// -o json, --json and --jq select JSON. For the artifact class -o does not
+	// choose the stdout format: it is the file format (resources pull, -o pprof)
+	// or not a format at all (dev lint new -o <dir>), so stdout stays JSON.
+	for _, args := range [][]string{
+		{"datasources", "list", "-o", "json"},
+		{"datasources", "list", "--json", "name"},
+		{"datasources", "list", "--jq", "."},
+		{"resources", "pull", "-o", "yaml"},
+		{"datasources", "pyroscope", "query", "-o", "pprof"},
+		{"dev", "lint", "new", "dashboard", "BAD_NAME", "-o", "custom-rules"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runGcxStreams(t, args...)
+			if code == 0 {
+				t.Fatalf("expected a non-zero exit code\nstdout:\n%s", stdout)
+			}
+			obj, ok := assertOneJSONValue(t, stdout).(map[string]any)
+			if !ok || obj["type"] != "gcx.error" {
+				t.Fatalf("expected in-band gcx.error on stdout, got:\n%s", stdout)
+			}
+			if strings.TrimSpace(stderr) != "" {
+				t.Fatalf("in-band error must not duplicate on stderr:\n%s", stderr)
+			}
+		})
 	}
 }

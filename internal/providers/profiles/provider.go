@@ -21,7 +21,20 @@ func (p *Provider) descriptor() signals.Descriptor {
 	return signals.Descriptor{
 		Name:  "profiles",
 		Short: p.ShortDesc(),
+		Long: `Query Pyroscope datasources and manage continuous profiling.
+
+Use 'list-profile-types' and 'labels' (or 'series') to find profile type IDs
+and label values, 'metrics' to see how cost changes over time, and 'query' to
+see which code paths account for it (-o dot for call graphs, -o pprof for local
+analysis). Use 'diff' to compare symbol costs across selectors or time windows,
+with profile and comparison links. An empty result means no matching samples,
+not zero cost. Prefer comparable, equal-length windows with the same profile type.`,
 		Commands: []signals.CommandSpec{
+			{
+				Build:     dspyroscope.DiffCmd,
+				TokenCost: "large",
+				LLMHint:   `gcx profiles diff '{service_name="frontend"}' '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --before-from now-1h --before-to now-30m --after-from now-30m --after-to now -o agents`,
+			},
 			{
 				Build:     dspyroscope.QueryCmd,
 				TokenCost: "medium",

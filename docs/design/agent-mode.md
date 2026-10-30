@@ -33,7 +33,8 @@ spellings: `--agent=t` is accepted but selects false, while `--agent=yes` is
 rejected by Cobra. These are existing parser quirks, not recommended syntax.
 
 **Identity priority:** supported `GCX_AGENT_NAME` > native boolean signals
-in source order > native session markers in source order > supported
+in source order > native session markers in source order >
+`OPENCLAW_SHELL=exec` > supported
 `AI_AGENT` > `AGENT=goose`. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
 A native marker takes precedence over a shared variable inherited from an outer
 harness. `GCX_AGENT_NAME` is the deliberate gcx override for a nested agent.
@@ -58,7 +59,9 @@ When agent mode is active:
    `io.Options.BindFlags()`, overriding `DefaultFormat()` unless the command
    pins its format with `PinDefaultFormat` (see § 6.4). The `agents`
    codec emits compact JSON when the payload is ≤ 100 KiB and spills to a
-   temp file otherwise — see [output.md § Agents Codec](output.md#111-agents-codec)
+   temp file otherwise, unless stdout is a regular file on disk (a
+   `> out.json` redirect), which is always written in full — see
+   [output.md § Agents Codec](output.md#111-agents-codec)
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
    regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection))
@@ -101,12 +104,17 @@ Explicit flags override agent mode defaults:
 - `-o json` forces full indented JSON to stdout (no spill)
 - Bare `--jq` disables spill; add `-o agents` for
   [compact/spill handling](output.md#16-jq-transformation)
-- `-o text` or `-o yaml` overrides the agents default
+- `-o text` or `-o yaml` overrides the agents default, for errors too: a
+  failure prints the human-formatted error on stderr instead of the in-band
+  `gcx.error` document ([errors.md § 4.4](errors.md#44-in-band-error-reporting))
 - `-o wide` retains human table output even in agent mode (explicit-override semantics — the
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
 - `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400); `0` disables spilling
+- Redirecting stdout to a file (`gcx ... > out.json`) disables spilling for that
+  run: the named file receives the full payload, while a harness capturing
+  stdout through a pipe keeps the spill
 
 ### 6.4 Output Protocol Classes
 

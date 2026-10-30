@@ -27,14 +27,19 @@ jobs:
     # '@claude review' is the only re-review path. There is no review-outcome
     # label to remove: the published review carries the commit it reviewed, so
     # a second signal would only add a second thing to keep true.
+    #
+    # The Anthropic key lives in Vault under grafana/gcx only, so the review
+    # fails in any other repository. Skip it outside the canonical repo.
     if: |
-      (github.event_name == 'pull_request' &&
-        github.event.pull_request.user.type != 'Bot' &&
-        github.event.pull_request.draft == false) ||
-      (github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request != null &&
-        startsWith(github.event.comment.body, '@claude review') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      github.repository == 'grafana/gcx' && (
+        (github.event_name == 'pull_request' &&
+          github.event.pull_request.user.type != 'Bot' &&
+          github.event.pull_request.draft == false) ||
+        (github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          startsWith(github.event.comment.body, '@claude review') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      )
     runs-on: ubuntu-latest
     # A review costs several dollars and a quarter of an hour. Opening a PR as
     # ready, or asking twice, must not buy two of them.
@@ -79,10 +84,80 @@ jobs:
           gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
             --json headRefOid --jq '"head_sha=" + .headRefOid' >> "$GITHUB_OUTPUT"
 
+      # Carry the last reviewed commit and open findings into the next round.
+      # This step needs only pull-requests read. Findings come from unresolved
+      # inline threads, so a review whose findings fell back to the summary
+      # body (GitHub rejected the anchors) contributes none.
+      - name: Find previous review
+        id: prev
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          findings=$(mktemp "$RUNNER_TEMP/previous-findings.XXXXXX")
+          sha=""
+          load_previous() {
+            local reviews threads ids
+            reviews=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate --slurp |
+              jq -ce '[.[][]
+                | select(.user.login == "github-actions[bot]")
+                | select((.body // "") | contains("<!-- gcx-claude-review:"))]') || return 1
+            [ "$(jq 'length' <<< "$reviews")" -gt 0 ] || return 0
+            ids=$(jq '[.[] | {key: (.id | tostring), value: .commit_id[:12]}] | from_entries' <<< "$reviews") || return 1
+            threads=$(gh api graphql --paginate --slurp \
+              -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" \
+              -F number="$PR_NUMBER" -f query='
+                query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+                  repository(owner: $owner, name: $name) {
+                    pullRequest(number: $number) {
+                      reviewThreads(first: 100, after: $endCursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                          isResolved isOutdated path line originalLine
+                          comments(first: 1) {
+                            nodes { body pullRequestReview { databaseId } }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }') || return 1
+            jq -r --argjson ids "$ids" '
+              def trim: gsub("^\\s+|\\s+$"; "");
+              [.[] | .data.repository.pullRequest.reviewThreads.nodes[]
+                | select(.isResolved == false)
+                | .comments.nodes[0] as $comment
+                | ($ids[($comment.pullRequestReview.databaseId // "" | tostring)]) as $commit
+                | select($commit != null)
+                | ($comment.body | gsub("\r|<!--|-->"; "") | split("\n")
+                    | map(trim | select(length > 0)) | .[0] // "" | .[:200]) as $body
+                | "- \(.path):\(.line // .originalLine // "?") (review of \($commit)) \(if .isOutdated then "[outdated] " else "" end)\($body)"]
+              | .[:30][]
+            ' <<< "$threads" > "$findings" || return 1
+            sha=$(jq -r 'max_by(.submitted_at).commit_id // empty' <<< "$reviews") || return 1
+          }
+
+          if ! load_previous; then
+            echo "::warning::Could not read previous Claude reviews; continuing with a full review."
+            sha=""
+            : > "$findings"
+          fi
+          delim="EOF_$(openssl rand -hex 16)"
+          {
+            echo "sha=$sha"
+            echo "findings<<$delim"
+            cat "$findings"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          fetch-depth: 1
+          # Full history, so the review can diff the previous review commit against the head.
+          fetch-depth: 0
           # A pull_request event checks out the merge ref already. An
           # issue_comment event would otherwise check out the default branch,
           # so the review would grep the base instead of the PR's code.
@@ -129,6 +204,9 @@ jobs:
 
             This is an unattended workflow run requesting Workflow delivery.
             Review head: ${{ steps.pr.outputs.head_sha }}
+            Previous review commit: ${{ steps.prev.outputs.sha }}
+            Previous findings:
+            ${{ steps.prev.outputs.findings }}
 
             Return the structured review payload and publish nothing. The next
             workflow step submits the review and checks GitHub's response.
@@ -197,12 +275,18 @@ jobs:
           # The action fails the step itself when the session returns no
           # structured output at all, so what reaches here is schema-valid.
           # `null` is the session saying its correctness pass did not complete.
+          # GitHub requires ranges on the same diff side to run forwards.
           review=$(jq -ce '
             .review
             | select(type == "object")
             | select((.body | type) == "string")
             | select(.body | test("\\S"))
             | select((.comments | type) == "array")
+            | .comments |= map(
+                if .start_side == .side and .start_line > .line then
+                  . + {start_line: .line, line: .start_line}
+                else . end
+              )
           ' <<< "${REVIEW_OUTPUT:-}") ||
             fail "the review did not complete: no review payload. Check the claude-review-transcript-${PR_NUMBER} artifact."
 

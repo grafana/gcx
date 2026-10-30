@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +29,7 @@ func TestErrorToDetailedError_UnavailableEndpoint(t *testing.T) {
 			err := fmt.Errorf("trace diff failed: %w",
 				queryerror.New("tempo", "trace diff", tc.status, tc.message, "").WithAvailability(true, true))
 
-			det := fail.ErrorToDetailedError(err)
+			det := toDetailedError(t, err)
 
 			require.NotNil(t, det)
 			assert.Contains(t, det.Summary, "not available")
@@ -46,7 +45,7 @@ func TestErrorToDetailedError_MissingResourceFallsThrough(t *testing.T) {
 	err := fmt.Errorf("trace diff failed: %w",
 		queryerror.New("tempo", "trace diff", http.StatusNotFound, "Not Found", "").WithAvailability(true, true))
 
-	det := fail.ErrorToDetailedError(err)
+	det := toDetailedError(t, err)
 
 	require.NotNil(t, det)
 	assert.NotContains(t, det.Summary, "not available")
@@ -59,7 +58,7 @@ func TestErrorToDetailedError_RequestErrorFallsThrough(t *testing.T) {
 	err := fmt.Errorf("trace diff failed: %w",
 		queryerror.New("tempo", "trace diff", http.StatusBadRequest, "bad request", "").WithAvailability(true, true))
 
-	det := fail.ErrorToDetailedError(err)
+	det := toDetailedError(t, err)
 
 	require.NotNil(t, det)
 	assert.NotContains(t, det.Summary, "not available")
@@ -72,7 +71,7 @@ func TestErrorToDetailedError_UnflaggedEndpointNotTreatedAsUnavailable(t *testin
 	err := fmt.Errorf("get trace failed: %w",
 		queryerror.New("tempo", "get trace", http.StatusNotFound, "404 page not found", ""))
 
-	det := fail.ErrorToDetailedError(err)
+	det := toDetailedError(t, err)
 
 	require.NotNil(t, det)
 	assert.NotContains(t, det.Summary, "not available")

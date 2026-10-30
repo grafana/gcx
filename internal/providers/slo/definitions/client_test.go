@@ -67,6 +67,22 @@ func TestClient_List(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			// The API wraps grafanaQueries' list in an object, which a list
+			// field failed to decode, failing the whole list.
+			name: "grafanaQueries query",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"slos": [
+					{"uuid": "uuid-1", "name": "Freeform", "query": {"type": "freeform", "freeform": {"query": "up"}}},
+					{"uuid": "uuid-2", "name": "Loki", "query": {"type": "grafanaQueries", "grafanaQueries": {"grafanaQueries": [
+						{"datasource": {"type": "loki", "uid": "loki"}, "expr": "sum(count_over_time({job=\"a\"}[5m]))", "refId": "Success"}
+					]}}}
+				]}`))
+			},
+			wantSLOs: 2,
+			wantErr:  false,
+		},
+		{
 			name: "null slos field returns empty slice",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, definitions.SLOListResponse{})
@@ -431,4 +447,18 @@ func TestClient_ErrorResponses(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErrMsg)
 		})
 	}
+}
+
+// A grafanaQueries SLO keeps the API's wrapped shape when sent back, as
+// create and update do.
+func TestQuery_GrafanaQueriesRoundTrip(t *testing.T) {
+	raw := `{"type":"grafanaQueries","grafanaQueries":{"grafanaQueries":[{"expr":"up","refId":"A"}]}}`
+	var q definitions.Query
+	require.NoError(t, json.Unmarshal([]byte(raw), &q))
+	require.NotNil(t, q.GrafanaQueries)
+	require.Len(t, q.GrafanaQueries.GrafanaQueries, 1)
+
+	out, err := json.Marshal(q)
+	require.NoError(t, err)
+	assert.JSONEq(t, raw, string(out))
 }

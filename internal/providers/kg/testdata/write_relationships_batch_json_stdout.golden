@@ -1,0 +1,30 @@
+[
+  {
+    "domain": "myapp",
+    "type": "CALLS",
+    "from": {
+      "domain": "myapp",
+      "type": "Service",
+      "name": "checkout"
+    },
+    "to": {
+      "domain": "myapp",
+      "type": "Service",
+      "name": "database"
+    }
+  },
+  {
+    "domain": "myapp",
+    "type": "CALLS",
+    "from": {
+      "domain": "myapp",
+      "type": "Service",
+      "name": "cart"
+    },
+    "to": {
+      "domain": "myapp",
+      "type": "Service",
+      "name": "database"
+    }
+  }
+]

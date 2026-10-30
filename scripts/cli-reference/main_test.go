@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 func TestLongHelpShellComments(t *testing.T) {
@@ -110,6 +111,46 @@ func TestFullCommandCoverageAndLinks(t *testing.T) {
 	require.Equal(t, page, render(cmd, "v1.2.3", "# Env\n\n## `GCX_TEST`\n\nTest variable"))
 }
 
+// Hugo renders with raw HTML enabled, so a placeholder such as <title> left in
+// command help becomes an element and the browser drops the rest of the page.
+func TestDescriptionsNeverEmitRawHTML(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	for _, tc := range []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{name: "long", cmd: &cobra.Command{Use: "gcx", Long: "Select one exact title with --name <title> and choose yaml."}},
+		{name: "short", cmd: &cobra.Command{Use: "gcx", Short: "Delete the <title> interval."}},
+		{name: "deprecated", cmd: &cobra.Command{Use: "gcx", Deprecated: "Use gcx alert mute-timings get <title> instead."}},
+		{name: "command tree", cmd: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := tc.cmd
+			if cmd == nil {
+				cmd = root.Command("v1.2.3")
+				cmd.Use = "gcx"
+			}
+			page := render(cmd, "v1.2.3", "# Env\n\n## `GCX_TEST`\n\nUse the <namespace>/<name> form.")
+			// Skip the front matter and the generated-by comment the page emits itself.
+			_, body, found := strings.Cut(page, "\n# CLI reference\n")
+			require.True(t, found)
+			var omitted bytes.Buffer
+			require.NoError(t, goldmark.Convert([]byte(body), &omitted))
+			// Without WithUnsafe, goldmark marks every span it would pass through to Hugo.
+			require.NotContains(t, omitted.String(), "raw HTML omitted", "command metadata reached the page as raw HTML")
+
+			var rendered bytes.Buffer
+			unsafe := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
+			require.NoError(t, unsafe.Convert([]byte(body), &rendered))
+			require.NotContains(t, rendered.String(), "<title>")
+			require.Contains(t, rendered.String(), "<h2>Environment variables</h2>")
+			if tc.name == "command tree" {
+				require.Contains(t, rendered.String(), "--name &lt;title&gt;")
+			}
+		})
+	}
+}
+
 func TestDateDefaults(t *testing.T) {
 	cmd := &cobra.Command{Use: "gcx"}
 	cmd.Flags().String("date", "2026-10-06", "Report date")
@@ -144,4 +185,18 @@ func TestRenderConfiguration(t *testing.T) {
 	require.Equal(t, page, again)
 	_, err = renderConfiguration(guide, schema, "v1.2.3")
 	require.ErrorContains(t, err, "missing")
+}
+
+// The schema generator fences everything today, but prose around that fence
+// would reach the configuration page the same way <title> reached this one.
+func TestRenderConfigurationNeverEmitsRawHTML(t *testing.T) {
+	page, err := renderConfiguration("# Configure gcx\n\n"+configurationMarker+"\n", "# Configuration reference\n\nSet --config <path> to override discovery.\n", "v1.2.3")
+	require.NoError(t, err)
+	require.Contains(t, page, "--config &lt;path&gt;")
+	// Skip the handwritten guide and the marker comment that separates it.
+	_, generated, found := strings.Cut(page, configurationMarker)
+	require.True(t, found)
+	var omitted bytes.Buffer
+	require.NoError(t, goldmark.Convert([]byte(generated), &omitted))
+	require.NotContains(t, omitted.String(), "raw HTML omitted")
 }

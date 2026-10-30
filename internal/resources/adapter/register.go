@@ -18,15 +18,17 @@ type RegistryAccess interface {
 // Registration holds a pre-resolved adapter factory with its descriptor and aliases.
 // Populated lazily by calling the factory once to extract descriptor metadata.
 type Registration struct {
-	Factory       Factory
-	Descriptor    resources.Descriptor
-	Aliases       []string
-	GVK           schema.GroupVersionKind
-	Schema        func() json.RawMessage         // Required, non-nil: returns the JSON Schema for this resource type (per CONSTITUTION.md). Called on demand, so schemas cost nothing at start-up.
-	Example       json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
-	Operations    map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
-	CheckMutation func(operation string) error   // Optional config-free refusal before mutation reads or adapter initialization.
-	URLTemplate   string                         // URL path template for deep links (e.g., "/a/grafana-slo-app/slo/{name}"). Empty means no deep link.
+	Factory               Factory
+	Descriptor            resources.Descriptor
+	Aliases               []string
+	GroupAliases          []string // Compatibility groups, not additional resource types.
+	GVK                   schema.GroupVersionKind
+	Schema                func() json.RawMessage         // Required, non-nil: returns the JSON Schema for this resource type (per CONSTITUTION.md). Called on demand, so schemas cost nothing at start-up.
+	Example               json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
+	Operations            map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
+	CheckMutation         func(operation string) error   // Optional config-free refusal before mutation reads or adapter initialization.
+	RetainLocalDuplicates bool                           // Opt-in for batch identity planning that must see every same-name local envelope.
+	URLTemplate           string                         // URL path template for deep links (e.g., "/a/grafana-slo-app/slo/{name}"). Empty means no deep link.
 }
 
 // registrations holds all adapter registrations collected from providers.
@@ -39,6 +41,7 @@ var registrations []Registration
 // Provider.TypedRegistrations() — provider code must not call it directly
 // (CONSTITUTION.md § Architecture Invariants, unified provider registration).
 func Register(reg Registration) {
+	resources.RegisterGroupAliases(reg.Descriptor.GroupVersionKind(), reg.GroupAliases)
 	registrations = append(registrations, reg)
 }
 
@@ -91,4 +94,16 @@ func CheckMutation(desc resources.Descriptor, operation string) error {
 		}
 	}
 	return nil
+}
+
+// RetainsLocalDuplicates reports whether local batch operations must preserve
+// every envelope for this registered kind rather than deduplicating by name.
+func RetainsLocalDuplicates(gvk schema.GroupVersionKind) bool {
+	gvk = resources.NormalizeGVK(gvk)
+	for _, reg := range registrations {
+		if reg.GVK == gvk {
+			return reg.RetainLocalDuplicates
+		}
+	}
+	return false
 }

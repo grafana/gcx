@@ -111,6 +111,10 @@ type checkAPIState struct {
 	// adhocLines, when non-empty, are served as raw Loki log lines from the
 	// query endpoints (as `checks test` polls) instead of an empty result.
 	adhocLines []string
+	// adhocCalls and lastAdhoc record POSTs to check/adhoc, so tests can assert
+	// what `checks test` sent.
+	adhocCalls int
+	lastAdhoc  checks.AdHocCheckRequest
 	// namedFrames serves SM named queries (checks_reachability, ...) by queryType.
 	// namedLatency serves checks_latency per checkType. Both are empty by default.
 	namedFrames  map[string][]dataframe.Frame
@@ -218,6 +222,10 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 	mux.HandleFunc("/api/v1/check/adhoc", func(w http.ResponseWriter, r *http.Request) {
 		var req checks.AdHocCheckRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		st.mu.Lock()
+		st.adhocCalls++
+		st.lastAdhoc = req
+		st.mu.Unlock()
 		writeJSON(w, checks.AdHocCheckResponse{
 			ID:       "abc-123",
 			TenantID: 214,
@@ -520,24 +528,26 @@ func TestChecksCreateOfflineProbesWarningOnStderr(t *testing.T) {
 	assert.Equal(t, "✔ Created check \"web-check\" (id=1234)\n", stdout)
 }
 
-func TestChecksTestOutputContract(t *testing.T) {
-	adhocLine := func(probeName string, success float64) string {
-		data, err := json.Marshal(map[string]any{
-			"id":    "abc-123",
-			"probe": probeName,
-			"logs":  []any{map[string]any{"level": "info", "msg": "starting probe"}},
-			"timeseries": []any{
-				map[string]any{
-					"name":   "probe_success",
-					"metric": []any{map[string]any{"gauge": map[string]any{"value": success}}},
-				},
+// adhocLine builds the raw Loki log line a probe emits for an ad-hoc run.
+func adhocLine(t *testing.T, probeName string, success float64) string {
+	t.Helper()
+	data, err := json.Marshal(map[string]any{
+		"id":    "abc-123",
+		"probe": probeName,
+		"logs":  []any{map[string]any{"level": "info", "msg": "starting probe"}},
+		"timeseries": []any{
+			map[string]any{
+				"name":   "probe_success",
+				"metric": []any{map[string]any{"gauge": map[string]any{"value": success}}},
 			},
-		})
-		require.NoError(t, err)
-		return string(data)
-	}
+		},
+	})
+	require.NoError(t, err)
+	return string(data)
+}
 
-	st := &checkAPIState{probesOnline: true, adhocLines: []string{adhocLine("Oregon", 1)}}
+func TestChecksTestOutputContract(t *testing.T) {
+	st := &checkAPIState{probesOnline: true, adhocLines: []string{adhocLine(t, "Oregon", 1)}}
 	srv := newCheckServer(t, st)
 	manifest := writeCheckManifest(t, t.TempDir())
 
@@ -556,6 +566,133 @@ func TestChecksTestOutputContract(t *testing.T) {
 	probesOut, ok := doc["probes"].([]any)
 	require.True(t, ok)
 	require.Len(t, probesOut, 1)
+}
+
+func TestChecksTestSavedCheck(t *testing.T) {
+	saved := checks.Check{
+		ID: 5594, Job: "saved-web", Target: "https://saved.example.com",
+		Frequency: 60000, Timeout: 7000, Enabled: true, Probes: []int64{1},
+		Settings: checks.CheckSettings{"http": map[string]any{"method": "GET"}},
+	}
+	newState := func() *checkAPIState {
+		return &checkAPIState{
+			probesOnline: true,
+			checks:       map[int64]checks.Check{saved.ID: saved},
+			adhocLines:   []string{adhocLine(t, "Oregon", 1)},
+		}
+	}
+
+	t.Run("slug-id and numeric ID run the saved check without persisting it", func(t *testing.T) {
+		for _, name := range []string{"saved-web-5594", "5594"} {
+			t.Run(name, func(t *testing.T) {
+				st := newState()
+				srv := newCheckServer(t, st)
+
+				stdout, _, err := runChecks(t, srv.URL, false, "", "test", name, "--logs-datasource-uid", "loki-uid")
+				require.NoError(t, err)
+				assert.Contains(t, stdout, "Ran ad-hoc check \"saved-web\" against 1 probe(s): 1 succeeded, 0 failed, 0 timed out")
+
+				st.mu.Lock()
+				defer st.mu.Unlock()
+				assert.Equal(t, 1, st.adhocCalls)
+				assert.Equal(t, "https://saved.example.com", st.lastAdhoc.Target)
+				assert.Equal(t, int64(7000), st.lastAdhoc.Timeout)
+				assert.Equal(t, []int64{1}, st.lastAdhoc.Probes)
+				assert.Contains(t, st.lastAdhoc.Settings, "http")
+				assert.Zero(t, st.writes, "testing a saved check must not add or update it")
+			})
+		}
+	})
+
+	t.Run("agent mode result carries the saved check's job", func(t *testing.T) {
+		srv := newCheckServer(t, newState())
+
+		stdout, _, err := runChecks(t, srv.URL, true, "", "test", "5594", "--logs-datasource-uid", "loki-uid")
+		require.NoError(t, err)
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "gcx.synth.check_test", doc["type"])
+		assert.Equal(t, "saved-web", doc["job"])
+		assert.Equal(t, "https://saved.example.com", doc["target"])
+	})
+
+	t.Run("unknown check fails before any ad-hoc run", func(t *testing.T) {
+		st := newState()
+		srv := newCheckServer(t, st)
+
+		_, _, err := runChecks(t, srv.URL, false, "", "test", "9999", "--logs-datasource-uid", "loki-uid")
+		require.Error(t, err)
+
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		assert.Zero(t, st.adhocCalls)
+	})
+
+	t.Run("non-numeric name without an ID is rejected", func(t *testing.T) {
+		st := newState()
+		srv := newCheckServer(t, st)
+
+		_, _, err := runChecks(t, srv.URL, false, "", "test", "saved-web", "--logs-datasource-uid", "loki-uid")
+		require.Error(t, err)
+
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		assert.Zero(t, st.adhocCalls)
+	})
+
+	t.Run("stale probe ID fails validation instead of being dropped", func(t *testing.T) {
+		st := newState()
+		stale := saved
+		stale.Probes = []int64{1, 4242}
+		st.checks[saved.ID] = stale
+		srv := newCheckServer(t, st)
+
+		_, _, err := runChecks(t, srv.URL, false, "", "test", "5594", "--logs-datasource-uid", "loki-uid")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "4242")
+
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		assert.Zero(t, st.adhocCalls)
+	})
+}
+
+func TestChecksTestSourceFlags(t *testing.T) {
+	manifest := writeCheckManifest(t, t.TempDir())
+
+	t.Run("NAME with -f is a usage error", func(t *testing.T) {
+		st := &checkAPIState{probesOnline: true}
+		srv := newCheckServer(t, st)
+
+		_, _, err := runChecks(t, srv.URL, false, "", "test", "5594", "-f", manifest)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mutually exclusive")
+		// A usage error maps to exit 2 (docs/design/exit-codes.md).
+		var usageErr *gcxerrors.UsageError
+		require.ErrorAs(t, err, &usageErr)
+
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		assert.Zero(t, st.adhocCalls)
+	})
+
+	t.Run("neither NAME nor -f is a usage error", func(t *testing.T) {
+		srv := newCheckServer(t, &checkAPIState{probesOnline: true})
+
+		_, _, err := runChecks(t, srv.URL, false, "", "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "NAME")
+		assert.Contains(t, err.Error(), "--filename")
+		var usageErr *gcxerrors.UsageError
+		require.ErrorAs(t, err, &usageErr)
+	})
+
+	t.Run("more than one NAME is rejected", func(t *testing.T) {
+		srv := newCheckServer(t, &checkAPIState{probesOnline: true})
+
+		_, _, err := runChecks(t, srv.URL, false, "", "test", "1", "2")
+		require.Error(t, err)
+	})
 }
 
 func TestChecksUpdateOutputContract(t *testing.T) {

@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"io"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -12,6 +13,7 @@ import (
 
 type FetchRequest struct {
 	Config             config.NamespacedRESTConfig
+	Warn               io.Writer
 	StopOnError        bool
 	ExcludeManaged     bool
 	ExcludeReadOnly    bool
@@ -19,7 +21,8 @@ type FetchRequest struct {
 	Processors         []remote.Processor
 	// Limit caps the number of items per resource type. Zero means no limit.
 	// Set to 1 for field discovery (--json ?) to avoid full list operations.
-	Limit int64
+	Limit              int64
+	IdentityOnlyDelete bool
 }
 
 type FetchResponse struct {
@@ -55,6 +58,7 @@ func fetchResources(ctx context.Context, opts FetchRequest, args []string, valid
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors:            sels,
+		Warn:                 opts.Warn,
 		PreferredVersionOnly: true,
 	})
 	if err != nil {
@@ -78,13 +82,14 @@ func fetchResources(ctx context.Context, opts FetchRequest, args []string, valid
 	}
 
 	req := remote.PullRequest{
-		Filters:         filters,
-		Resources:       &res.Resources,
-		Processors:      opts.Processors,
-		ExcludeManaged:  opts.ExcludeManaged,
-		ExcludeReadOnly: opts.ExcludeReadOnly,
-		StopOnError:     opts.StopOnError || sels.IsSingleTarget(),
-		Limit:           opts.Limit,
+		Filters:            filters,
+		Resources:          &res.Resources,
+		Processors:         opts.Processors,
+		ExcludeManaged:     opts.ExcludeManaged,
+		StopOnError:        opts.StopOnError || sels.IsSingleTarget(),
+		Limit:              opts.Limit,
+		IdentityOnlyDelete: opts.IdentityOnlyDelete,
+		ExcludeReadOnly:    opts.ExcludeReadOnly,
 	}
 
 	summary, err := pull.Pull(ctx, req)

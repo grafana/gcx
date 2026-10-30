@@ -76,6 +76,14 @@ type DeleteRequest struct {
 
 	// If set to true, the deleter will simulate the delete operations.
 	DryRun bool
+
+	// ResolveLocalIdentities selects strict identities from complete local envelopes
+	// before any delete. Selector-based callers already performed this selection.
+	ResolveLocalIdentities bool
+}
+
+type deleteSelectionClient interface {
+	SelectDelete(ctx context.Context, filter resources.Filter, manifests []unstructured.Unstructured) ([]unstructured.Unstructured, bool, error)
 }
 
 func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*OperationSummary, error) {
@@ -84,6 +92,13 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 
 	if request.MaxConcurrency < 1 {
 		request.MaxConcurrency = 1
+	}
+	if request.ResolveLocalIdentities {
+		selected, err := deleter.selectLocalIdentities(ctx, request, supported, summary)
+		if err != nil {
+			return summary, err
+		}
+		request.Resources = selected
 	}
 
 	err := request.Resources.ForEachConcurrently(ctx, request.MaxConcurrency,
@@ -182,4 +197,60 @@ func (deleter *Deleter) supportedDescriptors() map[schema.GroupVersionKind]resou
 	}
 
 	return supportedDescriptors
+}
+
+// selectLocalIdentities retains each authored envelope through owned selection.
+// Selection failures cannot allow any manifest in the failed kind to be deleted.
+func (deleter *Deleter) selectLocalIdentities(ctx context.Context, request DeleteRequest, supported map[schema.GroupVersionKind]resources.Descriptor, summary *OperationSummary) (*resources.Resources, error) {
+	client, ok := deleter.client.(deleteSelectionClient)
+	if !ok {
+		return request.Resources, nil
+	}
+	grouped := make(map[schema.GroupVersionKind][]*resources.Resource)
+	_ = request.Resources.ForEach(func(res *resources.Resource) error {
+		gvk := resources.NormalizeGVK(res.GroupVersionKind())
+		grouped[gvk] = append(grouped[gvk], res)
+		return nil
+	})
+	selected := resources.NewResources()
+	for gvk, sources := range grouped {
+		desc, exists := supported[gvk]
+		if !exists || adapter.CheckMutation(desc, "delete") != nil {
+			for _, source := range sources {
+				selected.AddDistinct(source)
+			}
+			continue
+		}
+		manifests := make([]unstructured.Unstructured, len(sources))
+		for i, source := range sources {
+			manifests[i] = source.ToUnstructured()
+		}
+		items, handled, err := client.SelectDelete(ctx, resources.Filter{Type: resources.FilterTypeAll, Descriptor: desc}, manifests)
+		if !handled {
+			for _, source := range sources {
+				selected.AddDistinct(source)
+			}
+			continue
+		}
+		if err != nil {
+			for _, source := range sources {
+				summary.RecordFailure(source, err)
+			}
+			if request.StopOnError {
+				return selected, err
+			}
+			continue
+		}
+		for i := range items {
+			res, err := resources.FromUnstructured(&items[i])
+			if err != nil {
+				return selected, err
+			}
+			if len(items) == len(sources) {
+				res.SetSource(sources[i].Source)
+			}
+			selected.Add(res)
+		}
+	}
+	return selected, nil
 }

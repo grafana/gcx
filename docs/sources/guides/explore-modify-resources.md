@@ -20,6 +20,48 @@ The Grafana CLI allows you to interact with Grafana resources directly from your
 
 Use this approach if you're an advanced user and want to manage resources more efficiently, or to integrate Grafana operations into automated workflows.
 
+## Search resources by relevance
+
+Use the experimental `gcx resources search` command to find ranked matches from a phrase:
+
+```shell
+gcx resources search "kubernetes memory problems"
+```
+Search returns top matches, without pagination or an exhaustive resource inventory. Scores rank matches in the response. 
+
+### Prerequisites
+
+You need to enable the Grafana global hybrid search endpoint to use `gcx resources search`.
+
+- On supported Grafana Cloud stacks, `gcx resources search` can combine text and semantic matching.
+- On self-managed deployments with the endpoint, only use text matching. Semantic matching isn't available on-premises.
+
+Your deployment must have default resource types, or you must select types with `--resource`.
+
+### Search for specific resources
+
+Select resource types and exact folder UIDs for a narrower search:
+
+```shell
+gcx resources search "memory" \
+  --resource dashboards.dashboard.grafana.app \
+  --resource folders.folder.grafana.app \
+  --folder team-platform \
+  --limit 10
+gcx resources search "memory" --folder general
+```
+
+Repeat `--resource` to search your selected types instead of the server defaults.
+
+Repeat `--folder` to match any listed folder UID. Folders match exactly, without descendants; `general` or `--folder ''` selects the root folder. The default limit is 50, and the maximum is 200.
+
+Use `-o wide` to see matching text, or `-o json` or `-o yaml` for the full response:
+
+```shell
+gcx resources search "memory" -o wide
+gcx resources search "memory" -o json
+```
+
 ## Find and delete dashboards using incorrect data sources
 
 To identify and remove production dashboards relying on non-production data sources, use the command below to list dashboard UIDs along with the data source UIDs used in their panels:

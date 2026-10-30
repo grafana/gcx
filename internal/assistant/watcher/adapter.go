@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -51,6 +51,11 @@ func NewTypedCRUDForClient(client *watchers.Client, namespace string) *adapter.T
 // resolve across both visible partitions regardless of this selection.
 func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, archived bool) *adapter.TypedCRUD[Watcher] {
 	return &adapter.TypedCRUD[Watcher]{
+		CreateFn: func(ctx context.Context, w *Watcher) (*Watcher, error) { return createConfiguration(ctx, client, w) },
+		UpdateFn: func(ctx context.Context, ref string, w *Watcher) (*Watcher, error) {
+			return updateConfiguration(ctx, client, ref, w)
+		},
+		DeleteFn: func(ctx context.Context, ref string) error { return deleteConfiguration(ctx, client, ref) },
 		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]Watcher, error) {
 			raw, err := client.ListAll(ctx, archived)
 			if errors.Is(err, watchers.ErrCapabilityUnavailable) {
@@ -285,13 +290,11 @@ func WatcherFromResponse(raw watchers.Watcher, automaticRecalibration bool) Watc
 		Title: raw.Name, Description: raw.Description, Prompt: raw.Prompt,
 		DatasourceUIDs: append([]string{}, raw.DatasourceUIDs...), Interval: (time.Duration(raw.TriggerIntervalSeconds) * time.Second).String(),
 		Sensitivity: raw.Sensitivity, SkipReviewOnCleanRuns: !raw.DisableDecisionSkip,
-		Labels: maps.Clone(raw.Labels), AutomaticRecalibration: EnabledSetting{Enabled: automaticRecalibration},
-		Notifications: Notifications{Slack: ChannelNotification{Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
+		Labels: configurationLabels(raw.Labels), AutomaticRecalibration: EnabledSetting{Enabled: automaticRecalibration},
+		Notifications: Notifications{Slack: SlackNotification{TargetType: "channel", Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Alerting: AlertingNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
 		Investigation: Investigation{TeamAccess: []string{}}, serverID: raw.ID,
 	}
-	if result.Labels == nil {
-		result.Labels = map[string]string{}
-	}
+	result.Notifications.Alerting.RoutingTree = raw.Labels[legacyRoutingLabel]
 	if raw.AutoStop != nil {
 		result.AutoStop.Archive = raw.AutoStop.Archive
 		if raw.AutoStop.PauseAt != nil {
@@ -300,13 +303,26 @@ func WatcherFromResponse(raw watchers.Watcher, automaticRecalibration bool) Watc
 		}
 	}
 	if action := raw.Actions.Slack; action != nil {
-		result.Notifications.Slack = channelFromResponse(action)
+		result.Notifications.Slack.Enabled = action.Enabled
+		result.Notifications.Slack.Severity = severityFromResponse(action.MinSeverity)
+		if target := action.Target; target != nil {
+			if target.Type != "" {
+				result.Notifications.Slack.TargetType = target.Type
+			}
+			result.Notifications.Slack.ChannelID = target.ChannelID
+			result.Notifications.Slack.UserID = target.UserID
+			result.Notifications.Slack.TeamID = target.TeamID
+		}
 	}
 	if action := raw.Actions.MSTeams; action != nil {
 		result.Notifications.Teams = channelFromResponse(action)
 	}
 	if action := raw.Actions.Alerting; action != nil {
 		result.Notifications.Alerting.Enabled = action.Enabled
+		result.Notifications.Alerting.Severity = severityFromResponse(action.MinSeverity)
+		if action.RoutingTree != nil {
+			result.Notifications.Alerting.RoutingTree = *action.RoutingTree
+		}
 	}
 	if action := raw.Actions.Webhook; action != nil {
 		result.Notifications.Webhook = webhookFromResponse(action)
@@ -337,14 +353,12 @@ func severityFromResponse(raw string) string {
 	}
 }
 
-func UnsupportedMutation(operation string) error {
-	return fmt.Errorf("Watcher %s is not supported yet; continue in Grafana: %w", operation, errors.ErrUnsupported)
-}
-
 type manifestAdapter struct {
 	adapter.ResourceAdapter
 
 	client *watchers.Client
+	planMu sync.Mutex
+	plans  map[string]pushPlan
 }
 
 func (a *manifestAdapter) Schema() json.RawMessage { return WatcherSchema() }

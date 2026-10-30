@@ -3,6 +3,7 @@ package resources
 import (
 	"io"
 
+	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -47,4 +48,9 @@ func NewGetOptsForTest(flags *pflag.FlagSet) *getOpts {
 // partial-failure handling to writeFieldSelect).
 func WriteGetOutputForTest(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	return writeGetOutput(stdout, stderr, opts, res, output)
+}
+
+// ReportOperationWarnings exposes diagnostic reporting for package-external tests.
+func ReportOperationWarnings(w io.Writer, summary *remote.OperationSummary) {
+	reportOperationWarnings(w, summary)
 }

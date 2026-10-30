@@ -172,7 +172,7 @@ func TestDocsFetchSuggestion_QuotesURL(t *testing.T) {
 func TestDetailedError_WriteJSON_DocsFetchSuggestion(t *testing.T) {
 	t.Run("appended when DocsLink set and no prior suggestions", func(t *testing.T) {
 		err := gcxerrors.DetailedError{
-			Summary:  "Invalid PromQL query",
+			Summary:  gcxerrors.SummaryInvalidQuery,
 			DocsLink: "https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor.md",
 		}
 
@@ -330,5 +330,36 @@ func assertJSONEqual(t *testing.T, want, got map[string]any) {
 				t.Errorf("key %q: expected %v (%T), got %v (%T)", key, wantVal, wantVal, gotVal, gotVal)
 			}
 		}
+	}
+}
+
+func TestDetailedError_JSONObject(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		details string
+		parent  error
+	}{
+		{name: "explicit details", details: "│ details", parent: errors.New("unused parent")},
+		{name: "parent fallback", parent: errors.New("│ details")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			detailed := gcxerrors.DetailedError{
+				Summary:     gcxerrors.SummaryAPIError,
+				Details:     tc.details,
+				Parent:      tc.parent,
+				Suggestions: []string{"├─ retry"},
+				DocsLink:    "https://example.com/docs",
+			}
+			obj := detailed.JSONObject(gcxerrors.ExitGeneralError)
+			if obj.Summary != detailed.Summary || obj.ExitCode != gcxerrors.ExitGeneralError || obj.Details != "| details" || obj.DocsLink != detailed.DocsLink {
+				t.Fatalf("unexpected error object: %+v", obj)
+			}
+			if len(obj.Suggestions) != 2 || obj.Suggestions[0] != "+- retry" || obj.Suggestions[1] != gcxerrors.DocsFetchSuggestion(detailed.DocsLink) {
+				t.Fatalf("unexpected suggestions: %v", obj.Suggestions)
+			}
+			if detailed.Suggestions[0] != "├─ retry" {
+				t.Fatal("JSONObject mutated the original suggestions")
+			}
+		})
 	}
 }

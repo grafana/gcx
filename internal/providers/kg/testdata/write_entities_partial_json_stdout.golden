@@ -1,0 +1,11 @@
+[
+  {
+    "domain": "myapp",
+    "type": "Service",
+    "name": "checkout",
+    "scope": {
+      "env": "prod",
+      "site": "west"
+    }
+  }
+]

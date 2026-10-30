@@ -21,6 +21,14 @@ func TestHarnessSignals(t *testing.T) {
 		{"copilot session", map[string]string{"COPILOT_AGENT_SESSION_ID": "synthetic-session-id"}, "github-copilot"},
 		{"cline terminal", map[string]string{"CLINE_ACTIVE": "true"}, "cline"},
 		{"goose terminal", map[string]string{"GOOSE_TERMINAL": "1"}, "goose"},
+		{"hermes marker", map[string]string{"HERMES_AGENT": "true"}, "hermes"},
+		{"hermes shared identity", map[string]string{"AI_AGENT": "hermes-agent"}, "hermes"},
+		{"hermes session id is not identity", map[string]string{"HERMES_SESSION_ID": "synthetic-session-id"}, ""},
+		{"openclaw exec tool", map[string]string{"OPENCLAW_SHELL": "exec"}, "openclaw"},
+		{"openclaw exec normalized", map[string]string{"OPENCLAW_SHELL": " EXEC "}, "openclaw"},
+		{"openclaw TUI shell is human", map[string]string{"OPENCLAW_SHELL": "tui-local"}, ""},
+		{"native marker before openclaw exec", map[string]string{"CLAUDECODE": "1", "OPENCLAW_SHELL": "exec"}, "claude-code"},
+		{"openclaw exec before inherited shared identity", map[string]string{"AI_AGENT": "codex", "OPENCLAW_SHELL": "exec"}, "openclaw"},
 		{"kilo before opencode", map[string]string{"KILO": "1", "OPENCODE": "1", "AGENT": "1"}, "kilo-code"},
 		{"qwen before gemini", map[string]string{"QWEN_CODE": "1", "GEMINI_CLI": "1"}, "qwen-code"},
 		{"explicit nested agent", map[string]string{"GCX_AGENT_NAME": "crush", "CLAUDECODE": "1"}, "crush"},
@@ -42,7 +50,7 @@ func TestHarnessSignals(t *testing.T) {
 		{"unknown shared identity ignored", map[string]string{"AI_AGENT": "private-project", "AGENT": "1"}, ""},
 		{"config and credentials are not identity", map[string]string{"AMP_HOME": "/tmp/amp", "AUGMENT_API_TOKEN": "synthetic-token", "TERM_PROGRAM": "kiro", "OPENAI_API_KEY": "synthetic-token"}, ""},
 		{"empty session ignored", map[string]string{"CODEX_THREAD_ID": "", "COPILOT_AGENT_SESSION_ID": ""}, ""},
-		{"boolean marker needs boolean", map[string]string{"CODEX_SHELL": "arbitrary", "GEMINI_CLI": "0"}, ""},
+		{"boolean marker needs boolean", map[string]string{"CODEX_SHELL": "arbitrary", "GEMINI_CLI": "0", "HERMES_AGENT": "false"}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -59,7 +67,7 @@ func TestHarnessSignals(t *testing.T) {
 }
 
 func TestSupportedHarnessNames(t *testing.T) {
-	names := []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush", "amazon-q"}
+	names := []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush", "amazon-q", "hermes", "openclaw"}
 	for _, name := range names {
 		for _, env := range []string{"GCX_AGENT_NAME", "AI_AGENT"} {
 			t.Run(name+"/"+env, func(t *testing.T) {

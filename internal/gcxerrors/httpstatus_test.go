@@ -12,7 +12,12 @@ import (
 )
 
 func TestHTTPStatusErrorContract(t *testing.T) {
-	plain := &gcxerrors.HTTPStatusError{Status: http.StatusBadGateway, Message: "request failed with status 502"}
+	plain := &gcxerrors.HTTPStatusError{
+		Status:        http.StatusBadGateway,
+		Message:       "request failed with status 502",
+		ServerMessage: "upstream unavailable",
+		TraceID:       "abc123",
+	}
 	assert.Equal(t, "request failed with status 502", plain.Error(),
 		"Message is the whole rendered text, nothing is appended")
 	assert.Equal(t, http.StatusBadGateway, plain.HTTPStatusCode())
@@ -26,12 +31,9 @@ func TestHTTPStatusErrorContract(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, carrier.HTTPStatusCode())
 }
 
-// The exit-code taxonomy depends on this type NOT satisfying cmd/gcx/fail's
-// three-method serviceAPIError interface. If someone adds APIServiceName and
-// APIUserMessage, convertServiceAPIErrors starts matching every provider
-// error built from this type: 401/403 responses flip from exit 1 to exit 3,
-// and the string-matching SM/cloud/stacks/fleet converters behind it are
-// shadowed. This test is the tripwire.
+// This type must not satisfy cmd/gcx/fail's three-method serviceAPIError
+// interface. Doing so would shadow the specialized provider converters and
+// the final HTTPStatusError converter. Data fields must not grow the method set.
 func TestHTTPStatusErrorNeverSatisfiesServiceAPIError(t *testing.T) {
 	var serviceShaped interface {
 		error
@@ -41,5 +43,5 @@ func TestHTTPStatusErrorNeverSatisfiesServiceAPIError(t *testing.T) {
 	}
 	err := error(&gcxerrors.HTTPStatusError{Status: http.StatusUnauthorized, Message: "request failed with status 401"})
 	assert.NotErrorAs(t, err, &serviceShaped,
-		"HTTPStatusError must not grow APIServiceName/APIUserMessage; that changes exit codes repo-wide")
+		"HTTPStatusError must not grow APIServiceName/APIUserMessage; that bypasses specialized converters")
 }

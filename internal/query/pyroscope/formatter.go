@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -21,7 +22,10 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 		return t.Render(w)
 	}
 
-	samples := ExtractTopFunctions(resp.Flamegraph, 20)
+	samples, err := ExtractTopFunctions(resp.Flamegraph, 20)
+	if err != nil {
+		return err
+	}
 
 	for _, s := range samples {
 		t.Row(
@@ -136,48 +140,94 @@ func formatLabelSet(set Labels) string {
 }
 
 // ExtractTopFunctions extracts the top N functions by self time from a flame graph.
-func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
+func ExtractTopFunctions(fg *Flamegraph, limit int) ([]FunctionSample, error) {
 	if fg == nil || len(fg.Levels) == 0 {
-		return nil
+		return nil, nil
+	}
+	if fg.Total < 0 {
+		return nil, errors.New("invalid profile total")
 	}
 
 	// Build a map of function name -> aggregated stats
 	funcStats := make(map[string]*FunctionSample)
 
-	// Flame graph levels have values in groups of 4: [offset, total, self, nameIndex]
-	for _, level := range fg.Levels {
-		for i := 0; i+3 < len(level.Values); i += 4 {
-			nameIdx, err := parseInt64(level.Values[i+3])
-			if err != nil || nameIdx < 0 || int(nameIdx) >= len(fg.Names) {
-				continue
-			}
-			name := fg.Names[nameIdx]
-
-			// Skip "other" entries
-			if name == "other" {
-				continue
-			}
-
-			total, err := parseInt64(level.Values[i+1])
-			if err != nil {
-				continue
-			}
-			self, err := parseInt64(level.Values[i+2])
-			if err != nil {
-				continue
-			}
-
-			if existing, ok := funcStats[name]; ok {
-				existing.Self += self
-				existing.Total += total
-			} else {
-				funcStats[name] = &FunctionSample{
-					Name:  name,
-					Self:  self,
-					Total: total,
-				}
-			}
+	// Offsets are relative to the previous node's end on the same level.
+	// Decode all nodes, including synthetic ones, before linking children.
+	type node struct {
+		start, end, self int64
+		name             string
+		valid            bool
+		children         []*node
+	}
+	var roots, previous []*node
+	for depth, level := range fg.Levels {
+		if len(level.Values)%4 != 0 {
+			return nil, fmt.Errorf("invalid profile level %d: expected four values per node", depth)
 		}
+		var current []*node
+		var end int64
+		parent := 0
+		for i := 0; i+3 < len(level.Values); i += 4 {
+			var values [4]int64
+			for j := range values {
+				v, err := parseInt64(level.Values[i+j])
+				if err != nil || v < 0 {
+					return nil, fmt.Errorf("invalid profile value at level %d node %d", depth, i/4)
+				}
+				values[j] = v
+			}
+			span, err := decodeProfileSpan(values[0], values[1], values[2], end, fg.Total)
+			if err != nil {
+				return nil, fmt.Errorf("level %d node %d: %w", depth, i/4, err)
+			}
+			if values[3] >= int64(len(fg.Names)) {
+				return nil, fmt.Errorf("invalid profile name index at level %d node %d", depth, i/4)
+			}
+			n := &node{start: span.start, end: span.end, self: span.self, name: fg.Names[values[3]]}
+			n.valid = n.name != "other"
+			end = n.end
+			for parent < len(previous) && previous[parent].end <= n.start {
+				parent++
+			}
+			switch {
+			case parent < len(previous) && previous[parent].start <= n.start && n.end <= previous[parent].end:
+				previous[parent].children = append(previous[parent].children, n)
+			case depth == 0:
+				roots = append(roots, n)
+			case n.end != n.start:
+				return nil, fmt.Errorf("profile node has no parent at level %d node %d", depth, i/4)
+			}
+			current = append(current, n)
+		}
+		previous = current
+	}
+
+	// An outer occurrence already includes all samples beneath recursive calls.
+	// Self values, however, must still be summed at every depth.
+	active := make(map[string]int)
+	var visit func(*node)
+	visit = func(n *node) {
+		if n.valid {
+			s := funcStats[n.name]
+			if s == nil {
+				s = &FunctionSample{Name: n.name}
+				funcStats[n.name] = s
+			}
+			s.Self += n.self
+			if active[n.name] == 0 {
+				s.Total += n.end - n.start
+			}
+			active[n.name]++
+		}
+		for _, child := range n.children {
+			visit(child)
+		}
+		if n.valid {
+			active[n.name]--
+		}
+	}
+	for _, root := range roots {
+		visit(root)
 	}
 
 	// Convert to slice and calculate percentages
@@ -199,7 +249,7 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
 		samples = samples[:limit]
 	}
 
-	return samples
+	return samples, nil
 }
 
 // FormatSeriesTable formats a SelectSeries response as a table with one row per data point.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -375,13 +376,31 @@ func (o *createOpts) validateForV2() error {
 	return nil
 }
 
+// investigationBillingNote ends the Long of every command that starts
+// investigation work, so --help readers see the cost before invoking it.
+const investigationBillingNote = "Note: investigations run Grafana Assistant agents and consume Assistant tokens; see " + docs.AssistantPricing + " for billing."
+
 func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
-		Use:     "create",
-		Short:   "Create a new investigation.",
-		Long:    "Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.",
-		Example: `  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre`,
+		Use:   "create",
+		Short: "Create a new investigation.",
+		Long: `Create a Grafana Assistant investigation. v2-enabled stacks require
+--instruction and legacy stacks require --title, so pass both to cover either.
+
+Use it when the user requests a Grafana Assistant investigation or continues an
+authorized Assistant workflow; handle an ordinary request to investigate or
+root-cause with direct gcx signal queries.
+
+` + investigationBillingNote,
+		Example: `  # Create an investigation on any stack
+  gcx assistant investigations create --title="API latency" --instruction="Debug API latency spike"
+
+  # v2 stacks only: --title is optional
+  gcx assistant investigations create --instruction="Debug API latency spike"
+
+  # v2 stacks only: scope the investigation to a team
+  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

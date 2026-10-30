@@ -211,3 +211,13 @@ func TestPartialGVK_ParseStringClearsFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestInvalidSelectorMessage(t *testing.T) {
+	for _, src := range []string{"dashboards////", "dashboards/one/two"} {
+		t.Run(src, func(t *testing.T) {
+			_, err := resources.ParseSelectors([]string{src})
+			require.Error(t, err)
+			assert.Equal(t, "invalid resource selector \""+src+"\": expected a resource type optionally followed by /UID or /UID,UID; too many slash-separated segments", err.Error())
+		})
+	}
+}

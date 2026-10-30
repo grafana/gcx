@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/login"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources/dynamic"
@@ -30,6 +32,8 @@ func TestCaptureErrorSignalsReadsHTTPStatusCarriers(t *testing.T) {
 		"bare provider error":    providers.FormatError(401, []byte(`{"message":"denied"}`)),
 		"wrapped provider error": fmt.Errorf("SM register/install: %w", providers.FormatError(401, nil)),
 		"inside an EmittedError": gcxerrors.NewEmittedError(1, providers.FormatError(401, nil)),
+		"login token exchange":   fmt.Errorf("OAuth flow failed: %w", oauthExchangeError(401)),
+		"unfinished signup":      &login.SignupIncompleteError{Err: fmt.Errorf("OAuth flow failed: %w", oauthExchangeError(401))},
 	} {
 		t.Run(name, func(t *testing.T) {
 			resetCapture(t)
@@ -41,6 +45,12 @@ func TestCaptureErrorSignalsReadsHTTPStatusCarriers(t *testing.T) {
 				"an HTTP failure is not a Kubernetes failure and must not invent a reason")
 		})
 	}
+}
+
+// oauthExchangeError is the error the browser login's token exchange returns
+// for a non-200 answer, wrapped the way the callback handler wraps it.
+func oauthExchangeError(status int) error {
+	return fmt.Errorf("token exchange failed: %w", &auth.ExchangeStatusError{StatusCode: status, Path: "/api/cli/v1/auth/exchange"})
 }
 
 // A query APIError speaks only through its preserved transport status: the
@@ -95,8 +105,7 @@ func TestCaptureErrorSignalsQueryErrors(t *testing.T) {
 }
 
 // Both Kubernetes error shapes yield their reason: the raw *StatusError, and
-// the dynamic client's value-typed APIError, which has no Unwrap and never
-// reaches convertAPIErrors — ReasonForError matches the APIStatus interface,
+// the dynamic client's value-typed APIError — ReasonForError matches the APIStatus interface,
 // so it sees both. Neither shape may feed http_status: a Kubernetes Status
 // code is not a transport fact this field reports.
 func TestCaptureErrorSignalsKubernetesReasons(t *testing.T) {
@@ -124,8 +133,8 @@ func TestCaptureErrorSignalsKubernetesReasons(t *testing.T) {
 	t.Run("non-kubernetes error parsed by the dynamic client reports nothing", func(t *testing.T) {
 		resetCapture(t)
 
-		// ParseStatusError's fallback synthesizes reason "" and code 500;
-		// neither is a finding.
+		// ParseStatusError preserves non-status errors; neither a Kubernetes
+		// reason nor an HTTP status is a finding.
 		fail.CaptureErrorSignals(dynamic.ParseStatusError(errors.New("dial tcp: connection refused")))
 
 		assert.Empty(t, capture.CurrentK8sReason())

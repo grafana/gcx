@@ -36,7 +36,8 @@ unmodified CLI, a fresh instance per command) with in-process isolation:
   own memory, args, env and filesystem view. The exception is a `Home` you pass
   to several calls, which they share (see `Invocation.Home`).
 - **Nothing is reachable unless granted.** The guest sees an empty read-only `/`,
-  one writable `$HOME`, only the environment variables it's given, and no sockets.
+  one `$HOME` (writable, or an in-memory read-only one), only the environment
+  variables it's given, and no sockets.
 - **The host controls the network.** gcx hands every HTTP request to the host,
   which applies an egress policy and can add credentials the guest never sees.
 - **Pure Go.** No cgo and no external runtime.
@@ -138,11 +139,19 @@ COPY --from=gcx / /usr/share/gcx/
 ```go
 wasm, _ := os.ReadFile("/usr/share/gcx/gcx.wasm")
 rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: "/usr/share/gcx/cache"})
+if err == nil && rt.CacheError() != nil {
+	logger.Warn("compiled gcx without the cache", "error", rt.CacheError())
+}
 ```
 
 Each image holds `/gcx.wasm`, `/gcx.commit`, and `/cache/`, which is wazero's
 compiled code for the module. With that cache, startup takes about 1 s instead
-of about 40 s, and the cache can stay read-only.
+of about 40 s, and the cache can stay read-only. Its files are world-readable,
+so the embedder can run as any user. If they can't be read, or the cache misses
+and can't be written, `New` compiles from scratch instead of failing, and
+`Runtime.CacheError` says why: log it, since every start then takes ~40 s or
+more. A read-only cache that misses costs two compiles, about 80 s: wazero
+fails only when storing the first.
 
 - **Use the tag matching your version of this module.** A sandbox host runs only
   modules from the same gcx version, so pin `sandbox-vX.Y.Z` to match your
@@ -173,7 +182,9 @@ of about 40 s, and the cache can stay read-only.
 
 Each `Run`:
 
-- **Filesystem:** an empty read-only `/` and one writable `$HOME` at `/home`.
+- **Filesystem:** an empty read-only `/` and `$HOME` at `/home`: a writable
+  host directory (`Home`), or a read-only in-memory `fs.FS` (`HomeFS`) that
+  never touches the host's disk.
 - **Environment:** only `Invocation.Env`.
 - **Network:** no sockets. Every request goes to the host, which applies
   `Invocation.Egress`.

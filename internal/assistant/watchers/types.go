@@ -42,11 +42,18 @@ type Watcher struct {
 	CreatedAt              time.Time         `json:"createdAt"`
 	UpdatedAt              time.Time         `json:"updatedAt"`
 	DefinitionVersion      int64             `json:"definitionVersion"`
+	Temporary              *Temporary        `json:"temporary,omitempty"`
+	StaticLogPolicies      map[string]any    `json:"staticLogPolicies,omitempty"`
 }
 
 type AutoStop struct {
-	PauseAt *time.Time `json:"pauseAt"`
-	Archive bool       `json:"archive"`
+	PauseAt     *time.Time `json:"pauseAt,omitempty"`
+	Archive     bool       `json:"archive,omitempty"`
+	unsupported []string
+}
+
+type Temporary struct {
+	EndsAt *time.Time `json:"endsAt,omitempty"`
 }
 
 type Actions struct {
@@ -55,37 +62,51 @@ type Actions struct {
 	Webhook       *WebhookAction       `json:"webhook"`
 	Alerting      *AlertingAction      `json:"alerting"`
 	Investigation *InvestigationAction `json:"investigation"`
+	unsupported   []string
 }
 
 type ChatAction struct {
 	Enabled     bool        `json:"enabled"`
 	Target      *ChatTarget `json:"target"`
 	MinSeverity string      `json:"minSeverity"`
+	unsupported []string
 }
 
 type ChatTarget struct {
-	ChannelID string `json:"channelId"`
+	ChannelID   string `json:"channelId,omitempty"`
+	Type        string `json:"type,omitempty"`
+	UserID      string `json:"userId,omitempty"`
+	TeamID      string `json:"teamId,omitempty"`
+	unsupported []string
 }
 
 type WebhookAction struct {
-	Enabled      bool          `json:"enabled"`
-	MinSeverity  string        `json:"minSeverity"`
-	SecureFields *SecureFields `json:"secureFields"`
+	Enabled             bool          `json:"enabled"`
+	MinSeverity         string        `json:"minSeverity"`
+	SecureFields        *SecureFields `json:"secureFields"`
+	AuthorizationScheme string        `json:"authorizationScheme,omitempty"`
+	unsupported         []string
 }
 
 type SecureFields struct {
 	URL                      bool `json:"url"`
 	HMACSecret               bool `json:"hmacSecret"`
 	AuthorizationCredentials bool `json:"authorizationCredentials"`
+	unsupported              []string
 }
 
 type AlertingAction struct {
-	Enabled bool `json:"enabled"`
+	Enabled     bool              `json:"enabled"`
+	MinSeverity string            `json:"minSeverity,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	RoutingTree *string           `json:"routingTree,omitempty"`
+	unsupported []string
 }
 
 type InvestigationAction struct {
-	Enabled   bool     `json:"enabled"`
-	TeamNames []string `json:"teamNames"`
+	Enabled     bool     `json:"enabled"`
+	TeamNames   []string `json:"teamNames"`
+	unsupported []string
 }
 
 type TokenConsumption struct {
@@ -95,7 +116,10 @@ type TokenConsumption struct {
 }
 
 type Enrollment struct {
-	Enabled bool `json:"enabled"`
+	Enabled          bool   `json:"enabled"`
+	ScheduleCron     string `json:"scheduleCron,omitempty"`
+	ScheduleTimezone string `json:"scheduleTimezone,omitempty"`
+	unsupported      []string
 }
 
 type Calibration struct {

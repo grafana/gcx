@@ -142,7 +142,7 @@ by `NewNamespacedRESTConfig` via `WrapTransport`).
 |------|---------|------|
 | 0 | Success | Command completed without errors |
 | 1 | General error | Unexpected error, business logic failure |
-| 2 | Usage error | Invalid selectors, unknown commands, missing required flags — see [exit-codes.md § 2.3](docs/design/exit-codes.md) for what Cobra still surfaces as 1 |
+| 2 | Usage error | Invalid selectors, unknown commands, bad flags or positional arguments, missing required flags |
 | 3 | Auth failure | 401/403, missing or invalid credentials |
 | 4 | Partial failure | Some resources succeeded, others failed |
 | 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, explicit confirmation cancellation, or server-reported cancellation; see [legacy confirmation exceptions](docs/design/exit-codes.md#24-declined-confirmations) |

@@ -82,10 +82,7 @@ func TestOrgsListCommand(t *testing.T) {
 					detailed := fail.ErrorToDetailedError(err)
 					require.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
 					require.Contains(t, detailed.Suggestions[0], tc.want)
-					require.Contains(t, detailed.Suggestions[0], "gcx cloud login")
-					require.NotContains(t, detailed.Suggestions[0], "--scope profile")
-					require.Contains(t, detailed.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
-					require.Contains(t, detailed.Suggestions[1], "cloud.<entry>.token")
+					assertOrgsAuthRemediation(t, tc.status, detailed)
 				} else if tc.want != "" {
 					require.Contains(t, err.Error(), tc.want)
 				}
@@ -95,5 +92,20 @@ func TestOrgsListCommand(t *testing.T) {
 			}
 			require.Equal(t, tc.wantRequests, requests)
 		})
+	}
+}
+
+func assertOrgsAuthRemediation(t *testing.T, status int, detailed *gcxerrors.DetailedError) {
+	t.Helper()
+	if status == http.StatusForbidden {
+		require.Equal(t, gcxerrors.SummaryAuthorizationFailed, detailed.Summary)
+		require.Contains(t, detailed.Suggestions[0], "permissions")
+		require.Contains(t, detailed.Suggestions[1], "gcx setup status")
+		require.NotContains(t, detailed.Suggestions[0], "gcx cloud login")
+	} else {
+		require.Contains(t, detailed.Suggestions[0], "gcx cloud login")
+		require.NotContains(t, detailed.Suggestions[0], "--scope profile")
+		require.Contains(t, detailed.Suggestions[1], "GRAFANA_CLOUD_TOKEN")
+		require.Contains(t, detailed.Suggestions[1], "cloud.<entry>.token")
 	}
 }

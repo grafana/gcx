@@ -56,14 +56,22 @@ right group:
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
+| Metric names, labels, metadata | `metrics` | `gcx metrics list-names -d <uid> --contains <term> -o json` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
 | Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
-| Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
+| Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides get` |
+
+Each signal group has its own discovery commands, for example `gcx metrics labels`,
+`gcx logs labels`, and `gcx traces labels`; `gcx help-tree <group> --depth 1 -o text`
+lists them. Some command areas also have a workflow skill:
+`gcx help-tree --depth 1 -o text` marks them with `# skill:`, `gcx <group> --help`
+lists them under Related skills, and `gcx agent skills get <name> -o text` prints
+one your harness hasn't loaded. Dashboard authoring uses `create-dashboard`.
 
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.
@@ -217,41 +225,49 @@ to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
 
 ## Grafana Assistant
 
-gcx provides direct access to the Grafana Assistant — use it for **reasoning
-and exploration**, not data retrieval. Deterministic commands are faster and
-cheaper for known queries; the Assistant adds value when you need intelligence.
+Grafana Assistant is a separate AI agent in Grafana that gcx can hand work to.
+Handing work to it is the user's choice, so start Assistant work when the user
+asks for Grafana Assistant (a prompt, a conversation, an Assistant investigation,
+or a Watcher), or when you are continuing an Assistant workflow the user or
+project has set up. Continuing an authorized workflow does not need fresh
+confirmation each time.
 
-| Situation | Use | Example |
-|-----------|-----|---------|
-| You know the exact query | Deterministic command | `gcx metrics query 'rate(http_requests_total[5m])'` |
-| You don't know which metrics/labels exist | `gcx assistant prompt` | `"What metrics exist for the checkout service?"` |
-| You need cross-signal root cause analysis | `gcx assistant investigations` | Multi-agent parallel exploration across metrics, logs, traces, profiles |
-| You need a precise, repeatable data point | Deterministic command | `gcx slo definitions status`, `gcx alert instances list --state firing` |
-| You need to understand service dependencies | `gcx assistant prompt` | `"How are services in namespace X connected?"` — Assistant Memories know your stack topology |
+Everything else stays on direct commands: discovery, queries, resource
+operations, and requests to investigate or root-cause a problem. Direct commands
+return the data for you to reason over, give repeatable results, and start no
+Assistant work. None of these is a reason to start Assistant work:
+- You don't yet know which metrics or labels exist, or a query comes back empty:
+  keep discovering with the signal's own commands (see Discover Before You Act).
+- A request fails with 401/403: check the context as described in Target Context,
+  then name the missing permission or credential and what would grant it.
+- Data or a capability is genuinely missing: say what is missing and what would
+  fix it.
 
-### Commands
+For incident and root-cause work, `investigate-alert` and `debug-with-grafana`
+cover the direct workflow.
+
+When the user or project rules out Grafana Assistant, don't start Assistant work
+at all. Reading results the user points you to, such as
+`gcx assistant investigations get <id>` or `gcx assistant conversation get <id>`,
+does not start new work.
+
+Starting Assistant work (`gcx assistant prompt`; creating or resuming an
+investigation; creating, starting, or running a Watcher;
+`gcx instrumentation check --fix-plan=assistant`) consumes Assistant tokens,
+which can be billed; see
+[Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md).
 
 ```bash
-# Ask a question (Assistant uses Infrastructure Memories for context)
-gcx assistant prompt "What services are unhealthy in namespace checkout?"
-
-# Follow up on the previous conversation
+# Start Assistant work
+gcx assistant prompt "Why is checkout-latency firing?" --json
 gcx assistant prompt "Dig into the database connection issue" --continue
+# v1 stacks require --title and v2 stacks require --instruction; pass both
+gcx assistant investigations create --title="Checkout latency" --instruction="Checkout latency spike after deploy"
 
-# Launch a deep investigation (multi-agent, parallel signal exploration)
-gcx assistant investigations create --title="Checkout latency spike"
-
-# Monitor and read results
+# Read existing results without starting new work
 gcx assistant investigations get <id>
 gcx assistant investigations get-narrative <id>
 ```
-
-### Recommended Workflow: Interleave Both
-
-1. **Detect** with deterministic commands — `gcx alert instances list --state firing`
-2. **Understand** with the Assistant — `gcx assistant prompt "Why is checkout-latency firing?"`
-3. **Investigate** if needed — `gcx assistant investigations create --title="..."`
-4. **Verify fix** with deterministic commands — `gcx slo definitions status <uuid>`
 
 ## Provider Commands
 

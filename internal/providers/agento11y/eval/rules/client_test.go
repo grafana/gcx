@@ -3,15 +3,18 @@ package rules_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/rules"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -83,14 +86,21 @@ func TestClient_Get(t *testing.T) {
 	assert.Len(t, r.EvaluatorIDs, 2)
 }
 
-func TestClient_Get_NotFound(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-
-	_, err := client.Get(context.Background(), "nonexistent")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "404")
+func TestClient_Get_Error(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, http.StatusText(status), status)
+			}))
+			item, err := client.Get(t.Context(), "nonexistent")
+			require.Error(t, err)
+			assert.Nil(t, item)
+			assert.Equal(t, status == http.StatusNotFound, errors.Is(err, adapter.ErrNotFound))
+			if status == http.StatusNotFound {
+				assert.Contains(t, err.Error(), "nonexistent")
+			}
+		})
+	}
 }
 
 func TestClient_Create(t *testing.T) {
@@ -161,6 +171,72 @@ func TestClient_Create_ConversationRule(t *testing.T) {
 	assert.Equal(t, 10, *created.MinIdleSeconds)
 }
 
+// TestClient_ExecutionModeAndFilterableTagKeysRoundTrip pins that a rule's
+// execution_mode and filterable_tag_keys reach the server on create and
+// update, and come back from get and list. gcx previously dropped both, so a
+// sequential rule was created as parallel and its tag keys were lost.
+func TestClient_ExecutionModeAndFilterableTagKeysRoundTrip(t *testing.T) {
+	stored := map[string]any{
+		"rule_id":             "gated_quality",
+		"enabled":             true,
+		"selector":            "user_visible_turn",
+		"sample_rate":         1.0,
+		"evaluator_ids":       []string{"cheap_gate", "quality_judge"},
+		"execution_mode":      "sequential",
+		"filterable_tag_keys": []string{"environment", "team"},
+	}
+
+	var bodies []map[string]any
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodPost, http.MethodPatch:
+			var body map[string]any
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			bodies = append(bodies, body)
+			writeJSON(w, stored)
+		case http.MethodGet:
+			if strings.HasSuffix(r.URL.Path, "/eval/rules") {
+				writeJSON(w, map[string]any{"items": []any{stored}})
+				return
+			}
+			writeJSON(w, stored)
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+
+	rule := &eval.RuleDefinition{
+		RuleID:            "gated_quality",
+		Enabled:           true,
+		Selector:          "user_visible_turn",
+		SampleRate:        1.0,
+		EvaluatorIDs:      []string{"cheap_gate", "quality_judge"},
+		ExecutionMode:     "sequential",
+		FilterableTagKeys: []string{"environment", "team"},
+	}
+
+	created, err := client.Create(t.Context(), rule)
+	require.NoError(t, err)
+	got, err := client.Get(t.Context(), "gated_quality")
+	require.NoError(t, err)
+	listed, err := client.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	updated, err := client.Update(t.Context(), "gated_quality", got)
+	require.NoError(t, err)
+
+	require.Len(t, bodies, 2)
+	for i, body := range bodies {
+		assert.Equal(t, "sequential", body["execution_mode"], "request %d", i)
+		assert.Equal(t, []any{"environment", "team"}, body["filterable_tag_keys"], "request %d", i)
+	}
+	for name, r := range map[string]*eval.RuleDefinition{"create": created, "get": got, "list": &listed[0], "update": updated} {
+		assert.Equal(t, "sequential", r.ExecutionMode, name)
+		assert.Equal(t, []string{"environment", "team"}, r.FilterableTagKeys, name)
+	}
+}
+
 func TestClient_Update(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPatch, r.Method)
@@ -192,6 +268,45 @@ func TestClient_Update(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rule-1", updated.RuleID)
 	assert.InDelta(t, 0.5, updated.SampleRate, 0.001)
+}
+
+// TestClient_UpdateFilterableTagKeys pins how a rule file's
+// filterable_tag_keys reaches the PATCH body. The server keeps the stored keys
+// when the field is absent and replaces them when it is present, so an empty
+// list must be sent rather than dropped, or update can't clear the keys.
+func TestClient_UpdateFilterableTagKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		file     string
+		wantSent bool
+		want     []any
+	}{
+		{name: "yaml empty list clears", file: "rule_id: r\nfilterable_tag_keys: []\n", wantSent: true, want: []any{}},
+		{name: "json empty list clears", file: `{"rule_id":"r","filterable_tag_keys":[]}`, wantSent: true, want: []any{}},
+		{name: "yaml keys replace", file: "rule_id: r\nfilterable_tag_keys: [team]\n", wantSent: true, want: []any{"team"}},
+		{name: "absent keeps stored", file: "rule_id: r\nsample_rate: 0.5\n"},
+		{name: "null keeps stored", file: "rule_id: r\nfilterable_tag_keys: null\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body map[string]any
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				writeJSON(w, eval.RuleDefinition{RuleID: "r"})
+			}))
+
+			rule, err := rules.ReadRuleFile("-", strings.NewReader(tt.file))
+			require.NoError(t, err)
+			_, err = client.Update(t.Context(), "r", rule)
+			require.NoError(t, err)
+
+			got, sent := body["filterable_tag_keys"]
+			assert.Equal(t, tt.wantSent, sent)
+			if tt.wantSent {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
 }
 
 func TestClient_Delete(t *testing.T) {

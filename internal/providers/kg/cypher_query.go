@@ -32,31 +32,82 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "query <cypher-query>",
 		Short: "Run a read-only Cypher query and return its columns and rows.",
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
+The response has columns, rows and stats (rowCount, columnCount, elapsedMs).
+Each row is an array aligned with columns, values keep their JSON shape, and
+node/relationship refs are local to one response. Output is a table by
+default, or -o json or -o yaml; unlike kg meta, there is no -o text.
 
-Run 'gcx kg meta schema' to discover entity types, properties, and relationships.
-The time window defaults to the last hour. Use --since or both --from and --to.
-Every matched node and relationship must overlap the requested window; this is
-not a historical snapshot and does not require an entire path to coexist.
+Time window. Every query runs over a window: --since (ending now) or both
+--from and --to, the last hour by default. A node or relationship matches if
+it existed at any point in the window; this is checked at every MATCH and
+before aggregation. A result is not a snapshot: elements of one path need not
+coexist, entities can expire and reappear, and no match now does not mean it
+never existed. --from must be before --to and equal values are rejected, so an
+instant is a short window around it. The schema, scope values, entities,
+metrics and logs also depend on the window, and their commands take the same
+--from/--to.
 
-The response contains columns, rows, and stats (rowCount, columnCount, elapsedMs).
-Scalars, nulls, lists, maps, nodes, relationships, and paths retain their JSON
-shape. Table output uses the projected columns; nested values render as JSON.
-Node/relationship refs are local to one response, not durable graph identities.
-Use --json columns,rows,stats to select envelope fields or --jq '.rows' for rows.
+LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED), including one
+that returns a single aggregate row such as count(n) ... LIMIT 1. It is capped
+per tenant, 300 by default; a larger LIMIT is rejected (CYPHER_LIMIT_TOO_LARGE)
+and the error names the cap. rowCount counts returned rows, not matches, and
+there is no total or next-page marker: a rowCount equal to LIMIT can mean more
+rows exist. ORDER BY with SKIP and LIMIT pages through a result.
 
-A literal LIMIT is required in the query. Results describe that bounded query,
-not a complete graph inventory; there is no lastPage indicator or automatic paging.
-Use literal SKIP/LIMIT in Cypher to select a result window, with ORDER BY for
-predictable ordering. The legacy entities/edges envelope, --page, and
---insights-only remain available via the deprecated 'gcx kg entities query'.
-Use 'gcx kg entities list' with --insight for entity health evidence.
-Caller parameters are not supported. Use literals and escape strings as Cypher literals.
-Variable-length paths require a finite upper bound within the server's hop limit.
-The server validates its language allowlist and execution budgets; refusals include
-stable CYPHER_* error codes. There is no fallback to the legacy search endpoint.`,
-		Example: `  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10"
-  gcx kg graph query "MATCH (s:Service) RETURN count(s) AS services LIMIT 1" --since 1h
-  gcx kg graph query "MATCH p = (s:Service {name: 'checkout'})-[:CALLS*1..3]->(d) RETURN p, length(p) AS hops LIMIT 5" --since 24h`,
+Syntax. Values are inline Cypher literals; '$name' parameters are not
+supported (CYPHER_PARAMETERS_NOT_SUPPORTED). Only a fixed subset of Cypher is
+accepted, and anything else is refused (CYPHER_UNSUPPORTED_CONSTRUCT) with a
+message naming the supported form. Common refusals: disconnected or multiple
+MATCH patterns, more than one OPTIONAL MATCH, UNION, id()/elementId(),
+shortestPath(), EXISTS{}/COUNT{} subqueries, unbounded variable-length paths,
+and functions whose output size cannot be bounded, such as collect(), split(),
+reduce() and list comprehensions.
+
+Scope. Match an entity on name, type (node label, e.g. :Service) and scope
+(env, site, namespace) together. Scope is stack-specific: relabel rules decide
+which label feeds each dimension (often cluster becomes env), and not every
+type carries all three. Discover values with 'gcx kg meta scopes', over the same
+window and once per window; never guess them. A dimension that scopes lists only
+as "none" is unset: leave it out rather than filling it with another
+dimension's value. Scope values are plain node properties, e.g.
+'MATCH (s:Service {name: "<name>", env: "<env>"}) RETURN s.name AS name, s.namespace AS namespace LIMIT 5'.
+
+Schema. Read it once per window, before writing queries:
+'gcx kg meta schema --from <start> --to <end> -o text' prints each entity type
+with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
+with the same flags also prints scopes, metrics, logs, traces and profiles).
+Use only the labels, properties, relationship types and directions it lists.
+Types, properties and relationships differ between stacks and windows. A
+relationship is stored in the direction the schema lists; the undirected form
+'(a)-[r:TYPE]-(b)' matches it from either end, so one query returns both
+directions, and startNode(r)/endNode(r) return its stored ends.
+
+Queries are not checked against the schema. A label, property, relationship
+type, direction or scope value that does not exist matches nothing, and a
+property a node lacks, or a list index past the end such as nodes(p)[4] on a
+shorter path, returns null. Neither is an error.
+
+Insights. The graph holds entities, their properties and relationships, not
+health: no row carries insights (Saturation, Anomaly, Amend, Failure, Error).
+An entity's active insights come from 'gcx kg entities list --type <type>
+--property name=<name>' ('--insight any' keeps only entities that have one),
+and its insight timeline from 'gcx kg entities inspect'. Both take the window
+and --env, --site and --namespace, which match the node properties of the same
+names. With no scope flag, inspect looks the entity up by type and name and
+uses the entity that lookup returns, which can be a same-named entity in
+another scope. Only when the lookup finds nothing does it search by name, and
+if several entities match, it fails with one command per candidate.`,
+		Example: `  # Project two properties of one Volume, matched on name and scope
+  gcx kg graph query "MATCH (v:Volume {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN v.storageclass AS storageclass, v.capacity_bytes AS capacity_bytes LIMIT 5" --from <start> --to <end>
+
+  # Count an env's Nodes per zone and instance type, 50 groups per page (the next page is SKIP 50)
+  gcx kg graph query "MATCH (n:Node {env: '<env>'}) RETURN n.zone AS zone, n.instance_type AS instance_type, count(n) AS nodes ORDER BY zone, instance_type SKIP 0 LIMIT 50" --from <start> --to <end>
+
+  # List the entity types at each end of the HOSTS edges that touch an env's Nodes, in stored direction
+  gcx kg graph query "MATCH (n:Node {env: '<env>'})-[r:HOSTS]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
+
+  # Name the hops of HOSTS paths up to 4 long from an env's cluster to one ServiceInstance; hops past a path's length are null
+  gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..4]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.query = args[0]
@@ -141,8 +192,11 @@ func (o *graphQueryOpts) Validate() error {
 		}
 		start = now.Add(-duration)
 	}
-	if start.UnixMilli() <= 0 || end.UnixMilli() <= 0 || start.UnixMilli() >= end.UnixMilli() {
-		return errors.New("time window must have positive epoch milliseconds and start before end")
+	if start.UnixMilli() <= 0 || end.UnixMilli() <= 0 {
+		return errors.New("time window must have positive epoch milliseconds")
+	}
+	if start.UnixMilli() >= end.UnixMilli() {
+		return errors.New("time window must start before end (--from equal to --to is rejected); for an instant, use a short window around it")
 	}
 	o.request = CypherQueryRequest{Query: o.query, Start: start.UnixMilli(), End: end.UnixMilli()}
 	return nil

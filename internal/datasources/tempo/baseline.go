@@ -41,6 +41,7 @@ type baselineOpts struct {
 }
 
 func (opts *baselineOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)

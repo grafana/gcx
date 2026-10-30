@@ -60,6 +60,17 @@ type RuleDefinition struct {
 	// it is the idle period after which a conversation is considered complete and
 	// eligible for evaluation. A pointer so it is omitted for non-conversation rules.
 	MinIdleSeconds *int `json:"min_idle_seconds,omitempty"`
+	// ExecutionMode is "parallel" (the server default: every evaluator runs) or
+	// "sequential" (EvaluatorIDs is an ordered gate chain, and each evaluator
+	// must pass before the next one runs). Omitted when empty, so create keeps
+	// the server default and update leaves the stored mode unchanged.
+	ExecutionMode string `json:"execution_mode,omitempty"`
+	// FilterableTagKeys are generation tag keys exposed as
+	// agento11y_eval_tag_<key> labels on evaluation score metrics. They don't
+	// change which generations the rule matches. omitzero rather than
+	// omitempty: nil is omitted, so update keeps the stored keys, but an
+	// explicit empty list is sent, which is how update clears them.
+	FilterableTagKeys []string `json:"filterable_tag_keys,omitzero"`
 
 	// Server-generated fields (stripped on push)
 	TenantID  string     `json:"tenant_id,omitempty"`

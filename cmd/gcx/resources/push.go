@@ -142,6 +142,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 				Selectors: sels,
+				Warn:      cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
@@ -149,6 +150,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			reader := local.FSReader{
 				Decoders:           format.Codecs(),
+				Warn:               cmd.ErrOrStderr(),
 				MaxConcurrentReads: opts.MaxConcurrent,
 				StopOnError:        opts.OnError.StopOnError(),
 			}
@@ -185,7 +187,8 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			summary, err := pusher.Push(ctx, req)
-			if err != nil {
+			reportOperationWarnings(cmd.ErrOrStderr(), summary)
+			if err != nil && !summary.HasSavedMutationFailure() {
 				return err
 			}
 
@@ -198,7 +201,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
+			if summary.HasSavedMutationFailure() || (opts.OnError.FailOnErrors() && summary.FailedCount() > 0) {
 				// The result document (with enumerated failures) is already
 				// on stdout — the typed stderr diagnostic + EmittedError
 				// carry exit 4 without a second error document.
