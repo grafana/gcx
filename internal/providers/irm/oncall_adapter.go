@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -438,7 +439,7 @@ type onCallNumericField struct {
 }
 
 func onCallNumericFieldSchema(base func() json.RawMessage, fields ...onCallNumericField) func() json.RawMessage {
-	return func() json.RawMessage {
+	return sync.OnceValue(func() json.RawMessage {
 		document, properties := onCallSchemaFields(base)
 		for _, field := range fields {
 			pattern := `^(0|[1-9][0-9]*)$`
@@ -459,7 +460,7 @@ func onCallNumericFieldSchema(base func() json.RawMessage, fields ...onCallNumer
 			panic(fmt.Sprintf("encode OnCall schema: %v", err))
 		}
 		return result
-	}
+	})
 }
 
 func onCallSchemaFields(base func() json.RawMessage) (map[string]any, map[string]any) {

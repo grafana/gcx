@@ -10,17 +10,19 @@ func TestOnCallSchemaContract(t *testing.T) {
 	want := map[string]struct {
 		fields        []string
 		required      string
-		numericFields []string
+		numericFields map[string]bool
 	}{
-		"Schedule": {fields: []string{"ical_url_overrides"}, required: "type", numericFields: []string{"type"}},
-		"Shift":    {fields: []string{"type", "frequency"}, required: "type", numericFields: []string{"type", "frequency"}},
-		"Webhook":  {fields: []string{"trigger_type"}, numericFields: []string{"trigger_type"}},
+		"Schedule": {fields: []string{"ical_url_overrides"}, required: "type", numericFields: map[string]bool{"type": false}},
+		"Shift":    {fields: []string{"type", "frequency"}, required: "type", numericFields: map[string]bool{"type": false, "frequency": true}},
+		"Webhook":  {fields: []string{"trigger_type"}, numericFields: map[string]bool{"trigger_type": true}},
 	}
+	seen := make(map[string]bool)
 	for _, registration := range buildOnCallRegistrations(&fakeLoader{}) {
 		contract, ok := want[registration.GVK.Kind]
 		if !ok {
 			continue
 		}
+		seen[registration.GVK.Kind] = true
 		var envelope struct {
 			Properties struct {
 				Spec struct {
@@ -48,19 +50,29 @@ func TestOnCallSchemaContract(t *testing.T) {
 				t.Errorf("%s schema does not require %s", registration.GVK.Kind, contract.required)
 			}
 		}
-		for _, field := range contract.numericFields {
+		for field, optional := range contract.numericFields {
 			raw := envelope.Properties.Spec.Properties[field]
 			var choice struct {
 				OneOf []struct {
-					Type    string `json:"type"`
-					Pattern string `json:"pattern"`
+					Type    string   `json:"type"`
+					Pattern string   `json:"pattern"`
+					Minimum *float64 `json:"minimum"`
 				} `json:"oneOf"`
 			}
 			if err := json.Unmarshal(raw, &choice); err != nil {
 				t.Fatal(err)
 			}
-			if len(choice.OneOf) < 2 || choice.OneOf[0].Type != "integer" || choice.OneOf[1].Type != "string" || choice.OneOf[1].Pattern == "" {
+			wantBranches := 2
+			wantPattern := `^(0|[1-9][0-9]*)$`
+			if optional {
+				wantBranches = 3
+				wantPattern = `^(0|[1-9][0-9]*)?$`
+			}
+			if len(choice.OneOf) != wantBranches || choice.OneOf[0].Type != "integer" || choice.OneOf[0].Minimum == nil || *choice.OneOf[0].Minimum != 0 || choice.OneOf[1].Type != "string" || choice.OneOf[1].Pattern != wantPattern {
 				t.Errorf("%s %s numeric schema = %#v", registration.GVK.Kind, field, choice)
+			}
+			if optional && len(choice.OneOf) == 3 && choice.OneOf[2].Type != "null" {
+				t.Errorf("%s %s must allow null", registration.GVK.Kind, field)
 			}
 		}
 		if registration.GVK.Kind == "Webhook" {
@@ -75,6 +87,11 @@ func TestOnCallSchemaContract(t *testing.T) {
 			if example.Spec.TriggerType != float64(1) {
 				t.Errorf("Webhook example trigger_type = %#v, want numeric 1", example.Spec.TriggerType)
 			}
+		}
+	}
+	for kind := range want {
+		if !seen[kind] {
+			t.Errorf("registration for %s is missing", kind)
 		}
 	}
 }
