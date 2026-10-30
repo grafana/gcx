@@ -27,12 +27,15 @@ func TestQueryCmd_ExploreAndDrilldownLinks(t *testing.T) {
 			_, err := w.Write([]byte(`{"uid":"pyro-uid","type":"grafana-pyroscope-datasource"}`))
 			assert.NoError(t, err)
 		case "/api/datasources/proxy/uid/pyro-uid/querier.v1.QuerierService/SelectMergeStacktraces":
-			w.Header().Set("Content-Type", "application/json")
-			_, err := w.Write([]byte(emptyFlamegraph))
-			assert.NoError(t, err)
-		case "/api/datasources/proxy/uid/pyro-uid/querier.v1.QuerierService/SelectMergeProfile":
-			_, err := w.Write([]byte("pprof-bytes"))
-			assert.NoError(t, err)
+			if r.Header.Get("Content-Type") == "application/proto" {
+				// response.pprof.profile containing an empty profile.
+				_, err := w.Write([]byte{0x2a, 0x02, 0x0a, 0x00})
+				assert.NoError(t, err)
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				_, err := w.Write([]byte(emptyFlamegraph))
+				assert.NoError(t, err)
+			}
 		default:
 			t.Fatalf("unexpected request path: %s", r.URL.Path)
 		}
