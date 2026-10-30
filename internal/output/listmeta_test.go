@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"runtime"
 	"testing"
 
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -258,7 +259,8 @@ func TestAttachListMeta(t *testing.T) {
 				return
 			}
 			require.NotNil(t, got)
-			assert.Equal(t, tc.wantContinue, got.Continue)
+			want := tc.wantContinue
+			assert.Equal(t, want, got.Continue)
 		})
 	}
 }
@@ -338,7 +340,8 @@ func TestEmitListTruncationHint(t *testing.T) {
 
 			var buf bytes.Buffer
 			cmdio.EmitListTruncationHint(&buf, cmdio.AttachListMeta(tc.meta, tc.argv))
-			assert.Equal(t, tc.want, buf.String())
+			want := tc.want
+			assert.Equal(t, want, buf.String())
 		})
 	}
 }
@@ -399,10 +402,11 @@ func TestListMetaJSONShape(t *testing.T) {
 
 func TestBuildListLimitCommand(t *testing.T) {
 	tests := []struct {
-		name  string
-		argv  []string
-		limit int
-		want  string
+		name        string
+		argv        []string
+		limit       int
+		want        string
+		wantWindows string
 	}{
 		{
 			name:  "strips separate --limit value",
@@ -423,16 +427,21 @@ func TestBuildListLimitCommand(t *testing.T) {
 			want:  "gcx alert rules list --limit 0",
 		},
 		{
-			name:  "quotes unsafe args",
-			argv:  []string{"gcx", "datasources", "list", "--name", "my datasource"},
-			limit: 0,
-			want:  "gcx datasources list --name 'my datasource' --limit 0",
+			name:        "quotes unsafe args",
+			argv:        []string{"gcx", "datasources", "list", "--name", "my datasource"},
+			limit:       0,
+			want:        "gcx datasources list --name 'my datasource' --limit 0",
+			wantWindows: "& 'gcx' 'datasources' 'list' '--name' 'my datasource' '--limit' '0'",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, cmdio.BuildListLimitCommand(tc.argv, tc.limit))
+			want := tc.want
+			if runtime.GOOS == "windows" && tc.wantWindows != "" {
+				want = tc.wantWindows
+			}
+			assert.Equal(t, want, cmdio.BuildListLimitCommand(tc.argv, tc.limit))
 		})
 	}
 }

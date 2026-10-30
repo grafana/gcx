@@ -35,6 +35,7 @@ func newKeychainPolicyFixture(t *testing.T) keychainPolicyFixture {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CONFIG_DIRS", systemRoot)
 	t.Setenv(config.ConfigFileEnvVar, "")
@@ -449,7 +450,9 @@ func TestLoad_standardLocation_noExistingConfig(t *testing.T) {
 	fakeConfigDir := t.TempDir()
 
 	// Isolate from the real $HOME/.config so StandardLocation doesn't find it.
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", fakeConfigDir)
 
 	cfg, err := config.Load(t.Context(), config.StandardLocation())
@@ -466,7 +469,9 @@ func TestLoad_standardLocation_withExistingConfig(t *testing.T) {
 	fakeConfigDir := t.TempDir()
 
 	// Isolate from the real $HOME/.config so StandardLocation doesn't find it.
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", fakeConfigDir)
 
 	// create a barebones config file at the standard location
@@ -726,6 +731,7 @@ func TestDiscoverSources_DotConfigPreferredOverXDG(t *testing.T) {
 	require.NoError(t, os.WriteFile(dotConfigFile, []byte("contexts:\n  dot: {}\ncurrent-context: dot\n"), 0o600))
 
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
 
 	sources, err := config.DiscoverSources(
@@ -750,6 +756,7 @@ func TestDiscoverSources_FallsBackToXDGWhenDotConfigMissing(t *testing.T) {
 	// HOME points to a dir with no .config/gcx/ at all.
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 
 	sources, err := config.DiscoverSources(
@@ -777,6 +784,7 @@ func TestCheckDuplicateUserConfig_BothExist(t *testing.T) {
 	require.NoError(t, os.WriteFile(xdgFile, []byte("contexts:\n  x: {}\n"), 0o600))
 
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 
 	dup := config.CheckDuplicateUserConfig()
@@ -791,7 +799,9 @@ func isolatedLoaderEnv(t *testing.T) (string, string) {
 	t.Helper()
 	userDir := t.TempDir()
 	workDir := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("GCX_CONFIG", "")
 
@@ -941,6 +951,7 @@ func TestCheckDuplicateUserConfig_NoDuplicate(t *testing.T) {
 	require.NoError(t, os.WriteFile(dotConfigFile, []byte("contexts:\n  x: {}\n"), 0o600))
 
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
 
 	dup := config.CheckDuplicateUserConfig()

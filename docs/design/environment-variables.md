@@ -43,6 +43,7 @@ stack because its TLS and proxy settings affect the transport.
 | `GRAFANA_CLOUD_OAUTH_URL` | context | Grafana Cloud OAuth issuer on the ephemeral entry |
 | `GRAFANA_CLOUD_STACK` | context | Selected stack's Grafana Cloud slug |
 | `GCX_CONFIG` | global | Config file path override |
+| `GCX_CONTEXT` | global | Select an existing context for this invocation. `--context` takes precedence |
 | `GCX_TELEMETRY` | global | `enabled`, `disabled`, or `log`; takes precedence over `DO_NOT_TRACK` and config |
 | `DO_NOT_TRACK` | global | Disable anonymous telemetry when `1` or `true` unless `GCX_TELEMETRY` overrides it |
 | `GCX_NO_UPDATE_NOTIFIER` | global | Disable the periodic gcx/skill update notifier when non-empty |
@@ -68,7 +69,7 @@ See [../architecture/config-system.md](../architecture/config-system.md) for the
 
 | Variable | Effect | Documentation |
 |----------|--------|---------------|
-| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
+| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See [CLI reference](../sources/cli-reference.md#gcx_auto_approve) |
 
 Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not the same as enabling it, and an unparseable value fails the command outright — [safety.md](safety.md) § 3.3 owns the truth table.
 
@@ -97,6 +98,8 @@ Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not t
 | `GOOSE_TERMINAL` | Goose | Boolean identity signal on supported shell paths |
 | `OPENCODE` | OpenCode | Boolean identity signal |
 | `PI_CODING_AGENT` | Pi | Boolean identity signal |
+| `HERMES_AGENT` | Hermes Agent | Boolean identity signal |
+| `OPENCLAW_SHELL` | OpenClaw | The value `exec` enables agent mode. Other values, such as `tui-local` for user commands, are ignored. |
 
 Boolean signals accept `1`, `true`, or `yes`, without case sensitivity.
 Session markers require a non-empty value.
@@ -131,10 +134,12 @@ Only fixed labels reach telemetry. Unknown values fall through to other signals.
 | Pi | `pi` | `PI_CODING_AGENT` |
 | Crush | `crush` | Use an explicit or shared identity |
 | Amazon Q | `amazon-q` | `AMAZON_Q` (existing support) |
+| Hermes Agent | `hermes` | `HERMES_AGENT`, or `AI_AGENT=hermes-agent` |
+| OpenClaw | `openclaw` | `OPENCLAW_SHELL=exec` |
 
 Aliases map to fixed labels: `github-copilot-cli` → `github-copilot`,
 `kilo` and `kilocode` → `kilo-code`, `droid` → `factory-droid`,
-and `auggie` → `augment`.
+`auggie` → `augment`, and `hermes-agent` → `hermes`.
 
 Native signals can vary by tool version and execution path. Use an explicit
 identity when the calling tool does not supply a marker. For example:
@@ -174,6 +179,14 @@ configuration directories, or the terminal application.
   [retry command path](https://github.com/aaif-goose/goose/blob/main/crates/goose/src/agents/retry.rs).
   These signals do not establish coverage of every shell path.
   Goose moved from Block to AAIF. Its [governance document](https://github.com/aaif-goose/goose/blob/main/GOVERNANCE.md) confirms the project owner.
+- Hermes Agent sets `HERMES_AGENT=true` and `AI_AGENT=hermes-agent` in its
+  [session command wrapper](https://github.com/NousResearch/hermes-agent/blob/main/tools/environments/base_session_env.py).
+  Both default only when unset, so an outer harness value is kept.
+- OpenClaw sets `OPENCLAW_SHELL=exec` for commands run by its
+  [exec tool](https://github.com/openclaw/openclaw/blob/main/docs/tools/exec.md).
+  It sets `OPENCLAW_SHELL=tui-local` for shell commands the user runs from its
+  [TUI](https://github.com/openclaw/openclaw/blob/main/docs/web/tui.md), so gcx
+  accepts only `exec`.
 
 Native markers take precedence over the shared `AI_AGENT` fallback and the
 legacy `AGENT=goose` fallback. Shared variables can be inherited from an outer

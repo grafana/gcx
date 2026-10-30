@@ -48,6 +48,15 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 }
 ```
 
+**Redirected to a file** — spilling is skipped and the full payload is written
+inline, however large it is, when stdout is a **regular file on disk** (the
+`gcx ... > out.json` case). The threshold exists to protect an agent's context
+window; a caller who named a destination file has already said where the bytes
+belong, and a receipt pointing at a different temp file is never what they
+asked for. A pipe, a terminal and `/dev/null` are not regular files, so a
+harness capturing stdout — as `os/exec` does for any non-`*os.File` writer —
+keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
+
 | Field | Always present | Description |
 |-------|---------------|-------------|
 | `type` | yes | Fixed discriminator `gcx.spill_reference` — the receipt shape differs from the domain result, so consumers dispatch on this marker instead of heuristics |
@@ -85,6 +94,30 @@ table printer (`k8s.io/cli-runtime/pkg/printers.NewTablePrinter`).
 ioOpts.RegisterCustomCodec("text", myTableCodec)
 ioOpts.DefaultFormat("text")   // makes "text" the default instead of "json"
 ```
+
+CSV is opt-in through `output.RegisterCSV(&opts.IO)` before binding flags.
+Results implement `output.CSVMarshaler`; `output.CSV[T]` also accepts typed
+projections. Both supply export columns and rows independently of terminal tables.
+
+CloudWatch, Cloud Monitoring, Azure Monitor, Elasticsearch, and OpenSearch metric
+CSV exports use `timestamp_rfc3339`: UTC RFC3339 with exactly nine fractional
+digits, including zeros for whole-second samples. This preserves timestamp
+precision and chronological ordering when sorting the column as text. Prometheus
+and Loki retain their source epoch representations in `timestamp_unix_seconds`
+and `timestamp_unix_nano`, respectively. Tempo range metrics use
+`timestamp_unix_ms`; instant metrics omit the timestamp column because the API
+returns no sample timestamp. Tempo search and baseline rows use
+`start_time_unix_nano`.
+
+Azure Log Analytics and Resource Graph time columns retain UTC RFC3339 strings,
+including fractional seconds when present in the source timestamps.
+
+CSV preserves cell values, including formula prefixes. Spreadsheet applications
+may interpret untrusted log messages or label values as formulas; import those
+columns as text rather than opening the CSV directly. Missing Prometheus and Loki
+metric samples are represented as `NaN`, not zero. Their graph output skips
+non-finite samples. Null metric samples from CloudWatch, Cloud Monitoring, Azure
+Monitor, Elasticsearch, and OpenSearch are represented as empty CSV cells.
 
 **Data fetching is format-agnostic.** Commands must fetch all available data
 in `RunE` regardless of the `--output` value. The output format controls
@@ -300,7 +333,27 @@ are always populated. Select the shape that fits the operation:
 | `NewArtifactReceipt(action, format)` | Files produced, their format, counts, and failures |
 
 Batch counts cover every matched target exactly once. Successes and skips are
-counted; failures include a `target` and an `error`. Zero `skipped` is omitted.
+counted; zero `skipped` is omitted.
+
+Batch results and artifact receipts always include `failures` (`[]` when
+empty). Each failure contains `target` and `error`. The optional `source`
+field identifies the input file when available; it is omitted when the
+source path is empty. `source` is independent of `target.name`, which remains
+the API address. `resources push` and file-based `resources delete` populate
+`source` from the failed resource's local source path. Artifact receipts
+leave it absent when the failed resource has no input path.
+
+`gcx.mutation_batch` and `gcx.artifact_receipt` may include a top-level
+`skipped_reasons` object mapping each skip reason to its count. It is omitted
+when no skips were recorded and is additive within schema version `1`.
+`summary.skipped` remains the total count. Human summaries show the counts by
+reason; JSON output, including the agent-mode default, exposes the same map so
+agents can distinguish read-only skips from other skips. Current reasons
+include `read-only`, `not server-verified`, and `not listable`.
+
+The optional fields are additive within schema version `1`; consumers should
+tolerate optional fields.
+
 The shared family does not add a success array for `-v` or `-o wide`.
 Human codecs render the command's summary on stdout, with progress and advisory
 diagnostics on stderr. Agent output includes the failure detail in its result;
@@ -339,12 +392,30 @@ A populated `NewBatchMutation("pushed")` result:
   "schema_version": "1",
   "action": "pushed",
   "summary": {"succeeded": 2, "failed": 1, "skipped": 1},
+  "skipped_reasons": {"read-only": 1},
   "failures": [
     {
       "target": {"kind": "dashboard", "name": "revenue-overview"},
       "error": "409 conflict: resource modified server-side"
     }
   ]
+}
+```
+
+For example, a failed unnamed manifest can be located without inventing
+an API name:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 0, "failed": 1},
+  "failures": [{
+    "target": {"kind": "TemplateGroup"},
+    "error": "spec.kind must be grafana or mimir",
+    "source": "./manifests/group.yaml"
+  }]
 }
 ```
 
@@ -397,12 +468,7 @@ change that landed this contract.
 
 ## 15. List Truncation Contract [PROPOSED — #387 Track C]
 
-> **Status: proposed.** Implemented as an opt-in shared contract in
-> `internal/output/listmeta.go` and migrated to two exemplar commands
-> (`datasources list`, `irm oncall alert-groups list`).
-> Not yet a repo-wide requirement; see
-> `docs/research/2026-07-17-global-limit-investigation.md` for the migration
-> plan and open questions.
+> **Status: proposed.** Implemented as an opt-in shared contract in `internal/output/listmeta.go` and migrated to two exemplar commands (`datasources list`, `irm oncall alert-groups list`). Not yet a repo-wide requirement; apply the contract below when migrating other list commands.
 
 List commands must never truncate silently. All truncation flows through the
 shared helpers in `internal/output/listmeta.go` — do not roll per-command
@@ -541,19 +607,7 @@ The reserved key is transparent to field selection and discovery
 Only the reserved `list_meta` key gets this treatment; envelopes with other
 extra keys keep the pre-existing selection behavior.
 
-These guarantees hold for typed envelope structs and for envelopes assembled
-as dynamic `map[string]any` values — for dynamic maps, the reserved key
-itself is the opt-in signal: a map without `list_meta` keeps whole-object
-selection and as-is discovery even when it happens to be items-shaped, so raw
-passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic
-maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope
-handling JSON-normalizes the map first, so producers don't have to
-pre-flatten to the JSON-decoded representation. An empty dynamic envelope has
-no element type to reflect on, so discovery degrades to the envelope's own
-keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not
-part of the contract yet — no producer attaches truncation metadata to
-unstructured lists; that lands with the resources-pipeline migration (see the
-research doc's remaining-migration section).
+These guarantees hold for typed envelope structs and for envelopes assembled as dynamic `map[string]any` values — for dynamic maps, the reserved key itself is the opt-in signal: a map without `list_meta` keeps whole-object selection and as-is discovery even when it happens to be items-shaped, so raw passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope handling JSON-normalizes the map first, so producers don't have to pre-flatten to the JSON-decoded representation. An empty dynamic envelope has no element type to reflect on, so discovery degrades to the envelope's own keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not part of the contract yet — no producer attaches truncation metadata to unstructured lists. A resources-pipeline migration would need to establish that contract.
 
 ### 15.6 Reference migrations
 
@@ -564,8 +618,10 @@ research doc's remaining-migration section).
   `--limit 0` drains every `next` cursor) and over-fetch-by-one
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
 
-`alert rules list` is deliberately not migrated yet: its JSON/YAML output is
-a bare array (no envelope to carry `list_meta`) and its `--limit` counts
-different units per format (flattened rules in the table, groups in JSON).
-The envelope and unit decisions are tracked in
-`docs/research/2026-07-17-global-limit-investigation.md` §6–7.
+`alert rules list` is deliberately not migrated yet: its JSON/YAML output is a bare array (no envelope to carry `list_meta`) and its `--limit` counts different units per format (flattened rules in the table, groups in JSON). The envelope shape and counting unit need to be settled before migration.
+
+### 15.7 IRM bulk-by-filter mutations
+
+**Implemented behavior:** IRM alert-group bulk-by-filter mutations retain a separate 1000-item target-enumeration cap (`alertGroupBulkTargetCap` in `internal/providers/irm/oncall_actions.go`). `resolveBulkTargets` limits enumeration to the first 1000 matching raw items, deduplicates the returned targets, and discards pagination metadata. When more matches exist, the mutation proceeds on that bounded set without disclosing the truncation; `summary.matched` counts the selected targets, not all matching groups. This cap does not apply to the read-only `irm oncall alert-groups list` command, whose `--limit 0` follows cursors to exhaustion.
+
+**Open decision:** whether a truncated bulk mutation should warn, refuse to proceed, or disclose partial targeting another way remains unresolved. The proposed list-output contract above does not settle this mutation behavior; this subsection records the current implementation and the decision still needed, without prescribing a runtime change.

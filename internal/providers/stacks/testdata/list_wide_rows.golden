@@ -1,0 +1,3 @@
+SLUG     NAME         STATUS  REGION  URL                          PLAN  DELETE-PROTECTION  CREATED
+example  Example      active  eu      https://example.grafana.net  Pro   true               2026-10-01
+dev      Development                                                     false              short

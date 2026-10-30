@@ -201,6 +201,21 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	return t.Render(w)
 }
 
+// FormatPatternsTable formats a PatternsResponse as a table with PATTERN and
+// SAMPLES columns, preserving the order and totals prepared by Client.Patterns.
+func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
+	if len(resp.Data) == 0 {
+		fmt.Fprintln(w, "No patterns returned for this selector and range (the backend may prune low-volume patterns or hold no pattern data for it)")
+		return nil
+	}
+
+	t := style.NewTable("PATTERN", "SAMPLES")
+	for _, p := range resp.Data {
+		t.Row(p.Pattern, strconv.FormatInt(p.TotalCount, 10))
+	}
+	return t.Render(w)
+}
+
 // FormatMetricQueryTable formats a MetricQueryResponse as a table with TIMESTAMP, VALUE, and label columns.
 func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 	if len(resp.Data.Result) == 0 {
@@ -569,11 +584,21 @@ func formatKeyValue(key, value string) string {
 }
 
 func formatHumanTimestamp(raw string) string {
-	nanos, err := strconv.ParseInt(raw, 10, 64)
+	t, err := ParseTimestamp(raw)
 	if err != nil {
 		return raw
 	}
-	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// ParseTimestamp parses a LogEntry's Timestamp field — Loki's raw
+// nanosecond-epoch string — into a time.Time.
+func ParseTimestamp(raw string) (time.Time, error) {
+	nanos, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse timestamp: %w", err)
+	}
+	return time.Unix(0, nanos), nil
 }
 
 func collectMetricLabelNames(samples []MetricQuerySample) []string {

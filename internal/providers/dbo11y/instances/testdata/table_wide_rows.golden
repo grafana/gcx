@@ -1,0 +1,3 @@
+NAME          ENGINE    VERSION  ENVIRONMENT  PROVIDER  NAMESPACE  HOST            IDENTIFIER  REGION
+orders        postgres  17       prod         aws       apps       db.example.com  orders-db   eu-west-1
+empty-fields  -         -        -            -         -          -               -           -

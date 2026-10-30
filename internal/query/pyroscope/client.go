@@ -69,8 +69,6 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	if len(req.SpanIDs) > 0 {
 		resourcePath = "querier.v1.QuerierService/SelectMergeSpanProfile"
 	}
-	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
-
 	start, end := DefaultTimeRange(req.Start, req.End)
 
 	// Build request body
@@ -106,34 +104,38 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	var result QueryResponse
+	if err := c.postQuery(ctx, datasourceUID, resourcePath, "query", body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// postQuery shares the bounded, authenticated RPC transport for profile queries.
+func (c *Client) postQuery(ctx context.Context, datasourceUID, resourcePath, operation string, body []byte, result any) error {
+	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
-
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer resp.Body.Close()
-
 	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return fmt.Errorf("failed to read response: %w", err)
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("pyroscope", "query", resp.StatusCode, respBody)
+		return queryerror.FromBody("pyroscope", operation, resp.StatusCode, respBody)
 	}
 
-	var result QueryResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := json.Unmarshal(respBody, result); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
 	}
-
-	return &result, nil
+	return nil
 }
 
 // GetProfileStats returns ingestion stats from the datasource: whether any

@@ -39,6 +39,10 @@ const (
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
 	rulesValidateSyncPath    = rulesPath + "-validate-sync"
+	thresholdRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rules"
+	thresholdRulesByCatFmt   = thresholdRulesPath + "/%s" // request|resource
+	thresholdRulePath        = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rule"
+	thresholdRuleDeletePath  = thresholdRulePath + "/delete"
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
@@ -134,6 +138,60 @@ func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error)
 		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
 	}
 	return result, nil
+}
+
+// GetThresholds fetches the whole threshold config (v1). The response is a
+// PrometheusRulesDto, identical to the prom-rules whole-config shape, so it decodes
+// into [Rule].
+func (c *Client) GetThresholds(ctx context.Context) (*Rule, error) {
+	var rule Rule
+	if err := c.GetJSON(ctx, thresholdRulesPath, &rule); err != nil {
+		return nil, fmt.Errorf("kg: get thresholds: %w", err)
+	}
+	return &rule, nil
+}
+
+// GetThresholdsByCategory fetches the structured per-category threshold view (v1).
+// category must be "request" or "resource" (v1 has no health category).
+func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (*ThresholdRulesDto, error) {
+	var dto ThresholdRulesDto
+	if err := c.GetJSON(ctx, fmt.Sprintf(thresholdRulesByCatFmt, url.PathEscape(category)), &dto); err != nil {
+		return nil, fmt.Errorf("kg: get %s thresholds: %w", category, err)
+	}
+	return &dto, nil
+}
+
+// ThresholdIdentity is the {record, expr, labels} triple gcx sends to address a
+// single v1 threshold. The backend has no delete-by-name, so upsert and delete
+// both send the full triple. It matches on record and labels, plus expr unless the
+// expr is a plain number (PrometheusRuleKeyFactory in asserts-adi).
+type ThresholdIdentity struct {
+	Record string            `json:"record"`
+	Expr   string            `json:"expr"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// UpsertThreshold creates or updates a single threshold (v1).
+func (c *Client) UpsertThreshold(ctx context.Context, t ThresholdIdentity) error {
+	if err := c.PostJSON(ctx, thresholdRulePath, t, nil); err != nil {
+		return fmt.Errorf("kg: upsert threshold %q: %w", t.Record, err)
+	}
+	return nil
+}
+
+// DeleteThreshold deletes a single threshold (v1). The backend takes the full
+// identity triple in a POST body rather than a DELETE verb.
+func (c *Client) DeleteThreshold(ctx context.Context, t ThresholdIdentity) error {
+	if err := c.PostJSON(ctx, thresholdRuleDeletePath, t, nil); err != nil {
+		return fmt.Errorf("kg: delete threshold %q: %w", t.Record, err)
+	}
+	return nil
+}
+
+// ReplaceThresholds replaces the whole threshold config (v1) from a PrometheusRules
+// YAML document. This is destructive: anything absent from yamlContent is removed.
+func (c *Client) ReplaceThresholds(ctx context.Context, yamlContent string) error {
+	return c.DoYAML(ctx, http.MethodPost, thresholdRulesPath+"/", yamlContent)
 }
 
 // UploadModelRules uploads model rules configuration.
@@ -788,6 +846,21 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
+}
+
+// CypherQuery executes a bounded read-only query and preserves its projected rows.
+func (c *Client) CypherQuery(ctx context.Context, req CypherQueryRequest) (*CypherQueryResponse, error) {
+	var result CypherQueryResponse
+	if err := c.PostJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/query/cypher", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: cypher query: %w", err)
+	}
+	if result.Columns == nil {
+		result.Columns = []string{}
+	}
+	if result.Rows == nil {
+		result.Rows = [][]json.RawMessage{}
+	}
+	return &result, nil
 }
 
 // CypherSearch runs a read-only Cypher query against the Knowledge Graph.

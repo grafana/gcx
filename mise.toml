@@ -4,16 +4,15 @@ min_version = "2024.1.0"
 go = "1.26"
 golangci-lint = "2.12.2"
 goreleaser = "2.13.3"
-python = "3.12"
-uv = "latest"
+svu = "3.4.1"
 
 # =============================================================================
 # GENERAL
 # =============================================================================
 
 [tasks.all]
-description = "Validate skills, lint, test, build, and generate docs"
-depends = ["validate-skills", "lint", "tests", "build", "docs"]
+description = "Validate skills, lint, test, build, build the Docker image, and validate docs"
+depends = ["validate-skills", "lint", "tests", "build", "docker:build", "docs"]
 
 [tasks.gate]
 description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
@@ -28,12 +27,12 @@ description = "Lint the codebase with golangci-lint"
 run = "golangci-lint run -c .golangci.yaml"
 
 [tasks."validate-skills"]
-description = "Validate skill front matter (claude-plugin/skills + .claude/skills)"
+description = "Validate skill front matter (claude-plugin/skills + .agents/skills)"
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
-description = "Run all tests (CLI + linter rules + install script)"
-depends = ["tests:cli", "tests:linter", "tests:install"]
+description = "Run all tests (CLI + linter rules + install and release scripts)"
+depends = ["tests:cli", "tests:linter", "tests:install", "tests:tag"]
 
 # GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
 # through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
@@ -53,6 +52,10 @@ run = "go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/"
 [tasks."tests:install"]
 description = "Run the install script tests"
 run = "bash scripts/install_test.sh"
+
+[tasks."tests:tag"]
+description = "Run the release script tests"
+run = "bash scripts/tag_test.sh"
 
 [tasks."vet:wasip1"]
 description = "Vet packages with wasip1-only files (*_wasip1.go), which host builds never compile"
@@ -91,12 +94,11 @@ fi
 """
 
 [tasks.deps]
-description = "Install Go and Python dependencies"
+description = "Install Go dependencies"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 go mod download
-uv pip install --system -q -r requirements.txt
 """
 
 [tasks.clean]
@@ -110,6 +112,36 @@ git config commit.template .gitmessage
 echo "Git commit template configured"
 """
 
+[tasks."docker:build"]
+description = "Build the gcx image from source and check it runs (requires Docker)"
+# Builds the Dockerfile's `local` stage, then the default `release` stage
+# from that binary in a GoReleaser-style context.
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+IMAGE="${IMAGE:-gcx:local}"
+docker build \
+    --target local \
+    --tag "$IMAGE" \
+    --build-arg GIT_REVISION="$(git rev-parse --short HEAD)" \
+    --build-arg GIT_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "")" \
+    --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    .
+docker run --rm "$IMAGE" --version
+
+# Also build the default (release) stage from a context laid out like
+# GoReleaser's dockers_v2 one: the binary at <os>/<arch>/gcx, no sources.
+PLATFORM="$(docker image inspect --format '{{ "{{.Os}}/{{.Architecture}}" }}' "$IMAGE")"
+CONTEXT="$(mktemp -d)"
+trap 'rm -rf "$CONTEXT"' EXIT
+mkdir -p "$CONTEXT/$PLATFORM"
+CID="$(docker create "$IMAGE")"
+docker cp "$CID:/usr/local/bin/gcx" "$CONTEXT/$PLATFORM/gcx"
+docker rm "$CID" >/dev/null
+docker build --platform "$PLATFORM" --file Dockerfile --tag "$IMAGE-release" "$CONTEXT"
+docker run --rm "$IMAGE-release" --version
+"""
+
 [tasks.tag]
 description = "Bump version, generate changelog, tag, and push. Usage: mise run tag -- <major|minor|patch>"
 run = "./scripts/tag.sh"
@@ -119,109 +151,20 @@ run = "./scripts/tag.sh"
 # =============================================================================
 
 [tasks.docs]
-description = "Generate reference docs and build mkdocs site"
-depends = ["reference"]
-run = "mkdocs build -f mkdocs.yml -d ./build/documentation"
-
-[tasks.reference]
-description = "Regenerate all reference documentation"
-depends = ["reference:cli", "reference:env-var", "reference:config", "reference:linter-rules"]
-
-[tasks."reference-drift"]
-description = "Check for drift in all generated reference docs"
-depends = ["reference-drift:cli", "reference-drift:env-var", "reference-drift:config", "reference-drift:linter-rules"]
-
-[tasks."reference:cli"]
-description = "Generate CLI reference docs"
+description = "Build the Grafana website documentation (requires Docker)"
 run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -rf ./docs/reference/cli
-GCX_AGENT_MODE=false CGO_ENABLED=0 go run scripts/cmd-reference/*.go "./docs/reference/cli"
+docker run --rm -v "$PWD/docs/sources:/hugo/content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx:ro" grafana/docs-base:latest /bin/bash -c 'make hugo'
 """
 
-[tasks."reference:env-var"]
-description = "Generate environment variables reference"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -rf ./docs/reference/environment-variables
-CGO_ENABLED=0 go run scripts/env-vars-reference/*.go "./docs/reference/environment-variables"
-"""
-
-[tasks."reference:config"]
-description = "Generate configuration reference"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -f ./docs/reference/configuration/index.md
-CGO_ENABLED=0 go run scripts/config-reference/*.go "./docs/reference/configuration"
-"""
-
-[tasks."reference:linter-rules"]
-description = "Generate linter rules reference"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm ./docs/reference/linter-rules/index.md
-CGO_ENABLED=0 go run scripts/linter-rules-reference/*.go "./docs/reference/linter-rules"
-"""
-
-[tasks."reference-drift:cli"]
-description = "Check for drift in generated CLI reference"
-depends = ["reference:cli"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/cli/ ; then
-    echo "Drift detected in the generated CLI reference."
-    echo "Run 'mise run reference:cli' and commit the modified files."
-    exit 1
-fi
-"""
-
-[tasks."reference-drift:env-var"]
-description = "Check for drift in generated environment variables reference"
-depends = ["reference:env-var"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/environment-variables/ ; then
-    echo "Drift detected in the generated environment variables reference."
-    echo "Run 'mise run reference:env-var' and commit the modified files."
-    exit 1
-fi
-"""
-
-[tasks."reference-drift:config"]
-description = "Check for drift in generated config reference"
-depends = ["reference:config"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/configuration/ ; then
-    echo "Drift detected in the generated config reference."
-    echo "Run 'mise run reference:config' and commit the modified files."
-    exit 1
-fi
-"""
-
-[tasks."reference-drift:linter-rules"]
-description = "Check for drift in generated linter rules reference"
-depends = ["reference:linter-rules"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/linter-rules/ ; then
-    echo "Drift detected in the linter rules reference."
-    echo "Run 'mise run reference:linter-rules' and commit the modified files."
-    exit 1
-fi
-"""
+[tasks."docs:refresh"]
+description = "Refresh references from the latest stable release, or the current checkout with an upcoming version argument"
+run = "bash scripts/generate-cli-reference.sh"
 
 [tasks."serve-docs"]
-description = "Serve docs with live reload for development"
-run = "mkdocs serve -f mkdocs.yml"
+description = "Preview Grafana website docs at http://localhost:3002/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/"
+run = """
+docker run --rm -p 3002:3002 -v "$PWD/docs/sources:/hugo/content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx:ro" grafana/docs-base:latest hugo server --bind 0.0.0.0 --port 3002 --environment docs
+"""
 
 # =============================================================================
 # INTEGRATION TESTING

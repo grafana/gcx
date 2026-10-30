@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,8 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,11 +150,14 @@ func TestSignupFlagsAreOnlyTheBrowserOnes(t *testing.T) {
 // context name fixed before the browser opened.
 func TestSignupSavesTheNewStack(t *testing.T) {
 	signupEnvironment(t, "true")
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	browser := stubSignupBrowser(t, nil)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 
 	stderr, err := runSignup(t, "--config", path)
 	require.NoError(t, err, stderr)
+	assert.Equal(t, "complete", capture.CurrentLoginStage())
 	assert.Contains(t, stderr, `Connecting gcx to Grafana Cloud. The connection will be saved as context "default".`)
 
 	require.Equal(t, 1, browser.started())
@@ -272,6 +278,8 @@ func TestSignupRefusesBeforeTheBrowser(t *testing.T) {
 			for key, value := range tc.env {
 				t.Setenv(key, value)
 			}
+			capture.Reset()
+			t.Cleanup(capture.Reset)
 			browser := stubSignupBrowser(t, nil)
 			path := writeSignupConfig(t, tc.seed())
 			before, err := os.ReadFile(path)
@@ -283,6 +291,7 @@ func TestSignupRefusesBeforeTheBrowser(t *testing.T) {
 			assert.Contains(t, det.Details, tc.want)
 			assert.Equal(t, "Invalid command usage", det.Summary)
 			assert.Zero(t, browser.started(), "the refusal must come before the browser step")
+			assert.Equal(t, "preflight", capture.CurrentLoginStage())
 
 			after, err := os.ReadFile(path)
 			require.NoError(t, err)
@@ -309,7 +318,9 @@ func TestSignupAcceptsAnEmptyExistingContext(t *testing.T) {
 
 func TestSignupRefusesAnAutoDiscoveredRepositoryConfig(t *testing.T) {
 	signupEnvironment(t, "true")
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
@@ -457,11 +468,16 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 			if oauth == "" {
 				oauth = "--oauth"
 			}
-			wantCommand := "gcx login my-stack --cloud " + oauth + " --config " + path
+			args := []string{"gcx", "login", "my-stack"}
 			if tc.wantServer {
 				assert.Equal(t, browser.stack, incomplete.Server)
-				wantCommand = "gcx login my-stack --server " + browser.stack + " " + oauth + " --config " + path
+				args = append(args, "--server", browser.stack)
+			} else {
+				args = append(args, "--cloud")
 			}
+			args = append(args, strings.Fields(oauth)...)
+			args = append(args, "--config", path)
+			wantCommand := cmdio.ShellCommand(args)
 			assert.Equal(t, wantCommand, incomplete.Recovery)
 			assertLoginAccepts(t, incomplete.Recovery)
 
@@ -484,6 +500,10 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 // flag login rejects. The command must need no shell quoting.
 func assertLoginAccepts(t *testing.T, command string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		// strings.Fields cannot parse PowerShell's call operator and quotes.
+		return
+	}
 	words := strings.Fields(command)
 	require.GreaterOrEqual(t, len(words), 2, command)
 	require.Equal(t, []string{"gcx", "login"}, words[:2], command)
@@ -499,11 +519,14 @@ func assertLoginAccepts(t *testing.T, command string) {
 // printing the result, after the connection is saved, is reported as itself.
 func TestSignupOutputFailureIsNotAnUnfinishedSignup(t *testing.T) {
 	signupEnvironment(t, "true")
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	stubSignupBrowser(t, nil)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 
 	_, err := runSignup(t, "--config", path, "-o", "json", "--jq", ".contextName | tonumber")
 	require.Error(t, err)
+	assert.Equal(t, "complete", capture.CurrentLoginStage(), "a failure to print the result does not undo the save")
 	var incomplete *internallogin.SignupIncompleteError
 	assert.NotErrorAs(t, err, &incomplete)
 
@@ -523,7 +546,8 @@ func TestSignupPassesTheManualRetryCommand(t *testing.T) {
 	stderr, err := runSignup(t, "my stack", "--config", path)
 	require.NoError(t, err, stderr)
 	require.Equal(t, 1, browser.started())
-	assert.Equal(t, "gcx login 'my stack' --cloud --oauth-manual --config "+path, browser.options[0].ManualCommand)
+	wantCommand := cmdio.ShellCommand([]string{"gcx", "login", "my stack", "--cloud", "--oauth-manual", "--config", path})
+	assert.Equal(t, wantCommand, browser.options[0].ManualCommand)
 }
 
 func TestSignupConflictSuggestionNamesSignup(t *testing.T) {

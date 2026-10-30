@@ -1,9 +1,139 @@
 ## Unreleased
 
-- New `gcx signup` creates a free Grafana Cloud account in the browser and connects gcx to its first stack: gcx opens the sign-up page, waits while you create the account, verify your email, and create the stack, and saves the connection when you approve "Connect gcx". On the way it signs the browser in to the new stack, so the stack's login page does not ask for a click before "Connect gcx". Once the connection is saved it prints a summary of the stack and context, with the gcx logo in a color terminal, a link to open the stack in Grafana, and, when the stack has the Interactive Learning plugin, a link to its guides. It asks no questions, so agents can run it too; a person completes the browser steps, and structured output is the same result `gcx login` returns. It only ever saves a new connection, refusing an existing context, stack entry, or destination environment variable before the browser opens, and if it fails once the browser step has started, the error says how to finish with `gcx login` instead of signing up again, keeping `--oauth-manual` or `--oauth-callback-port` if the signup used one.
-- `gcx login --cloud --oauth` with no known server now starts the Grafana Cloud stack launcher (sign in and choose a stack) instead of failing on the missing server. The launcher follows `GRAFANA_CLOUD_OAUTH_URL` / `--cloud-api-url`. The first-run server prompt now also points to `gcx signup`.
-- OAuth login callbacks that do not carry the waiting login's state (for example from a tab of an earlier attempt), or that carry it without what the token exchange needs, are ignored instead of ending the login, and Cancel on the stack's "Connect gcx" page now stops gcx with exit code 5 and a message saying the login was cancelled in the browser. On macOS, where `/dev/tty` cannot be polled, the terminal watchers now use the terminal's own device, so the SSH paste route also works when gcx runs on a macOS host.
-- The browser page shown after approving a gcx login now says "You've authorized gcx" and points back to the terminal instead of claiming the connection is saved: gcx still validates and saves the connection afterwards, and reports the result there. Its "Open Grafana" button takes the tab back to the stack, because approving "Connect gcx" moves that tab away from it. The page also has better contrast, a visible keyboard focus and a layout that fits narrow windows. A rate limit or service error while finishing the login now says to wait or retry `gcx login`.
+- `gcx setup status` reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled, names the missing permission when
+  known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC
+  paths from auth diagnostics. It exits 3 on auth failures and 1 on other
+  probe failures instead of 4. The
+  `fleet-management` row also has `enabled: null` when the plugin state is
+  unknown, and the JSON document gains an optional `error` object. (#1699)
+- Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a
+  false value from the request, so the API applied its default of `true`, and
+  `checks update` switched a full-metrics check back to basic metrics.
+  `checks get` and `checks list` now also show `basicMetricsOnly: false`, so
+  a get and update round trip keeps full metrics. A spec that leaves the field
+  out still gets the API default (#1395)
+- Anonymous usage statistics for `gcx signup` now record the last step it
+  reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
+  `gcx signup` reports its HTTP status. The one-time telemetry notice is shown
+  again to disclose the new field.
+
+## v1.7.1 (2026-10-21)
+
+- Build release binaries with Go 1.26.10 and update `golang.org/x/net` to
+  v0.60.0, picking up standard library security fixes and five HTTP/2
+  fixes (GO-2026-6603, -6610, -6611, -6612, -6617) (#1625)
+- Fix the container image build, which stopped the v1.7.0 release before
+  it published binaries or images (#1623)
+
+
+## v1.7.0 (2026-10-20)
+
+### Breaking changes
+
+- Some failures now exit with different codes. HTTP 401/403 from product
+  commands, Assistant helpers and `gcx api`, and missing Cloud or Synthetic
+  Monitoring credentials exit 3 instead of 1. Unknown flags and missing or
+  extra positional arguments exit 2 instead of 1. Error summaries use a fixed
+  vocabulary (`Authentication failed`, `Authorization failed`,
+  `Resource not found`, `Resource conflict`, `Invalid command usage`).
+  Update scripts that branch on exit 1 or match the old error text. (#1483)
+- Contact points, notification policies, templates and mute timings that gcx
+  writes now stay editable in the Grafana UI by default. Pass
+  `--allow-ui-updates=false` to keep them provisioned. Updating a contact
+  point that is already provisioned requires `--allow-ui-updates=false`;
+  without it Grafana rejects the update. Alert rules are unchanged. (#1553)
+- `gcx synthetic-monitoring checks status` and `checks get --show-status` now
+  read from the Synthetic Monitoring datasource and require Synthetic
+  Monitoring app v1.64.0 or later. `SUCCESS` (JSON `success`) is now
+  reachability over 3 hours instead of a 5-minute `probe_success` average, so
+  some checks may change between `OK` and `FAILING`. `--datasource-uid` is
+  hidden and ignored; it is still accepted, with a warning. (#1489)
+- `gcx logs query` and `gcx datasources loki query` (including generic
+  `datasources query` against Loki) now reject metric queries such as
+  `rate(...)` in every output format, instead of printing metric values as
+  log lines. Run metric queries with `gcx logs metrics`. (#1580)
+- `gcx kg notifications upsert` now rejects unknown or misspelled fields, and
+  input containing more than one YAML document. Both previously succeeded,
+  dropping the unknown key or the extra documents. It now also accepts the
+  output of `notifications get` and `list` directly. Correct field names in
+  saved notification files before you upgrade. (#1571)
+
+### New commands and improvements
+
+- Add Assistant Watchers: inspect, export, create, update and lifecycle commands
+- Watchers: run history, version restore, calibration and notification routing
+- Add alerting time interval and template group workflows
+- Add `kg` graph queries and threshold commands; deprecate legacy entity queries
+- Improve `kg` graph query and meta schema help, with `--jq` examples
+- Add `synthetic-monitoring suggestions list`
+- Add CSV output (`-o csv`) for Prometheus, Loki, SQL, tabular, Cloud,
+  search-metrics, Tempo and Pyroscope queries
+- Add `datasources loki query-patterns` and `logs query-patterns`
+- Render `-o graph` for Loki log queries as a log-volume histogram
+- Describe the profiling workflow in `profiles` help
+- Select the active context with the `GCX_CONTEXT` environment variable
+- Detect Hermes Agent and OpenClaw to turn on agent mode
+- Publish a container image to ghcr.io and Docker Hub, signed with keyless cosign
+- Make SLO, Synthetic, Alerting, k6, Fleet, stack and telemetry tables consistent
+- Fix decoding of SLOs that use grafanaQueries
+- Fix `irm oncall schedules list-final-shifts` ignoring `--start`
+- Fix OAuth login callback by using an OS-assigned port
+- Fix config validation errors and legacy mTLS with env-only auth or tokens
+- Fix Linux keychain prompting for unlock in headless sessions
+- Fix instrumentation sending a Pyroscope URL ending in `/ingest`
+- Sandbox recovers from a broken compilation cache and reports why
+- Docs: CLI reference now ships with releases; added Grafana MCP comparison
+
+## v1.6.0 (2026-10-13)
+
+### Breaking changes
+
+- Faro app writes now reject `spec.settings.geolocationLevel: region`.
+  Change it to `subdivision` in saved manifests before you upgrade.
+  This affects `gcx frontend apps` writes and resource pushes. Before this
+  release, gcx ignored Faro app settings on writes, so `region` never took
+  effect. Faro settings now reach the API. (#1444)
+- `gcx datasources loki labels` and `gcx logs labels` now reject stray
+  positional arguments. They also reject an explicit empty `--query` or
+  `--label`. Omit these flags for an unscoped label list. Give each flag
+  a nonempty value when you use it. (#1325)
+
+### New commands and improvements
+
+- Add `gcx signup` to create a Grafana Cloud account and save its first
+  connection. Complete account setup in the browser. If the connection
+  fails after signup, finish it with `gcx login`. (#1383)
+- Let `gcx login --cloud --oauth` open the stack chooser when no server
+  is set. Browser cancellation now exits with code 5. On macOS, the
+  terminal watcher uses its own device, so SSH paste works. (#1383)
+- Add `gcx docs` commands to search and read Grafana product docs.
+  (#1234)
+- Add `gcx alert routing-trees` commands to manage native alert routing
+  trees. (#1472)
+- Add experimental `gcx profiles query-anomalies` and
+  `gcx datasources pyroscope query-anomalies` commands. Their flags and
+  output may change. (#1435)
+- Add `--query` to scope Loki label and value lists. (#1325)
+- Add `--dry-run` to Synthetic Monitoring check create and update.
+  (#1429)
+- Add an experimental Go sandbox module that runs gcx as WebAssembly.
+  Reduce its build size and startup time. (#1440)
+- Keep resource manager identity stable across gcx upgrades. Resolve
+  resource selectors with dotted API groups. (#1537, #1441)
+- Correct Faro app settings writes. Preserve labels and mobile
+  classification on create. Report truncated lists and accept app names
+  in get. (#1444, #1390, #1445)
+- Read service map metadata correctly. Fix the SLO server interval
+  example. Scope k6 load tests to the selected project. (#1457, #1452,
+  #1450)
+- Name missing permissions in Faro proxy errors. Show native alert rule
+  selectors in help. Recover after concurrent config writes. (#1518,
+  #1458, #1485)
+- Detect Codex, Gemini, and other agent hosts. Let
+  `GCX_AGENT_SPILL_BYTES=0` disable output spilling. (#1461, #1439)
+- Update docs, security reporting guidance, and on-call command
+  discovery. (#1520, #1206, #1305)
 
 ## v1.5.0 (2026-10-05)
 

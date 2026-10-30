@@ -154,7 +154,7 @@ Do one of these two steps. gcx accepts the one that completes first.
 
   1. Add a port forward to this SSH session. Press Enter, then press ~C,
      then type this line:
-       -L 54321:127.0.0.1:54321
+       -L 43817:127.0.0.1:43817
 
   2. Approve the login in the browser on your computer. The browser then
      goes to an address that does not load. Copy that address and paste it
@@ -323,10 +323,7 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 | `stacks:write` | Creating or updating stacks |
 | `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
 
-`gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management
-reaches its API through the `grafana-collector-app` plugin proxy on your stack,
-so your Grafana login alone is enough. See
-[ADR-023](../adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md).
+`gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management reaches its API through the `grafana-collector-app` plugin proxy on your stack, so your Grafana login alone is enough. See [RFC 024](../rfcs/024-fleet-via-collector-app-proxy.md).
 
 The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
@@ -470,7 +467,7 @@ gcx config use-context my-stack
 gcx config view
 ```
 
-Secrets are redacted in the output. See [configuration reference](configuration/index.md) for the full config file layout.
+Secrets are redacted in the output. See [configuration reference](../sources/configuration.md#configuration-reference) for the full config file layout.
 
 ## How login works (mental model)
 
@@ -568,9 +565,9 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 ## See also
 
-- [`gcx login` flag reference](cli/gcx_login.md) — exhaustive list of flags and options.
+- [`gcx login` flag reference](../sources/cli-reference.md#gcx-login-gcx-login) — exhaustive list of flags and options.
 - [Keychain credential storage](configuration/keychain.md) — credential storage rules and keychain error procedures.
 - [Login system architecture](../architecture/login-system.md) — how the login orchestrator works internally.
 - [Authentication subsystem](../architecture/auth-system.md) — OAuth PKCE, token lifecycle, `RefreshTransport`.
 - [Configuration and context system](../architecture/config-system.md) — how contexts are stored and merged.
-- [ADR 001: Login + config consolidation](../adrs/login-consolidation/001-login-config-consolidation.md) — historical rationale.
+- [RFC 028: Login + config consolidation](../rfcs/028-login-config-consolidation.md) — historical rationale.

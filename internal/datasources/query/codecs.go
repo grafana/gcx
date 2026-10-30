@@ -38,8 +38,12 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTable(w, resp)
 	case *loki.MetricQueryResponse:
 		return loki.FormatMetricQueryTable(w, resp)
+	case *loki.PatternsResponse:
+		return loki.FormatPatternsTable(w, resp)
 	case *pyroscope.QueryResponse:
 		return pyroscope.FormatQueryTable(w, resp)
+	case *pyroscope.DiffResult:
+		return pyroscope.FormatDiffTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.BaselineResult:
@@ -95,10 +99,14 @@ func (c *queryWideCodec) Format() format.Format {
 
 func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
+	case *pyroscope.DiffResult:
+		return pyroscope.FormatDiffTable(w, resp)
 	case *prometheus.QueryResponse:
 		return prometheus.FormatWideTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
+	case *loki.PatternsResponse:
+		return loki.FormatPatternsTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.BaselineResult:
@@ -158,7 +166,7 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 	case *prometheus.QueryResponse:
 		chartData, err = graph.FromPrometheusResponse(resp)
 	case *loki.QueryResponse:
-		return errors.New("graph output is not supported for log stream queries; use -o table/json/yaml or use 'gcx logs metrics' for time-series data")
+		chartData, err = graph.FromLokiLogVolumeResponse(resp)
 	case *loki.MetricQueryResponse:
 		chartData, err = graph.FromLokiMetricResponse(resp)
 	case *pyroscope.QueryResponse:

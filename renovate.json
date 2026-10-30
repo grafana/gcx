@@ -55,16 +55,6 @@
       ]
     },
     {
-      "description": "Group Python dependencies (mkdocs and related) for documentation",
-      "matchManagers": [
-        "pip_requirements"
-      ],
-      "groupName": "Python dependencies",
-      "groupSlug": "python-deps",
-      "semanticCommitType": "build",
-      "semanticCommitScope": "deps"
-    },
-    {
       "description": "Group all GitHub Actions together - maintains digest pinning for security while reducing PR noise",
       "matchManagers": [
         "github-actions"

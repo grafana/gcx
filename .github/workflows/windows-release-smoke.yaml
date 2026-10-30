@@ -1,0 +1,36 @@
+name: Windows release smoke
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Windows release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install latest release and run gcx.exe
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'gcx release smoke\bin'
+          $env:GCX_INSTALL_DIR = $installDir
+          ./scripts/install.ps1
+          & (Join-Path $installDir 'gcx.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw "Installed gcx.exe exited with code $LASTEXITCODE" }

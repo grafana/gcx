@@ -108,7 +108,7 @@ type versionsListOpts struct {
 }
 
 func (o *versionsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &versionsTableCodec{})
+	o.IO.RegisterCustomCodec("table", versionsTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 

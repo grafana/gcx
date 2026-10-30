@@ -208,7 +208,7 @@ func TestClient_RemoveMember(t *testing.T) {
 
 func TestStaticDescriptor(t *testing.T) {
 	d := collections.StaticDescriptor()
-	assert.Equal(t, "sigil.ext.grafana.app", d.GroupVersion.Group)
+	assert.Equal(t, "agento11y.ext.grafana.app", d.GroupVersion.Group)
 	assert.Equal(t, "v1alpha1", d.GroupVersion.Version)
 	assert.Equal(t, "Collection", d.Kind)
 	assert.Equal(t, "collections", d.Plural)

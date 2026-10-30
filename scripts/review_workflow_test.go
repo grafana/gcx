@@ -2,9 +2,11 @@ package scripts_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,7 +17,7 @@ import (
 
 const (
 	workflowPath = "../.github/workflows/claude-code-review.yml"
-	skillPath    = "../.claude/skills/review-pr/SKILL.md"
+	skillPath    = "../.agents/skills/review-pr/SKILL.md"
 	publishStep  = "Publish review"
 	reviewHead   = "abc1230000000000000000000000000000000000"
 	movedHead    = "def4560000000000000000000000000000000000"
@@ -56,23 +58,102 @@ func loadWorkflow(t *testing.T) reviewWorkflow {
 	return workflow
 }
 
-// The publish step's shell, which the publication tests below execute for real.
-func publishScript(t *testing.T) string {
+// The step's shell, which the workflow tests below execute for real.
+func workflowScript(t *testing.T, name string) string {
 	t.Helper()
 	for _, step := range loadWorkflow(t).Jobs["claude-review"].Steps {
-		if step.Name == publishStep {
+		if step.Name == name {
 			if step.Shell != "bash" {
-				t.Fatalf("%q needs explicit bash for pipefail", publishStep)
+				t.Fatalf("%q needs explicit bash for pipefail", name)
 			}
 			// The composite action revokes its App token before this step runs.
-			if step.Env["GH_TOKEN"] != "${{ github.token }}" {
+			if name == publishStep && step.Env["GH_TOKEN"] != "${{ github.token }}" {
 				t.Fatal("publication must use the job token, not the revoked action output token")
 			}
 			return step.Run
 		}
 	}
-	t.Fatalf("the %q step is missing", publishStep)
+	t.Fatalf("the %q step is missing", name)
 	return ""
+}
+
+const previousReviewGH = `#!/usr/bin/env bash
+set -euo pipefail
+[[ "${GH_FAIL:-}" != "$2" ]] || exit 1
+[[ "$*" == *" --paginate --slurp"* ]] || exit 2
+if [[ "$2" == graphql ]]; then cat "$TEST_DIR/threads"; else cat "$TEST_DIR/reviews"; fi
+`
+
+func TestReviewWorkflowPreviousReview(t *testing.T) {
+	skipWindowsShellTest(t)
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq is required to execute the review workflow")
+	}
+	script := workflowScript(t, "Find previous review")
+	reviews := `[[{"id":1,"user":{"login":"github-actions[bot]"},"body":"<!-- gcx-claude-review:1:1 -->","commit_id":"` + reviewHead + `","submitted_at":"2026-09-01T00:00:00Z"}],
+		[{"id":2,"user":{"login":"github-actions[bot]"},"body":"<!-- gcx-claude-review:2:1 -->","commit_id":"` + movedHead + `","submitted_at":"2026-09-02T00:00:00Z"},
+		{"id":3,"user":{"login":"github-actions[bot]"},"body":"unmarked","commit_id":"ignored","submitted_at":"2026-09-03T00:00:00Z"},
+		{"id":4,"user":{"login":"human"},"body":"<!-- gcx-claude-review:4:1 -->","commit_id":"ignored","submitted_at":"2026-09-04T00:00:00Z"}]]`
+	thread := func(id int, line, original, body string, resolved, outdated bool) string {
+		return fmt.Sprintf(`{"path":"a.go","line":%s,"originalLine":%s,"isResolved":%t,"isOutdated":%t,"comments":{"nodes":[{"body":%s,"pullRequestReview":{"databaseId":%d}}]}}`,
+			line, original, resolved, outdated, strconv.Quote(body), id)
+	}
+	page := func(nodes ...string) string {
+		return `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[` + strings.Join(nodes, ",") + `]}}}}}`
+	}
+	threads := "[" + page(thread(1, "12", "10", "older", false, true), thread(2, "20", "20", "resolved", true, false)) + "," +
+		page(thread(4, "30", "30", "human", false, false), thread(2, "null", "22", "original", false, false), thread(2, "null", "null", "unknown", false, false)) + "]"
+	body := "\n<!-- $(touch expanded) `touch expanded-too` -->\nEOF\nsecond line"
+	for _, tt := range []struct {
+		name, reviews, threads, fail, sha, findings string
+	}{
+		{name: "no reviews", reviews: "[[]]", threads: "[]"},
+		{name: "latest marked bot review across pages", reviews: reviews, threads: "[]", sha: movedHead},
+		{name: "unresolved marked threads across pages", reviews: reviews, threads: threads, sha: movedHead,
+			findings: "- a.go:12 (review of " + reviewHead[:12] + ") [outdated] older\n- a.go:22 (review of " + movedHead[:12] + ") original\n- a.go:? (review of " + movedHead[:12] + ") unknown\n"},
+		{name: "comment text stays literal", reviews: reviews, threads: "[" + page(thread(2, "1", "1", body, false, false)) + "]", sha: movedHead,
+			findings: "- a.go:1 (review of " + movedHead[:12] + ") $(touch expanded) `touch expanded-too`\n"},
+		{name: "reviews API failure", reviews: reviews, threads: threads, fail: "repos/grafana/gcx/pulls/1292/reviews"},
+		{name: "GraphQL failure", reviews: reviews, threads: threads, fail: "graphql"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, content := range map[string]string{"reviews": tt.reviews, "threads": tt.threads, "gh": previousReviewGH} {
+				mode := os.FileMode(0o600)
+				if name == "gh" {
+					mode = 0o700
+				}
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.CommandContext(t.Context(), "bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "TEST_DIR="+dir,
+				"RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+filepath.Join(dir, "output"), "GITHUB_REPOSITORY=grafana/gcx", "PR_NUMBER=1292", "GH_FAIL="+tt.fail)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("step failed: %v: %s", err, out)
+			}
+			if warning := "::warning::Could not read previous Claude reviews; continuing with a full review."; strings.Contains(string(out), "::warning::") != (tt.fail != "") || (tt.fail != "" && !strings.Contains(string(out), warning)) {
+				t.Errorf("unexpected warning output: %s", out)
+			}
+			output, err := os.ReadFile(filepath.Join(dir, "output"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sha, block, ok := strings.Cut(string(output), "\n")
+			header, content, hasHeader := strings.Cut(block, "\n")
+			delim, hasDelim := strings.CutPrefix(header, "findings<<")
+			findings, closed := strings.CutSuffix(content, delim+"\n")
+			if !ok || !hasHeader || !hasDelim || delim == "" || delim == "EOF" || !closed {
+				t.Fatalf("invalid output block: %q", output)
+			}
+			if sha != "sha="+tt.sha || findings != tt.findings {
+				t.Errorf("outputs = (%q, %q), want (%q, %q)", sha, findings, "sha="+tt.sha, tt.findings)
+			}
+		})
+	}
 }
 
 // A submitted review, as GitHub returns it from the create-review endpoint.
@@ -169,6 +250,7 @@ type publishCase struct {
 	wantOutput    string   // substring of the step's own output
 	wantInBody    []string // substrings of the last posted review body
 	wantComments  int      // inline comments on the last posted review
+	wantRange     [2]int   // start and end lines of the first inline comment
 	wantSummary   string   // substring of $GITHUB_STEP_SUMMARY
 	wantNoSummary bool     // the step summary must claim nothing
 }
@@ -184,6 +266,23 @@ func publicationCases() []publishCase {
 		output: findings, post1: submitted(reviewHead),
 		wantPublished: true, wantPosts: 1, wantComments: 2,
 		wantInBody: []string{"**Intent.** Adds a command."},
+	}, {
+		name:          "a reversed same-side range is normalized before publication",
+		output:        strings.NewReplacer(`"line":52`, `"line":4`, `"start_line":40`, `"start_line":7`).Replace(rangeFinding),
+		post1:         submitted(reviewHead),
+		wantPublished: true, wantPosts: 1, wantComments: 1,
+		wantRange: [2]int{4, 7},
+	}, {
+		name:   "an ordered range is preserved",
+		output: rangeFinding, post1: submitted(reviewHead),
+		wantPublished: true, wantPosts: 1, wantComments: 1,
+		wantRange: [2]int{40, 52},
+	}, {
+		name:          "a range across diff sides is not reordered by line number",
+		output:        strings.NewReplacer(`"line":52`, `"line":4`, `"start_side":"RIGHT"`, `"start_side":"LEFT"`).Replace(rangeFinding),
+		post1:         submitted(reviewHead),
+		wantPublished: true, wantPosts: 1, wantComments: 1,
+		wantRange: [2]int{40, 4},
 	}, {
 		name:      "an incomplete review is not published",
 		output:    `{"review":null}`,
@@ -307,10 +406,11 @@ func publicationCases() []publishCase {
 // Execute the real publish step against the stub, with one scripted response
 // per POST and per head read.
 func TestReviewWorkflowPublication(t *testing.T) {
+	skipWindowsShellTest(t)
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is required to execute the review workflow")
 	}
-	script := publishScript(t)
+	script := workflowScript(t, publishStep)
 	for _, tt := range publicationCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -413,12 +513,33 @@ func TestReviewWorkflowPublication(t *testing.T) {
 			if tt.wantPublished && len(review.Comments) != tt.wantComments {
 				t.Errorf("posted %d inline comments, want %d", len(review.Comments), tt.wantComments)
 			}
+			checkReviewRange(t, review.Comments, tt.wantRange)
 			for _, want := range tt.wantInBody {
 				if !strings.Contains(review.Body, want) {
 					t.Errorf("posted body is missing %q:\n%s", want, review.Body)
 				}
 			}
 		})
+	}
+}
+
+func checkReviewRange(t *testing.T, comments []json.RawMessage, want [2]int) {
+	t.Helper()
+	if want == [2]int{} {
+		return
+	}
+	if len(comments) == 0 {
+		t.Fatal("no inline comment to check the range")
+	}
+	var comment struct {
+		StartLine int `json:"start_line"`
+		Line      int `json:"line"`
+	}
+	if err := json.Unmarshal(comments[0], &comment); err != nil {
+		t.Fatal(err)
+	}
+	if got := [2]int{comment.StartLine, comment.Line}; got != want {
+		t.Errorf("posted range = %v, want %v", got, want)
 	}
 }
 
@@ -597,6 +718,7 @@ func section(doc, heading string) string {
 // Run the skill's posting example against a fake gh, including shell syntax in
 // the review text. It must reach stdin unchanged without creating payload files.
 func TestReviewSkillPostsJSONOnStdin(t *testing.T) {
+	skipWindowsShellTest(t)
 	data, err := os.ReadFile(skillPath)
 	if err != nil {
 		t.Fatal(err)
@@ -644,5 +766,12 @@ func TestReviewSkillPostsJSONOnStdin(t *testing.T) {
 	files, err := os.ReadDir(dir)
 	if err != nil || len(files) != 1 || files[0].Name() != "gh" {
 		t.Fatalf("posting example created files: %v (error: %v)", files, err)
+	}
+}
+
+func skipWindowsShellTest(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("this test executes a Bash workflow with POSIX stubs")
 	}
 }

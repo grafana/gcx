@@ -62,24 +62,28 @@ func ExportDryRunSummary(w io.Writer, method, endpoint string, body any) {
 	dryRunSummary(w, method, endpoint, body)
 }
 
-// ExportStackTableCodec returns a stackTableCodec for external tests.
+// ExportStackTableCodec returns the shared stack table codec for external tests.
 func ExportStackTableCodec(wide bool) interface {
 	Encode(w io.Writer, v any) error
 } {
-	return &stackTableCodec{Wide: wide}
+	name := "table"
+	if wide {
+		name = "wide"
+	}
+	return stackTable().Codec(name)
 }
 
-// ExportRegionTableCodec returns a regionTableCodec for external tests.
-func ExportRegionTableCodec() interface {
+// ExportRegionTable returns the regions table codec for external tests.
+func ExportRegionTable() interface {
 	Encode(w io.Writer, v any) error
 } {
-	return &regionTableCodec{}
+	return regionTable().Codec("table")
 }
 
 // ExportEncodeStackTable encodes stacks using the table codec and returns the output.
 func ExportEncodeStackTable(stacks []cloud.StackInfo, wide bool) (string, error) {
 	var buf bytes.Buffer
-	err := (&stackTableCodec{Wide: wide}).Encode(&buf, stacks)
+	err := ExportStackTableCodec(wide).Encode(&buf, stacks)
 	return buf.String(), err
 }
 
@@ -93,6 +97,6 @@ func ExportEncodeStackTableSingle(stack cloud.StackInfo) (string, error) {
 // ExportEncodeRegionTable encodes regions using the table codec and returns the output.
 func ExportEncodeRegionTable(regions []cloud.Region) (string, error) {
 	var buf bytes.Buffer
-	err := (&regionTableCodec{}).Encode(&buf, regions)
+	err := regionTable().Codec("table").Encode(&buf, regions)
 	return buf.String(), err
 }

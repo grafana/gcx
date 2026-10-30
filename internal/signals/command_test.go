@@ -18,6 +18,7 @@ func TestCommandBuildsSignalTree(t *testing.T) {
 	desc := signals.Descriptor{
 		Name:  "metrics",
 		Short: "Query metrics",
+		Long:  "Query metrics with PromQL.",
 		Commands: []signals.CommandSpec{
 			{
 				Build: func(*providers.ConfigLoader) *cobra.Command {
@@ -41,6 +42,7 @@ func TestCommandBuildsSignalTree(t *testing.T) {
 	cmd := signals.Command(desc)
 	require.Equal(t, "metrics", cmd.Use)
 	require.Equal(t, "Query metrics", cmd.Short)
+	require.Equal(t, "Query metrics with PromQL.", cmd.Long)
 	require.NotNil(t, cmd.PersistentPreRun)
 	require.NotNil(t, cmd.PersistentFlags().Lookup("config"))
 

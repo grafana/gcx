@@ -5,7 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -53,12 +57,13 @@ type setupStatus struct {
 	Type          string               `json:"type" yaml:"type"`
 	SchemaVersion string               `json:"schema_version" yaml:"schema_version"`
 	Products      []setupProductStatus `json:"products" yaml:"products"`
+	Error         *gcxerrors.JSONError `json:"error,omitempty" yaml:"error,omitempty"`
 }
 
 // setupProductStatus is the aggregated status of a single product.
 type setupProductStatus struct {
 	Product string `json:"product" yaml:"product"`
-	Enabled bool   `json:"enabled" yaml:"enabled"`
+	Enabled *bool  `json:"enabled" yaml:"enabled"` // nil means the check could not determine enablement.
 	Health  string `json:"health" yaml:"health"`
 	Details string `json:"details,omitempty" yaml:"details,omitempty"`
 }
@@ -95,6 +100,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "status",
 		Short: "Show aggregated setup status across all products.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts.IO.ErrWriter = cmd.ErrOrStderr()
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -119,35 +125,60 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			products := []setupProductStatus{collectorAppRow(state)}
 
+			var row setupProductStatus
+			var statusErr error
 			if !state.MayServe() {
-				products = append(products, setupProductStatus{
-					Product: "instrumentation",
-					Enabled: false,
-					Health:  "unknown",
-					Details: "needs the " + fleetbase.CollectorAppID + " plugin",
-				})
-				if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
-					return err
+				statusErr = &gcxerrors.DetailedError{
+					Summary:     gcxerrors.SummaryEndpointNotAvailable,
+					Details:     "needs the " + fleetbase.CollectorAppID + " plugin",
+					Suggestions: []string{"Enable the " + fleetbase.CollectorAppID + " plugin on this stack"},
 				}
-				return gcxerrors.NewEmittedError(
-					gcxerrors.ExitGeneralError,
-					fmt.Errorf("setup: %s plugin is not available", fleetbase.CollectorAppID),
-				)
+			} else {
+				row, statusErr = instrumentationRow(ctx, loader)
 			}
 
-			// A failed instrumentation call must not discard the Fleet
-			// Management row: that row names the cause. The command reports
-			// the failure in the instrumentation row, then carries the exit
-			// code with EmittedError, so stdout holds exactly one document.
-			row, statusErr := instrumentationRow(ctx, loader)
-			products = append(products, row)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
+			doc := newSetupStatus(products)
+			var detailed *gcxerrors.DetailedError
+			var failure gcxerrors.JSONError
+			if statusErr != nil {
+				detailed = fail.ErrorToDetailedError(statusErr)
+				if detailed == nil {
+					// Already-reported errors may have no converted details.
+					detailed = &gcxerrors.DetailedError{Summary: statusErr.Error()}
+				}
+				detailed.Suggestions = slices.DeleteFunc(detailed.Suggestions, func(s string) bool {
+					return strings.Contains(s, "gcx setup status")
+				})
+				code := gcxerrors.ExitGeneralError
+				if detailed.ExitCode != nil {
+					code = *detailed.ExitCode
+				}
+				failure = detailed.JSONObject(code)
+				row = unknownInstrumentationRow(failure)
+				if cmdio.ErrorInBand(cmdio.IsHumanOutputFlagActive(cmd), cmdio.IsJSONFlagActive(cmd)) {
+					doc.Error = &failure
+				}
+			}
+			doc.Products = append(doc.Products, row)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
 				return err
 			}
-			if statusErr != nil {
-				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, statusErr)
+			if statusErr == nil {
+				return nil
 			}
-			return nil
+			// Selection and discovery can remove the in-band error, so keep
+			// a diagnostic whenever the full error is not guaranteed on stdout.
+			if doc.Error == nil || opts.IO.JQActive() || (len(opts.IO.JSONFields) > 0 && !slices.Contains(opts.IO.JSONFields, "error")) || opts.IO.JSONDiscovery {
+				if agent.IsAgentMode() {
+					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Summary)
+					if failure.Details != "" {
+						cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Details)
+					}
+				} else {
+					fmt.Fprint(cmd.ErrOrStderr(), detailed.Error())
+				}
+			}
+			return gcxerrors.NewEmittedError(failure.ExitCode, statusErr)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -155,22 +186,21 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 }
 
 // instrumentationRow reads the Instrumentation Hub state through the collector
-// app plugin proxy. It returns a product row in every case: the row carries the
-// reason when the call fails, together with the error for the exit code.
+// app plugin proxy. The caller converts failures before rendering an unknown row.
 func instrumentationRow(ctx context.Context, loader *providers.ConfigLoader) (setupProductStatus, error) {
 	r, err := fleetbase.LoadClientWithStack(ctx, loader)
 	if err != nil {
-		return unknownInstrumentationRow(err), fmt.Errorf("setup: %w", err)
+		return setupProductStatus{}, fmt.Errorf("setup: %w", err)
 	}
 
 	monResp, err := instrum.NewClient(r.Client).RunK8sMonitoring(ctx, instrum.PromHeadersFromStack(r.Stack))
 	if err != nil {
-		return unknownInstrumentationRow(err), fmt.Errorf("setup: %w", err)
+		return setupProductStatus{}, fmt.Errorf("setup: %w", err)
 	}
 
 	return setupProductStatus{
 		Product: "instrumentation",
-		Enabled: len(monResp.Clusters) > 0,
+		Enabled: new(len(monResp.Clusters) > 0),
 		Health:  "healthy",
 		Details: fmt.Sprintf("%d clusters", len(monResp.Clusters)),
 	}, nil
@@ -178,19 +208,21 @@ func instrumentationRow(ctx context.Context, loader *providers.ConfigLoader) (se
 
 // unknownInstrumentationRow renders a failed instrumentation check as a product
 // row, so the user sees the cause next to the Fleet Management row.
-func unknownInstrumentationRow(err error) setupProductStatus {
+func unknownInstrumentationRow(err gcxerrors.JSONError) setupProductStatus {
+	details := "the check failed: " + err.Summary
+	if reason := strings.TrimSpace(err.Details); reason != "" {
+		details += ": " + reason
+	}
 	return setupProductStatus{
 		Product: "instrumentation",
-		Enabled: false,
 		Health:  "unknown",
-		Details: "the check failed: " + err.Error(),
+		Details: details,
 	}
 }
 
 // setupStatusTextCodec is the human "text" codec for setupStatus values: it
-// renders exactly the PRODUCT/ENABLED/HEALTH/DETAILS table setup status has
-// always printed, so default human stdout stays byte-identical to the
-// pre-codec output.
+// renders the PRODUCT/ENABLED/HEALTH/DETAILS table, with unknown enablement
+// when a check could not determine the state.
 type setupStatusTextCodec struct{}
 
 func (c *setupStatusTextCodec) Format() format.Format { return "text" }
@@ -207,9 +239,12 @@ func (c *setupStatusTextCodec) Encode(w io.Writer, value any) error {
 
 	t := style.NewTable("PRODUCT", "ENABLED", "HEALTH", "DETAILS")
 	for _, p := range status.Products {
-		enabled := "no"
-		if p.Enabled {
-			enabled = "yes"
+		enabled := "unknown"
+		if p.Enabled != nil {
+			enabled = "no"
+			if *p.Enabled {
+				enabled = "yes"
+			}
 		}
 		t.Row(p.Product, enabled, p.Health, p.Details)
 	}

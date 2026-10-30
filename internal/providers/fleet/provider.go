@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -274,8 +275,7 @@ type pipelineListOpts struct {
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &PipelineTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, PipelineTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -319,14 +319,19 @@ func (h *fleetHelper) newPipelineGetCommand() *cobra.Command {
 
 // resolvePipeline looks up a pipeline by slug-id, plain ID, or name.
 func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline, error) {
+	var missingErr error
 	// Try extracting a numeric ID from the reference (handles "name-123" and "123").
 	if id, ok := extractIDFromSlug(ref); ok {
 		p, err := client.GetPipeline(ctx, id)
 		if err == nil {
 			return p, nil
 		}
+		if !isFleetNotFoundResponse(err) {
+			return nil, err
+		}
+		missingErr = err
 	}
-	// Fall back to name-based lookup.
+	// Fall back to name-based lookup only when the requested ID is absent.
 	pipelines, err := client.ListPipelines(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, err)
@@ -336,15 +341,22 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 			return &pipelines[i], nil
 		}
 	}
-	return nil, fmt.Errorf("pipeline %q not found", ref)
+	if missingErr != nil {
+		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, missingErr)
+	}
+	return nil, &fleetbase.PipelineNotFoundError{Name: ref}
 }
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.
 func resolveCollector(ctx context.Context, client *Client, ref string) (*Collector, error) {
 	// Collector IDs are arbitrary strings. Try the input as the canonical ID
 	// before interpreting it as a rendered resource name or collector name.
-	if collector, err := client.GetCollector(ctx, ref); err == nil {
+	collector, missingErr := client.GetCollector(ctx, ref)
+	if missingErr == nil {
 		return collector, nil
+	}
+	if !isFleetNotFoundResponse(missingErr) {
+		return nil, missingErr
 	}
 
 	// Older rendered resources encode a numeric ID as a slug suffix.
@@ -353,8 +365,12 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		if err == nil {
 			return c, nil
 		}
+		if !isFleetNotFoundResponse(err) {
+			return nil, err
+		}
+		missingErr = err
 	}
-	// Fall back to name-based lookup.
+	// Fall back to name-based lookup only when the requested IDs are absent.
 	collectors, err := client.ListCollectors(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, err)
@@ -364,7 +380,15 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 			return &collectors[i], nil
 		}
 	}
-	return nil, fmt.Errorf("collector %q not found", ref)
+	return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, missingErr)
+}
+
+// isFleetNotFoundResponse permits alternative lookups after an HTTP 404.
+// Identifier misses can have different bodies across deployments; transport,
+// cancellation, authentication and other HTTP failures must remain failures.
+func isFleetNotFoundResponse(err error) bool {
+	var httpErr *fleetbase.HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
 }
 
 type pipelineGetOpts struct {
@@ -915,59 +939,19 @@ func (o *tenantLimitsOpts) setup(flags *pflag.FlagSet) {
 // Table codecs
 // ---------------------------------------------------------------------------
 
-// PipelineTableCodec renders pipelines as a tabular table.
-type PipelineTableCodec struct {
-	Wide bool
-}
-
-// Format returns the codec's format identifier.
-func (c *PipelineTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-// Encode writes the pipeline list as a table.
-func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
-	pipelines, ok := v.([]Pipeline)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Pipeline")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "ENABLED", "CONFIG TYPE", "MATCHERS")
-	} else {
-		t = style.NewTable("ID", "NAME", "ENABLED")
-	}
-
-	for _, p := range pipelines {
-		enabled := "-"
-		if p.Enabled != nil {
-			enabled = strconv.FormatBool(*p.Enabled)
-		}
-		if c.Wide {
-			matchers := strings.Join(p.Matchers, ", ")
-			if matchers == "" {
-				matchers = "-"
+func PipelineTable() cmdio.Table[Pipeline] {
+	return cmdio.Table[Pipeline]{Columns: []cmdio.Column[Pipeline]{
+		{Header: "ID", Content: func(p Pipeline) string { return p.ID }},
+		{Header: "NAME", Content: func(p Pipeline) string { return p.Name }},
+		{Header: "ENABLED", Content: func(p Pipeline) string {
+			if p.Enabled == nil {
+				return "-"
 			}
-			configType := p.ConfigType
-			if configType == "" {
-				configType = "-"
-			}
-			t.Row(p.ID, p.Name, enabled, configType, matchers)
-		} else {
-			t.Row(p.ID, p.Name, enabled)
-		}
-	}
-
-	return t.Render(w)
-}
-
-// Decode is not supported for table format.
-func (c *PipelineTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return strconv.FormatBool(*p.Enabled)
+		}},
+		{Header: "CONFIG TYPE", Visible: cmdio.WideOnly, Content: func(p Pipeline) string { return cmdio.OrDash(p.ConfigType) }},
+		{Header: "MATCHERS", Visible: cmdio.WideOnly, Content: func(p Pipeline) string { return cmdio.OrDash(strings.Join(p.Matchers, ", ")) }},
+	}}
 }
 
 // CollectorTableCodec renders collectors as a tabular table.

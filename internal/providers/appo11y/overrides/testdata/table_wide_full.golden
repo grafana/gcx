@@ -1,0 +1,2 @@
+NAME     COLLECTION  INTERVAL  SERVICE GRAPHS  SPAN METRICS  SG DIMENSIONS         SM DIMENSIONS
+default  disabled    60s       enabled         enabled       http.method, db.name  service.name

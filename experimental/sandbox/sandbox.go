@@ -7,10 +7,11 @@
 // gcx is compiled to WebAssembly (GOOS=wasip1, see build.sh) and run with
 // wazero, a pure-Go runtime. Compile the module once with New, then call Run
 // once per command. Each Run gets a fresh module instance that sees only what its
-// Invocation grants: its args and env, an empty read-only root with a
-// writable $HOME, and HTTP to the destinations in its egress policy. The
-// guest has no sockets; the host makes every request and can attach
-// credentials the guest never sees.
+// Invocation grants: its args and env, an empty read-only root with a $HOME
+// (a writable host directory, or a read-only in-memory fs.FS, see
+// Invocation.Home and Invocation.HomeFS), and HTTP to the destinations in
+// its egress policy. The guest has no sockets; the host makes every request
+// and can attach credentials the guest never sees.
 package sandbox
 
 import (
@@ -18,8 +19,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/tetratelabs/wazero"
@@ -32,7 +36,11 @@ import (
 // Config configures a Runtime.
 type Config struct {
 	// CacheDir, if set, persists compiled code between processes, which
-	// avoids the ~40s cold compile of gcx.
+	// avoids the ~40s cold compile of gcx. It can be read-only when it
+	// already holds this module's code. If it can't be read, or a miss can't
+	// be written, New compiles without it rather than fail, and
+	// Runtime.CacheError says why. A read-only miss compiles twice: wazero
+	// fails only when storing the first.
 	CacheDir string
 	// MemoryLimitBytes caps each instance's linear memory, rounded down to
 	// 64 KiB pages. Zero means wazero's default (4 GiB).
@@ -60,6 +68,8 @@ type Runtime struct {
 	compiled  wazero.CompiledModule
 	transport http.RoundTripper
 	cache     wazero.CompilationCache // nil without Config.CacheDir
+	cacheDir  string                  // Config.CacheDir
+	cacheErr  error                   // why New compiled without Config.CacheDir
 	root      string                  // empty directory mounted read-only at /
 
 	// newRunMemory is the allocator for each Run's instance, and how to free
@@ -84,6 +94,54 @@ type Runtime struct {
 
 // New compiles the gcx wasip1 module (see build.sh).
 func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
+	r, err := newRuntime(ctx, wasm, cfg)
+	if err == nil || !isCacheError(err, cfg.CacheDir) {
+		return r, err
+	}
+	// The cache's files can't be read or written, such as a root-only copy,
+	// or a read-only one that misses: a full compile beats failing.
+	cfg.CacheDir = ""
+	r, uncachedErr := newRuntime(ctx, wasm, cfg)
+	if uncachedErr != nil {
+		return nil, errors.Join(uncachedErr, err)
+	}
+	r.cacheErr = err
+	return r, nil
+}
+
+// CacheError reports why New compiled without Config.CacheDir, or nil if it
+// used the cache or had none. Embedders should log it: compiling gcx from
+// scratch takes ~40s or more at every start.
+func (r *Runtime) CacheError() error { return r.cacheErr }
+
+// errCacheDir wraps a failure to open Config.CacheDir, which wazero reports
+// as text alone.
+var errCacheDir = errors.New("opening the compilation cache")
+
+// isCacheError reports whether err came from the compilation cache in dir
+// rather than from compiling: wazero returns its files' *fs.PathError as is.
+// Other paths, such as the guest's root under TMPDIR, aren't the cache's.
+func isCacheError(err error, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	if errors.Is(err, errCacheDir) {
+		return true
+	}
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) {
+		return false
+	}
+	// wazero makes the cache directory absolute, so its errors' paths are.
+	dir, absErr := filepath.Abs(dir)
+	if absErr != nil {
+		return false
+	}
+	rel, relErr := filepath.Rel(dir, pathErr.Path)
+	return relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func newRuntime(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 	rcfg := wazero.NewRuntimeConfig().WithCloseOnContextDone(true).
 		// gcx has no DWARF, and nothing here uses function listeners, so
 		// wazero's source map would only cost memory: since wazero#2527
@@ -97,7 +155,7 @@ func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 	if cfg.CacheDir != "" {
 		var err error
 		if cache, err = wazero.NewCompilationCacheWithDir(cfg.CacheDir); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", errCacheDir, err)
 		}
 		rcfg = rcfg.WithCompilationCache(cache)
 	}
@@ -105,6 +163,7 @@ func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 		rt:           wazero.NewRuntimeWithConfig(ctx, rcfg),
 		transport:    cfg.Transport,
 		cache:        cache,
+		cacheDir:     cfg.CacheDir,
 		newRunMemory: newRunMemory,
 		releaseImage: func() {},
 		cancels:      map[*context.CancelCauseFunc]struct{}{},
@@ -136,14 +195,22 @@ func (r *Runtime) init(ctx context.Context, wasm []byte) error {
 	// every instance shares (see image_linux.go).
 	module, runMemory, release := newMemoryImage(wasm)
 	compiled, err := r.rt.CompileModule(ctx, module)
-	if err != nil && release != nil {
+	if err != nil && release != nil && !isCacheError(err, r.cacheDir) {
 		// The image is best effort: if wazero rejects the module without its
 		// segments, run the original, which copies them into each instance.
+		// A cache error isn't a rejection, and retrying would only report
+		// the same error for the original's entry.
 		release()
+		imageErr := err
 		module, runMemory, release = wasm, newRunMemory, nil
-		compiled, err = r.rt.CompileModule(ctx, module)
+		if compiled, err = r.rt.CompileModule(ctx, module); err != nil {
+			err = errors.Join(err, fmt.Errorf("with a memory image: %w", imageErr))
+		}
 	}
 	if err != nil {
+		if release != nil {
+			release()
+		}
 		return err
 	}
 	r.compiled, r.newRunMemory = compiled, runMemory
@@ -221,11 +288,20 @@ type Invocation struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 	// Home is the host directory mounted read-write at /home. Empty means a
-	// fresh temporary directory, removed when Run returns. Runs given the
+	// fresh temporary directory, removed when Run returns, unless HomeFS is
+	// set, which replaces Home and creates no directory. Runs given the
 	// same Home share it: each sees, and can race with, the config and token
 	// cache the others write. Give each tenant its own, and don't run one
 	// tenant's commands concurrently if those writes must not interleave.
 	Home string
+	// HomeFS, if set, is mounted at /home instead of Home, which must then be
+	// empty. It is read-only, so the guest can't write to it and nothing
+	// reaches the host's disk. Seed whatever gcx expects to find there, for
+	// example $HOME/.config/gcx/config.yaml, which gcx insists on creating
+	// if it's missing, or $HOME/.local/state/gcx/device-id to fix the device
+	// ID that gcx's usage telemetry reports. Use it when the files gcx needs
+	// are known up front; otherwise use Home.
+	HomeFS fs.FS
 	// Egress lists the only destinations the guest may reach.
 	Egress []Destination
 	// Authorize, if set, is called for every request that Egress allows,
@@ -245,6 +321,9 @@ type Result struct {
 // Run executes one gcx command in a fresh instance. Cancelling ctx, or
 // reaching its deadline, stops the guest and returns ctx's error.
 func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
+	if inv.Home != "" && inv.HomeFS != nil {
+		return Result{}, errors.New("sandbox: set at most one of Invocation.Home and Invocation.HomeFS")
+	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil) // abandons any requests still in flight on the host
 	if !r.start(&cancel) {
@@ -253,7 +332,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	defer r.finish(&cancel)
 
 	home := inv.Home
-	if home == "" {
+	if home == "" && inv.HomeFS == nil {
 		dir, err := os.MkdirTemp("", "gcx-sandbox-home")
 		if err != nil {
 			return Result{}, err
@@ -262,14 +341,18 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 		home = dir
 	}
 
+	// An empty root makes paths outside $HOME report ENOENT (as gcx
+	// expects for optional config files) instead of EBADF.
+	fsc := wazero.NewFSConfig().WithReadOnlyDirMount(r.root, "/")
+	if inv.HomeFS != nil {
+		fsc = fsc.WithFSMount(inv.HomeFS, "/home")
+	} else {
+		fsc = fsc.WithDirMount(home, "/home")
+	}
 	cfg := wazero.NewModuleConfig().
 		WithName(""). // allow concurrent instances of the same module
 		WithArgs(append([]string{"gcx"}, inv.Args...)...).
-		WithFSConfig(wazero.NewFSConfig().
-			// An empty root makes paths outside $HOME report ENOENT (as gcx
-			// expects for optional config files) instead of EBADF.
-			WithReadOnlyDirMount(r.root, "/").
-			WithDirMount(home, "/home")).
+		WithFSConfig(fsc).
 		WithEnv("HOME", "/home").
 		WithSysWalltime().WithSysNanotime().WithSysNanosleep()
 	if _, ok := inv.Env["GCX_AGENT_SPILL_BYTES"]; !ok {

@@ -132,10 +132,13 @@ func TestBindingLoad(t *testing.T) {
 			}
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
-				// The CLI would render a selector error as a selector-parsing
-				// failure, but the caller passed no selector.
+				// Server-capability failures retain their type for CLI classification.
 				var selErr resources.InvalidSelectorError
 				assert.NotErrorAs(t, err, &selErr)
+				if !tc.wantNoLoad {
+					var unsupported *resources.UnsupportedResourceError
+					require.ErrorAs(t, err, &unsupported)
+				}
 				return
 			}
 

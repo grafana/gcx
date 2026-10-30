@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -157,6 +158,34 @@ func TestOnCallTableGolden(t *testing.T) {
 
 func TestOnCallTableGoldenEmpty(t *testing.T) {
 	encodeGolden(t, "oncall_teams_table_empty", teamTable().Codec("table"), []unstructured.Unstructured{})
+}
+
+func TestFinalShiftTableGolden(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rows []FlatShift
+	}{
+		{
+			name: "rows",
+			rows: []FlatShift{
+				{UserPK: "user-1", UserEmail: "alice@example.com", UserUsername: "alice", ShiftStart: "2026-10-19T09:00:00Z", ShiftEnd: "2026-10-20T17:00:00Z"},
+				{UserPK: "user-2", ShiftStart: "2026-10-19", ShiftEnd: "2026-10-20T17:00"},
+				{UserPK: "user-3"},
+			},
+		},
+		{name: "empty", rows: []FlatShift{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := &finalShiftsOpts{}
+			flags := pflag.NewFlagSet("final-shifts", pflag.ContinueOnError)
+			opts.setup(flags)
+			require.NoError(t, flags.Set("output", "table"))
+			require.NoError(t, opts.Validate())
+			var buf bytes.Buffer
+			require.NoError(t, opts.IO.Encode(&buf, tc.rows))
+			testutils.Golden(t, "oncall_final_shifts_table_"+tc.name, buf.String())
+		})
+	}
 }
 
 // oncallFormat maps the wide flag these fixtures use to the registered format

@@ -15,6 +15,8 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -73,7 +75,10 @@ func main() {
 
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
-	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
+	// Validation parses flags in root trimming, Cobra traversal, and group
+	// validation. Use a separate tree so none of those paths can append
+	// repeatable values or change custom flag state on the execution tree.
+	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
 		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
 	}
 
@@ -126,6 +131,7 @@ func (gate interruptGate) settle() bool {
 // quietly with ExitCancelled — but never for an EmittedError, whose contract
 // (the exit code agrees with the document already written) outranks this fast
 // path, and whose cause chain may legitimately wrap a canceled item error.
+// A saved mutation must also retain its receipt and partial-failure status.
 //
 // The interrupt does not always arrive as context.Canceled: Go 1.26's
 // signal.NotifyContext cancels with a cause describing the signal, and before
@@ -136,6 +142,10 @@ func (gate interruptGate) settle() bool {
 func isSilentCancellation(ctx context.Context, err error) bool {
 	var emitted *gcxerrors.EmittedError
 	if err == nil || errors.As(err, &emitted) {
+		return false
+	}
+	var saved adapter.SavedMutationError
+	if errors.As(err, &saved) && saved.MutationWasSaved() {
 		return false
 	}
 	if errors.Is(err, context.Canceled) {
@@ -259,9 +269,11 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		})
 	}
 
-	if agent.IsAgentMode() || root.IsJSONFlagActive() {
+	if output.ErrorInBand(root.IsHumanOutputFlagActive(), root.IsJSONFlagActive()) {
 		// Machine consumers get JSON on stdout only — the human-formatted
-		// stderr error is noise for agents and scripts.
+		// stderr error is noise for agents and scripts. An explicit
+		// human-format -o (text, wide, yaml, ...) overrides agent mode, as it
+		// does for results, and falls through to the stderr rendering.
 		if writeErr := detailedErr.WriteJSON(os.Stdout, exitCode); writeErr != nil {
 			fmt.Fprintln(os.Stderr, detailedErr.Error())
 		}

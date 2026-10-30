@@ -23,7 +23,7 @@ func Command() *cobra.Command {
 			if root := cmd.Root(); root != nil && root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)
 			}
-			ctx := config.ContextWithName(cmd.Context(), configOpts.Context)
+			ctx := config.ContextWithName(cmd.Context(), configOpts.EffectiveContext())
 			ctx = config.ContextWithConfigFile(ctx, configOpts.ConfigFile)
 			cmd.SetContext(ctx)
 		},
@@ -38,6 +38,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(listTypesCmd(configOpts))
 	cmd.AddCommand(pullCmd(configOpts))
 	cmd.AddCommand(pushCmd(configOpts))
+	cmd.AddCommand(searchCmd(configOpts))
 	cmd.AddCommand(validateCmd(configOpts))
 
 	return cmd

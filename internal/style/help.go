@@ -2,6 +2,7 @@ package style
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -45,15 +46,32 @@ func relatedSkillFooter(cmd *cobra.Command) []string {
 	return lines
 }
 
+// HelpTopic describes a registered root help topic.
+type HelpTopic struct {
+	Name  string
+	Short string
+}
+
 // HelpFunc returns a custom Cobra help function that renders Long descriptions
 // and Examples through glamour markdown rendering when styling is enabled.
-// Falls back to Cobra's default help when styling is disabled.
-func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, []string) {
+// Root topics are listed alongside Cobra's native additional help topics.
+func HelpFunc(defaultHelp func(*cobra.Command, []string), topics ...HelpTopic) func(*cobra.Command, []string) {
+	return helpFunc(defaultHelp, IsStylingEnabled, topics...)
+}
+
+func helpFunc(defaultHelp func(*cobra.Command, []string), stylingEnabled func() bool, topics ...HelpTopic) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
 		noColor, _ := cmd.Flags().GetBool("no-color")
-		if noColor || !IsStylingEnabled() {
+		if noColor || !stylingEnabled() {
 			defaultHelp(cmd, args)
 			w := cmd.OutOrStdout()
+			if !cmd.HasParent() && len(topics) > 0 {
+				fmt.Fprintln(w, "\nAdditional help topics:")
+				for _, topic := range topics {
+					fmt.Fprintf(w, "  %-16s %s\n", cmd.CommandPath()+" help "+topic.Name, topic.Short)
+				}
+				fmt.Fprintln(w)
+			}
 			// Append JSON discovery tip for commands that support --json.
 			if f := cmd.Flags().Lookup("json"); f != nil {
 				fmt.Fprintln(w)
@@ -170,18 +188,29 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 		}
 
 		// --- Additional help ---
-		if cmd.HasHelpSubCommands() {
-			fmt.Fprintln(w, "Additional help topics:")
-			for _, sub := range cmd.Commands() {
-				if sub.IsAdditionalHelpTopicCommand() {
-					fmt.Fprintf(w, "  %-16s %s\n", sub.CommandPath(), sub.Short)
-				}
-			}
-			fmt.Fprintln(w)
-		}
+		writeHelpTopics(w, cmd, topics)
 
 		if cmd.HasAvailableSubCommands() {
 			fmt.Fprintf(w, "Use \"%s [command] --help\" for more information about a command.\n", cmd.CommandPath())
 		}
 	}
+}
+
+func writeHelpTopics(w io.Writer, cmd *cobra.Command, topics []HelpTopic) {
+	if cmd.HasParent() {
+		topics = nil
+	}
+	if !cmd.HasHelpSubCommands() && len(topics) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "Additional help topics:")
+	for _, sub := range cmd.Commands() {
+		if sub.IsAdditionalHelpTopicCommand() {
+			fmt.Fprintf(w, "  %-16s %s\n", sub.CommandPath(), sub.Short)
+		}
+	}
+	for _, topic := range topics {
+		fmt.Fprintf(w, "  %-16s %s\n", cmd.CommandPath()+" help "+topic.Name, topic.Short)
+	}
+	fmt.Fprintln(w)
 }

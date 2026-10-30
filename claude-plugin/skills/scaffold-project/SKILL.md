@@ -1,12 +1,9 @@
 ---
 name: scaffold-project
-description: >
-  Scaffolds a new Go project for managing Grafana resources as code via
-  gcx dev scaffold. Use when the user wants to create a new Grafana
-  resources-as-code project, start a new dashboards-as-code repo, scaffold
-  a gcx project, or asks "how do I get started with gcx". Triggers on
-  phrases like "new project", "scaffold", "bootstrap", "create project",
-  "get started".
+description: >-
+  Scaffolds a new Go project for Grafana resources as code with `gcx dev
+  scaffold`. Use to start a new dashboards-as-code repo or gcx project. Not for
+  installing or connecting gcx (use setup-gcx).
 ---
 
 # Scaffold a gcx Project
