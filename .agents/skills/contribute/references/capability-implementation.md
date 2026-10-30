@@ -118,17 +118,17 @@ Never state proposed or conventional guidance as law.
 | Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
 | Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** an unknown flag and a missing positional arg still exit 1, not 2 (`docs/design/exit-codes.md` §2.3 has the verified table) — don't claim 2 for a path you didn't wire |
 | `Args:` on every leaf | Strong convention; no CI check |
-| `list_meta` truncation metadata | `docs/design/output.md` §15 is **PROPOSED** and opt-in. Not repo-wide, not required for every list command |
+| `gcx.list` envelope with `metadata` | `docs/design/output.md` §15, **accepted** (RFC 030). Required for new list commands; existing `list_meta` producers migrate separately (§15.6) |
 | Empty array serialized as `[]` not `null` | Convention with local test precedent; no doc rule |
 
 **Completeness is the honesty rule underneath §15.** A caller handed a partial
 result with no signal reads a page as the whole inventory — wrong but plausible
 instead of big but correct. The trigger is the mechanism (a `--limit`, a slice, an
 early paging stop, a source cap), never a guess about whether truncation is
-"likely". *Where* to disclose depends on the output shape: an envelope carries
-`list_meta`, but a **released bare array gets the stderr hint only** — wrapping it
-in an envelope is a breaking output change belonging to a deliberate
-compatibility migration, not a feature PR. Shared helpers, §15's real status and
+"likely". A new list command discloses it in the `gcx.list` envelope's
+`metadata`. A **released** bare array or command-specific envelope keeps its
+shape until a deliberate compatibility migration moves it — that is a breaking
+output change, not something to slip into a feature PR. Shared helpers, §15's real status and
 the full shape table: [self-review.md](self-review.md) T3.
 
 **Empty results are schema fidelity, not a mode rule** — an array your schema
