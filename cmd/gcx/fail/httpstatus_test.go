@@ -96,7 +96,7 @@ func TestDatasourceAuthenticationFailure(t *testing.T) {
 			if tc.wantAdvice {
 				assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, got.Summary)
 				if assert.Len(t, got.Suggestions, 2) {
-					assert.Contains(t, got.Suggestions[0], "datasource's credentials")
+					assert.Contains(t, got.Suggestions[0], "gcx datasources list -o json")
 					assert.Contains(t, got.Suggestions[1], "ruler configuration")
 				}
 			} else {

@@ -30,8 +30,8 @@ func convertHTTPStatusErrors(err error) (*gcxerrors.DetailedError, bool) {
 		detailed.Summary = gcxerrors.SummaryAuthenticationFailed
 		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
 		detailed.Suggestions = []string{
-			"Check the datasource's credentials in Grafana; Grafana could not authenticate to the datasource",
-			"For datasource-managed rules, check the datasource's ruler configuration",
+			"Inspect configured datasources and their UIDs: gcx datasources list -o json",
+			"For datasource-managed rules, inspect gcx datasources get <uid> -o json and check its credentials and ruler configuration in Grafana",
 		}
 		return detailed, true
 	}
