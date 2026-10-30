@@ -251,15 +251,34 @@ func TestResourceAdapter_Update(t *testing.T) {
 }
 
 func TestResourceAdapter_Delete(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("incident delete must not send a request")
 	}))
 	defer server.Close()
 
 	a := newTestAdapter(t, server, "stack-123")
-	err := a.Delete(t.Context(), "inc-1", metav1.DeleteOptions{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not supported")
+	for _, opts := range []metav1.DeleteOptions{{}, {DryRun: []string{metav1.DryRunAll}}} {
+		err := a.Delete(t.Context(), "inc-1", opts)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported operation")
+	}
+}
+
+func TestIncidentDeleteMutationPolicy(t *testing.T) {
+	registrations := (&irm.IRMProvider{}).TypedRegistrations()
+	for _, reg := range registrations {
+		if reg.Descriptor.Kind != "Incident" {
+			continue
+		}
+		require.NotNil(t, reg.CheckMutation)
+		err := reg.CheckMutation("delete")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "delete is not supported")
+		require.NoError(t, reg.CheckMutation("create"))
+		require.NoError(t, reg.CheckMutation("update"))
+		return
+	}
+	t.Fatal("incident registration not found")
 }
 
 func TestResourceAdapter_RoundTrip(t *testing.T) {
