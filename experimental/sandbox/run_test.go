@@ -68,7 +68,7 @@ func newRuntime(t *testing.T, cfg sandbox.Config) *sandbox.Runtime {
 // fakeGrafana answers /bootdata with a stack namespace and everything else
 // with a health body, recording each request's Authorization header, method
 // and path. /slow never answers until the client gives up; /big answers with
-// bigBody.
+// bigBody; /docs-index returns a synthetic documentation index.
 type fakeGrafana struct {
 	*httptest.Server
 
@@ -297,8 +297,9 @@ func TestRun(t *testing.T) {
 }
 
 // TestDocsSearchHostTransport uses docs search because its index dependency uses
-// http.DefaultTransport. Non-agent mode suppresses advisory JSON hints so the
-// empty-stderr assertion detects unexpected guest HTTP setup diagnostics.
+// http.DefaultTransport. The fixture has one matching entry so --limit 1 does not
+// emit a truncation hint. Explicit non-agent mode insulates the empty-stderr
+// assertion from advisory JSON hints if sandbox defaults change.
 func TestDocsSearchHostTransport(t *testing.T) {
 	srv := newFakeGrafana(t, "docs")
 	rt := newRuntime(t, sandbox.Config{Transport: multiTransport(srv)})
