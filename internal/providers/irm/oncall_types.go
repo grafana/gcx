@@ -303,13 +303,14 @@ type EscalationPolicy struct {
 type Schedule struct {
 	ID                 string `json:"id,omitempty"`
 	Name               string `json:"name"`
-	Type               any    `json:"type,omitempty"`
+	Type               any    `json:"type"`
 	Team               any    `json:"team,omitempty"`
 	TimeZone           string `json:"time_zone,omitempty"`
 	OnCallNow          any    `json:"on_call_now,omitempty"`
 	SlackChannel       any    `json:"slack_channel,omitempty"`
 	UserGroup          any    `json:"user_group,omitempty"`
 	EnableWebOverrides any    `json:"enable_web_overrides,omitempty"`
+	ICalURLOverrides   string `json:"ical_url_overrides,omitempty"`
 }
 
 //nolint:recvcheck

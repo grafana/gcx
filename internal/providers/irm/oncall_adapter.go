@@ -3,7 +3,10 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
+	"sync"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -72,12 +75,19 @@ func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
 	}
 }
 
+//nolint:dupl // Each resource keeps the same create, update, and delete wiring.
 func scheduleCRUDOpts() []crudOption[Schedule] {
 	return []crudOption[Schedule]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
+			if err := validateScheduleType(item.Type); err != nil {
+				return nil, err
+			}
 			return c.CreateSchedule(ctx, *item)
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
+			if err := validateScheduleType(item.Type); err != nil {
+				return nil, err
+			}
 			return c.UpdateSchedule(ctx, name, *item)
 		}),
 		adapter.WithDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
@@ -89,9 +99,15 @@ func scheduleCRUDOpts() []crudOption[Schedule] {
 func shiftCRUDOpts() []crudOption[Shift] {
 	return []crudOption[Shift]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
+			if err := validateShiftValues(item); err != nil {
+				return nil, err
+			}
 			return c.CreateShift(ctx, shiftToRequest(item))
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
+			if err := validateShiftValues(item); err != nil {
+				return nil, err
+			}
 			return c.UpdateShift(ctx, name, shiftToRequest(item))
 		}),
 		adapter.WithDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
@@ -114,18 +130,73 @@ func routeCRUDOpts() []crudOption[Route] {
 	}
 }
 
+//nolint:dupl // Each resource keeps the same create, update, and delete wiring.
 func webhookCRUDOpts() []crudOption[Webhook] {
 	return []crudOption[Webhook]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
+			if err := validateWebhookTrigger(item.TriggerType); err != nil {
+				return nil, err
+			}
 			return c.CreateWebhook(ctx, *item)
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
+			if err := validateWebhookTrigger(item.TriggerType); err != nil {
+				return nil, err
+			}
 			return c.UpdateWebhook(ctx, name, *item)
 		}),
 		adapter.WithDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteWebhook(ctx, name)
 		}),
 	}
+}
+
+func validateScheduleType(value any) error {
+	if value == nil || value == "" {
+		return errors.New("schedule type is required; use a numeric value from an existing schedule")
+	}
+	return validateNonNegativeInteger(value, "schedule type")
+}
+
+func validateWebhookTrigger(value any) error {
+	if value == nil {
+		return nil // A preset can control the trigger.
+	}
+	if err := validateNonNegativeInteger(value, "webhook trigger_type"); err != nil {
+		return fmt.Errorf("%w; see webhooks list-triggers for current values", err)
+	}
+	return nil
+}
+
+func validateShiftValues(shift *Shift) error {
+	for _, field := range []struct {
+		name     string
+		value    any
+		optional bool
+	}{
+		{"type", shift.Type, false},
+		{"frequency", shift.Frequency, true},
+	} {
+		if field.value == nil {
+			if field.optional {
+				continue
+			}
+			return errors.New("shift type is required; use a numeric value from the OnCall shift API")
+		}
+		if err := validateNonNegativeInteger(field.value, "shift "+field.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNonNegativeInteger(value any, field string) error {
+	text := fmt.Sprint(value)
+	number, err := strconv.ParseUint(text, 10, 64)
+	if err != nil || strconv.FormatUint(number, 10) != text {
+		return fmt.Errorf("%s %q must be a nonnegative integer", field, text)
+	}
+	return nil
 }
 
 func resolutionNoteCRUDOpts() []crudOption[ResolutionNote] {
@@ -226,22 +297,31 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("Schedule", "schedule", "schedules")
 	meta.Example = scheduleExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
-	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
+	scheduleRegistration := adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 			return c.GetSchedule(ctx, name)
 		},
 		scheduleCRUDOpts()...,
-	))
+	)
+	scheduleRegistration.Schema = onCallNumericFieldSchema(scheduleRegistration.Schema, onCallNumericField{
+		name: "type", description: "Required plugin schedule type. Use the numeric value from an existing schedule.",
+	})
+	regs = append(regs, scheduleRegistration)
 
 	// 5. Shift — CRUD with ShiftRequest conversion
 	meta = oncallMeta("Shift", "shift", "shifts")
 	meta.Example = shiftExample()
-	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
+	shiftRegistration := adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Shift, error) { return c.ListShifts(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) },
 		shiftCRUDOpts()...,
-	))
+	)
+	shiftRegistration.Schema = onCallNumericFieldSchema(shiftRegistration.Schema,
+		onCallNumericField{name: "type", description: "Internal shift type. The observed create endpoint advertises 2 rolling users and 3 override. The server checks supported values."},
+		onCallNumericField{name: "frequency", allowUnset: true, description: "Observed recurrence values: 0 daily, 1 weekly, 2 monthly, 3 hourly. The server checks supported values."},
+	)
+	regs = append(regs, shiftRegistration)
 
 	// 6. Route — full CRUD
 	meta = oncallMeta("Route", "route", "routes")
@@ -256,13 +336,17 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	meta = oncallMeta("Webhook", "webhook", "webhooks")
 	meta.Example = webhookExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
-	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
+	webhookRegistration := adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Webhook, error) { return c.ListWebhooks(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Webhook, error) {
 			return c.GetWebhook(ctx, name)
 		},
 		webhookCRUDOpts()...,
-	))
+	)
+	webhookRegistration.Schema = onCallNumericFieldSchema(webhookRegistration.Schema, onCallNumericField{
+		name: "trigger_type", allowUnset: true, description: "OnCall webhook trigger value. Run webhooks list-triggers to see current names and values.",
+	})
+	regs = append(regs, webhookRegistration)
 
 	// 8. AlertGroup — read-only + delete
 	meta = oncallMeta("AlertGroup", "alertgroup", "alertgroups")
@@ -346,6 +430,54 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	))
 
 	return regs
+}
+
+type onCallNumericField struct {
+	name        string
+	allowUnset  bool
+	description string
+}
+
+func onCallNumericFieldSchema(base func() json.RawMessage, fields ...onCallNumericField) func() json.RawMessage {
+	return sync.OnceValue(func() json.RawMessage {
+		document, properties := onCallSchemaFields(base)
+		for _, field := range fields {
+			pattern := `^(0|[1-9][0-9]*)$`
+			options := []any{
+				map[string]any{"type": "integer", "minimum": 0},
+				map[string]any{"type": "string", "pattern": pattern},
+			}
+			if field.allowUnset {
+				options = append(options, map[string]any{"type": "null"})
+			}
+			properties[field.name] = map[string]any{"oneOf": options, "description": field.description}
+		}
+		result, err := json.Marshal(document)
+		if err != nil {
+			panic(fmt.Sprintf("encode OnCall schema: %v", err))
+		}
+		return result
+	})
+}
+
+func onCallSchemaFields(base func() json.RawMessage) (map[string]any, map[string]any) {
+	var document map[string]any
+	if err := json.Unmarshal(base(), &document); err != nil {
+		panic(fmt.Sprintf("decode OnCall schema: %v", err))
+	}
+	properties, ok := document["properties"].(map[string]any)
+	if !ok {
+		panic("OnCall schema has no properties")
+	}
+	spec, ok := properties["spec"].(map[string]any)
+	if !ok {
+		panic("OnCall schema has no spec")
+	}
+	fields, ok := spec["properties"].(map[string]any)
+	if !ok {
+		panic("OnCall spec schema has no properties")
+	}
+	return document, fields
 }
 
 func shiftToRequest(s *Shift) ShiftRequest {
@@ -452,7 +584,7 @@ func webhookExample() json.RawMessage {
 		"spec": map[string]any{
 			"name":               "my-webhook",
 			"url":                "https://example.com/webhook",
-			"trigger_type":       "escalation",
+			"trigger_type":       1,
 			"is_webhook_enabled": true,
 			"http_method":        "POST",
 		},
