@@ -13,6 +13,7 @@
 /internal/cloud/ @grafana/grafana-gcx @grafana/appcore
 
 # Providers
+/internal/providers/ml/ @grafana/grafana-gcx @grafana/machine-learning
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
 /internal/providers/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
 /internal/query/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
@@ -89,3 +90,5 @@
 /docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /docs/rfcs/027-provider-owned-resource-hooks.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
+
+/docs/sources/guides/manage-machine-learning.md @grafana/grafana-gcx @grafana/docs-ai @grafana/machine-learning

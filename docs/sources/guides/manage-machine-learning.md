@@ -87,9 +87,9 @@ Data source UIDs and job-to-holiday references remain in the spec. Set these ref
 After a cross-stack push, pull from the target to save its assigned IDs:
 
 ```shell
-gcx resources pull jobs.ml.ext.grafana.app holidays.ml.ext.grafana.app outlierdetectors.ml.ext.grafana.app -p ./ml
 gcx resources push -p ./ml --dry-run
 gcx resources push -p ./ml
+gcx resources pull jobs.ml.ext.grafana.app holidays.ml.ext.grafana.app outlierdetectors.ml.ext.grafana.app -p ./ml
 ```
 
 ## Manage parent alerts
