@@ -17,6 +17,8 @@ The main module intentionally has no supported public Go API. Go's `internal/` v
 
 Locate implementation by domain rather than maintaining a mirrored package tree here. Start at [CLI composition](../../cmd/gcx/root/command.go), [resource pipelines](../../internal/resources/), [provider registration](../../internal/providers/), or [query clients](../../internal/query/). [Architecture](architecture.md) explains how those responsibilities connect.
 
+Grafana annotations use provider commands only. Server-assigned IDs prevent safe resource push between stacks. The provider has no registration in the resource pipeline.
+
 ## Build and Dependencies
 
 [mise.toml](../../mise.toml) is authoritative for toolchain pins and tasks; [CONTRIBUTING.md](../../CONTRIBUTING.md) describes development setup and required checks. Build the executable into `bin/gcx`. Version, revision, and build date are injected at link time; an untagged development build reports a snapshot version.
