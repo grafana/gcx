@@ -1,3 +1,4 @@
-VALUE  NAME              DISPLAY NAME
-19     Declare Incident  declare incident
-0                        
+VALUE  NAME                                         DISPLAY NAME
+19     Declare Incident                             declare incident
+27     Pause escalation until team's working hours  Pause escalation until {{pause_team}} working hours
+0                                                   

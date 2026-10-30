@@ -61,9 +61,21 @@ func escalationChainCRUDOpts() []crudOption[EscalationChain] {
 func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
 	return []crudOption[EscalationPolicy]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
+			if err := validateEscalationPolicy(item); err != nil {
+				return nil, err
+			}
+			if err := checkEscalationPolicyTeam(ctx, c, item); err != nil {
+				return nil, err
+			}
 			return c.CreateEscalationPolicy(ctx, *item)
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
+			if err := validateEscalationPolicy(item); err != nil {
+				return nil, err
+			}
+			if err := checkEscalationPolicyTeam(ctx, c, item); err != nil {
+				return nil, err
+			}
 			return c.UpdateEscalationPolicy(ctx, name, *item)
 		}),
 		adapter.WithDelete[EscalationPolicy](func(ctx context.Context, c OnCallAPI, name string) error {
