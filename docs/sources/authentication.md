@@ -69,7 +69,9 @@ If `gcx login` fails with a `Permission Required` error naming the **gcx User** 
 
 ### Datasource authentication failures
 
-Datasource-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when Grafana returns HTTP 400 with `Authentication to data source failed`. Inspect the datasource with `gcx datasources get <uid> -o json`, then check its credentials and ruler configuration in Grafana. This response is reported by Grafana while accessing the datasource.
+Datasource-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when Grafana returns HTTP 400 with `Authentication to data source failed`. Use `gcx datasources list -o json` to find the UID if needed, then run `gcx datasources health <uid>` for Grafana's datasource health message.
+
+Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana. The health check uses a different API path and doesn't establish that ruler access works. This response is reported by Grafana while accessing the datasource.
 
 ### Permissions to use Assistant investigations
 
