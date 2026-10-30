@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -144,7 +145,7 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) ([]FunctionSample, error) {
 		return nil, nil
 	}
 	if fg.Total < 0 {
-		return nil, fmt.Errorf("invalid profile total")
+		return nil, errors.New("invalid profile total")
 	}
 
 	// Build a map of function name -> aggregated stats
@@ -188,11 +189,12 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) ([]FunctionSample, error) {
 			for parent < len(previous) && previous[parent].end <= n.start {
 				parent++
 			}
-			if parent < len(previous) && previous[parent].start <= n.start && n.end <= previous[parent].end {
+			switch {
+			case parent < len(previous) && previous[parent].start <= n.start && n.end <= previous[parent].end:
 				previous[parent].children = append(previous[parent].children, n)
-			} else if depth == 0 {
+			case depth == 0:
 				roots = append(roots, n)
-			} else if n.end != n.start {
+			case n.end != n.start:
 				return nil, fmt.Errorf("profile node has no parent at level %d node %d", depth, i/4)
 			}
 			current = append(current, n)
