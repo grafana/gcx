@@ -65,7 +65,7 @@ everything below is a wiring option within or beside them, not a new tier:
   decides that no commands are warranted.
 
   One hard constraint if your answer is provider commands over a native `/apis`
-  resource: `CONSTITUTION.md` § Architecture Invariants requires them to go
+  resource: `ARCHITECTURE.md` § Rules requires them to go
   through the shared native binding (`internal/providers/native`, see
   `gcx alert routing-trees`). Never register an adapter for a discovered GVK or
   build discovery registries and dynamic clients by hand.
@@ -78,7 +78,7 @@ everything below is a wiring option within or beside them, not a new tier:
   - *Adapter-backed resources* — types that genuinely belong in the
     `gcx resources` push/pull pipeline get `TypedCRUD[T]` + `ResourceIdentity`
     + a registration with non-nil `Schema`. Never create an adapter merely to
-    unlock a CRUD verb (CONSTITUTION § Provider Architecture).
+    unlock a CRUD verb (ARCHITECTURE.md § Rules).
   - *Cross-signal commands* — query/labels/series/metadata verbs shared across
     signals use `signals.Descriptor` (see `internal/signals/`).
 - **Datasource provider** — a new queryable datasource kind implements
@@ -109,7 +109,7 @@ and the commands-only K8s exception.
 |--------|--------------|--------------------------|----------------|
 | K8s resource tier | none (dynamic discovery) | `internal/resources/` | ARCHITECTURE.md §1, docs/architecture/resource-model.md |
 | Cloud provider | single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` | `internal/providers/slo/provider.go` | docs/reference/provider-guide.md, docs/design/provider-checklist.md |
-| Adapter-backed resource | returned from `Provider.TypedRegistrations()` — never call `adapter.Register()` directly | `internal/providers/irm/oncall_adapter.go` | docs/architecture/patterns.md §16-18, CONSTITUTION § Architecture Invariants |
+| Adapter-backed resource | returned from `Provider.TypedRegistrations()` — never call `adapter.Register()` directly | `internal/providers/irm/oncall_adapter.go` | docs/architecture/patterns.md §16-18, ARCHITECTURE.md § Rules |
 | Signal command | `signals.Descriptor` + `signals.Command()` | `internal/providers/metrics/provider.go` | ARCHITECTURE.md §3 |
 | Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). Generic routing is a **separate, conditional** decision — a `dispatch` entry in `cmd/gcx/datasources/query_routes.go` if `<uid> <expr>` fits, a `redirects` entry if it does not ([detail](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call)) | `internal/datasources/providers/prometheus.go` | RFC 003, docs/architecture/patterns.md §12 |
 | Portable user skill | directory under `claude-plugin/skills/` (auto-embedded) + row in `claude-plugin/README.md` | any sibling skill | AGENTS.md Key Conventions |

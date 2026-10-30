@@ -41,4 +41,4 @@ Published pages live under `docs/sources/`. The normal Docker-based documentatio
 
 The release reference renderer derives command help from Cobra and configuration/environment documentation from struct tags and GoDoc. Generator tests cover command coverage, anchors, flag inheritance, and stable output. The snapshot describes a release, so it must not be compared for equality with unreleased commands on `main`.
 
-Reference refresh is an explicit release operation: the release workflow refreshes from the upcoming release checkout, while standalone refreshes use the latest stable release. See [documentation maintenance](../reference/doc-maintenance.md) for the current procedure. Linter configuration, generator implementation, and workflow files remain authoritative for their own details.
+Reference refresh is an explicit release operation: the release workflow refreshes from the upcoming release checkout, while standalone refreshes use the latest stable release. See [documentation maintenance](../contributing/doc-maintenance.md) for the current procedure. Linter configuration, generator implementation, and workflow files remain authoritative for their own details.

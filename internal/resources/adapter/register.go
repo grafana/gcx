@@ -23,8 +23,8 @@ type Registration struct {
 	Aliases               []string
 	GroupAliases          []string // Compatibility groups, not additional resource types.
 	GVK                   schema.GroupVersionKind
-	Schema                func() json.RawMessage         // Required, non-nil: returns the JSON Schema for this resource type (per CONSTITUTION.md). Called on demand, so schemas cost nothing at start-up.
-	Example               json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
+	Schema                func() json.RawMessage         // Required, non-nil: returns the JSON Schema for this resource type (per ARCHITECTURE.md § Rules). Called on demand, so schemas cost nothing at start-up.
+	Example               json.RawMessage                // Example manifest (YAML-compatible JSON, per ARCHITECTURE.md § Rules). Required for writable resources; MAY be nil for read-only ones.
 	Operations            map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
 	CheckMutation         func(operation string) error   // Optional config-free refusal before mutation reads or adapter initialization.
 	RetainLocalDuplicates bool                           // Opt-in for batch identity planning that must see every same-name local envelope.
@@ -39,7 +39,7 @@ var registrations []Registration
 // Register adds an adapter registration to the global registry.
 // It is invoked by providers.Register() for each entry returned by
 // Provider.TypedRegistrations() — provider code must not call it directly
-// (CONSTITUTION.md § Architecture Invariants, unified provider registration).
+// (ARCHITECTURE.md § Rules, "Registration is atomic").
 func Register(reg Registration) {
 	resources.RegisterGroupAliases(reg.Descriptor.GroupVersionKind(), reg.GroupAliases)
 	registrations = append(registrations, reg)

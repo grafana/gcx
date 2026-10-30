@@ -67,9 +67,9 @@ Provider (internal/providers/slo/)
 
 **TypedCRUD\[T\]** bridges typed Go domain structs to K8s-style `unstructured.Unstructured` envelopes. Domain types implement `ResourceIdentity` (`GetResourceName`/`SetResourceName`). `TypedObject[T]` wraps them with `ObjectMeta` + `TypeMeta` for K8s compliance.
 
-**ConfigLoader** (`providers.ConfigLoader`) handles `--config`/`--context` flag binding, YAML + env var precedence, and provider-specific config resolution (`GRAFANA_PROVIDER_{NAME}_{KEY}`). All providers must use it — no ad-hoc `os.Getenv`.
+**ConfigLoader** (`providers.ConfigLoader`) handles `--config`/`--context` flag binding, YAML + env var precedence, and provider-specific config resolution (`GRAFANA_PROVIDER_{NAME}_{KEY}`).
 
-**Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
+**Dual access paths**: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. Both reach the resource through the same `ResourceAdapter`.
 
 **Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see RFC 026 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
 
@@ -202,10 +202,8 @@ not attached to the request. Legacy entries without `auth-method` infer OAuth
 proxy > service-account token > user/password > mTLS/anonymous; partial or
 rejected higher-priority credentials fail before network use instead of falling
 through. Explicit flags override env vars override config file while credentials
-are being resolved. `httputils.NewDefaultClient(ctx)` must be used for APIs outside
-the Grafana server unless the provider uses the trust-checked
-`CloudRESTConfig.HTTPClient`/direct-provider snapshot path; a raw k8s transport
-can otherwise inject Grafana auth into the wrong request.
+are being resolved. Which HTTP client a request uses depends on its destination;
+see [Rules § Configuration and transport](#configuration-and-transport).
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
@@ -217,27 +215,136 @@ with the selected local installation for list/install/update/uninstall; retired
 entries remain addressable without automatic deletion or replacement installation.
 See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
 
+## Rules
+
+These rules apply to all new code. Where existing code breaks one, the violation
+is tracked migration debt: in a test allowlist or under
+[#1694](https://github.com/grafana/gcx/issues/1694). It does not license a second
+violation. Waiving a rule needs maintainer approval in the PR. The linked
+documents hold the mechanics.
+
+### Layers and dependencies
+
+- **`cmd/` holds CLI wiring only:** Cobra commands, flag binding and output
+  selection. Implementation, including HTTP clients, request building and
+  converters, lives in `internal/`. Logic in `cmd/` cannot be tested without
+  Cobra or reused by other entry points.
+- **`internal/` never imports `cmd/`.** The dependency runs one way, so
+  `internal/` packages can be reused and tested on their own.
+- **A provider imports core packages, never another provider.** Providers stay
+  independently owned and removable; shared code moves into a core package.
+
+### Resource model and pipeline
+
+- **The resource pipeline is unstructured.** Resources are
+  `unstructured.Unstructured`, and types are discovered from the server at
+  runtime. Typed domain structs enter only through `TypedObject[T]`, an envelope
+  over the unstructured form. A pre-generated K8s type stops working against
+  server versions it was not generated for. Mechanics:
+  [resource-model.md](docs/architecture/resource-model.md).
+- **Manifest transformations are `Processor` steps.** A command applies an
+  ordered processor slice instead of editing manifests inline; otherwise `push`,
+  `edit` and `validate` treat the same file differently. Mechanics:
+  [patterns.md § 3](docs/architecture/patterns.md#3-processor-pipeline).
+- **Every push and pull goes through the shared pipeline** (`remote.Pusher`,
+  `remote.Puller`), whether the workflow is source of truth, backup or
+  migration. A command with its own push loop loses dry-run, conflict retry,
+  ownership checks and the processor slice.
+- **Push pushes folders first.** Folders are sorted by parent and pushed level by
+  level before any other resource; a dashboard pushed before its folder is
+  rejected. Mechanics: [data-flows.md](docs/architecture/data-flows.md).
+- **Push is create-or-update, and the local file wins.** The exception is a
+  resource that another tool manages: push skips it unless `--include-managed`
+  is set.
+- **Manifests are portable; gcx owns the envelope, not the contents.** Pull
+  strips server-managed fields and push sets the target namespace, so the same
+  files push to any stack with `--context`. Like Terraform, gcx does not check
+  what the contents mean: a dashboard that names a datasource UID missing on the
+  target pushes fine and breaks there. Mechanics:
+  [data-flows.md](docs/architecture/data-flows.md); user workarounds:
+  [manage resources](docs/sources/guides/manage-resources.md).
+
+### Providers and adapters
+
+- **Registration is atomic.** A provider registers through one
+  `providers.Register()` call, which fills the provider, adapter and deep-link
+  registries. Nothing else calls `adapter.Register()`. New resource types are
+  declared with `adapter.Resource[T]`, natural keys included. A resource
+  registered any other way shows up in `resources` but not in the provider tree,
+  or the reverse. Mechanics:
+  [patterns.md § 16](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing).
+- **Provider CRUD for an adapter-backed resource goes through its adapter**
+  (`TypedCRUD[T]`), never a raw API client. That is what makes the provider
+  commands and `gcx resources` return the same JSON and YAML; a bypass makes
+  them drift.
+- **A provider-only resource uses its product client directly.** Never create an
+  adapter just to get a CRUD verb: the `resources` pipeline would then expose
+  operations the resource cannot honor.
+- **Adapter-backed domain types implement `ResourceIdentity`**, both
+  `GetResourceName` and `SetResourceName`. A type missing the setter compiles,
+  then silently loses its name on pull.
+- **Every registration has a `Schema`, and a writable one has an `Example`.**
+  `resources list-types` and `list-examples` degrade silently without them.
+- **Server-discovered resources go through the native binding**
+  (`internal/providers/native`). A provider never registers an adapter for a
+  discovered GVK and never builds discovery registries or dynamic clients
+  itself. A duplicate registration makes schema lookup return whichever
+  registered first, and a hand-built client skips the retry and logging chain.
+  Mechanics: [patterns.md § 22](docs/architecture/patterns.md#22-native-resource-binding-adopt).
+
+### Configuration and transport
+
+- **Config is kubeconfig-shaped.** Named contexts select a stack (server, auth,
+  namespace) and a Cloud entry. The context selection order and env overrides
+  are a user contract, documented in [configuration](docs/sources/configuration.md).
+  Mechanics: [config-system.md](docs/architecture/config-system.md).
+- **Providers resolve config and credentials through `providers.ConfigLoader`.**
+  A provider never reads environment variables or credential stores itself;
+  bypassing the loader breaks the binding between a credential and its
+  destination and can send a credential to the wrong stack.
+- **Every HTTP client comes from `httputils` or the K8s REST config chain.**
+  Bare `http.Client` values and transports outside that chain lose retries, the
+  User-Agent and payload logging, and a transport that dials directly breaks
+  the `wasip1` build, which has no sockets.
+- **The destination host picks the client.** Requests to the Grafana server
+  (`cfg.Host`, including its plugin and datasource proxies) use
+  `rest.HTTPClientFor()`, which carries the Grafana credential. Requests to any
+  other host use `httputils.NewDefaultClient(ctx)` or the trust-checked
+  `CloudRESTConfig.HTTPClient`, and set their own auth. A K8s transport pointed
+  at another host sends it the Grafana token. Mechanics:
+  [client-api-layer.md](docs/architecture/client-api-layer.md).
+- **Datasource queries call datasource HTTP APIs directly**, not through the
+  dynamic client. Clients of the unified query API reuse
+  `internal/query/grafanaquery` and the `internal/query/dataframe` wire types; a
+  hand-rolled client loses the `/api/ds/query` fallback and the response-size
+  limit.
+- **PromQL is built with `promql-builder`**, never with string formatting, so a
+  label value cannot break or change the query. Mechanics:
+  [patterns.md § 14](docs/architecture/patterns.md#14-promql-construction-with-promql-builder).
+
+### Concurrency and builds
+
+- **Fan-out over user-sized input is bounded** with `errgroup.SetLimit`, using
+  the shared default concurrency. Unbounded fan-out over a large resource list
+  opens hundreds of connections and gets rate-limited.
+- **`wasip1` variants come in pairs.** gcx also builds for `GOOS=wasip1`, where
+  a `*_wasip1.go` file replaces a `//go:build !wasip1` partner: there are no
+  sockets (HTTP goes to the host through `httputils.WireTransport`), no
+  terminal UIs, and no `gcx dev` or `instrumentation check/explain/list-explanations`.
+  Change both halves together. `mise run vet:wasip1` covers part
+  of this; the full build is the Sandbox CI job (`experimental/sandbox`), whose
+  stubs live in `experimental/sandbox/patches/`.
+
 ## Design rationale
 
 Engineering proposals and historical decisions live in [RFCs](docs/rfcs/). Each record carries its own status; a proposal is not evidence of implementation.
 
 ## Architecture Docs
 
-Use the [architecture guide](docs/architecture/README.md) to find the relevant subsystem. [Design rules](docs/design/) cover CLI behavior; the [provider guide](docs/reference/provider-guide.md) explains extension points.
-
-## Taste Rules
-
-Enforced — see [CONSTITUTION.md § Taste Rules](CONSTITUTION.md#taste-rules) for the authoritative list.
-
-- **Options pattern** for every command: `opts` struct → `setup(flags)` → `Validate()` → constructor
-- **Error messages**: lowercase, no trailing punctuation
-- **Table-driven tests**: all Go tests follow [Go wiki conventions](https://go.dev/wiki/TableDrivenTests)
-- **errgroup concurrency**: bounded parallelism (default 10) for all batch I/O operations
-- **Commit format**: Title (one-liner) / What (description) / Why (rationale)
+Use the [architecture guide](docs/architecture/README.md) to find the relevant subsystem. [Design rules](DESIGN.md) cover CLI behavior; the [provider guide](docs/reference/provider-guide.md) explains extension points.
 
 ## Related
 
-- [VISION.md](VISION.md) — goals, product surface, roadmap themes
-- [CONSTITUTION.md](CONSTITUTION.md) — architecture invariants and dependency rules
-- [DESIGN.md](DESIGN.md) — CLI UX design, command grammar, output model
-- [docs/reference/provider-guide.md](docs/reference/provider-guide.md) — how to add a new provider
+- [VISION.md](VISION.md) — product fit: goals, core beliefs, product surface
+- [DESIGN.md](DESIGN.md) — CLI UX and agent-facing rules
+- [CONTRIBUTING.md](CONTRIBUTING.md) — workflow and code conventions

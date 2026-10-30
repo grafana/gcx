@@ -127,7 +127,7 @@ hand-rolls only because the app-platform DataSource forces a write-only block
 mutation verbs (`create`, `update`, `delete`) route their data access through
 this one `TypedCRUD[MCPServer]`, the same code path `gcx resources` uses — so
 both paths share create-vs-update natural-key resolution and per-header write
-intent, satisfying the TypedCRUD invariant (CONSTITUTION §37-41). The read
+intent, satisfying the TypedCRUD invariant (CONSTITUTION.md, now ARCHITECTURE.md § Rules: "Provider CRUD for an adapter-backed resource goes through its adapter"). The read
 verbs (`get`, `list`) fetch via the raw client — for id-or-name ref resolution
 and bounded pagination, capabilities `TypedCRUD` does not expose — and reuse
 the adapter only via `ToUnstructured` to emit the identical
@@ -220,4 +220,4 @@ bridge `user` scope only and leave `tenant` command-only, widening once proven.
 ## Follow-up
 
 - Plan the provider refactor and adapter from this RFC, with prerequisites first.
-- When implemented, update affected user and architecture guidance following [documentation maintenance](../reference/doc-maintenance.md).
+- When implemented, update affected user and architecture guidance following [documentation maintenance](../contributing/doc-maintenance.md).

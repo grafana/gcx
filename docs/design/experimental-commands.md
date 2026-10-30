@@ -2,7 +2,7 @@
 
 Experimental commands are commands that are not yet stable, or interact with features in Grafana Cloud that are not yet Generally Available. For more information on what that means, see [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
 
-Experimental commands are exempt from the compatibility promise in [CONSTITUTION.md](../../CONSTITUTION.md#cli-grammar)
+Experimental commands are exempt from the compatibility promise in [DESIGN.md § CLI Grammar](../../DESIGN.md#cli-grammar).
 
 ## Command docs
 

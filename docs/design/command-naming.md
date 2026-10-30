@@ -1,7 +1,7 @@
 # Command naming and placement
 
 > Prescriptive rules for canonical command verbs and their position in the gcx
-> command tree. [CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar)
+> command tree. [DESIGN.md § CLI Grammar](../../DESIGN.md#cli-grammar)
 > remains the higher authority.
 
 This guide applies when adding a new canonical command, explicitly renaming one,
@@ -11,7 +11,7 @@ is not automatically a precedent for new work. Aliases may preserve
 compatibility, but they do not define the canonical vocabulary.
 
 The rules here never authorize a breaking change. Under
-[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar), the complete
+[DESIGN.md § CLI Grammar](../../DESIGN.md#cli-grammar), the complete
 v1.0.0 command surface is a supported compatibility exception for all v1.x
 releases, including invocations that deviate from this guide. A non-conforming
 released command is not a defect to fix by renaming; propose a conforming
@@ -22,7 +22,7 @@ existing command non-compliant; a new verb or placement not covered here require
 explicit maintainer review. This guide does not specify the command shape for an
 operation that requires both parent and child identities, or for a `create`
 operation that necessarily requires a parent's identity. The parent-dependency
-rule in [CONSTITUTION.md § Sub-resources](../../CONSTITUTION.md#provider-architecture)
+rule in [DESIGN.md § CLI Grammar](../../DESIGN.md#cli-grammar)
 still governs; do not infer a new exception from existing commands.
 
 ## Start with the operation
@@ -39,7 +39,7 @@ gcx <area> <noun> <operation>
 
 Tooling without a meaningful noun and the closed set of top-level commands are
 the exceptions documented in
-[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar).
+[DESIGN.md § CLI Grammar](../../DESIGN.md#cli-grammar).
 
 ## CRUD and manifest verbs
 
@@ -69,7 +69,7 @@ them:
 local files.
 
 The higher-tier idempotency and safety requirements for `push` are defined in
-[CONSTITUTION.md § Push/Pull Philosophy](../../CONSTITUTION.md#pushpull-philosophy)
+[ARCHITECTURE.md § Resource model and pipeline](../../ARCHITECTURE.md#resource-model-and-pipeline)
 and [safety.md](safety.md). This naming guide does not add promises of a diff or
 a separate validation phase. An implementation that violates a higher-tier
 requirement is a code defect, not an alternative meaning for the verb.

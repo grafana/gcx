@@ -168,7 +168,7 @@ cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // 🛈
 ```
 
 **Status messages go to stderr**, per
-`CONSTITUTION.md` § Output — stdout is the result, stderr
+[DESIGN.md § Output Model](../../DESIGN.md#output-model) — stdout is the result, stderr
 is the diagnostic. A status line on stdout lands inside a caller's redirected
 output. Errors (via `DetailedError`) also go to stderr.
 
@@ -368,7 +368,7 @@ human renderer otherwise. Do not send the receipt through the file codec.
 These shapes are not a universal replacement for released provider contracts.
 IRM OnCall action envelopes and skills receipts retain their existing forms;
 instrumentation's existing `MutationResult` carries additive discriminators.
-See `CONSTITUTION.md` § Dual-Purpose Design.
+See [DESIGN.md § The agent output contract](../../DESIGN.md#the-agent-output-contract).
 
 ### 12.2 JSON Examples
 
@@ -460,9 +460,7 @@ encoder, `resources pull` and `resources edit` pin their default with
 `agents` display codec (which would write `<name>.agents` files containing
 spill-summary envelopes for large resources). `resources pull` and
 `resources edit` reject an explicit `-o agents` at validation time for the
-same reason. The `json` default is ratified policy (#1030 Decision 2):
-CONSTITUTION.md § Push/Pull Philosophy was amended accordingly in the same
-change that landed this contract.
+same reason. The `json` default is ratified policy (#1030 Decision 2).
 
 ---
 

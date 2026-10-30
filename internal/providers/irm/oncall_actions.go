@@ -214,7 +214,7 @@ func emitTTYSummary(stderr io.Writer, line string) {
 // exactly (RFC 020 § 3.4).
 type alertGroupActionVerbOpts struct {
 	// IO routes mutation-result output through the codec system
-	// (CONSTITUTION: all output goes through codecs). The default is JSON to
+	// (DESIGN.md § Output Model: primary output goes through the shared output system). The default is JSON to
 	// preserve the locked MutationResult on-the-wire contract; -o yaml and
 	// -o text are also available via the registered custom codecs.
 	IO cmdio.Options

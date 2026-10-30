@@ -41,7 +41,7 @@ provider exposes through the unified `gcx resources` pipeline (see Step 6). Each
 registration must carry a non-nil `Schema`. Commands-only providers with no
 adapter-backed resources return `nil` — that is a valid, first-class shape
 (plain provider commands do not require an adapter, and an adapter must never be
-created merely to unlock a CRUD verb; see CONSTITUTION § Provider Architecture).
+created merely to unlock a CRUD verb; see [ARCHITECTURE.md § Providers and adapters](../../ARCHITECTURE.md#providers-and-adapters)).
 
 **If your provider exposes adapter-backed resource types**, skip
 hand-writing this struct: build it declaratively with `adapter.NewProvider`
@@ -142,7 +142,7 @@ Guidelines:
 command receives provider config by reading the active context at call time.
 
 Provider implementations must use `providers.ConfigLoader` for config and auth
-resolution (CONSTITUTION § Dependency Rules) — do not import `cmd/gcx/config`
+resolution ([ARCHITECTURE.md § Configuration and transport](../../ARCHITECTURE.md#configuration-and-transport)) — do not import `cmd/gcx/config`
 from `internal/providers/` (that inverts the `cmd/` → `internal/` layering) and
 do not construct HTTP clients or load credentials independently. The pattern,
 mirroring the real SLO provider (`internal/providers/slo/provider.go`):
@@ -302,7 +302,7 @@ Reference: `internal/providers/slo/definitions/status.go`, `internal/query/prome
 ## Step 4b: HTTP Client Construction
 
 The right HTTP client depends on **where the request actually goes**, per
-[CONSTITUTION.md § Architecture Invariants](../../CONSTITUTION.md): a request to
+[ARCHITECTURE.md § Configuration and transport](../../ARCHITECTURE.md#configuration-and-transport): a request to
 any host other than `cfg.Host` must use `httputils.NewDefaultClient(ctx)` and
 never `rest.HTTPClientFor()`, because the k8s transport injects the Grafana
 bearer token on every outgoing request and that conflicts with the product's own
@@ -555,8 +555,8 @@ func init() {
 
 `init()` contains this one call and nothing else: it populates both the provider
 registry and the adapter registry, calling `adapter.Register()` for each entry
-returned by `TypedRegistrations()`. Additional registration calls in `init()`
-violate CONSTITUTION.md § Architecture Invariants.
+returned by `TypedRegistrations()`. Nothing else may call `adapter.Register()`;
+see [ARCHITECTURE.md § Providers and adapters](../../ARCHITECTURE.md#providers-and-adapters).
 
 Once registered via `init()`:
 - Its commands appear under `gcx`
@@ -571,6 +571,9 @@ blank import for it in `cmd/gcx/root/command.go`:
 ```go
 _ "github.com/grafana/gcx/internal/providers/{provider}"
 ```
+
+Without it the provider compiles and its tests pass, but it is missing from the
+binary and from every test that walks the root command tree.
 
 That import is the only root-command change a provider needs. Reference:
 `internal/providers/slo/provider.go` for the full implementation.

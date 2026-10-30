@@ -36,8 +36,15 @@ You need to [configure one context per environment](../../configuration#define-c
 Resources are pulled and pushed from the `./resources` directory by default.
 Configure this path with the `--path`/`-p` flags.
 {{< /admonition >}}
-    Resources are pulled and pushed from the `./resources` directory by default.
-    Configure this path with the `--path`/`-p` flags.
+
+### Keep references valid across environments
+
+`gcx` moves the resource envelope between environments: it removes server-managed fields on pull and sets the target namespace on push. It does not rewrite what a resource refers to. A dashboard that names a datasource UID that does not exist in the target environment pushes successfully and then fails to load its panels.
+
+To keep references valid:
+
+- Give each datasource the same UID in every environment.
+- Select datasources in dashboards through a datasource template variable instead of a fixed UID.
 
 ## Name pulled files by title
 

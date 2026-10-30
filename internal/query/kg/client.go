@@ -2,7 +2,7 @@
 // Graph (Asserts) API, following the same pattern as internal/query/prometheus
 // and internal/query/tempo: it lives outside any provider so multiple
 // providers can depend on it without violating the "no provider imports
-// another provider" rule in CONSTITUTION.md.
+// another provider" rule in ARCHITECTURE.md § Rules.
 package kg
 
 import (
