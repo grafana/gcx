@@ -66,7 +66,7 @@ func (o *resolveOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.At, "at", "", "RFC3339 timestamp; omit to resolve at server time")
 }
 
-func (o *resolveOpts) Validate() error {
+func (o *resolveOpts) Validate(flags *pflag.FlagSet) error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
@@ -75,6 +75,9 @@ func (o *resolveOpts) Validate() error {
 	}
 	if strings.TrimSpace(o.Model) == "" {
 		return errors.New("--model is required")
+	}
+	if flags.Changed("at") && o.At == "" {
+		return errors.New("--at cannot be empty")
 	}
 	if o.At != "" {
 		if _, err := time.Parse(time.RFC3339Nano, o.At); err != nil {
@@ -92,10 +95,7 @@ func newResolveCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long:    "Resolve a model price without changing it. Returns the pricing source and per-token rates (not per-million). An unknown price is not zero cost. Omit --at to use server time; pass a telemetry timestamp for historical pricing.",
 		Example: "  gcx agento11y model-rates get-effective --provider openai --model gpt-5.5 -o json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if cmd.Flags().Changed("at") && opts.At == "" {
-				return errors.New("--at cannot be empty")
-			}
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
 			client, err := newClient(cmd, loader)

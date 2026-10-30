@@ -55,31 +55,36 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.SourceModelID, "source-model-id", "", "The source's own model ID, used with --source instead of a model key")
 }
 
-// query resolves the lookup the flags and argument ask for. A model key and a
-// source pair are alternatives, so exactly one is required.
-func (o *getOpts) query(args []string) (LookupQuery, error) {
+// Validate checks the flags and argument. A model key and a source pair are
+// alternatives, so exactly one is required.
+func (o *getOpts) Validate(args []string) error {
 	if err := o.IO.Validate(); err != nil {
-		return LookupQuery{}, err
+		return err
 	}
-	key := ""
-	if len(args) > 0 {
-		key = strings.TrimSpace(args[0])
-	}
+	hasKey := len(args) > 0 && strings.TrimSpace(args[0]) != ""
 	source := strings.TrimSpace(o.Source)
 	sourceModelID := strings.TrimSpace(o.SourceModelID)
 
 	switch {
-	case key != "" && (source != "" || sourceModelID != ""):
-		return LookupQuery{}, errors.New("give either a model key or --source with --source-model-id, not both")
-	case key != "":
-		return LookupQuery{ModelKey: key}, nil
+	case hasKey && (source != "" || sourceModelID != ""):
+		return errors.New("give either a model key or --source with --source-model-id, not both")
+	case hasKey:
+		return nil
 	case source != "" && sourceModelID != "":
-		return LookupQuery{Source: source, SourceModelID: sourceModelID}, nil
+		return nil
 	case source != "" || sourceModelID != "":
-		return LookupQuery{}, errors.New("--source and --source-model-id must be given together")
+		return errors.New("--source and --source-model-id must be given together")
 	default:
-		return LookupQuery{}, errors.New("a model key, or --source with --source-model-id, is required")
+		return errors.New("a model key, or --source with --source-model-id, is required")
 	}
+}
+
+// query builds the lookup for validated flags and arguments.
+func (o *getOpts) query(args []string) LookupQuery {
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		return LookupQuery{ModelKey: strings.TrimSpace(args[0])}
+	}
+	return LookupQuery{Source: strings.TrimSpace(o.Source), SourceModelID: strings.TrimSpace(o.SourceModelID)}
 }
 
 func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -97,8 +102,7 @@ The result is the backend envelope: the card under "data" and catalog freshness 
   # Look up by a catalog source's own model ID.
   gcx agento11y model-cards get --source openrouter --source-model-id openai/gpt-4o-mini`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			query, err := opts.query(args)
-			if err != nil {
+			if err := opts.Validate(args); err != nil {
 				return err
 			}
 
@@ -107,7 +111,7 @@ The result is the backend envelope: the card under "data" and catalog freshness 
 				return err
 			}
 
-			result, err := client.Lookup(cmd.Context(), query)
+			result, err := client.Lookup(cmd.Context(), opts.query(args))
 			if err != nil {
 				return err
 			}
@@ -221,7 +225,7 @@ Prices in the table are catalog prices in USD per million tokens, shown as given
 				return err
 			}
 			if result.Freshness.Stale {
-				cmdio.Warning(cmd.ErrOrStderr(), "The model catalog is stale; prices and limits may be out of date.")
+				cmdio.EmitWarn(cmd.ErrOrStderr(), "The model catalog is stale; prices and limits may be out of date.")
 			}
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result.Cards); err != nil {
 				return err
@@ -248,15 +252,20 @@ func Table() cmdio.Table[Card] {
 		{Header: "MODEL KEY", Content: func(c Card) string { return cmdio.OrDash(c.str("model_key")) }},
 		{Header: "PROVIDER", Content: func(c Card) string { return cmdio.OrDash(c.str("provider")) }},
 		{Header: "NAME", Content: func(c Card) string { return cmdio.OrDash(c.str("name")) }},
-		{Header: "CONTEXT", Content: func(c Card) string { return c.number("context_length", 1) }},
+		{Header: "CONTEXT", Content: func(c Card) string { return c.number("context_length") }},
 		{Header: "INPUT /1M", Content: func(c Card) string { return c.price("prompt_usd_per_token") }},
 		{Header: "OUTPUT /1M", Content: func(c Card) string { return c.price("completion_usd_per_token") }},
 		{Header: "SOURCE", Visible: cmdio.WideOnly, Content: func(c Card) string { return cmdio.OrDash(c.str("source")) }},
 		{Header: "FREE", Visible: cmdio.WideOnly, Content: func(c Card) string {
-			if free, ok := c["is_free"].(bool); ok && free {
+			free, ok := c["is_free"].(bool)
+			switch {
+			case !ok:
+				return "-"
+			case free:
 				return "yes"
+			default:
+				return "no"
 			}
-			return "no"
 		}},
 		{Header: "MODALITY", Visible: cmdio.WideOnly, Content: func(c Card) string { return cmdio.OrDash(c.str("modality")) }},
 		{Header: "CACHE READ /1M", Visible: cmdio.WideOnly, Content: func(c Card) string { return c.price("input_cache_read_usd_per_token") }},
@@ -269,14 +278,19 @@ func (c Card) str(key string) string {
 	return s
 }
 
-// number renders a numeric top-level field scaled by 1/divisor, or a dash when
-// the field is absent.
-func (c Card) number(key string, divisor float64) string {
+// rawNumber extracts a JSON number from a decoded document.
+func rawNumber(v any) (float64, bool) {
+	n, ok := v.(float64)
+	return n, ok
+}
+
+// number renders a numeric top-level field, or a dash when the field is absent.
+func (c Card) number(key string) string {
 	n, ok := rawNumber(c[key])
 	if !ok {
 		return "-"
 	}
-	return strconv.FormatFloat(n/divisor, 'g', 10, 64)
+	return strconv.FormatFloat(n, 'g', 10, 64)
 }
 
 // price renders a catalog per-token price as USD per million tokens. An absent

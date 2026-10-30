@@ -108,10 +108,11 @@ func TestClient_List_Paging(t *testing.T) {
 		wantLimit   string
 		wantCards   int
 		wantMore    bool
+		wantStale   bool
 		wantCursors []string
 	}{
-		{name: "follows cursors until exhausted", limit: 0, wantLimit: "200", wantCards: 3, wantMore: false, wantCursors: []string{"", "c1"}},
-		{name: "truncates at limit and reports more", limit: 2, wantLimit: "2", wantCards: 2, wantMore: true, wantCursors: []string{""}},
+		{name: "follows cursors until exhausted", limit: 0, wantLimit: "200", wantCards: 3, wantMore: false, wantStale: true, wantCursors: []string{"", "c1"}},
+		{name: "truncates at limit and reports more", limit: 2, wantLimit: "2", wantCards: 2, wantMore: true, wantStale: true, wantCursors: []string{""}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -124,7 +125,7 @@ func TestClient_List_Paging(t *testing.T) {
 					writeJSON(w, map[string]any{
 						"data":        []any{map[string]any{"model_key": "a"}, map[string]any{"model_key": "b"}},
 						"next_cursor": "c1",
-						"freshness":   map[string]any{"stale": true},
+						"freshness":   map[string]any{"stale": true, "catalog_last_refreshed_at": "2026-01-02T03:04:05Z"},
 					})
 					return
 				}
@@ -135,6 +136,9 @@ func TestClient_List_Paging(t *testing.T) {
 			require.NoError(t, err)
 			assert.Len(t, result.Cards, tt.wantCards)
 			assert.Equal(t, tt.wantMore, result.HasMore)
+			// Page 2 omits freshness, which must not clear page 1's report.
+			assert.Equal(t, tt.wantStale, result.Freshness.Stale)
+			assert.Equal(t, "2026-01-02T03:04:05Z", result.Freshness.CatalogLastRefreshedAt)
 			assert.Equal(t, tt.wantCursors, cursors)
 		})
 	}

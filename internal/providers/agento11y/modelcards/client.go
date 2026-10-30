@@ -123,7 +123,11 @@ func (c *Client) List(ctx context.Context, q ListQuery, limit int) (ListResult, 
 			return ListResult{}, err
 		}
 		result.Cards = append(result.Cards, page.Data...)
-		result.Freshness = page.Freshness
+		// Staleness is sticky: one stale page makes the whole result stale.
+		result.Freshness.Stale = result.Freshness.Stale || page.Freshness.Stale
+		if page.Freshness.CatalogLastRefreshedAt != "" {
+			result.Freshness.CatalogLastRefreshedAt = page.Freshness.CatalogLastRefreshedAt
+		}
 		result.HasMore = page.NextCursor != ""
 
 		if limit > 0 && len(result.Cards) >= limit {
@@ -136,10 +140,4 @@ func (c *Client) List(ctx context.Context, q ListQuery, limit int) (ListResult, 
 		}
 		query.Set("cursor", page.NextCursor)
 	}
-}
-
-// rawNumber extracts a JSON number from a decoded document.
-func rawNumber(v any) (float64, bool) {
-	n, ok := v.(float64)
-	return n, ok
 }
