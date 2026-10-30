@@ -10,6 +10,8 @@ import (
 type IncidentDescriptionStripper struct{}
 
 func (IncidentDescriptionStripper) Process(res *resources.Resource) error {
+	// Keep this package free of IRM registration side effects. An external
+	// IRM test checks these literals against the provider GVK constants.
 	if res.APIVersion() == "incident.ext.grafana.app/v1alpha1" && res.Kind() == "Incident" {
 		unstructured.RemoveNestedField(res.Object.Object, "spec", "description")
 	}
