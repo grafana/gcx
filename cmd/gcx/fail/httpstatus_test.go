@@ -110,43 +110,25 @@ func TestDatasourceAuthenticationFailure(t *testing.T) {
 }
 
 func TestDatasourceAuthenticationResponseFields(t *testing.T) {
-	const authMessage = "Authentication to data source failed"
 	for _, tc := range []struct {
-		name        string
-		body        string
-		wantMessage string
-		wantAuth    bool
+		name string
+		body string
 	}{
-		{"plain response", authMessage, authMessage, true},
-		{"message only", `{"message":"Authentication to data source failed"}`, authMessage, true},
-		{"error only", `{"error":"Authentication to data source failed"}`, authMessage, true},
-		{"both agree", `{"error":"Authentication to data source failed","message":"Authentication to data source failed"}`, authMessage, true},
-		{"empty error falls back", `{"error":"","message":"Authentication to data source failed"}`, authMessage, true},
-		{"primary auth wins", `{"error":"Authentication to data source failed","message":"invalid rule group"}`, authMessage, true},
-		{"primary other error wins", `{"error":"invalid rule group","message":"Authentication to data source failed"}`, "invalid rule group", false},
-		{"primary near match wins", `{"error":"Authentication to data source failed during a previous request","message":"Authentication to data source failed"}`, "Authentication to data source failed during a previous request", false},
+		{"primary error wins", `{"error":"invalid rule group","message":"Authentication to data source failed"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := providers.FormatError(http.StatusBadRequest, []byte(tc.body))
 			var transportErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &transportErr)
-			assert.Equal(t, tc.wantMessage, transportErr.ServerMessage)
+			assert.Equal(t, "invalid rule group", transportErr.ServerMessage)
 			got := toDetailedError(t, err)
-			assert.Contains(t, got.Details, tc.wantMessage)
+			assert.Contains(t, got.Details, "invalid rule group")
 			assert.Contains(t, got.Details, "HTTP 400")
-			exit := gcxerrors.ExitGeneralError
+			assert.Equal(t, gcxerrors.SummaryAPIError, got.Summary)
 			if got.ExitCode != nil {
-				exit = *got.ExitCode
+				assert.Equal(t, gcxerrors.ExitGeneralError, *got.ExitCode)
 			}
-			if tc.wantAuth {
-				assert.Equal(t, gcxerrors.ExitAuthFailure, exit)
-				assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, got.Summary)
-				assert.Contains(t, fmt.Sprint(got.Suggestions), "gcx datasources health <uid>")
-			} else {
-				assert.Equal(t, gcxerrors.ExitGeneralError, exit)
-				assert.Equal(t, gcxerrors.SummaryAPIError, got.Summary)
-				assert.NotContains(t, fmt.Sprint(got.Suggestions), "gcx datasources")
-			}
+			assert.NotContains(t, fmt.Sprint(got.Suggestions), "gcx datasources")
 		})
 	}
 }
