@@ -30,9 +30,12 @@ type QueryRequest struct {
 // reject it and v1-v2-dual backends silently return a flame graph instead.
 const ProfileFormatDot = "PROFILE_FORMAT_DOT"
 
+// ProfileFormatPprof requests a binary pprof profile from SelectMergeStacktraces.
+const ProfileFormatPprof = "PROFILE_FORMAT_PPROF"
+
 // StackTraceSelector mirrors querier.v1.StackTraceSelector. Only the CallSite
 // variant is supported on the SelectMergeStacktraces RPC; GoPGO selection
-// lives on the SelectMergeProfile (pprof export) path.
+// lives on the SelectMergeProfile RPC, which is not used for pprof exports.
 type StackTraceSelector struct {
 	CallSite []Location `json:"callSite,omitempty"`
 }
@@ -48,11 +51,13 @@ func (r QueryRequest) IsRange() bool {
 }
 
 // QueryResponse represents the response from a Pyroscope profile query.
-// Exactly one of Flamegraph or Dot is set on success; both are empty when
-// the query matched no data and PROFILE_FORMAT_DOT was requested.
+// Exactly one of Flamegraph, Dot, or Pprof is set on success; all are empty
+// when the query matched no data and PROFILE_FORMAT_DOT was requested.
+// Pprof contains the gzip-compressed binary profile for artifact output.
 type QueryResponse struct {
 	Flamegraph *Flamegraph `json:"flamegraph,omitempty"`
 	Dot        string      `json:"dot,omitempty"`
+	Pprof      []byte      `json:"-"`
 }
 
 // Flamegraph represents a flame graph structure.
@@ -346,15 +351,8 @@ func (p TimePoint) FloatValue() float64 {
 	return v
 }
 
-// PprofRequest represents a request to fetch a profile in pprof binary format.
-type PprofRequest struct {
-	ProfileTypeID string
-	LabelSelector string
-	Start         time.Time
-	End           time.Time
-	MaxNodes      int64
-	TraceIDs      []string
-}
+// PprofRequest is retained as an alias for callers exporting pprof profiles.
+type PprofRequest = QueryRequest
 
 // PprofWriteResult is the structured output emitted after writing a pprof binary to disk.
 type PprofWriteResult struct {

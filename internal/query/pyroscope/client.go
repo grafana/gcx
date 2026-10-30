@@ -66,9 +66,33 @@ func (t *clientCapabilitiesTransport) RoundTrip(req *http.Request) (*http.Respon
 // Query executes a Pyroscope profile query against the specified datasource.
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
 	resourcePath := "querier.v1.QuerierService/SelectMergeStacktraces"
-	if len(req.SpanIDs) > 0 {
+	if len(req.SpanIDs) > 0 && req.Format != ProfileFormatPprof {
 		resourcePath = "querier.v1.QuerierService/SelectMergeSpanProfile"
 	}
+	body, contentType, err := encodeQueryRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	respBody, err := c.postQueryBody(ctx, datasourceUID, resourcePath, "query", contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	if req.Format == ProfileFormatPprof {
+		profile, err := compressPprofResponse(respBody)
+		if err != nil {
+			return nil, err
+		}
+		return &QueryResponse{Pprof: profile}, nil
+	}
+	var result QueryResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	return &result, nil
+}
+
+// encodeQueryRequest keeps selectors identical across JSON and binary outputs.
+func encodeQueryRequest(req QueryRequest) ([]byte, string, error) {
 	start, end := DefaultTimeRange(req.Start, req.End)
 
 	// Build request body
@@ -99,43 +123,45 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		}
 	}
 
+	if req.Format == ProfileFormatPprof {
+		return encodePprofRequest(bodyMap), "application/proto", nil
+	}
 	body, err := json.Marshal(bodyMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	var result QueryResponse
-	if err := c.postQuery(ctx, datasourceUID, resourcePath, "query", body, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	return body, "application/json", err
 }
 
 // postQuery shares the bounded, authenticated RPC transport for profile queries.
 func (c *Client) postQuery(ctx context.Context, datasourceUID, resourcePath, operation string, body []byte, result any) error {
-	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	respBody, err := c.postQueryBody(ctx, datasourceUID, resourcePath, operation, "application/json", body)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("failed to execute query: %w", err)
-	}
-	defer resp.Body.Close()
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return queryerror.FromBody("pyroscope", operation, resp.StatusCode, respBody)
-	}
-
 	if err := json.Unmarshal(respBody, result); err != nil {
 		return fmt.Errorf("failed to parse response: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) postQueryBody(ctx context.Context, datasourceUID, resourcePath, operation, contentType string, body []byte) ([]byte, error) {
+	apiPath := c.buildResourcePath(datasourceUID, resourcePath)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", contentType)
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, queryerror.FromBody("pyroscope", operation, resp.StatusCode, respBody)
+	}
+	return respBody, nil
 }
 
 // GetProfileStats returns ingestion stats from the datasource: whether any
@@ -559,58 +585,93 @@ func (c *Client) SelectHeatmap(ctx context.Context, datasourceUID string, req Se
 	return &result, nil
 }
 
-// Pprof fetches a merged profile via SelectMergeProfile and returns it as a
+// Pprof fetches a merged profile via SelectMergeStacktraces and returns it as a
 // gzip-compressed pprof binary, compatible with go tool pprof.
-func (c *Client) Pprof(ctx context.Context, datasourceUID string, req PprofRequest) ([]byte, error) {
-	start, end := DefaultTimeRange(req.Start, req.End)
+func (c *Client) Pprof(ctx context.Context, datasourceUID string, req QueryRequest) ([]byte, error) {
+	req.Format = ProfileFormatPprof
+	result, err := c.Query(ctx, datasourceUID, req)
+	if err != nil {
+		return nil, err
+	}
+	return result.Pprof, nil
+}
 
-	// Encode the SelectMergeProfileRequest as binary protobuf.
-	// Field numbers from querier.v1.QuerierService/SelectMergeProfile:
+func encodePprofRequest(fields map[string]any) []byte {
+	// Encode querier.v1.SelectMergeStacktracesRequest as binary protobuf:
 	//   1: profile_type_id (string)
 	//   2: label_selector (string)
 	//   3: start (int64, ms since epoch)
 	//   4: end (int64, ms since epoch)
 	//   5: max_nodes (int64, optional)
-	//   8: trace_id_selector (repeated string)
+	//   6: format (ProfileFormat, 4 = PROFILE_FORMAT_PPROF)
+	//   7: stack_trace_selector (types.v1.StackTraceSelector)
+	//   8: profile_id_selector (repeated string)
+	//  10: trace_id_selector (repeated string)
+	//  11: span_selector (repeated string)
 	var msg []byte
 	msg = protowire.AppendTag(msg, 1, protowire.BytesType)
-	msg = protowire.AppendString(msg, req.ProfileTypeID)
+	profileTypeID, _ := fields["profileTypeID"].(string)
+	msg = protowire.AppendString(msg, profileTypeID)
 	msg = protowire.AppendTag(msg, 2, protowire.BytesType)
-	msg = protowire.AppendString(msg, req.LabelSelector)
-	msg = protowire.AppendTag(msg, 3, protowire.VarintType)
-	msg = protowire.AppendVarint(msg, uint64(start.UnixMilli()))
-	msg = protowire.AppendTag(msg, 4, protowire.VarintType)
-	msg = protowire.AppendVarint(msg, uint64(end.UnixMilli()))
-	if req.MaxNodes > 0 {
-		msg = protowire.AppendTag(msg, 5, protowire.VarintType)
-		msg = protowire.AppendVarint(msg, uint64(req.MaxNodes))
+	labelSelector, _ := fields["labelSelector"].(string)
+	msg = protowire.AppendString(msg, labelSelector)
+	for _, field := range []struct {
+		name   string
+		number protowire.Number
+	}{{"start", 3}, {"end", 4}, {"maxNodes", 5}} {
+		if value, ok := fields[field.name].(string); ok {
+			// Values are generated by FormatInt in encodeQueryRequest.
+			n, _ := strconv.ParseInt(value, 10, 64)
+			msg = protowire.AppendTag(msg, field.number, protowire.VarintType)
+			// Protobuf int64 uses two's-complement varints, including negative timestamps.
+			msg = protowire.AppendVarint(msg, uint64(n)) //nolint:gosec // G115: preserve the signed int64 wire representation.
+		}
 	}
-	for _, traceID := range req.TraceIDs {
+	msg = protowire.AppendTag(msg, 6, protowire.VarintType)
+	msg = protowire.AppendVarint(msg, 4) // PROFILE_FORMAT_PPROF
+	profileIDs, _ := fields["profileIdSelector"].([]string)
+	for _, id := range profileIDs {
 		msg = protowire.AppendTag(msg, 8, protowire.BytesType)
+		msg = protowire.AppendString(msg, id)
+	}
+	traceIDs, _ := fields["traceIdSelector"].([]string)
+	for _, traceID := range traceIDs {
+		msg = protowire.AppendTag(msg, 10, protowire.BytesType)
 		msg = protowire.AppendString(msg, traceID)
 	}
 
-	apiPath := c.buildResourcePath(datasourceUID, "querier.v1.QuerierService/SelectMergeProfile")
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.restConfig.Host+apiPath, bytes.NewReader(msg))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	spanIDs, _ := fields["spanSelector"].([]string)
+	for _, spanID := range spanIDs {
+		msg = protowire.AppendTag(msg, 11, protowire.BytesType)
+		msg = protowire.AppendString(msg, spanID)
 	}
-	httpReq.Header.Set("Content-Type", "application/proto")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch profile: %w", err)
+	if selector, ok := fields["stackTraceSelector"].(*StackTraceSelector); ok {
+		var stack []byte
+		for _, location := range selector.CallSite {
+			// types.v1.StackTraceSelector.call_site = 1; types.v1.Location.name = 1.
+			loc := protowire.AppendTag(nil, 1, protowire.BytesType)
+			loc = protowire.AppendString(loc, location.Name)
+			stack = protowire.AppendTag(stack, 1, protowire.BytesType)
+			stack = protowire.AppendBytes(stack, loc)
+		}
+		msg = protowire.AppendTag(msg, 7, protowire.BytesType)
+		msg = protowire.AppendBytes(msg, stack)
 	}
-	defer resp.Body.Close()
+	return msg
+}
 
-	body, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+func compressPprofResponse(body []byte) ([]byte, error) {
+	var err error
+
+	// Unwrap querier.v1.SelectMergeStacktracesResponse.pprof (field 5),
+	// then querier.v1.PprofProfile.profile (field 1, google.v1.Profile).
+	body, err = pprofMessageField(body, 5)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, err
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("pyroscope", "pprof", resp.StatusCode, body)
+	body, err = pprofMessageField(body, 1)
+	if err != nil {
+		return nil, err
 	}
 
 	// Gzip-compress the binary proto to produce a valid pprof file.
@@ -623,6 +684,30 @@ func (c *Client) Pprof(ctx context.Context, datasourceUID string, req PprofReque
 		return nil, fmt.Errorf("failed to finalize profile: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// pprofMessageField extracts a nested protobuf message without losing profile fields.
+func pprofMessageField(data []byte, field protowire.Number) ([]byte, error) {
+	for len(data) > 0 {
+		num, typ, n := protowire.ConsumeTag(data)
+		if n < 0 {
+			return nil, fmt.Errorf("invalid pprof response: %w", protowire.ParseError(n))
+		}
+		data = data[n:]
+		if num == field && typ == protowire.BytesType {
+			value, n := protowire.ConsumeBytes(data)
+			if n < 0 {
+				return nil, fmt.Errorf("invalid pprof response: %w", protowire.ParseError(n))
+			}
+			return value, nil
+		}
+		n = protowire.ConsumeFieldValue(num, typ, data)
+		if n < 0 {
+			return nil, fmt.Errorf("invalid pprof response: %w", protowire.ParseError(n))
+		}
+		data = data[n:]
+	}
+	return nil, fmt.Errorf("pprof response missing field %d; backend may not support PROFILE_FORMAT_PPROF", field)
 }
 
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {
