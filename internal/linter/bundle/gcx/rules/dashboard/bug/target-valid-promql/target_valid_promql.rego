@@ -16,7 +16,7 @@ report contains violation if {
 
 	variables := utils.dashboard_v1_variables(input)
 	panels := utils.dashboard_v1_panels(input)
-	prom_targets := _prometheus_targets_v1(panels)
+	prom_targets := _prometheus_targets_v1(panels, variables)
 
 	queries := [query | query := {
 		"panel": prom_targets[i].panel,
@@ -32,12 +32,19 @@ report contains violation if {
 	violation := result.fail(rego.metadata.chain(), sprintf("panel %v, query '%s': %s\n%s", [invalid_queries[i].panel, invalid_queries[i].ref_id, invalid_queries[i].expr, invalid_queries[i].result]))
 }
 
-_prometheus_targets_v1(panels) := prom_targets if {
+_prometheus_targets_v1(panels, variables) := prom_targets if {
 	targets := [{"panel": object.get(panels[i], "id", sprintf("index %d", [i])), "target": target} | target := panels[i].targets[j]]
 
 	# TODO: handle cases where no datasource is defined at the target level
-	prom_targets := [target | targets[i].target.datasource.type == "prometheus"; target := targets[i]]
+	prom_targets := [target | _query_group_v1(targets[i].target, variables) == "prometheus"; target := targets[i]]
 }
+
+_query_group_v1(target, variables) := variable.query if {
+	some variable in variables
+	variable.type == "datasource"
+	variable.query != ""
+	_datasource_variable_reference(target.datasource.uid, variable.name)
+} else := target.datasource.type
 
 # Dashboard v2
 report contains violation if {
@@ -72,9 +79,13 @@ _query_group_v2(target, variables) := variable.spec.pluginId if {
 	some variable in variables
 	variable.kind == "DatasourceVariable"
 	variable.spec.pluginId != ""
-	target.spec.query.datasource.name in {
-		sprintf("$%s", [variable.spec.name]),
-		sprintf("${%s}", [variable.spec.name]),
-		sprintf("[[%s]]", [variable.spec.name]),
-	}
+	_datasource_variable_reference(target.spec.query.datasource.name, variable.spec.name)
 } else := target.spec.query.group
+
+_datasource_variable_reference(reference, name) if {
+	reference in {
+		sprintf("$%s", [name]),
+		sprintf("${%s}", [name]),
+		sprintf("[[%s]]", [name]),
+	}
+}

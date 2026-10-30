@@ -2,9 +2,11 @@
 
 Checks that each Prometheus target on each panel uses a valid PromQL query.
 
-For v2 dashboards, a query whose datasource references a `DatasourceVariable`
-uses that variable's `pluginId` to select the query language. This takes precedence
-over saved query group metadata. References in `$name`, `${name}`, and legacy
-`[[name]]` forms are supported. Other queries use their saved group.
+Queries that reference a datasource variable use its configured plugin to select
+the query language: the variable's `query` field in v1 dashboards and
+`DatasourceVariable.spec.pluginId` in v2 dashboards. This takes precedence over
+the target's saved datasource type (v1) or query group (v2). References in `$name`,
+`${name}`, and legacy `[[name]]` forms are supported. Direct datasource references
+and unresolved variables keep their saved type or group.
 Non-Prometheus queries are skipped. Violations include the panel identifier and
 query reference ID in their details.

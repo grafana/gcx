@@ -225,18 +225,42 @@ _test_v2_resource(query, datasource, group, variables) := resource if {
 	}
 }
 
+_datasource_variable_language_cases := [
+	{"name": "loki variable", "datasource": "$logs", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
+	{"name": "legacy loki variable", "datasource": "[[logs]]", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
+	{"name": "braced loki variable", "datasource": "${logs}", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
+	{"name": "prometheus variable", "datasource": "$logs", "group": "loki", "kind": "DatasourceVariable", "plugin": "prometheus", "expr": "invalid promql", "count": 1},
+	{"name": "valid prometheus variable", "datasource": "$logs", "group": "loki", "kind": "DatasourceVariable", "plugin": "prometheus", "expr": "up", "count": 0},
+	{"name": "direct datasource", "datasource": "example-prometheus", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": "invalid promql", "count": 1},
+	{"name": "unknown variable", "datasource": "$other", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": "invalid promql", "count": 1},
+	{"name": "other variable kind", "datasource": "$logs", "group": "prometheus", "kind": "QueryVariable", "plugin": "loki", "expr": "invalid promql", "count": 1},
+	{"name": "empty plugin", "datasource": "$logs", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "", "expr": "invalid promql", "count": 1},
+]
+
+_test_v1_resource(query, datasource, saved_type, variables) := resource if {
+	panel := _test_v1_panel(query)
+	target := object.union(panel.targets[0], {"datasource": {"type": saved_type, "uid": datasource}})
+	resource := {
+		"kind": "Dashboard",
+		"apiVersion": "dashboard.grafana.app/v1beta1",
+		"spec": {
+			"panels": [object.union(panel, {"targets": [target]})],
+			"templating": {"list": variables},
+		},
+	}
+}
+
+test_dashboard_v1_datasource_variable_language[tc.name] if {
+	some tc in _datasource_variable_language_cases
+	variable_type := {"DatasourceVariable": "datasource", "QueryVariable": "query"}[tc.kind]
+	resource := _test_v1_resource(tc.expr, tc.datasource, tc.group, [{"type": variable_type, "name": "logs", "query": tc.plugin}])
+
+	report := rule.report with input as resource
+	count(report) == tc.count
+}
+
 test_dashboard_v2_datasource_variable_language[tc.name] if {
-	some tc in [
-		{"name": "loki variable", "datasource": "$logs", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
-		{"name": "legacy loki variable", "datasource": "[[logs]]", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
-		{"name": "braced loki variable", "datasource": "${logs}", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": `sum(rate({job="example"} |= "warning" [5m]))`, "count": 0},
-		{"name": "prometheus variable", "datasource": "$logs", "group": "loki", "kind": "DatasourceVariable", "plugin": "prometheus", "expr": "invalid promql", "count": 1},
-		{"name": "valid prometheus variable", "datasource": "$logs", "group": "loki", "kind": "DatasourceVariable", "plugin": "prometheus", "expr": "up", "count": 0},
-		{"name": "direct datasource", "datasource": "example-prometheus", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": "invalid promql", "count": 1},
-		{"name": "unknown variable", "datasource": "$other", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "loki", "expr": "invalid promql", "count": 1},
-		{"name": "other variable kind", "datasource": "$logs", "group": "prometheus", "kind": "QueryVariable", "plugin": "loki", "expr": "invalid promql", "count": 1},
-		{"name": "empty plugin", "datasource": "$logs", "group": "prometheus", "kind": "DatasourceVariable", "plugin": "", "expr": "invalid promql", "count": 1},
-	]
+	some tc in _datasource_variable_language_cases
 	resource := _test_v2_resource(tc.expr, tc.datasource, tc.group, [{"kind": tc.kind, "spec": {"name": "logs", "pluginId": tc.plugin}}])
 	report := rule.report with input as resource
 	count(report) == tc.count
