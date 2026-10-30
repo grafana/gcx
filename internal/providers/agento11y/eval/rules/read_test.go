@@ -87,3 +87,45 @@ actions:
 	assert.Equal(t, "all_evaluators_fail", (*def.Actions)[0].Condition.Kind)
 	assert.Equal(t, []string{"needs-review", "regression"}, (*def.Actions)[0].ActionConfig.CollectionIDs)
 }
+
+func Test_readRuleFile_ExecutionModeAndFilterableTagKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		content string
+	}{
+		{
+			name: "yaml",
+			file: "rule.yaml",
+			content: `rule_id: gated_quality
+enabled: true
+selector: user_visible_turn
+sample_rate: 1.0
+evaluator_ids:
+  - cheap_gate
+  - quality_judge
+execution_mode: sequential
+filterable_tag_keys:
+  - environment
+  - team
+`,
+		},
+		{
+			name:    "json",
+			file:    "rule.json",
+			content: `{"rule_id":"gated_quality","enabled":true,"selector":"user_visible_turn","sample_rate":1,"evaluator_ids":["cheap_gate","quality_judge"],"execution_mode":"sequential","filterable_tag_keys":["environment","team"]}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tc.file)
+			require.NoError(t, os.WriteFile(path, []byte(tc.content), 0o600))
+
+			def, err := rules.ReadRuleFile(path, nil)
+			require.NoError(t, err)
+			assert.Equal(t, "sequential", def.ExecutionMode)
+			assert.Equal(t, []string{"environment", "team"}, def.FilterableTagKeys)
+		})
+	}
+}
