@@ -274,6 +274,9 @@ func TestIncidentDeleteMutationPolicy(t *testing.T) {
 		err := reg.CheckMutation("delete")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "delete is not supported")
+		var unsupported *resources.UnsupportedResourceError
+		require.ErrorAs(t, err, &unsupported)
+		assert.Equal(t, "incidents", unsupported.Selector)
 		require.NoError(t, reg.CheckMutation("create"))
 		require.NoError(t, reg.CheckMutation("update"))
 		return

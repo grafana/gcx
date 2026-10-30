@@ -1,8 +1,7 @@
 package irm
 
 import (
-	"errors"
-
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
@@ -24,7 +23,7 @@ func buildIncidentRegistrations(loader *configLoader) []adapter.Registration {
 			Example:    IncidentExample(),
 			CheckMutation: func(operation string) error {
 				if operation == "delete" {
-					return errors.New("incidents: delete is not supported by the IRM API")
+					return &resources.UnsupportedResourceError{Selector: "incidents", Reason: "delete is not supported by the IRM API"}
 				}
 				return nil
 			},
