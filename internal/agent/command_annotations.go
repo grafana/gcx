@@ -405,6 +405,18 @@ var commandAnnotations = map[string]annotation{
 	"gcx logs adaptive segments list":     {Cost: "small"},
 	"gcx logs adaptive segments update":   {Cost: "small"},
 
+	// Logs archive
+	"gcx logs archive destinations create": {Cost: "small"},
+	"gcx logs archive destinations delete": {Cost: "small"},
+	"gcx logs archive destinations get":    {Cost: "small"},
+	"gcx logs archive destinations list":   {Cost: "small", Hint: "Docs: " + docs.AdaptiveLogsArchive},
+	"gcx logs archive principal get":       {Cost: "small"},
+	"gcx logs archive streams create":      {Cost: "small"},
+	"gcx logs archive streams delete":      {Cost: "small"},
+	"gcx logs archive streams get":         {Cost: "small"},
+	"gcx logs archive streams list":        {Cost: "small"},
+	"gcx logs archive streams update":      {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// Metrics provider
 	// -----------------------------------------------------------------------

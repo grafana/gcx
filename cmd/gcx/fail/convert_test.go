@@ -451,28 +451,37 @@ func TestErrorToDetailedError_GenericServiceAPIAuthFailure(t *testing.T) {
 }
 
 func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
-	for _, status := range []int{401, 403} {
-		t.Run(strconv.Itoa(status), func(t *testing.T) {
-			got := toDetailedError(t, fmt.Errorf("adaptive-logs: list exemptions: %w", fakeServiceAPIError{
-				statusCode: status,
-				service:    "Adaptive Logs",
-				message:    "authentication error: invalid scope requested",
-			}))
+	services := []struct {
+		name    string
+		context string
+	}{
+		{"Adaptive Logs", "adaptive-logs: list exemptions"},
+		{"Logs Archive", "failed to list archive destinations"},
+	}
+	for _, svc := range services {
+		for _, status := range []int{401, 403} {
+			t.Run(svc.name+" "+strconv.Itoa(status), func(t *testing.T) {
+				got := toDetailedError(t, fmt.Errorf("%s: %w", svc.context, fakeServiceAPIError{
+					statusCode: status,
+					service:    svc.name,
+					message:    "authentication error: invalid scope requested",
+				}))
 
-			require.NotNil(t, got)
-			assert.Equal(t, "Authorization failed", got.Summary, "a scope error is a permission problem regardless of status")
-			assert.Contains(t, got.Details, fmt.Sprintf("Adaptive Logs API request failed (HTTP %d)", status))
-			assert.Contains(t, got.Details, "adaptive-logs: list exemptions")
-			assert.Contains(t, got.Details, "invalid scope requested")
-			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			require.Len(t, got.Suggestions, 1)
-			assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
+				require.NotNil(t, got)
+				assert.Equal(t, "Authorization failed", got.Summary, "a scope error is a permission problem regardless of status")
+				assert.Contains(t, got.Details, fmt.Sprintf("%s API request failed (HTTP %d)", svc.name, status))
+				assert.Contains(t, got.Details, svc.context)
+				assert.Contains(t, got.Details, "invalid scope requested")
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+				require.Len(t, got.Suggestions, 1)
+				assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
 
-			var rendered bytes.Buffer
-			require.NoError(t, got.WriteJSON(&rendered, *got.ExitCode))
-			assert.Contains(t, rendered.String(), "invalid scope requested", "agents keep the server message")
-		})
+				var rendered bytes.Buffer
+				require.NoError(t, got.WriteJSON(&rendered, *got.ExitCode))
+				assert.Contains(t, rendered.String(), "invalid scope requested", "agents keep the server message")
+			})
+		}
 	}
 }
 

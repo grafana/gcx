@@ -834,7 +834,7 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// traces/metrics) because the logs client returns a typed APIError that this converter
 	// catches before convertCloudConfigErrors runs.
 	_, htmlScopeResponse := htmlResponseDetails(apiErr.APIUserMessage(), "", apiErr.HTTPStatusCode())
-	if !htmlScopeResponse && apiErr.APIServiceName() == "Adaptive Logs" &&
+	if !htmlScopeResponse && isAdaptiveLogsScopedService(apiErr.APIServiceName()) &&
 		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
 		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
 		return &gcxerrors.DetailedError{
@@ -858,6 +858,10 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return detailedErr, true
+}
+
+func isAdaptiveLogsScopedService(service string) bool {
+	return service == "Adaptive Logs" || service == "Logs Archive"
 }
 
 func serviceAPIErrorSummary(apiErr serviceAPIError) string {

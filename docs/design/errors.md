@@ -245,7 +245,7 @@ not in the summary.
 | `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
 | `Keychain unavailable` | The OS keychain cannot be reached, so gcx cannot store or use the credential without an explicit plaintext-storage opt-out |
 | `OS credential store access is restricted` | The credential store is available, but the current execution session cannot write to it |
-| `Authorization failed` | The credential was accepted but lacks permission: HTTP 403, access-policy scope errors (Adaptive Logs `invalid scope` regardless of 401/403), and a provider's permission denial tunneled through a non-403 datasource response (BigQuery returns googleapi `accessDenied` inside an HTTP 400). Suggestions point at roles, access-policy scopes, or `gcx setup status`, not `gcx login`; for a tunneled denial they point at the datasource's own credential, not the Grafana one |
+| `Authorization failed` | The credential was accepted but lacks permission: HTTP 403, access-policy scope errors (Adaptive Logs and Logs Archive `invalid scope` regardless of 401/403), and a provider's permission denial tunneled through a non-403 datasource response (BigQuery returns googleapi `accessDenied` inside an HTTP 400). Suggestions point at roles, access-policy scopes, or `gcx setup status`, not `gcx login`; for a tunneled denial they point at the datasource's own credential, not the Grafana one |
 | `Resource not found` | 404 or client-side not-found detection |
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s, including delete protection) |
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
@@ -253,7 +253,7 @@ not in the summary.
 | `Unsupported Grafana version` | The Grafana server is older than gcx supports (exit code 6) |
 | `Partial failure` | Some batch operations failed, or a mutation saved a write before a later stage failed (exit code 4); preserve counts or saved identity in details |
 | `Network error` | Connection refused, DNS failure, server unreachable, timeouts |
-| `API error` | Non-404/403 HTTP error from backend |
+| `API error` | Non-404/403 HTTP error from backend, or a failed Logs Archive bucket check (HTTP 403 with field errors), where the customer's bucket refused Grafana's principal |
 | `Endpoint not available` | The requested API route, resource type, or API version is absent on this deployment (e.g. an experimental or Cloud-only endpoint, or no Kubernetes-style `/apis`), as opposed to a missing resource instance |
 | `Operation cancelled` | The user cancelled (exit code 5): Ctrl-C or another context cancellation, or Cancel on a browser login's consent page |
 | `File not found` | A local file or directory does not exist |
