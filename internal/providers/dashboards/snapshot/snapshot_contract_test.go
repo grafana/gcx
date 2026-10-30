@@ -553,7 +553,7 @@ func TestSnapshot_InvalidPNGDoesNotWriteArtifact(t *testing.T) {
 	defer server.Close()
 	outputDir := t.TempDir()
 	_, _, err := runSnapshotCmd(t, server, []string{"sample-dashboard", "--output-dir", outputDir})
-	if err == nil || !strings.Contains(err.Error(), "failed to read rendered PNG dimensions") {
+	if err == nil || !strings.Contains(err.Error(), "failed to read PNG dimensions from render response") {
 		t.Fatalf("Execute() = %v, want PNG dimensions error", err)
 	}
 	entries, err := os.ReadDir(outputDir)

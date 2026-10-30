@@ -281,7 +281,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 
 					imageConfig, err := png.DecodeConfig(bytes.NewReader(pngBytes))
 					if err != nil {
-						errs[i] = fmt.Errorf("failed to read rendered PNG dimensions for %q: %w", name, err)
+						errs[i] = fmt.Errorf("failed to read PNG dimensions from render response for %q: %w", name, err)
 						return nil
 					}
 
