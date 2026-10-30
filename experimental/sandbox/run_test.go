@@ -296,7 +296,9 @@ func TestRun(t *testing.T) {
 	})
 }
 
-// TestDocsSearchHostTransport guards against guest HTTP setup logging errors for successful host requests.
+// TestDocsSearchHostTransport uses docs search because its index dependency uses
+// http.DefaultTransport. Non-agent mode suppresses advisory JSON hints so the
+// empty-stderr assertion detects unexpected guest HTTP setup diagnostics.
 func TestDocsSearchHostTransport(t *testing.T) {
 	srv := newFakeGrafana(t, "docs")
 	rt := newRuntime(t, sandbox.Config{Transport: multiTransport(srv)})
