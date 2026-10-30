@@ -740,8 +740,8 @@ func TestClient_PprofInvalidResponse(t *testing.T) {
 		body    []byte
 		wantErr string
 	}{
-		{name: "missing pprof wrapper", wantErr: "pprof response missing field 5"},
-		{name: "missing profile wrapper", body: []byte{0x2a, 0x00}, wantErr: "pprof response missing field 1"},
+		{name: "missing pprof wrapper", wantErr: "pprof response missing PprofProfile; backend may not support PROFILE_FORMAT_PPROF"},
+		{name: "empty pprof profile message", body: []byte{0x2a, 0x00}, wantErr: "pprof response contains an empty PprofProfile: missing profile data"},
 		{name: "malformed outer tag", body: []byte{0x80}, wantErr: "invalid pprof response"},
 		{name: "truncated pprof wrapper", body: []byte{0x2a, 0x02, 0x0a}, wantErr: "invalid pprof response"},
 		{name: "malformed inner tag", body: []byte{0x2a, 0x01, 0x80}, wantErr: "invalid pprof response"},
@@ -758,6 +758,9 @@ func TestClient_PprofInvalidResponse(t *testing.T) {
 
 			got, err := newTestClient(t, server).Query(context.Background(), "test-uid", pyroscope.QueryRequest{Format: pyroscope.ProfileFormatPprof})
 			require.ErrorContains(t, err, tt.wantErr)
+			if tt.name == "empty pprof profile message" {
+				assert.NotContains(t, err.Error(), "backend may not support")
+			}
 			assert.Nil(t, got)
 		})
 	}

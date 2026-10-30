@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -692,7 +693,10 @@ func pprofMessageField(data []byte, field protowire.Number) ([]byte, error) {
 		}
 		data = data[n:]
 	}
-	return nil, fmt.Errorf("pprof response missing field %d; backend may not support PROFILE_FORMAT_PPROF", field)
+	if field == 5 {
+		return nil, errors.New("pprof response missing PprofProfile; backend may not support PROFILE_FORMAT_PPROF")
+	}
+	return nil, errors.New("pprof response contains an empty PprofProfile: missing profile data")
 }
 
 func (c *Client) buildResourcePath(datasourceUID, resourcePath string) string {
