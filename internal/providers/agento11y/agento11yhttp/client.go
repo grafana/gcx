@@ -281,6 +281,7 @@ func Truncate(s string, maxLen int) string {
 }
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
+// A missing-plugin 404 returns *PluginUnavailableError wrapping the status error.
 func HandleErrorResponse(resp *http.Response) error {
 	err := providers.HandleErrorResponse(resp)
 	var statusErr *gcxerrors.HTTPStatusError
