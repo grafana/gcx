@@ -15,5 +15,6 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		loki.LabelsCmd,
 		loki.SeriesCmd,
 		loki.QueryPatternsCmd,
+		loki.StatsCmd,
 	))
 }

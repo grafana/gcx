@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/style"
@@ -214,6 +215,13 @@ func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 		t.Row(p.Pattern, strconv.FormatInt(p.TotalCount, 10))
 	}
 	return t.Render(w)
+}
+
+// FormatIndexStatsTable prints a single "<size> would be scanned" line —
+// Bytes is the only field this command's result cares about.
+func FormatIndexStatsTable(w io.Writer, resp *IndexStatsResponse) error {
+	_, err := fmt.Fprintln(w, humanize.IBytes(resp.Bytes)+" would be scanned")
+	return err
 }
 
 // FormatMetricQueryTable formats a MetricQueryResponse as a table with TIMESTAMP, VALUE, and label columns.

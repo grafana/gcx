@@ -36,6 +36,23 @@ func TestFormatPatternsTable_RendersSummarizedPatterns(t *testing.T) {
 	assert.Equal(t, []string{"rare", "pattern", "2"}, strings.Fields(rows[3]))
 }
 
+func TestFormatIndexStatsTable(t *testing.T) {
+	resp := &loki.IndexStatsResponse{
+		Streams: 12,
+		Chunks:  345,
+		Bytes:   6 * 1024 * 1024 * 1024,
+		Entries: 98765,
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatIndexStatsTable(&buf, resp))
+
+	out := buf.String()
+	assert.NotContains(t, out, "⚠")
+	assert.Contains(t, out, "6.0 GiB would be scanned")
+	assert.NotContains(t, out, "Streams")
+}
+
 func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{
