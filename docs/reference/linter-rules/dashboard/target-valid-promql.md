@@ -2,4 +2,8 @@
 
 Checks that each Prometheus target on each panel uses a valid PromQL query.
 
-Does not execute against non-Prometheus queries.
+For v2 dashboards, a query whose datasource references a `DatasourceVariable`
+uses that variable's `pluginId` to select the query language. This takes precedence
+over saved query group metadata. Other queries use their saved group.
+Non-Prometheus queries are skipped. Violations include the panel identifier and
+query reference ID in their details.

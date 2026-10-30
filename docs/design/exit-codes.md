@@ -14,7 +14,7 @@
 | 1 | `ExitGeneralError` | General error | Unexpected error, business logic failure |
 | 2 | `ExitUsageError` | Usage error | Invalid selectors, unknown commands, bad flags or positional arguments, missing required flags |
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
-| 4 | `ExitPartialFailure` | Partial failure | Some resources or mutation stages succeeded, others failed |
+| 4 | `ExitPartialFailure` | Partial failure | Some resources or mutation stages succeeded, others failed; lint reported violations |
 | 5 | `ExitCancelled` | Cancelled | Ctrl+C (SIGINT), `context.Canceled`, explicit confirmation cancellation (see § 2.4 for legacy exceptions), or server-reported cancellation |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
@@ -46,7 +46,8 @@ example scenario for each code. The topic is generated from the ordered
 - Exit code 4 (partial failure) is set by `convertPartialFailureErrors` when
   push, pull, delete, or validate operations have mixed success/failure results.
   Commands return a `PartialFailureError` when `--on-error=fail` (default) and
-  `FailedCount > 0`. It also covers a single Watcher whose definition was saved
+  `FailedCount > 0`. Lint reports containing violations also exit 4.
+  It also covers a single Watcher whose definition was saved
   but enrollment or readback failed. Dedicated commands emit its saved identity
   and stage outcomes before returning an `EmittedError` with exit 4.
 - Exit code 5 (cancelled) has several producers, and the taxonomy is about the
