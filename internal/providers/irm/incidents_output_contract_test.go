@@ -289,6 +289,21 @@ func TestIncidentsCreateOutputContract(t *testing.T) {
 	}
 }
 
+func TestIncidentsCreateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
+	setAgentModeExt(t, false)
+	server := incidentAPIServer(t, nil)
+	manifest := strings.Replace(createManifest, "  status: active", "  status: active\n  description: Important details", 1)
+	stdout, stderr, err := runIncidentCmd(t, func() *cobra.Command {
+		return irm.NewCreateCommand(incidentLoader(server))
+	}, manifest, "-f", "-")
+	if err == nil || !strings.Contains(err.Error(), "spec.description is not supported by gcx incident create") {
+		t.Fatalf("expected unsupported description error, got %v", err)
+	}
+	if stdout != "" || strings.Contains(stderr, "Created incident") {
+		t.Fatalf("create reported success: stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
 // TestIncidentsListEmptyEncodesEmptyArray pins that an empty incident list
 // encodes as [] (never null) for structured formats.
 func TestIncidentsListEmptyEncodesEmptyArray(t *testing.T) {

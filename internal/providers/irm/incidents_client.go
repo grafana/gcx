@@ -412,6 +412,10 @@ func (c *IncidentClient) Get(ctx context.Context, id string) (*Incident, error) 
 // label, not the identifier. The label resolves before the create call,
 // because the IRM API cannot delete an incident that a later step abandons.
 func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, error) {
+	if inc.Description != "" {
+		return nil, errors.New("incidents: create: spec.description is not supported by gcx incident create; remove it from the manifest before creating the incident")
+	}
+
 	label, err := c.resolveSeverityLabel(ctx, inc)
 	if err != nil {
 		return nil, err
