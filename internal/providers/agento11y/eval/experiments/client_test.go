@@ -758,7 +758,7 @@ func TestClient_GetReport_TransportError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestClient_GetFacets(t *testing.T) {
+func TestClient_ListFilterValues(t *testing.T) {
 	tests := []struct {
 		name   string
 		filter experiments.FacetsFilter
@@ -786,7 +786,7 @@ func TestClient_GetFacets(t *testing.T) {
 				writeJSON(w, map[string]any{"owners": []string{"alice"}, "suites": []string{"suite-1", "suite-2"}, "tags": []string{"nightly"}})
 			}))
 
-			facets, err := client.GetFacets(context.Background(), tt.filter)
+			facets, err := client.ListFilterValues(context.Background(), tt.filter)
 			require.NoError(t, err)
 			assert.Equal(t, []string{"alice"}, facets.Owners)
 			assert.Equal(t, []string{"suite-1", "suite-2"}, facets.Suites)
@@ -795,11 +795,24 @@ func TestClient_GetFacets(t *testing.T) {
 	}
 }
 
-func TestClient_GetFacets_BadRequest(t *testing.T) {
+func TestClient_ListFilterValues_EmptyResultEncodesEmptyLists(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, map[string]any{"owners": nil})
+	}))
+
+	facets, err := client.ListFilterValues(context.Background(), experiments.FacetsFilter{})
+	require.NoError(t, err)
+	encoded, err := json.Marshal(facets)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"owners":[],"suites":[],"tags":[]}`, string(encoded))
+}
+
+func TestClient_ListFilterValues_BadRequest(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "invalid source", http.StatusBadRequest)
 	}))
 
-	_, err := client.GetFacets(context.Background(), experiments.FacetsFilter{Source: "bogus"})
+	_, err := client.ListFilterValues(context.Background(), experiments.FacetsFilter{Source: "bogus"})
 	require.ErrorContains(t, err, "invalid source")
 }

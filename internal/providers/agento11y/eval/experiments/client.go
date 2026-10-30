@@ -265,8 +265,8 @@ type FacetsFilter struct {
 	To            string
 }
 
-// GetFacets returns the distinct owners, suites and tags across experiments.
-func (c *Client) GetFacets(ctx context.Context, filter FacetsFilter) (*ExperimentFacets, error) {
+// ListFilterValues returns the distinct owners, suites and tags across experiments.
+func (c *Client) ListFilterValues(ctx context.Context, filter FacetsFilter) (*ExperimentFacets, error) {
 	query := url.Values{}
 	for key, value := range map[string]string{"source": filter.Source, "execution_kind": filter.ExecutionKind, "from": filter.From, "to": filter.To} {
 		if value != "" {
@@ -280,6 +280,16 @@ func (c *Client) GetFacets(ctx context.Context, filter FacetsFilter) (*Experimen
 	facets, err := agento11yhttp.DoJSON[any, ExperimentFacets](ctx, c.base, http.MethodGet, path, nil, http.StatusOK)
 	if err != nil {
 		return nil, err
+	}
+	// Omitted or null lists (e.g. a tenant with no experiments) render as [] not null.
+	if facets.Owners == nil {
+		facets.Owners = []string{}
+	}
+	if facets.Suites == nil {
+		facets.Suites = []string{}
+	}
+	if facets.Tags == nil {
+		facets.Tags = []string{}
 	}
 	return &facets, nil
 }

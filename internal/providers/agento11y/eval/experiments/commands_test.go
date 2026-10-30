@@ -18,7 +18,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "get-facets", "list-trials", "pull", "test-suites", "trials"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-filter-values", "list-trials", "pull", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -520,17 +520,17 @@ func writeTempFile(t *testing.T, pattern, contents string) string {
 	return file.Name()
 }
 
-func TestGetFacetsCommand_RejectsInvalidFlags(t *testing.T) {
+func TestListFilterValuesCommand_RejectsInvalidFlags(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 		want string
 	}{
-		{name: "unexpected arg", args: []string{"get-facets", "extra"}, want: "unknown command"},
-		{name: "bad from", args: []string{"get-facets", "--from", "yesterday"}, want: "--from must be an RFC3339 timestamp"},
-		{name: "bad to", args: []string{"get-facets", "--to", "2026-10-01"}, want: "--to must be an RFC3339 timestamp"},
-		{name: "explicit empty source", args: []string{"get-facets", "--source", ""}, want: "--source cannot be empty"},
-		{name: "reversed range", args: []string{"get-facets", "--from", "2026-10-08T00:00:00Z", "--to", "2026-10-01T00:00:00Z"}, want: "--from must not be after --to"},
+		{name: "unexpected arg", args: []string{"list-filter-values", "extra"}, want: "unknown command"},
+		{name: "bad from", args: []string{"list-filter-values", "--from", "yesterday"}, want: "invalid --from"},
+		{name: "bad to", args: []string{"list-filter-values", "--to", "2026-10-01"}, want: "invalid --to"},
+		{name: "explicit empty source", args: []string{"list-filter-values", "--source", ""}, want: "--source cannot be empty"},
+		{name: "reversed range", args: []string{"list-filter-values", "--from", "2026-10-08T00:00:00Z", "--to", "2026-10-01T00:00:00Z"}, want: "--from must not be after --to"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

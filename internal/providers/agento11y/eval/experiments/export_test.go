@@ -863,3 +863,31 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 	require.NoError(t, err)
 	assert.Equal(t, want, info.Mode().Perm(), path)
 }
+
+func TestListFilterValuesCommand_NormalizesTimeBoundsOnTheWire(t *testing.T) {
+	var gotQuery map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != exportPluginPrefix+"/eval/experiment-facets" {
+			http.NotFound(w, r) // e.g. the loader's bootdata probe
+			return
+		}
+		gotQuery = map[string]string{}
+		for key := range r.URL.Query() {
+			gotQuery[key] = r.URL.Query().Get(key)
+		}
+		writeRawJSON(t, w, `{"owners":null}`)
+	}))
+	defer server.Close()
+
+	cmd := newListFilterValuesCommand(exportTestLoader(t, server.URL))
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetContext(context.Background())
+	cmd.SetArgs([]string{"--from", " 2026-10-01T02:00:00+02:00", "--to", "1791504000", "-o", "json"})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, map[string]string{"from": "2026-10-01T00:00:00Z", "to": "2026-10-09T00:00:00Z"}, gotQuery)
+	assert.JSONEq(t, `{"owners":[],"suites":[],"tags":[]}`, stdout.String())
+}
