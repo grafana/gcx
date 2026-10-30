@@ -33,6 +33,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newListCommand(loader),
 		newGetCommand(loader),
 		newSaveCommand(loader),
+		newManualCommand(loader),
 		newDeleteCommand(loader),
 		newCollectionsCommand(loader),
 	)
