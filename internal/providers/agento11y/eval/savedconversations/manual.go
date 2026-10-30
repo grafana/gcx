@@ -52,7 +52,7 @@ func (o *manualOpts) Validate() error {
 		return err
 	}
 	if o.File == "" {
-		return errors.New("--filename is required")
+		return errors.New("--filename is required (use - to read from stdin)")
 	}
 	return nil
 }

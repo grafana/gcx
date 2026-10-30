@@ -1,30 +1,16 @@
 package collections
 
 import (
-	"context"
 	"errors"
-	"net/http"
 	"strings"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
+	"github.com/grafana/gcx/internal/providers/agento11y/eval/reviewqueues"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// ReviewQueueRequest is the body of POST /eval/review-queues.
-type ReviewQueueRequest struct {
-	CollectionID       string   `json:"collection_id"`
-	RubricEvaluatorIDs []string `json:"rubric_evaluator_ids"`
-}
-
-// CreateReviewQueue marks an existing collection as a human review queue. The
-// queue document is returned untyped: it carries progress and item state that
-// gcx only relays.
-func (c *Client) CreateReviewQueue(ctx context.Context, request *ReviewQueueRequest) (map[string]any, error) {
-	return agento11yhttp.DoJSON[ReviewQueueRequest, map[string]any](ctx, c.base, http.MethodPost, "/eval/review-queues", request, http.StatusOK, http.StatusCreated)
-}
 
 type reviewQueueOpts struct {
 	IO      cmdio.Options
@@ -44,15 +30,7 @@ func (o *reviewQueueOpts) Validate(collectionID string) error {
 	if strings.TrimSpace(collectionID) == "" {
 		return errors.New("collection ID is required")
 	}
-	if len(o.Rubrics) == 0 {
-		return errors.New("at least one --rubric is required")
-	}
-	for _, rubric := range o.Rubrics {
-		if strings.TrimSpace(rubric) == "" {
-			return errors.New("--rubric cannot be blank")
-		}
-	}
-	return nil
+	return reviewqueues.ValidateRubrics(o.Rubrics)
 }
 
 func newReviewQueueCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -67,21 +45,22 @@ The command only creates the queue: it does not submit reviews or run judge infe
   gcx agento11y collections create-review-queue my-collection --rubric helpfulness-human -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(args[0]); err != nil {
+			collectionID := strings.TrimSpace(args[0])
+			if err := opts.Validate(collectionID); err != nil {
 				return err
 			}
 
-			client, err := newClient(cmd, loader)
+			base, err := agento11yhttp.NewClientFromCommand(cmd, loader)
 			if err != nil {
 				return err
 			}
 
-			result, err := client.CreateReviewQueue(cmd.Context(), &ReviewQueueRequest{CollectionID: args[0], RubricEvaluatorIDs: opts.Rubrics})
+			result, err := reviewqueues.NewClient(base).Create(cmd.Context(), &reviewqueues.RubricRequest{CollectionID: collectionID, RubricEvaluatorIDs: opts.Rubrics})
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Review queue created for collection %s", args[0])
+			cmdio.Success(cmd.ErrOrStderr(), "Review queue created for collection %s", collectionID)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}

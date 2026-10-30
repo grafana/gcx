@@ -627,7 +627,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y review-queues get":           {Cost: "medium", Hint: "<collection-id> [--conversation <conversation-id>] -o json"},
 	"gcx agento11y review-queues update":        {Cost: "small", Hint: "<collection-id> --rubric <human-evaluator-id> -o json"},
 	"gcx agento11y review-queues create-review": {Cost: "small", Hint: "<collection-id> -f review.yaml -o json"},
-	"gcx agento11y review-queues list-scores":   {Cost: "medium", Hint: "<collection-id> -o json"},
+	"gcx agento11y review-queues list-scores":   {Cost: "medium", Hint: "<collection-id> --limit 100 -o json"},
 
 	"gcx agento11y experiments list":        {Cost: "small"},
 	"gcx agento11y experiments get":         {Cost: "small"},

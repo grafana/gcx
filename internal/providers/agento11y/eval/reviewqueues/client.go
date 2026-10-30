@@ -13,6 +13,7 @@ import (
 	"slices"
 
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 const basePath = "/eval/review-queues"
@@ -22,8 +23,17 @@ const truncatedHeader = "X-Review-Export-Truncated"
 
 // ErrNotFound is returned when the server answers 404 for a queue. The backend
 // also answers 404 for every review-queue route when human review is not
-// enabled for the tenant.
-var ErrNotFound = errors.New("review queue not found")
+// enabled for the tenant, so the message names both causes. It unwraps to
+// adapter.ErrNotFound so the CLI reports it as a missing resource.
+var ErrNotFound error = notFoundError{}
+
+type notFoundError struct{}
+
+func (notFoundError) Error() string {
+	return "review queue not found: the queue does not exist, or human review is disabled for this tenant"
+}
+
+func (notFoundError) Unwrap() error { return adapter.ErrNotFound }
 
 // Client is an HTTP client for the review queue endpoints.
 type Client struct {
@@ -37,6 +47,15 @@ func NewClient(base *agento11yhttp.Client) *Client {
 
 func queuePath(collectionID string) string {
 	return basePath + "/" + url.PathEscape(collectionID)
+}
+
+// Create marks an existing collection as a human review queue.
+func (c *Client) Create(ctx context.Context, request *RubricRequest) (*ReviewQueue, error) {
+	queue, err := agento11yhttp.DoJSON[RubricRequest, ReviewQueue](ctx, c.base, http.MethodPost, basePath, request, http.StatusOK, http.StatusCreated)
+	if err != nil {
+		return nil, err
+	}
+	return &queue, nil
 }
 
 // List returns every review queue with its progress and without items.
@@ -132,9 +151,6 @@ func decodeScoreRows(r io.Reader) ([]ScoreRow, error) {
 
 		var row ScoreRow
 		for i, name := range header {
-			if i >= len(record) {
-				break
-			}
 			switch name {
 			case "conversation_id":
 				row.ConversationID = record[i]

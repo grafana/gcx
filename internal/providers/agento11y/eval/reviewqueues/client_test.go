@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/reviewqueues"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -99,6 +100,17 @@ func TestClient_Requests(t *testing.T) {
 			},
 		},
 		{
+			name: "create", wantMethod: http.MethodPost, wantPath: "/eval/review-queues", status: http.StatusCreated,
+			wantBody: `{"collection_id":"col1","rubric_evaluator_ids":["a"]}`, response: queueDoc(),
+			call: func(c *reviewqueues.Client) error {
+				queue, err := c.Create(context.Background(), &reviewqueues.RubricRequest{CollectionID: "col1", RubricEvaluatorIDs: []string{"a"}})
+				if err == nil {
+					assert.Equal(t, 2, queue.Pending)
+				}
+				return err
+			},
+		},
+		{
 			name: "set rubric", wantMethod: http.MethodPut, wantPath: "/eval/review-queues/col1", status: http.StatusOK,
 			wantBody: `{"rubric_evaluator_ids":["a","b"]}`, response: queueDoc(),
 			call: func(c *reviewqueues.Client) error {
@@ -149,6 +161,9 @@ func TestClient_NotFound(t *testing.T) {
 
 	_, err := client.Get(context.Background(), "missing")
 	require.ErrorIs(t, err, reviewqueues.ErrNotFound)
+	require.ErrorIs(t, err, adapter.ErrNotFound, "must map to the resource-not-found summary")
+	assert.Contains(t, err.Error(), "does not exist")
+	assert.Contains(t, err.Error(), "human review is disabled")
 	_, err = client.GetConversation(context.Background(), "missing", "c")
 	require.ErrorIs(t, err, reviewqueues.ErrNotFound)
 	_, err = client.SetRubric(context.Background(), "missing", &reviewqueues.RubricRequest{})

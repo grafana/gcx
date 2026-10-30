@@ -63,7 +63,7 @@ func TestCommands_Validation(t *testing.T) {
 		{name: "get blank conversation", args: []string{"get", "col", "--conversation", " "}, want: "--conversation cannot be blank"},
 		{name: "update needs a rubric", args: []string{"update", "col"}, want: "at least one --rubric"},
 		{name: "update blank rubric", args: []string{"update", "col", "--rubric", " "}, want: "--rubric cannot be blank"},
-		{name: "create-review needs a file", args: []string{"create-review", "col"}, want: "--filename/-f is required"},
+		{name: "create-review needs a file", args: []string{"create-review", "col"}, want: "--filename is required"},
 		{name: "list-scores blank collection", args: []string{"list-scores", " "}, want: "collection ID is required"},
 		{name: "list rejects args", args: []string{"list", "extra"}, want: "unknown command"},
 	}
@@ -125,21 +125,81 @@ answers:
 	}
 }
 
-func TestListScores_WarnsWhenTruncated(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("X-Review-Export-Truncated", "true")
-		_, _ = io.WriteString(w, "conversation_id,value\nc1,4\n")
-	}))
-	t.Cleanup(srv.Close)
+func TestListScores_Envelope(t *testing.T) {
+	const csvBody = "conversation_id,value\nc1,4\nc2,5\nc3,3\n"
+	tests := []struct {
+		name       string
+		args       []string
+		backendCut bool
+		wantIDs    []string
+		wantMeta   map[string]any
+		wantStderr string
+		wantNoMeta bool
+	}{
+		{name: "complete", wantIDs: []string{"c1", "c2", "c3"}, wantNoMeta: true},
+		{
+			name: "backend row cap rides in the payload", backendCut: true, wantIDs: []string{"c1", "c2", "c3"},
+			wantMeta:   map[string]any{"truncated": true, "returned": 3.0, "cap": 3.0},
+			wantStderr: "truncated by the backend row cap",
+		},
+		{
+			name: "limit trims a complete export", args: []string{"--limit", "2"}, wantIDs: []string{"c1", "c2"},
+			wantMeta: map[string]any{"truncated": true, "returned": 2.0, "total": 3.0},
+		},
+		{
+			name: "limit under a backend cap leaves the total unknown", args: []string{"--limit", "2"}, backendCut: true, wantIDs: []string{"c1", "c2"},
+			wantMeta:   map[string]any{"truncated": true, "returned": 2.0},
+			wantStderr: "truncated by the backend row cap",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+				if tt.backendCut {
+					w.Header().Set("X-Review-Export-Truncated", "true")
+				}
+				_, _ = io.WriteString(w, csvBody)
+			}))
+			t.Cleanup(srv.Close)
 
-	stdout, stderr, err := runCommand(t, srv, "", "list-scores", "col", "-o", "json")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stderr, "truncated")
-	var rows []reviewqueues.ScoreRow
-	require.NoError(t, json.Unmarshal([]byte(stdout), &rows))
-	require.Len(t, rows, 1)
-	assert.Equal(t, "c1", rows[0].ConversationID)
+			args := append([]string{"list-scores", "col", "-o", "json"}, tt.args...)
+			stdout, stderr, err := runCommand(t, srv, "", args...)
+			require.NoError(t, err, "stderr: %s", stderr)
+
+			var got struct {
+				Items    []reviewqueues.ScoreRow `json:"items"`
+				ListMeta map[string]any          `json:"list_meta"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(stdout), &got), "stdout must be an items envelope: %s", stdout)
+			ids := make([]string, 0, len(got.Items))
+			for _, row := range got.Items {
+				ids = append(ids, row.ConversationID)
+			}
+			assert.Equal(t, tt.wantIDs, ids)
+			if tt.wantNoMeta {
+				assert.Nil(t, got.ListMeta)
+			} else {
+				for k, v := range tt.wantMeta {
+					assert.Equal(t, v, got.ListMeta[k], k)
+				}
+				if tt.backendCut {
+					assert.NotContains(t, got.ListMeta, "total", "total must stay unknown when the backend cut the export")
+				}
+			}
+			if tt.wantStderr != "" {
+				assert.Contains(t, stderr, tt.wantStderr)
+			}
+		})
+	}
+}
+
+func TestListScores_RejectsNegativeLimit(t *testing.T) {
+	cmd := reviewqueues.Commands(nil)
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	cmd.SetArgs([]string{"list-scores", "col", "--limit", "-1"})
+	require.ErrorContains(t, cmd.Execute(), "--limit must be 0 or greater")
 }
 
 func TestGet_ConversationQualifierChangesEndpoint(t *testing.T) {
@@ -211,7 +271,13 @@ func TestProgressWarnings(t *testing.T) {
 		{name: "list truncated", args: []string{"list"}, respond: func() any { return map[string]any{"items": []any{queue(true)}} }, wantWarn: true},
 		{name: "get truncated", args: []string{"get", "col/1"}, respond: func() any { return queue(true) }, wantWarn: true, wantField: true},
 		{name: "get complete", args: []string{"get", "col/1"}, respond: func() any { return queue(false) }},
-		{name: "get conversation truncated", args: []string{"get", "col/1", "--conversation", "conv-1"}, respond: func() any { return queue(true) }, wantWarn: true, wantField: true},
+		{name: "get conversation truncated", args: []string{"get", "col/1", "--conversation", "conv-1"}, respond: func() any {
+			view := queue(true)
+			view["member"] = true
+			view["position"] = 2
+			view["item"] = map[string]any{"conversation_id": "conv-1", "reviewed": true, "reviewers": []string{"alice"}}
+			return view
+		}, wantWarn: true, wantField: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

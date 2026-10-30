@@ -67,8 +67,10 @@ type ConversationView struct {
 	Item                 Item                         `json:"item"`
 }
 
-// RubricRequest is the body of PUT /eval/review-queues/{collection_id}.
+// RubricRequest is the body of PUT /eval/review-queues/{collection_id}, and of
+// POST /eval/review-queues when CollectionID names the collection to convert.
 type RubricRequest struct {
+	CollectionID       string   `json:"collection_id,omitempty"`
 	RubricEvaluatorIDs []string `json:"rubric_evaluator_ids"`
 }
 

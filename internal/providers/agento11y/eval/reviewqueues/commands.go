@@ -127,8 +127,9 @@ With --conversation the command returns a different, smaller document instead: t
   gcx agento11y review-queues get my-collection --conversation conv-1 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			collectionID := strings.TrimSpace(args[0])
 			conversationSet := cmd.Flags().Changed("conversation")
-			if err := opts.Validate(args[0], conversationSet); err != nil {
+			if err := opts.Validate(collectionID, conversationSet); err != nil {
 				return err
 			}
 
@@ -138,22 +139,22 @@ With --conversation the command returns a different, smaller document instead: t
 			}
 
 			if conversationSet {
-				view, err := client.GetConversation(cmd.Context(), args[0], opts.Conversation)
+				view, err := client.GetConversation(cmd.Context(), collectionID, opts.Conversation)
 				if err != nil {
 					return err
 				}
 				if view.Truncated {
-					warnPartial(cmd.ErrOrStderr(), args[0], view.Total)
+					warnPartial(cmd.ErrOrStderr(), collectionID, view.Total)
 				}
 				return opts.IO.Encode(cmd.OutOrStdout(), view)
 			}
 
-			queue, err := client.Get(cmd.Context(), args[0])
+			queue, err := client.Get(cmd.Context(), collectionID)
 			if err != nil {
 				return err
 			}
 			if queue.Truncated {
-				warnPartial(cmd.ErrOrStderr(), args[0], queue.Total)
+				warnPartial(cmd.ErrOrStderr(), collectionID, queue.Total)
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), queue)
 		},
@@ -197,10 +198,16 @@ func (o *updateOpts) Validate(collectionID string) error {
 	if strings.TrimSpace(collectionID) == "" {
 		return errors.New("collection ID is required")
 	}
-	if len(o.Rubrics) == 0 {
+	return ValidateRubrics(o.Rubrics)
+}
+
+// ValidateRubrics checks the --rubric values shared by the commands that
+// set a queue's rubric.
+func ValidateRubrics(rubrics []string) error {
+	if len(rubrics) == 0 {
 		return errors.New("at least one --rubric is required")
 	}
-	for _, rubric := range o.Rubrics {
+	for _, rubric := range rubrics {
 		if strings.TrimSpace(rubric) == "" {
 			return errors.New("--rubric cannot be blank")
 		}
@@ -220,7 +227,8 @@ The --rubric list replaces the whole rubric, it is not merged with the current o
   gcx agento11y review-queues update my-collection --rubric helpfulness-human -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(args[0]); err != nil {
+			collectionID := strings.TrimSpace(args[0])
+			if err := opts.Validate(collectionID); err != nil {
 				return err
 			}
 
@@ -229,12 +237,12 @@ The --rubric list replaces the whole rubric, it is not merged with the current o
 				return err
 			}
 
-			queue, err := client.SetRubric(cmd.Context(), args[0], &RubricRequest{RubricEvaluatorIDs: opts.Rubrics})
+			queue, err := client.SetRubric(cmd.Context(), collectionID, &RubricRequest{RubricEvaluatorIDs: opts.Rubrics})
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Review queue %s rubric updated", args[0])
+			cmdio.Success(cmd.ErrOrStderr(), "Review queue %s rubric updated", collectionID)
 			return opts.IO.Encode(cmd.OutOrStdout(), queue)
 		},
 	}
@@ -263,7 +271,7 @@ func (o *createReviewOpts) Validate(collectionID string) error {
 		return errors.New("collection ID is required")
 	}
 	if o.File == "" {
-		return errors.New("--filename/-f is required")
+		return errors.New("--filename is required (use - to read from stdin)")
 	}
 	return nil
 }
@@ -310,7 +318,8 @@ Submitting records scores attributed to the calling user and is not idempotent: 
   gcx agento11y review-queues create-review my-collection -f review.yaml -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(args[0]); err != nil {
+			collectionID := strings.TrimSpace(args[0])
+			if err := opts.Validate(collectionID); err != nil {
 				return err
 			}
 
@@ -324,12 +333,12 @@ Submitting records scores attributed to the calling user and is not idempotent: 
 				return err
 			}
 
-			result, err := client.SubmitReview(cmd.Context(), args[0], request)
+			result, err := client.SubmitReview(cmd.Context(), collectionID, request)
 			if err != nil {
 				return err
 			}
 
-			cmdio.Success(cmd.ErrOrStderr(), "Review of %s submitted to %s", request.ConversationID, args[0])
+			cmdio.Success(cmd.ErrOrStderr(), "Review of %s submitted to %s", request.ConversationID, collectionID)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -339,14 +348,31 @@ Submitting records scores attributed to the calling user and is not idempotent: 
 
 // --- list-scores ---
 
+// scoresEnvelope wraps the exported answers in the list envelope so stdout is
+// `{"items": [...]}` and the backend's row cap can ride in-band in list_meta
+// (output.md §15.2). The table/wide codec reads the items.
+type scoresEnvelope struct {
+	Items    []ScoreRow      `json:"items" yaml:"items"`
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
 type listScoresOpts struct {
-	IO cmdio.Options
+	IO    cmdio.Options
+	Limit int
 }
 
 func (o *listScoresOpts) setup(flags *pflag.FlagSet) {
-	cmdio.RegisterTable(&o.IO, ScoresTable())
+	table := cmdio.TableAdapter[scoresEnvelope, ScoreRow]{
+		Table: ScoresTable(),
+		Rows:  func(result scoresEnvelope) ([]ScoreRow, error) { return result.Items, nil },
+	}
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
+	// The backend caps the export, so the standard "0 means all" binder does
+	// not apply; disclose the cap in the help instead.
+	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of answers to return. 0 returns every answer the backend exports, up to its row cap")
 }
 
 func (o *listScoresOpts) Validate(collectionID string) error {
@@ -356,7 +382,25 @@ func (o *listScoresOpts) Validate(collectionID string) error {
 	if strings.TrimSpace(collectionID) == "" {
 		return errors.New("collection ID is required")
 	}
+	if o.Limit < 0 {
+		return errors.New("--limit must be 0 or greater")
+	}
 	return nil
+}
+
+// exportPage applies --limit to an export and builds its truncation metadata.
+// A limit that drops rows leaves the total unknown when the backend also
+// stopped at its row cap; a backend cap that no limit is binding records the
+// number of rows the backend returned as the cap, which --limit cannot raise.
+func exportPage(rows []ScoreRow, limit int, backendTruncated bool) ([]ScoreRow, *cmdio.ListMeta) {
+	page, meta := cmdio.TruncateCompleteList(rows, limit)
+	switch {
+	case meta != nil && backendTruncated:
+		meta.Total = nil
+	case meta == nil && backendTruncated:
+		meta = &cmdio.ListMeta{Truncated: true, Returned: len(page), Cap: len(page)}
+	}
+	return page, meta
 }
 
 func newListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -366,12 +410,16 @@ func newListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List every answer given in a review queue.",
 		Long: `List every answer given in a review queue, read from the backend's scores.csv export.
 
-Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend; when it is cut short the command says so on stderr. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.`,
+Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend: when it is cut short, list_meta.cap in the payload (and a warning on stderr) says so, and --limit cannot reach past it. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.`,
 		Example: `  # Export a queue's answers as JSON.
-  gcx agento11y review-queues list-scores my-collection -o json`,
+  gcx agento11y review-queues list-scores my-collection -o json
+
+  # Only the first 20 answers.
+  gcx agento11y review-queues list-scores my-collection --limit 20 -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(args[0]); err != nil {
+			collectionID := strings.TrimSpace(args[0])
+			if err := opts.Validate(collectionID); err != nil {
 				return err
 			}
 
@@ -380,14 +428,21 @@ Cells are the export's text: a text cell that starts with =, +, - or @ carries a
 				return err
 			}
 
-			rows, truncated, err := client.ExportScores(cmd.Context(), args[0])
+			rows, backendTruncated, err := client.ExportScores(cmd.Context(), collectionID)
 			if err != nil {
 				return err
 			}
-			if truncated {
-				cmdio.Warning(cmd.ErrOrStderr(), "Export truncated by the backend row cap: %d answers shown, more exist", len(rows))
+			if backendTruncated {
+				cmdio.Warning(cmd.ErrOrStderr(), "Export truncated by the backend row cap: %d answers fetched, more exist", len(rows))
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), rows)
+
+			page, meta := exportPage(rows, opts.Limit, backendTruncated)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), scoresEnvelope{Items: page, ListMeta: meta}); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
