@@ -21,7 +21,10 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 		return t.Render(w)
 	}
 
-	samples := ExtractTopFunctions(resp.Flamegraph, 20)
+	samples, err := ExtractTopFunctions(resp.Flamegraph, 20)
+	if err != nil {
+		return err
+	}
 
 	for _, s := range samples {
 		t.Row(
@@ -136,9 +139,12 @@ func formatLabelSet(set Labels) string {
 }
 
 // ExtractTopFunctions extracts the top N functions by self time from a flame graph.
-func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
+func ExtractTopFunctions(fg *Flamegraph, limit int) ([]FunctionSample, error) {
 	if fg == nil || len(fg.Levels) == 0 {
-		return nil
+		return nil, nil
+	}
+	if fg.Total < 0 {
+		return nil, fmt.Errorf("invalid profile total")
 	}
 
 	// Build a map of function name -> aggregated stats
@@ -153,31 +159,41 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
 		children         []*node
 	}
 	var roots, previous []*node
-	for _, level := range fg.Levels {
+	for depth, level := range fg.Levels {
+		if len(level.Values)%4 != 0 {
+			return nil, fmt.Errorf("invalid profile level %d: expected four values per node", depth)
+		}
 		var current []*node
 		var end int64
 		parent := 0
 		for i := 0; i+3 < len(level.Values); i += 4 {
-			offset, offsetErr := parseInt64(level.Values[i])
-			total, totalErr := parseInt64(level.Values[i+1])
-			if offsetErr != nil || totalErr != nil {
-				continue
+			var values [4]int64
+			for j := range values {
+				v, err := parseInt64(level.Values[i+j])
+				if err != nil || v < 0 {
+					return nil, fmt.Errorf("invalid profile value at level %d node %d", depth, i/4)
+				}
+				values[j] = v
 			}
-			n := &node{start: end + offset, end: end + offset + total}
+			span, err := decodeProfileSpan(values[0], values[1], values[2], end, fg.Total)
+			if err != nil {
+				return nil, fmt.Errorf("level %d node %d: %w", depth, i/4, err)
+			}
+			if values[3] >= int64(len(fg.Names)) {
+				return nil, fmt.Errorf("invalid profile name index at level %d node %d", depth, i/4)
+			}
+			n := &node{start: span.start, end: span.end, self: span.self, name: fg.Names[values[3]]}
+			n.valid = n.name != "other"
 			end = n.end
-			nameIdx, nameErr := parseInt64(level.Values[i+3])
-			self, selfErr := parseInt64(level.Values[i+2])
-			if nameErr == nil && nameIdx >= 0 && nameIdx < int64(len(fg.Names)) && selfErr == nil {
-				n.name, n.self = fg.Names[nameIdx], self
-				n.valid = n.name != "other"
-			}
 			for parent < len(previous) && previous[parent].end <= n.start {
 				parent++
 			}
 			if parent < len(previous) && previous[parent].start <= n.start && n.end <= previous[parent].end {
 				previous[parent].children = append(previous[parent].children, n)
-			} else {
+			} else if depth == 0 {
 				roots = append(roots, n)
+			} else if n.end != n.start {
+				return nil, fmt.Errorf("profile node has no parent at level %d node %d", depth, i/4)
 			}
 			current = append(current, n)
 		}
@@ -231,7 +247,7 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
 		samples = samples[:limit]
 	}
 
-	return samples
+	return samples, nil
 }
 
 // FormatSeriesTable formats a SelectSeries response as a table with one row per data point.

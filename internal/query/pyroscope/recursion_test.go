@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractTopFunctionsRecursion(t *testing.T) {
@@ -50,7 +51,8 @@ func TestExtractTopFunctionsRecursion(t *testing.T) {
 				fg.Levels = append(fg.Levels, level)
 			}
 			got := make(map[string][2]int64)
-			samples := pyroscope.ExtractTopFunctions(fg, len(fg.Names))
+			samples, err := pyroscope.ExtractTopFunctions(fg, len(fg.Names))
+			require.NoError(t, err)
 			for i, s := range samples {
 				got[s.Name] = [2]int64{s.Self, s.Total}
 				assert.InDelta(t, float64(s.Self)/float64(fg.Total)*100, s.Percentage, 0.0001)
@@ -59,7 +61,9 @@ func TestExtractTopFunctionsRecursion(t *testing.T) {
 				}
 			}
 			assert.Equal(t, tt.want, got)
-			assert.Len(t, pyroscope.ExtractTopFunctions(fg, 1), 1)
+			limited, err := pyroscope.ExtractTopFunctions(fg, 1)
+			require.NoError(t, err)
+			assert.Len(t, limited, 1)
 		})
 	}
 }
