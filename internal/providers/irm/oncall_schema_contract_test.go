@@ -8,12 +8,13 @@ import (
 
 func TestOnCallSchemaContract(t *testing.T) {
 	want := map[string]struct {
-		fields   []string
-		required string
+		fields        []string
+		required      string
+		numericFields []string
 	}{
-		"Schedule": {fields: []string{"ical_url_overrides"}, required: "type"},
-		"Shift":    {fields: []string{"type", "frequency"}, required: "type"},
-		"Webhook":  {fields: []string{"trigger_type"}},
+		"Schedule": {fields: []string{"ical_url_overrides"}, required: "type", numericFields: []string{"type"}},
+		"Shift":    {fields: []string{"type", "frequency"}, required: "type", numericFields: []string{"type", "frequency"}},
+		"Webhook":  {fields: []string{"trigger_type"}, numericFields: []string{"trigger_type"}},
 	}
 	for _, registration := range buildOnCallRegistrations(&fakeLoader{}) {
 		contract, ok := want[registration.GVK.Kind]
@@ -47,43 +48,32 @@ func TestOnCallSchemaContract(t *testing.T) {
 				t.Errorf("%s schema does not require %s", registration.GVK.Kind, contract.required)
 			}
 		}
-		if registration.GVK.Kind == "Schedule" {
-			var choice struct {
-				Not struct {
-					Enum []any `json:"enum"`
-				} `json:"not"`
-			}
-			if err := json.Unmarshal(envelope.Properties.Spec.Properties["type"], &choice); err != nil {
-				t.Fatal(err)
-			}
-			if len(choice.Not.Enum) != 2 || choice.Not.Enum[0] != nil || choice.Not.Enum[1] != "" {
-				t.Errorf("Schedule type does not exclude null and empty string: %#v", choice.Not.Enum)
-			}
-			if err := validateScheduleType(0); err != nil {
-				t.Errorf("Schedule type 0 is valid: %v", err)
-			}
-			for _, value := range []any{nil, ""} {
-				if err := validateScheduleType(value); err == nil {
-					t.Errorf("Schedule type %v must be rejected", value)
-				}
-			}
-		}
-		for field, count := range map[string]int{"frequency": 4, "trigger_type": 21} {
-			raw, ok := envelope.Properties.Spec.Properties[field]
-			if !ok {
-				continue
-			}
+		for _, field := range contract.numericFields {
+			raw := envelope.Properties.Spec.Properties[field]
 			var choice struct {
 				OneOf []struct {
-					Type string `json:"type"`
-					Enum []any  `json:"enum"`
+					Type    string `json:"type"`
+					Pattern string `json:"pattern"`
 				} `json:"oneOf"`
 			}
 			if err := json.Unmarshal(raw, &choice); err != nil {
 				t.Fatal(err)
 			}
-			if len(choice.OneOf) != 3 || choice.OneOf[0].Type != "integer" || choice.OneOf[1].Type != "string" || choice.OneOf[2].Type != "null" || len(choice.OneOf[0].Enum) != count {
-				t.Errorf("%s %s choices = %#v", registration.GVK.Kind, field, choice)
+			if len(choice.OneOf) < 2 || choice.OneOf[0].Type != "integer" || choice.OneOf[1].Type != "string" || choice.OneOf[1].Pattern == "" {
+				t.Errorf("%s %s numeric schema = %#v", registration.GVK.Kind, field, choice)
+			}
+		}
+		if registration.GVK.Kind == "Webhook" {
+			var example struct {
+				Spec struct {
+					TriggerType any `json:"trigger_type"`
+				} `json:"spec"`
+			}
+			if err := json.Unmarshal(registration.Example, &example); err != nil {
+				t.Fatal(err)
+			}
+			if example.Spec.TriggerType != float64(1) {
+				t.Errorf("Webhook example trigger_type = %#v, want numeric 1", example.Spec.TriggerType)
 			}
 		}
 	}

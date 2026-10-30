@@ -152,19 +152,17 @@ func webhookCRUDOpts() []crudOption[Webhook] {
 
 func validateScheduleType(value any) error {
 	if value == nil || value == "" {
-		return errors.New("schedule type is required; use the numeric type from an existing schedule")
+		return errors.New("schedule type is required; use a numeric value from an existing schedule")
 	}
-	return nil
+	return validateNonNegativeInteger(value, "schedule type")
 }
 
 func validateWebhookTrigger(value any) error {
 	if value == nil || value == "" {
 		return nil // A preset can control the trigger.
 	}
-	text := fmt.Sprint(value)
-	trigger, err := strconv.Atoi(text)
-	if err != nil || strconv.Itoa(trigger) != text || trigger < 0 || trigger > 20 {
-		return fmt.Errorf("webhook trigger_type %q must be a catalog value from 0 to 20; see webhooks list-triggers", text)
+	if err := validateNonNegativeInteger(value, "webhook trigger_type"); err != nil {
+		return fmt.Errorf("%w; see webhooks list-triggers for current values", err)
 	}
 	return nil
 }
@@ -182,13 +180,20 @@ func validateShiftValues(shift *Shift) error {
 			if field.optional {
 				continue
 			}
-			return errors.New("shift type is required; use a numeric value from the shift type catalog")
+			return errors.New("shift type is required; use a numeric value from the OnCall shift API")
 		}
-		value := fmt.Sprint(field.value)
-		number, err := strconv.Atoi(value)
-		if err != nil || strconv.Itoa(number) != value || number < 0 || number > 3 {
-			return fmt.Errorf("shift %s %q must be a numeric value from 0 to 3", field.name, value)
+		if err := validateNonNegativeInteger(field.value, "shift "+field.name); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validateNonNegativeInteger(value any, field string) error {
+	text := fmt.Sprint(value)
+	number, err := strconv.ParseUint(text, 10, 64)
+	if err != nil || strconv.FormatUint(number, 10) != text {
+		return fmt.Errorf("%s %q must be a nonnegative integer", field, text)
 	}
 	return nil
 }
@@ -298,7 +303,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		},
 		scheduleCRUDOpts()...,
 	)
-	scheduleRegistration.Schema = onCallScheduleSchema(scheduleRegistration.Schema)
+	scheduleRegistration.Schema = onCallNumericFieldSchema(scheduleRegistration.Schema, onCallNumericField{
+		name: "type", description: "Required plugin schedule type. Use the numeric value from an existing schedule.",
+	})
 	regs = append(regs, scheduleRegistration)
 
 	// 5. Shift — CRUD with ShiftRequest conversion
@@ -309,13 +316,10 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) },
 		shiftCRUDOpts()...,
 	)
-	shiftRegistration.Schema = onCallNumericChoiceSchema(shiftRegistration.Schema, map[string][]int{
-		"type":      {0, 1, 2, 3},
-		"frequency": {0, 1, 2, 3},
-	}, map[string]bool{"frequency": true}, map[string]string{
-		"type":      "Internal shift type: 0 single event, 1 recurrent event, 2 rolling users, 3 override. The current create endpoint advertises only 2 and 3.",
-		"frequency": "Internal recurrence: 0 daily, 1 weekly, 2 monthly, 3 hourly.",
-	})
+	shiftRegistration.Schema = onCallNumericFieldSchema(shiftRegistration.Schema,
+		onCallNumericField{name: "type", description: "Internal shift type. The observed create endpoint advertises 2 rolling users and 3 override. The server checks supported values."},
+		onCallNumericField{name: "frequency", allowUnset: true, description: "Observed recurrence values: 0 daily, 1 weekly, 2 monthly, 3 hourly. The server checks supported values."},
+	)
 	regs = append(regs, shiftRegistration)
 
 	// 6. Route — full CRUD
@@ -338,10 +342,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		},
 		webhookCRUDOpts()...,
 	)
-	webhookRegistration.Schema = onCallNumericChoiceSchema(webhookRegistration.Schema, map[string][]int{
-		"trigger_type": {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
-	}, map[string]bool{"trigger_type": true}, map[string]string{
-		"trigger_type": "OnCall webhook trigger value. Run webhooks list-triggers to see current names and values.",
+	webhookRegistration.Schema = onCallNumericFieldSchema(webhookRegistration.Schema, onCallNumericField{
+		name: "trigger_type", allowUnset: true, description: "OnCall webhook trigger value. Run webhooks list-triggers to see current names and values.",
 	})
 	regs = append(regs, webhookRegistration)
 
@@ -429,43 +431,32 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 	return regs
 }
 
-func onCallNumericChoiceSchema(base func() json.RawMessage, choices map[string][]int, allowUnset map[string]bool, descriptions map[string]string) func() json.RawMessage {
+type onCallNumericField struct {
+	name        string
+	allowUnset  bool
+	description string
+}
+
+func onCallNumericFieldSchema(base func() json.RawMessage, fields ...onCallNumericField) func() json.RawMessage {
 	return func() json.RawMessage {
-		document, fields := onCallSchemaFields(base)
-		for field, values := range choices {
-			numbers := make([]any, 0, len(values))
-			strings := make([]any, 0, len(values)+1)
-			for _, value := range values {
-				numbers = append(numbers, value)
-				strings = append(strings, strconv.Itoa(value))
-			}
-			if allowUnset[field] {
-				strings = append(strings, "")
+		document, properties := onCallSchemaFields(base)
+		for _, field := range fields {
+			pattern := `^(0|[1-9][0-9]*)$`
+			if field.allowUnset {
+				pattern = `^(0|[1-9][0-9]*)?$`
 			}
 			options := []any{
-				map[string]any{"type": "integer", "enum": numbers},
-				map[string]any{"type": "string", "enum": strings},
+				map[string]any{"type": "integer", "minimum": 0},
+				map[string]any{"type": "string", "pattern": pattern},
 			}
-			if allowUnset[field] {
+			if field.allowUnset {
 				options = append(options, map[string]any{"type": "null"})
 			}
-			fields[field] = map[string]any{"oneOf": options, "description": descriptions[field]}
+			properties[field.name] = map[string]any{"oneOf": options, "description": field.description}
 		}
 		result, err := json.Marshal(document)
 		if err != nil {
 			panic(fmt.Sprintf("encode OnCall schema: %v", err))
-		}
-		return result
-	}
-}
-
-func onCallScheduleSchema(base func() json.RawMessage) func() json.RawMessage {
-	return func() json.RawMessage {
-		document, fields := onCallSchemaFields(base)
-		fields["type"] = map[string]any{"not": map[string]any{"enum": []any{nil, ""}}}
-		result, err := json.Marshal(document)
-		if err != nil {
-			panic(fmt.Sprintf("encode Schedule schema: %v", err))
 		}
 		return result
 	}
@@ -595,7 +586,7 @@ func webhookExample() json.RawMessage {
 		"spec": map[string]any{
 			"name":               "my-webhook",
 			"url":                "https://example.com/webhook",
-			"trigger_type":       "1",
+			"trigger_type":       1,
 			"is_webhook_enabled": true,
 			"http_method":        "POST",
 		},

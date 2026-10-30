@@ -286,7 +286,8 @@ func TestWebhookCreateTriggerValidation(t *testing.T) {
 		{"numeric trigger", "1", false},
 		{"string trigger", `"1"`, false},
 		{"unknown name", `"escalation"`, true},
-		{"out of catalog", "21", true},
+		{"future numeric value", "21", false},
+		{"negative value", "-1", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -356,7 +357,7 @@ spec:
 	}
 }
 
-func TestShiftCreateValidatesCatalogValues(t *testing.T) {
+func TestShiftCreateValidatesNumericFields(t *testing.T) {
 	resetAgentMode(t)
 	tests := []struct {
 		name      string
@@ -366,8 +367,10 @@ func TestShiftCreateValidatesCatalogValues(t *testing.T) {
 	}{
 		{"numeric", "2", "1", false},
 		{"numeric strings", `"2"`, `"1"`, false},
-		{"invalid type", "4", "1", true},
-		{"invalid frequency", "2", "4", true},
+		{"future type", "4", "1", false},
+		{"future frequency", "2", "4", false},
+		{"negative type", "-1", "1", true},
+		{"nonnumeric frequency", "2", `"daily"`, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
