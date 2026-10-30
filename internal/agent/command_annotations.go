@@ -626,6 +626,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y experiments cancel":      {Cost: "small"},
 	"gcx agento11y experiments list-scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
 	"gcx agento11y experiments get-report":  {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments get-facets":  {Cost: "small", Hint: "--source external -o json"},
 	"gcx agento11y experiments list-trials": {
 		Cost: "small",
 		Hint: "<run-id> -o json",

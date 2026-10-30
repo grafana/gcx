@@ -254,3 +254,32 @@ func (c *Client) GetReport(ctx context.Context, runID string) (*ExperimentReport
 	}
 	return &report, nil
 }
+
+// FacetsFilter narrows the runs that contribute facet values. The backend
+// honors only these fields; other experiment filters are deliberately ignored
+// so option lists stay complete.
+type FacetsFilter struct {
+	Source        string
+	ExecutionKind string
+	From          string
+	To            string
+}
+
+// GetFacets returns the distinct owners, suites and tags across experiments.
+func (c *Client) GetFacets(ctx context.Context, filter FacetsFilter) (*ExperimentFacets, error) {
+	query := url.Values{}
+	for key, value := range map[string]string{"source": filter.Source, "execution_kind": filter.ExecutionKind, "from": filter.From, "to": filter.To} {
+		if value != "" {
+			query.Set(key, value)
+		}
+	}
+	path := "/eval/experiment-facets"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	facets, err := agento11yhttp.DoJSON[any, ExperimentFacets](ctx, c.base, http.MethodGet, path, nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	return &facets, nil
+}
