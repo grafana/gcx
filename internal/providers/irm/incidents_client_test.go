@@ -744,6 +744,26 @@ func TestClient_Create(t *testing.T) {
 	assert.Equal(t, "DB Outage", inc.Title)
 }
 
+func TestClient_CreateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		t.Errorf("unexpected API call: %s", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	inc, err := c.Create(t.Context(), &irm.Incident{
+		Title:       "DB Outage",
+		Description: "Important details",
+		Severity:    "Major",
+	})
+	require.ErrorContains(t, err, "spec.description is not supported by gcx incident create")
+	assert.Nil(t, inc)
+	assert.Zero(t, calls)
+}
+
 func TestClient_UpdateStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.Path, "IncidentsService.UpdateStatus")
