@@ -238,7 +238,7 @@ func TestHandleErrorResponsePluginUnavailable(t *testing.T) {
 			assert.Equal(t, tc.unavailable, errors.As(err, &pluginErr))
 			if tc.unavailable {
 				require.NotNil(t, pluginErr)
-				assert.Equal(t, "grafana-agento11y-app", pluginErr.PluginID)
+				assert.Contains(t, err.Error(), "grafana-agento11y-app")
 				assert.Contains(t, err.Error(), "Agent Observability")
 				assert.NotContains(t, err.Error(), "\n")
 				assert.NotContains(t, err.Error(), "\x1b")

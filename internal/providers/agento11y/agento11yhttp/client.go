@@ -27,12 +27,11 @@ const pluginBasePath = "/api/plugins/" + pluginID + "/resources"
 // PluginUnavailableError identifies Grafana's explicit missing-plugin response.
 // It stays unrendered so non-CLI callers can safely include it in artifacts.
 type PluginUnavailableError struct {
-	PluginID string
-	Cause    error
+	Cause error
 }
 
 func (e *PluginUnavailableError) Error() string {
-	return fmt.Sprintf("plugin %s (Agent Observability) is not available: %v", e.PluginID, e.Cause)
+	return fmt.Sprintf("plugin %s (Agent Observability) is not available: %v", pluginID, e.Cause)
 }
 
 func (e *PluginUnavailableError) Unwrap() error { return e.Cause }
@@ -188,12 +187,7 @@ func doJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, 
 	defer resp.Body.Close()
 
 	if notFoundErr != nil && resp.StatusCode == http.StatusNotFound {
-		err := HandleErrorResponse(resp)
-		var pluginErr *PluginUnavailableError
-		if errors.As(err, &pluginErr) {
-			return zero, err
-		}
-		return zero, notFoundErr
+		return zero, handleNotFoundResponse(resp, notFoundErr)
 	}
 	if !slices.Contains(okStatuses, resp.StatusCode) {
 		return zero, HandleErrorResponse(resp)
@@ -239,17 +233,21 @@ func doStatus[Req any](ctx context.Context, c *Client, method, path string, body
 	defer resp.Body.Close()
 
 	if notFoundErr != nil && resp.StatusCode == http.StatusNotFound {
-		err := HandleErrorResponse(resp)
-		var pluginErr *PluginUnavailableError
-		if errors.As(err, &pluginErr) {
-			return err
-		}
-		return notFoundErr
+		return handleNotFoundResponse(resp, notFoundErr)
 	}
 	if !slices.Contains(okStatuses, resp.StatusCode) {
 		return HandleErrorResponse(resp)
 	}
 	return nil
+}
+
+func handleNotFoundResponse(resp *http.Response, notFoundErr error) error {
+	err := HandleErrorResponse(resp)
+	var pluginErr *PluginUnavailableError
+	if errors.As(err, &pluginErr) {
+		return err
+	}
+	return notFoundErr
 }
 
 // NewClientFromCommand creates a Client from a cobra command and config loader.
@@ -289,7 +287,7 @@ func HandleErrorResponse(resp *http.Response) error {
 	if errors.As(err, &statusErr) && statusErr.Status == http.StatusNotFound {
 		message := strings.TrimSpace(statusErr.ServerMessage)
 		if strings.HasPrefix(message, "Plugin not found") {
-			return &PluginUnavailableError{PluginID: pluginID, Cause: err}
+			return &PluginUnavailableError{Cause: err}
 		}
 	}
 	return err
