@@ -759,8 +759,28 @@ func TestClient_CreateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
 		Description: "Important details",
 		Severity:    "Major",
 	})
-	require.ErrorContains(t, err, "spec.description is not supported by gcx incident create")
+	require.ErrorContains(t, err, "spec.description is read-only")
 	assert.Nil(t, inc)
+	assert.Zero(t, calls)
+}
+
+func TestClient_UpdateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		t.Errorf("unexpected API call: %s", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	inc, fields, err := c.Update(t.Context(), "inc-123", &irm.Incident{
+		Title:       "DB Outage",
+		Description: "Important details",
+	})
+	require.ErrorContains(t, err, "spec.description is read-only")
+	assert.Nil(t, inc)
+	assert.Empty(t, fields)
 	assert.Zero(t, calls)
 }
 

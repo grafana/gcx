@@ -298,7 +298,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, originalInc.Title, restored.Title)
 	assert.Equal(t, originalInc.Status, restored.Status)
 	assert.Equal(t, originalInc.Severity, restored.Severity)
-	assert.Equal(t, originalInc.Description, restored.Description)
+	assert.Empty(t, restored.Description, "read-only description must not enter a pulled manifest")
 }
 
 // TestResourceAdapter_PullDropsSeverityID proves that a pulled manifest
@@ -382,6 +382,7 @@ func TestBothAccessPathsEmitTheSameSpecKeys(t *testing.T) {
 	assert.Equal(t, adapterKeys, providerKeys, "the two access paths must emit the same spec keys")
 	assert.NotContains(t, adapterKeys, "severityID")
 	assert.NotContains(t, adapterKeys, "incidentID")
+	assert.NotContains(t, adapterKeys, "description")
 }
 
 // specKeys returns the sorted spec keys of a manifest.
