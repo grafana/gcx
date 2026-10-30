@@ -74,17 +74,11 @@ func TestReconcileActions(t *testing.T) {
 	require.NoError(t, err)
 	client := NewClient(base)
 
-	existing, err := reconcileActions(t.Context(), client, "rule-1", nil)
-	require.NoError(t, err)
-	require.Len(t, existing, 2)
-	assert.Equal(t, []string{"GET /api/plugins/grafana-agento11y-app/resources/eval/rules/rule-1/actions"}, requests)
-
-	requests = nil
 	desired := []eval.RuleAction{
 		{Condition: eval.RuleActionCondition{Kind: "all_evaluators_pass"}, ActionConfig: eval.RuleActionConfig{Kind: "add_to_collection", CollectionIDs: []string{"review"}}, Enabled: true},
 		{ActionID: "keep", Condition: eval.RuleActionCondition{Kind: "all_evaluators_fail"}, ActionConfig: eval.RuleActionConfig{Kind: "add_to_collection", CollectionIDs: []string{"review"}}, Enabled: true},
 	}
-	result, err := reconcileActions(t.Context(), client, "rule-1", &desired)
+	result, err := reconcileActions(t.Context(), client, "rule-1", desired, reconcileOpts{Prune: true})
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 	assert.Equal(t, []string{

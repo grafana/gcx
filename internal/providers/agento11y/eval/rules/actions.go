@@ -29,16 +29,29 @@ type actionFile struct {
 	Enabled      *bool                    `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 }
 
-func readActionFile(path string, in io.Reader) (*eval.RuleAction, error) {
+// parseActionFile decodes an action definition. Enabled stays nil when the
+// file omits it, so callers decide what an omitted value means.
+func parseActionFile(path string, in io.Reader) (*actionFile, error) {
 	data, err := ReadFile(path, in)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 	var f actionFile
-	if err := json.Unmarshal(data, &f); err != nil {
+	if jerr := json.Unmarshal(data, &f); jerr != nil {
+		f = actionFile{}
 		if yerr := yaml.Unmarshal(data, &f); yerr != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, yerr)
+			return nil, fmt.Errorf("parsing %s: not valid JSON (%w) or YAML (%w)", path, jerr, yerr)
 		}
+	}
+	return &f, nil
+}
+
+// readActionFile reads an action for creation, where an omitted enabled means
+// enabled.
+func readActionFile(path string, in io.Reader) (*eval.RuleAction, error) {
+	f, err := parseActionFile(path, in)
+	if err != nil {
+		return nil, err
 	}
 	enabled := true
 	if f.Enabled != nil {
@@ -131,23 +144,24 @@ func actionCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 func actionUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	var file string
 	opts := &actionOutputOpts{}
-	cmd := &cobra.Command{Use: "update <rule-id> <action-id>", Short: "Update an action from a file.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "update <rule-id> <action-id>", Short: "Update an action from a file.", Long: "Update an action's condition and config from a file. When the file omits enabled, the action's stored enabled state is left unchanged.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := opts.IO.Validate(); err != nil {
 			return err
 		}
 		if file == "" {
 			return errors.New("--filename/-f is required")
 		}
-		action, err := readActionFile(file, cmd.InOrStdin())
+		f, err := parseActionFile(file, cmd.InOrStdin())
 		if err != nil {
 			return err
 		}
-		action.ActionID = args[1]
+		action := &eval.RuleAction{ActionID: args[1], Condition: f.Condition, ActionConfig: f.ActionConfig}
 		c, err := actionClient(cmd, loader)
 		if err != nil {
 			return err
 		}
-		updated, err := c.UpdateAction(cmd.Context(), args[0], action)
+		// An omitted enabled leaves the stored state alone instead of re-enabling.
+		updated, err := c.PatchAction(cmd.Context(), args[0], action, f.Enabled)
 		if err != nil {
 			return err
 		}
@@ -183,21 +197,40 @@ func actionDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func reconcileActions(ctx context.Context, c *Client, ruleID string, desired *[]eval.RuleAction) ([]eval.RuleAction, error) {
-	if desired == nil {
-		return c.ListActions(ctx, ruleID)
-	}
+// reconcileOpts controls how a desired action list is applied to a rule.
+type reconcileOpts struct {
+	// Prune deletes existing actions that are absent from the desired list.
+	// Without it, unlisted actions are left alone.
+	Prune bool
+	// MatchByCondition reuses the existing action with the same condition and
+	// action kind for each desired action without an ID, so repeated runs of
+	// the --on-*-collection flags update an action instead of duplicating it.
+	MatchByCondition bool
+}
+
+func reconcileActions(ctx context.Context, c *Client, ruleID string, desired []eval.RuleAction, opts reconcileOpts) ([]eval.RuleAction, error) {
 	existing, err := c.ListActions(ctx, ruleID)
 	if err != nil {
 		return nil, err
 	}
-	byID := make(map[string]eval.RuleAction, len(existing))
-	for _, a := range existing {
-		byID[a.ActionID] = a
+	if opts.MatchByCondition {
+		used := make(map[string]bool)
+		for i := range desired {
+			if desired[i].ActionID != "" {
+				continue
+			}
+			for _, e := range existing {
+				if !used[e.ActionID] && e.Condition.Kind == desired[i].Condition.Kind && e.ActionConfig.Kind == desired[i].ActionConfig.Kind {
+					desired[i].ActionID = e.ActionID
+					used[e.ActionID] = true
+					break
+				}
+			}
+		}
 	}
-	result := make([]eval.RuleAction, 0, len(*desired))
+	result := make([]eval.RuleAction, 0, len(desired))
 	seen := make(map[string]bool)
-	for _, a := range *desired {
+	for _, a := range desired {
 		var got *eval.RuleAction
 		if a.ActionID != "" {
 			got, err = c.UpdateAction(ctx, ruleID, &a)
@@ -210,9 +243,12 @@ func reconcileActions(ctx context.Context, c *Client, ruleID string, desired *[]
 		}
 		result = append(result, *got)
 	}
-	for id := range byID {
-		if !seen[id] {
-			if err := c.DeleteAction(ctx, ruleID, id); err != nil {
+	if !opts.Prune {
+		return result, nil
+	}
+	for _, e := range existing {
+		if !seen[e.ActionID] {
+			if err := c.DeleteAction(ctx, ruleID, e.ActionID); err != nil {
 				return nil, err
 			}
 		}
@@ -220,18 +256,46 @@ func reconcileActions(ctx context.Context, c *Client, ruleID string, desired *[]
 	return result, nil
 }
 
-func attachActions(ctx context.Context, c *Client, specs []eval.RuleDefinition) error {
+// attachActions loads each rule's actions for read commands. A rule whose
+// actions cannot be read is returned without them and counted in the warning,
+// so a backend without the actions endpoint doesn't break rules list.
+func attachActions(ctx context.Context, c *Client, specs []eval.RuleDefinition, stderr io.Writer) error {
+	errs := make([]error, len(specs))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i := range specs {
 		g.Go(func() error {
 			actions, err := c.ListActions(gctx, specs[i].RuleID)
 			if err != nil {
-				return err
+				errs[i] = err
+				return nil //nolint:nilerr // Failures are collected per rule and reported as one warning.
 			}
 			specs[i].Actions = &actions
 			return nil
 		})
 	}
-	return g.Wait()
+	_ = g.Wait()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	failed := 0
+	var first error
+	var firstID string
+	for i, err := range errs {
+		if err == nil {
+			continue
+		}
+		if failed == 0 {
+			first, firstID = err, specs[i].RuleID
+		}
+		failed++
+	}
+	if failed > 0 {
+		warnActionsUnavailable(stderr, failed, firstID, first)
+	}
+	return nil
+}
+
+func warnActionsUnavailable(stderr io.Writer, failed int, ruleID string, err error) {
+	cmdio.EmitWarn(stderr, fmt.Sprintf("could not read actions for %d rule(s), omitting them (first: rule %s: %v)", failed, ruleID, err))
 }

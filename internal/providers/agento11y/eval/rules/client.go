@@ -149,7 +149,13 @@ func (c *Client) CreateAction(ctx context.Context, ruleID string, action *eval.R
 }
 
 func (c *Client) UpdateAction(ctx context.Context, ruleID string, action *eval.RuleAction) (*eval.RuleAction, error) {
-	req := actionUpdateRequest{Condition: &action.Condition, ActionConfig: &action.ActionConfig, Enabled: &action.Enabled}
+	return c.PatchAction(ctx, ruleID, action, &action.Enabled)
+}
+
+// PatchAction updates an action's condition and config. A nil enabled leaves
+// the stored enabled state unchanged.
+func (c *Client) PatchAction(ctx context.Context, ruleID string, action *eval.RuleAction, enabled *bool) (*eval.RuleAction, error) {
+	req := actionUpdateRequest{Condition: &action.Condition, ActionConfig: &action.ActionConfig, Enabled: enabled}
 	updated, err := agento11yhttp.DoJSON[actionUpdateRequest, eval.RuleAction](ctx, c.base, http.MethodPatch, actionByIDPath(ruleID, action.ActionID), &req, http.StatusOK)
 	if err != nil {
 		return nil, err

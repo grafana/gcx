@@ -83,7 +83,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			for i := range typedObjs {
 				specs[i] = typedObjs[i].Spec
 			}
-			if err := attachActions(ctx, actionClient, specs); err != nil {
+			if err := attachActions(ctx, actionClient, specs, cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 
@@ -145,9 +145,13 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			actions, err := actionClient.ListActions(ctx, typedObj.Spec.RuleID)
 			if err != nil {
-				return err
+				if ctx.Err() != nil {
+					return err
+				}
+				warnActionsUnavailable(cmd.ErrOrStderr(), 1, typedObj.Spec.RuleID, err)
+			} else {
+				typedObj.Spec.Actions = &actions
 			}
-			typedObj.Spec.Actions = &actions
 			u, err := specToUnstructured(typedObj.Spec, namespace)
 			if err != nil {
 				return err
@@ -225,11 +229,14 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actions, err := reconcileActions(ctx, actionClient, created.Spec.RuleID, rule.Actions)
-			if err != nil {
-				return err
+			if rule.Actions != nil {
+				actions, err := reconcileActions(ctx, actionClient, created.Spec.RuleID, *rule.Actions, reconcileOpts{})
+				if err != nil {
+					return fmt.Errorf("rule %s was created but its actions were not: %w; do not retry create, use 'gcx agento11y rules update %s' or 'gcx agento11y rules actions create %s'",
+						created.Spec.RuleID, err, created.Spec.RuleID, created.Spec.RuleID)
+				}
+				created.Spec.Actions = &actions
 			}
-			created.Spec.Actions = &actions
 			cmdio.Success(cmd.ErrOrStderr(), "Rule %s created", created.Spec.RuleID)
 			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
@@ -245,12 +252,14 @@ type updateOpts struct {
 	IO                cmdio.Options
 	OnPassCollections []string
 	OnFailCollections []string
+	Prune             bool
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the full rule definition (use - for stdin)")
 	flags.StringSliceVar(&o.OnPassCollections, "on-pass-collection", nil, "Collection ID to add matching conversations to when all evaluators pass (repeatable)")
 	flags.StringSliceVar(&o.OnFailCollections, "on-fail-collection", nil, "Collection ID to add matching conversations to when all evaluators fail (repeatable)")
+	flags.BoolVar(&o.Prune, "prune", false, "Delete existing actions that are not listed in the file's actions")
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 }
@@ -258,6 +267,9 @@ func (o *updateOpts) setup(flags *pflag.FlagSet) {
 func (o *updateOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	if o.Prune && (len(o.OnPassCollections) > 0 || len(o.OnFailCollections) > 0) {
+		return errors.New("--prune cannot be combined with --on-pass-collection or --on-fail-collection")
 	}
 	return o.IO.Validate()
 }
@@ -267,6 +279,9 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <rule-id>",
 		Short: "Update an evaluation rule from a file.",
+		Long: `Update an evaluation rule from a file.
+
+Actions in the file's actions list are created, or updated when they carry an action_id. Existing actions that the file does not list are left in place; pass --prune to delete them. --on-pass-collection and --on-fail-collection add or update only the action they describe and never delete others.`,
 		Example: `  # Update a rule from a YAML file.
   gcx agento11y rules update my-rule -f rule.yaml`,
 		Args: cobra.ExactArgs(1),
@@ -299,11 +314,24 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actions, err := reconcileActions(ctx, actionClient, args[0], rule.Actions)
-			if err != nil {
-				return err
+			switch {
+			case rule.Actions != nil:
+				actions, err := reconcileActions(ctx, actionClient, args[0], *rule.Actions,
+					reconcileOpts{Prune: opts.Prune, MatchByCondition: len(opts.OnPassCollections)+len(opts.OnFailCollections) > 0})
+				if err != nil {
+					return err
+				}
+				updated.Spec.Actions = &actions
+			default:
+				if actions, err := actionClient.ListActions(ctx, args[0]); err != nil {
+					if ctx.Err() != nil {
+						return err
+					}
+					warnActionsUnavailable(cmd.ErrOrStderr(), 1, args[0], err)
+				} else {
+					updated.Spec.Actions = &actions
+				}
 			}
-			updated.Spec.Actions = &actions
 			cmdio.Success(cmd.ErrOrStderr(), "Rule %s updated", updated.Spec.RuleID)
 			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
