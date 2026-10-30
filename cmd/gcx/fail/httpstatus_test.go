@@ -95,10 +95,10 @@ func TestDatasourceAuthenticationFailure(t *testing.T) {
 			assert.Contains(t, got.Details, "trace-1")
 			if tc.wantAdvice {
 				assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, got.Summary)
-				if assert.Len(t, got.Suggestions, 2) {
+				if assert.Len(t, got.Suggestions, 3) {
 					assert.Contains(t, got.Suggestions[0], "gcx datasources health <uid>")
-					assert.Contains(t, got.Suggestions[0], "gcx datasources list -o json")
-					assert.Contains(t, got.Suggestions[1], "ruler configuration")
+					assert.Contains(t, got.Suggestions[1], "gcx datasources list -o json")
+					assert.Contains(t, got.Suggestions[2], "ruler configuration")
 				}
 			} else {
 				for _, suggestion := range got.Suggestions {
@@ -109,12 +109,54 @@ func TestDatasourceAuthenticationFailure(t *testing.T) {
 	}
 }
 
+func TestDatasourceAuthenticationResponseFields(t *testing.T) {
+	const authMessage = "Authentication to data source failed"
+	for _, tc := range []struct {
+		name        string
+		body        string
+		wantMessage string
+		wantAuth    bool
+	}{
+		{"plain response", authMessage, authMessage, true},
+		{"message only", `{"message":"Authentication to data source failed"}`, authMessage, true},
+		{"error only", `{"error":"Authentication to data source failed"}`, authMessage, true},
+		{"both agree", `{"error":"Authentication to data source failed","message":"Authentication to data source failed"}`, authMessage, true},
+		{"empty error falls back", `{"error":"","message":"Authentication to data source failed"}`, authMessage, true},
+		{"primary auth wins", `{"error":"Authentication to data source failed","message":"invalid rule group"}`, authMessage, true},
+		{"primary other error wins", `{"error":"invalid rule group","message":"Authentication to data source failed"}`, "invalid rule group", false},
+		{"primary near match wins", `{"error":"Authentication to data source failed during a previous request","message":"Authentication to data source failed"}`, "Authentication to data source failed during a previous request", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := providers.FormatError(http.StatusBadRequest, []byte(tc.body))
+			var transportErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &transportErr)
+			assert.Equal(t, tc.wantMessage, transportErr.ServerMessage)
+			got := toDetailedError(t, err)
+			assert.Contains(t, got.Details, tc.wantMessage)
+			assert.Contains(t, got.Details, "HTTP 400")
+			exit := gcxerrors.ExitGeneralError
+			if got.ExitCode != nil {
+				exit = *got.ExitCode
+			}
+			if tc.wantAuth {
+				assert.Equal(t, gcxerrors.ExitAuthFailure, exit)
+				assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, got.Summary)
+				assert.Contains(t, fmt.Sprint(got.Suggestions), "gcx datasources health <uid>")
+			} else {
+				assert.Equal(t, gcxerrors.ExitGeneralError, exit)
+				assert.Equal(t, gcxerrors.SummaryAPIError, got.Summary)
+				assert.NotContains(t, fmt.Sprint(got.Suggestions), "gcx datasources")
+			}
+		})
+	}
+}
+
 func TestRulerDatasourceAuthenticationResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/ruler/test-ds/api/v1/rules", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"message":"Authentication to data source failed"}`))
+		_, _ = w.Write([]byte("Authentication to data source failed"))
 	}))
 	defer server.Close()
 	client, err := alert.NewRulerClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}, "test-ds", "mimir")
