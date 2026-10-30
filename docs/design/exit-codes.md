@@ -38,10 +38,11 @@ example scenario for each code. The topic is generated from the ordered
   authorization failure for both statuses.
   The shared `HTTPStatusError` converter also exits 3 for HTTP 400 when its
   canonical server message is exactly `Authentication to data source failed`.
-  This includes the plain-text datasource proxy response that reaches this
-  converter as an `HTTPStatusError`, and points at datasource health and
-  configuration instead of caller credential recovery. Query clients using
-  `queryerror.APIError` do not pass through this converter.
+  This includes the plain-text datasource proxy response when parsed into
+  `HTTPStatusError.ServerMessage`, and points at datasource health and
+  configuration instead of caller credential recovery. Raw `gcx api` calls
+  retain the complete response body in `Message` and exit 1 for this HTTP 400.
+  Query clients using `queryerror.APIError` do not pass through this converter.
 - Missing Cloud credentials, and a missing Synthetic Monitoring token whose
   auto-discovery cannot start without Cloud credentials or stack configuration,
   exit 3. Synthetic Monitoring register/install permission failures also exit 3,
