@@ -533,7 +533,7 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 // Update drops every other field of inc, because the IRM API has no update
 // operation for it: a pushed manifest that changes labels, incidentType,
 // isDrill or fieldGroupUUID leaves those values on the server. A non-empty
-// description is rejected because the field is read-only through gcx.
+// description change is rejected because the field is read-only through gcx.
 //
 // The second result names the fields that reached the server. An empty list
 // means the incident already matched the request.
@@ -542,13 +542,12 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 // between the two states. Update then returns no incident, and an error that
 // names the fields it did apply.
 func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (*Incident, []string, error) {
-	if inc.Description != "" {
-		return nil, nil, errors.New("incidents: update: spec.description is read-only; remove it from the manifest before updating the incident")
-	}
-
 	current, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, nil, err
+	}
+	if inc.Description != "" && inc.Description != current.Description {
+		return nil, nil, errors.New("incidents: update: spec.description is read-only; remove the changed value from the manifest before updating the incident")
 	}
 
 	// The resolve reads the severity list of the organization, and writes

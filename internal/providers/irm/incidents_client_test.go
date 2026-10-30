@@ -764,24 +764,45 @@ func TestClient_CreateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
 	assert.Zero(t, calls)
 }
 
-func TestClient_UpdateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
-	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		t.Errorf("unexpected API call: %s", r.URL.Path)
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
+func TestClient_UpdateDescription(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		description string
+		wantError   bool
+	}{
+		{name: "unchanged backup value", description: "Existing details"},
+		{name: "changed value", description: "New details", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Contains(t, r.URL.Path, "IncidentsService.GetIncident")
+				writeJSON(w, map[string]any{
+					"incident": map[string]any{
+						"incidentID": "inc-123", "title": "DB Outage",
+						"status": "active", "description": "Existing details",
+					},
+				})
+			}))
+			defer server.Close()
 
-	c := newTestClient(t, server)
-	inc, fields, err := c.Update(t.Context(), "inc-123", &irm.Incident{
-		Title:       "DB Outage",
-		Description: "Important details",
-	})
-	require.ErrorContains(t, err, "spec.description is read-only")
-	assert.Nil(t, inc)
-	assert.Empty(t, fields)
-	assert.Zero(t, calls)
+			c := newTestClient(t, server)
+			inc, fields, err := c.Update(t.Context(), "inc-123", &irm.Incident{
+				Title:       "DB Outage",
+				Description: tc.description,
+			})
+			if tc.wantError {
+				require.ErrorContains(t, err, "spec.description is read-only")
+				assert.Nil(t, inc)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, "Existing details", inc.Description)
+			}
+			assert.Empty(t, fields)
+			assert.Equal(t, 1, calls, "update may read, but must not write")
+		})
+	}
 }
 
 func TestClient_UpdateStatus(t *testing.T) {
