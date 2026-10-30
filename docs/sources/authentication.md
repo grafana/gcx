@@ -67,12 +67,6 @@ The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `g
 
 If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, update the Grafana Assistant application to a version that includes it.
 
-### Datasource authentication failures
-
-Datasource-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when Grafana returns HTTP 400 with `Authentication to data source failed`. The health check uses a different API path and doesn't establish that ruler access works. Run `gcx datasources health <uid>` for Grafana's datasource health message; use `gcx datasources list -o json` to find the UID if needed.
-
-Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
-
 ### Permissions to use Assistant investigations
 
 Access to the Assistant app requires `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`. A backend 403 such as `insufficient permissions` doesn't mean that app access is missing.
@@ -240,6 +234,12 @@ provider endpoints, authorize it explicitly with `--config .gcx.yaml` or
 Provider-specific runtime endpoints are accepted only when their matching
 runtime credential is supplied in the same invocation; that pair does not
 authorize an auto-discovered repository stack's TLS or proxy configuration.
+
+## Datasource authentication failures
+
+Datasource-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when Grafana returns HTTP 400 with `Authentication to data source failed`. The health check uses a different API path and doesn't establish that ruler access works. Run `gcx datasources health <uid>` for Grafana's datasource health message; use `gcx datasources list -o json` to find the UID if needed.
+
+Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
 
 ## Verify your configuration
 
