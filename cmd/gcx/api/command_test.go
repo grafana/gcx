@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
@@ -320,26 +321,35 @@ func TestCommand_RecordsAPIRequestBeforeConfigLoad(t *testing.T) {
 	assert.Equal(t, "/api/dashboards/uid/{uid}", got.Route)
 }
 
-func TestCommand_RejectsAbsoluteURLBeforeConfigLoad(t *testing.T) {
+func TestCommand_RejectsInvalidPathBeforeConfigLoad(t *testing.T) {
 	t.Setenv("GCX_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
-	for _, path := range []string{
-		"https://example.invalid/api/health",
-		"http:/api/health",
-		"//example.invalid/api/health",
-		"https://",
-		" ",
-		"/api/%zz",
+	for _, tt := range []struct {
+		path    string
+		message string
+		irmHint bool
+	}{
+		{path: "https://example.invalid/api/health", message: "URL is not relative", irmHint: true},
+		{path: "http:/api/health", message: "URL is not relative", irmHint: true},
+		{path: "//example.invalid/api/health", message: "URL is not relative", irmHint: true},
+		{path: "///api/health", message: "URL is not relative", irmHint: true},
+		{path: "https://", message: "URL is not relative", irmHint: true},
+		{path: " ", message: "PATH is empty"},
+		{path: "/api/%zz", message: "malformed path"},
 	} {
-		t.Run(path, func(t *testing.T) {
+		t.Run(tt.path, func(t *testing.T) {
 			cmd := Command()
-			cmd.SetArgs([]string{path})
+			cmd.SetArgs([]string{tt.path})
 			cmd.SetOut(io.Discard)
 			cmd.SetErr(io.Discard)
 			err := cmd.Execute()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "invalid PATH")
-			assert.Contains(t, err.Error(), path)
-			assert.Contains(t, err.Error(), "gcx api /api/health")
+			assert.Contains(t, err.Error(), tt.path)
+			assert.Contains(t, err.Error(), tt.message)
+			assert.Equal(t, tt.irmHint, strings.Contains(err.Error(), "gcx irm"))
+			var usageErr *gcxerrors.UsageError
+			require.ErrorAs(t, err, &usageErr)
+			assert.Contains(t, usageErr.Suggestions, "Use a stack-relative path: gcx api /api/health")
 			assert.NotContains(t, err.Error(), "missing.yaml")
 		})
 	}

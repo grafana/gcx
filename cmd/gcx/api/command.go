@@ -78,7 +78,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "api PATH",
 		Short: "Make direct HTTP requests to the Grafana API",
-		Long:  "Send HTTP requests to a path on the configured Grafana stack using its authentication. PATH must be stack-relative, such as /api/health. Absolute URLs are not supported. Use gcx irm commands for IRM resources. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.",
+		Long:  "Send HTTP requests to a path on the configured Grafana stack using its authentication. PATH must be stack-relative, such as /api/health. Absolute URLs are not supported. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.",
 		Example: `  # List all datasources
   gcx api /api/datasources
 
@@ -107,7 +107,9 @@ func Command() *cobra.Command {
 
 			path := args[0]
 			if err := validateAPIPath(path); err != nil {
-				return gcxerrors.NewCommandUsageError(cmd, err.Error(), err)
+				usageErr := gcxerrors.NewCommandUsageError(cmd, "", err)
+				usageErr.Suggestions = append([]string{"Use a stack-relative path: gcx api /api/health"}, usageErr.Suggestions...)
+				return usageErr
 			}
 			if !strings.HasPrefix(path, "/") {
 				path = "/" + path
@@ -146,9 +148,15 @@ func Command() *cobra.Command {
 }
 
 func validateAPIPath(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("invalid PATH %q: PATH is empty; use a path on the configured stack", path)
+	}
 	parsed, err := url.Parse(path)
-	if strings.TrimSpace(path) == "" || err != nil || parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(path, "//") {
-		return fmt.Errorf("invalid PATH %q: use a path relative to the configured stack, such as 'gcx api /api/health'; use 'gcx irm' commands for IRM resources", path)
+	if err != nil {
+		return fmt.Errorf("invalid PATH %q: malformed path: %w", path, err)
+	}
+	if parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(path, "//") {
+		return fmt.Errorf("invalid PATH %q: URL is not relative to the configured stack; use 'gcx irm' commands for IRM resources", path)
 	}
 	return nil
 }
