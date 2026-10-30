@@ -67,6 +67,10 @@ The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `g
 
 If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, update the Grafana Assistant application to a version that includes it.
 
+### Datasource authentication failures
+
+If Grafana returns HTTP 400 with `Authentication to data source failed`, `gcx` exits with code 3 and points to the datasource's credentials in Grafana. For datasource-managed rules, also check the datasource's ruler configuration. This response concerns Grafana's connection to the datasource; signing in to `gcx` again doesn't repair that connection.
+
 ### Permissions to use Assistant investigations
 
 Access to the Assistant app requires `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`. A backend 403 such as `insufficient permissions` doesn't mean that app access is missing.
