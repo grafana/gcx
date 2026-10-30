@@ -144,40 +144,72 @@ func ExtractTopFunctions(fg *Flamegraph, limit int) []FunctionSample {
 	// Build a map of function name -> aggregated stats
 	funcStats := make(map[string]*FunctionSample)
 
-	// Flame graph levels have values in groups of 4: [offset, total, self, nameIndex]
+	// Offsets are relative to the previous node's end on the same level.
+	// Decode all nodes, including synthetic ones, before linking children.
+	type node struct {
+		start, end, self int64
+		name             string
+		valid            bool
+		children         []*node
+	}
+	var roots, previous []*node
 	for _, level := range fg.Levels {
+		var current []*node
+		var end int64
+		parent := 0
 		for i := 0; i+3 < len(level.Values); i += 4 {
-			nameIdx, err := parseInt64(level.Values[i+3])
-			if err != nil || nameIdx < 0 || int(nameIdx) >= len(fg.Names) {
+			offset, offsetErr := parseInt64(level.Values[i])
+			total, totalErr := parseInt64(level.Values[i+1])
+			if offsetErr != nil || totalErr != nil {
 				continue
 			}
-			name := fg.Names[nameIdx]
-
-			// Skip "other" entries
-			if name == "other" {
-				continue
+			n := &node{start: end + offset, end: end + offset + total}
+			end = n.end
+			nameIdx, nameErr := parseInt64(level.Values[i+3])
+			self, selfErr := parseInt64(level.Values[i+2])
+			if nameErr == nil && nameIdx >= 0 && nameIdx < int64(len(fg.Names)) && selfErr == nil {
+				n.name, n.self = fg.Names[nameIdx], self
+				n.valid = n.name != "other"
 			}
-
-			total, err := parseInt64(level.Values[i+1])
-			if err != nil {
-				continue
+			for parent < len(previous) && previous[parent].end <= n.start {
+				parent++
 			}
-			self, err := parseInt64(level.Values[i+2])
-			if err != nil {
-				continue
-			}
-
-			if existing, ok := funcStats[name]; ok {
-				existing.Self += self
-				existing.Total += total
+			if parent < len(previous) && previous[parent].start <= n.start && n.end <= previous[parent].end {
+				previous[parent].children = append(previous[parent].children, n)
 			} else {
-				funcStats[name] = &FunctionSample{
-					Name:  name,
-					Self:  self,
-					Total: total,
-				}
+				roots = append(roots, n)
 			}
+			current = append(current, n)
 		}
+		previous = current
+	}
+
+	// An outer occurrence already includes all samples beneath recursive calls.
+	// Self values, however, must still be summed at every depth.
+	active := make(map[string]int)
+	var visit func(*node)
+	visit = func(n *node) {
+		if n.valid {
+			s := funcStats[n.name]
+			if s == nil {
+				s = &FunctionSample{Name: n.name}
+				funcStats[n.name] = s
+			}
+			s.Self += n.self
+			if active[n.name] == 0 {
+				s.Total += n.end - n.start
+			}
+			active[n.name]++
+		}
+		for _, child := range n.children {
+			visit(child)
+		}
+		if n.valid {
+			active[n.name]--
+		}
+	}
+	for _, root := range roots {
+		visit(root)
 	}
 
 	// Convert to slice and calculate percentages
