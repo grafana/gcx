@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -62,6 +63,7 @@ func TestConverterBranches(t *testing.T) {
 		{"k8s 409", k8sStatus(409, metav1.StatusReasonConflict), gcxerrors.SummaryResourceConflict, gcxerrors.ExitGeneralError},
 		{"k8s 500", k8sStatus(500, metav1.StatusReasonInternalError), gcxerrors.SummaryAPIError, gcxerrors.ExitGeneralError},
 		{"unavailable endpoint", queryerror.New("tempo", "trace diff", 404, "404 page not found", "").WithAvailability(true, true), gcxerrors.SummaryEndpointNotAvailable, gcxerrors.ExitGeneralError},
+		{"agento11y plugin unavailable", &agento11yhttp.PluginUnavailableError{Cause: &gcxerrors.HTTPStatusError{Status: 404, ServerMessage: "Plugin not found"}}, gcxerrors.SummaryEndpointNotAvailable, gcxerrors.ExitGeneralError},
 		{"query 401", queryerror.New("prometheus", "query", 401, "unauthorized", ""), gcxerrors.SummaryAuthenticationFailed, gcxerrors.ExitAuthFailure},
 		{"query 403", queryerror.New("prometheus", "query", 403, "forbidden", ""), gcxerrors.SummaryAuthorizationFailed, gcxerrors.ExitAuthFailure},
 		{"query parse error", queryerror.New("prometheus", "query", 400, "parse error: unexpected", ""), gcxerrors.SummaryInvalidQuery, gcxerrors.ExitGeneralError},
