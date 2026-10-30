@@ -20,18 +20,19 @@ var commandSkills = map[string][]string{
 	"gcx alert":                {"investigate-alert"},
 	// Empty override: ruler config management is not what investigate-alert
 	// covers, so suppress the inherited footer on the ruler subtree.
-	"gcx alert ruler": {},
-	"gcx irm":         {"oncall-triage"},
-	"gcx logs":        {"debug-with-grafana"},
-	"gcx metrics":     {"debug-with-grafana"},
-	"gcx traces":      {"debug-with-grafana"},
-	"gcx profiles":    {"debug-with-grafana"},
-	"gcx datasources": {"debug-with-grafana"},
-	"gcx kg":          {"diagnose-entity-graph"},
-	"gcx agento11y":   {"agento11y", "agento11y-instrument"},
-	"gcx setup":       {"setup-gcx"},
-	"gcx login":       {"setup-gcx"},
-	"gcx signup":      {"setup-gcx"},
+	"gcx alert ruler":     {},
+	"gcx irm":             {"oncall-triage"},
+	"gcx logs":            {"debug-with-grafana"},
+	"gcx metrics":         {"debug-with-grafana"},
+	"gcx traces":          {"debug-with-grafana"},
+	"gcx profiles":        {"debug-with-grafana"},
+	"gcx datasources":     {"debug-with-grafana"},
+	"gcx kg":              {"diagnose-entity-graph"},
+	"gcx agento11y":       {"agento11y", "agento11y-instrument"},
+	"gcx assistant pages": {"assistant-pages"},
+	"gcx setup":           {"setup-gcx"},
+	"gcx login":           {"setup-gcx"},
+	"gcx signup":          {"setup-gcx"},
 }
 
 // SkillsForCommand returns the bundled skill names mapped to the nearest mapped

@@ -9,6 +9,8 @@ skills:
     status: active
   agento11y-test-starter:
     status: active
+  assistant-pages:
+    status: active
   create-dashboard:
     status: active
   debug-with-grafana:
