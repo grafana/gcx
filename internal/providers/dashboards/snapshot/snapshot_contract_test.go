@@ -15,6 +15,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +35,13 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var testPNG = []byte("\x89PNG\r\n\x1a\nfake-pixels") //nolint:gochecknoglobals
+var testPNG = func() []byte { //nolint:gochecknoglobals
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}()
 
 // stubLoader satisfies snapshot.GrafanaConfigLoader with a fixed config.
 type stubLoader struct {
@@ -472,5 +480,87 @@ func TestSnapshot_ExplicitFormatOverride(t *testing.T) {
 				t.Errorf("schema_version = %v, want 1", doc["schema_version"])
 			}
 		})
+	}
+}
+
+func TestSnapshot_ReceiptUsesRenderedImageDimensions(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantWidth  string
+		wantHeight string
+	}{
+		{name: "panel renderer adjusts width", args: []string{"--panel", "7"}, wantWidth: "800", wantHeight: "600"},
+		{name: "dashboard full page height", wantWidth: "1920", wantHeight: "-1"},
+		{name: "explicit dimensions", args: []string{"--width", "400", "--height", "300"}, wantWidth: "400", wantHeight: "300"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent.SetFlag(true)
+			t.Cleanup(agent.ResetForTesting)
+			var imageBytes bytes.Buffer
+			if err := png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 1000, 750))); err != nil {
+				t.Fatal(err)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.Query().Get("width"); got != tt.wantWidth {
+					t.Errorf("request width = %s, want %s", got, tt.wantWidth)
+				}
+				if got := r.URL.Query().Get("height"); got != tt.wantHeight {
+					t.Errorf("request height = %s, want %s", got, tt.wantHeight)
+				}
+				_, _ = w.Write(imageBytes.Bytes())
+			}))
+			defer server.Close()
+			args := append([]string{"sample-dashboard", "--output-dir", t.TempDir()}, tt.args...)
+			stdout, _, err := runSnapshotCmd(t, server, args)
+			if err != nil {
+				t.Fatalf("Execute() = %v", err)
+			}
+			doc := decodeSingleJSONDoc(t, stdout)
+			files, ok := doc["files"].([]any)
+			if !ok || len(files) != 1 {
+				t.Fatalf("files = %v, want one entry", doc["files"])
+			}
+			file, ok := files[0].(map[string]any)
+			if !ok {
+				t.Fatalf("files[0] = %v, want object", files[0])
+			}
+			if file["width"] != float64(1000) || file["height"] != float64(750) {
+				t.Errorf("receipt dimensions = %v x %v, want 1000 x 750", file["width"], file["height"])
+			}
+			filePath, ok := file["file_path"].(string)
+			if !ok {
+				t.Fatalf("file_path = %v, want string", file["file_path"])
+			}
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(data, imageBytes.Bytes()) {
+				t.Error("rendered PNG changed")
+			}
+		})
+	}
+}
+
+func TestSnapshot_InvalidPNGDoesNotWriteArtifact(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not a PNG"))
+	}))
+	defer server.Close()
+	outputDir := t.TempDir()
+	_, _, err := runSnapshotCmd(t, server, []string{"sample-dashboard", "--output-dir", outputDir})
+	if err == nil || !strings.Contains(err.Error(), "failed to read rendered PNG dimensions") {
+		t.Fatalf("Execute() = %v, want PNG dimensions error", err)
+	}
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("output directory contains %d artifacts, want none", len(entries))
 	}
 }

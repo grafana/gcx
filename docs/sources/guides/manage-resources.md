@@ -81,3 +81,15 @@ Follow this workflow to back up all Grafana resources from one instance and late
    ```shell
    gcx resources push --path ./backup-prod
    ```
+
+## Save dashboard images
+
+Use `gcx dashboards snapshot` to render a dashboard or a single panel as a PNG:
+
+```shell
+gcx dashboards snapshot my-dashboard --panel 1 --output-dir ./images -o json
+```
+
+The JSON and YAML receipts report the saved PNG's actual `width` and `height`.
+The renderer can adjust requested dimensions, for example to enforce a minimum
+width or capture a dashboard's full page height.
