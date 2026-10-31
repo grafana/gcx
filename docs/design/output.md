@@ -15,6 +15,9 @@ with a different declared protocol may restrict them (see § 11). JSON/YAML
 serialize the value passed to `Encode`, without adding a resource envelope.
 Commands supply their registered resource or domain response according to
 [Pattern 17](../architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget).
+The exception is list output: list commands write the `gcx.list` envelope
+(`type`, `schema_version`, `metadata`, `items`) defined in
+[§ 15.2](#152-the-list-envelope).
 Explicit `--json`/`--jq` may transform that value; the default preserves all
 fields. The `agents` codec is described in [§ 1.1.1](#111-agents-codec).
 
@@ -214,7 +217,10 @@ additional list calls are made (NC-005).
 **Output shape:**
 - Single resource: `{"field": "value", ...}` (flat object, only selected fields)
 - List/collection: `{"items": [{"field": "value"}, ...]}`
-- Provider list envelope: the wrapper key is preserved. A single-key envelope
+- `gcx.list` envelope ([§ 15.2](#152-the-list-envelope)): selection applies
+  inside `items`; `type`, `schema_version` and `metadata` pass through
+  unchanged (§ 15.5).
+- Provider list envelope (pre-§ 15, deprecated for new commands): the wrapper key is preserved. A single-key envelope
   (`{"datasources": [...]}`) is detected structurally. A multi-key envelope
   that carries list-level metadata alongside the items (e.g.
   `{"investigations": [...], "total": 42}`) must opt in by implementing
@@ -466,11 +472,12 @@ change that landed this contract.
 
 ---
 
-## 15. List Truncation Contract [PROPOSED — #387 Track C]
+## 15. List Output Contract
 
-> **Status: proposed.** Implemented as an opt-in shared contract in `internal/output/listmeta.go` and migrated to two exemplar commands (`datasources list`, `irm oncall alert-groups list`). Not yet a repo-wide requirement; apply the contract below when migrating other list commands.
+> **Status: accepted** ([RFC 030](../rfcs/030-list-output-envelope.md)). New list commands, and list commands whose structured output changes for any other reason, must use the list envelope in § 15.2. Commands that still emit the deprecated `list_meta` key (§ 15.6) keep it until their migration.
 
-List commands must never truncate silently. All truncation flows through the
+List commands must never truncate silently, and their structured output must
+say so in the payload, not only on stderr. All truncation flows through the
 shared helpers in `internal/output/listmeta.go` — do not roll per-command
 hint strings or ad-hoc slicing.
 
@@ -483,7 +490,7 @@ opts.IO.BindListLimit(flags, &opts.Limit, "<subject>", <default>)
 ```
 
 which produces exactly this wording and rejects negative values via
-`Options.Validate()`:
+`Options.Validate()`, before any config or network I/O:
 
 ```
 Maximum number of <subject> to return. 0 means all results are returned
@@ -492,7 +499,7 @@ Maximum number of <subject> to return. 0 means all results are returned
 **Capped-source exception:** commands whose fetch is bounded by a client-side
 safety cap must NOT use the binder — "0 means all" would be dishonest there.
 They keep a bespoke flag description that discloses the cap, and disclose the
-cap at runtime via `ListMeta.Cap` plus the cap-variant hint (below).
+cap at runtime via `metadata.limits.hardcap` plus the cap-variant hint (below).
 `--limit 0` on a capped source means "as much as the cap allows", and the
 output must say so. No command currently takes this exception: the last one,
 `irm oncall alert-groups list`, dropped its 1000-item cap in favour of a real
@@ -503,50 +510,64 @@ reported.
 The binder is deliberately minimal: commands still pass the limit to their
 clients for server-side pushdown where the API supports it.
 
-### 15.2 Machine-readable payload signal: `list_meta`
+### 15.2 The list envelope
 
-`list_meta` is a **reserved envelope key**. A truncated page carries it in
-the items envelope; **absence means the output is the complete result set**:
+In `json`, `yaml` and `agents` output a list command writes exactly one
+object with exactly these top-level keys:
 
 ```json
 {
-  "items": [ ... ],
-  "list_meta": {"truncated": true, "returned": 50, "continue": "gcx ... list --limit 100"}
+  "type": "gcx.list",
+  "schema_version": "1",
+  "metadata": {
+    "truncated": true,
+    "limits": {"requested": 500, "hardcap": null},
+    "counts": {"returned": 500, "total": null},
+    "filters": {
+      "applied": {"schema": "public", "filter": "events"},
+      "available": ["--filter", "--schema"]
+    },
+    "next": "gcx datasources postgres list-tables --schema public --filter events --limit 1000"
+  },
+  "items": [ ... ]
 }
 ```
 
-Fields (`internal/output.ListMeta`):
+`items` is always an array of objects (`[]` when empty). Table, wide and text
+codecs render the items only; their output does not change.
 
-| Field | Presence | Meaning |
+Every `metadata` key is always present; `null` means unknown or not
+applicable. Never use sentinel values (`-1`, `""`).
+
+| Key | Type | Meaning |
 |---|---|---|
-| `truncated` | always (when attached) | Always `true`; a `list_meta` is only attached to partial pages |
-| `returned` | always | Items in this page |
-| `total` | only when observed | Size of the complete set — never guessed. Fully-fetched sources, or a paginated source whose pagination happened to end (drained) while trimming to the bound |
-| `cap` | only when the safety cap was the bound | The cap value; raising `--limit` cannot retrieve more |
-| `continue` | when a runnable continuation exists | Command derived from the real invocation argv (filters survive); empty for cap-bounded pages |
+| `truncated` | bool | `true` when items matching the request were left out |
+| `limits.requested` | int or null | Effective `--limit`; `null` when unbounded (`--limit 0`) |
+| `limits.hardcap` | int or null | Safety cap that bounded the fetch, only when the cap — not `--limit` — was the bound |
+| `counts.returned` | int | Items in this page |
+| `counts.total` | int or null | Size of the complete set, only when observed — never guessed. Fully-fetched sources, or a paginated source whose pagination ended while trimming to the bound |
+| `filters.applied` | object | The command's filter flags the user set, by name without dashes, with their values; `{}` when none |
+| `filters.available` | array of strings | Every filter flag the command declares, with dashes; `[]` when none |
+| `next` | string or null | Runnable command that retrieves more, derived from the real argv (filters survive); `null` when complete or cap-bounded |
 
-Attach it to the envelope struct with exactly this key and `omitempty`
-(required — a `null list_meta` on complete sets would defeat the
-absence-means-complete rule and confuse the discovery path):
+Filter flags are declared once per command; output, context and datasource
+selection flags are never filters. A list command with no filter flags still
+emits `filters` with empty values.
 
-```go
-ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
-```
-
-Bare-array list outputs (no envelope) cannot carry the signal; they get the
-stderr hint only and should migrate to an envelope when their consumers can
-absorb the shape change (`alert rules list` is the tracked example).
+Bare-array or command-specific envelopes must not be introduced. Existing
+ones migrate to this envelope as a breaking output change, marked as such in
+the commit and changelog.
 
 ### 15.3 Constructors by source shape
 
 Never drain a source just to count it. Pick the constructor matching the
-source, then finalize with `AttachListMeta(meta, os.Args)`:
+source; the envelope helper then derives `next` from `os.Args`:
 
 | Source shape | Helper | Total |
 |---|---|---|
 | Cheaply complete (no server-side limit; full set already fetched) | `TruncateCompleteList(items, limit)` | observed |
 | Paginated, API reports more-pages (continue token / next cursor) | `PagedListMeta(returned, limit, serverHasMore, safetyCap)` | unknown |
-| Paginated, no more-pages signal | over-fetch by one (`limit+1` on the wire), then `TruncatePagedList(items, limit)` | unknown |
+| Paginated or SQL, no more-pages signal | over-fetch by one (`limit+1` on the wire), then `TruncatePagedList(items, limit)` | unknown |
 
 `PagedListMeta` honors `serverHasMore` **even when `limit <= 0`**: a fetch
 bounded by a safety cap is still a partial page. This is the fix for the
@@ -554,12 +575,11 @@ PR988 defect where `--limit 0` silently returned a hard-capped page as if it
 were complete. `serverHasMore` must also be true when the final page
 **overshot** the bound and in-hand items were trimmed, even without a next
 cursor — dropped items are truncation evidence. In that drained-overshoot
-case the total was genuinely observed and the command attaches it to the
-constructed meta — observed, never guessed
-(`irm oncall alert-groups list` is the reference implementation). On a capped
-source the total may only be attached when it is honest to do so: always on a
-cap-bounded page (which carries no continuation), otherwise only when
-`--limit 0` can really retrieve it.
+case the total was genuinely observed and the command attaches it —
+observed, never guessed (`irm oncall alert-groups list` is the reference
+implementation). On a capped source the total may only be attached when it is
+honest to do so: always on a cap-bounded page (which carries no
+continuation), otherwise only when `--limit 0` can really retrieve it.
 
 The cap-recording rule fires at `limit >= safetyCap`, including
 `limit == safetyCap` exactly: a doubled `--limit` continuation could never
@@ -568,18 +588,20 @@ continuation) is used there.
 
 ### 15.4 Human-readable stderr hint
 
-Emit via `EmitListTruncationHint(cmd.ErrOrStderr(), meta)` after the payload
-encode, with `meta` finalized by `AttachListMeta` — the single derivation
-point for the continuation, so the stderr hint and the payload's
-`list_meta.continue` can never disagree. It routes through `EmitHint` (agent
-mode emits the JSONL `class:"hint"` form with the continuation in `command`).
-No-op when `meta` is nil. TTY templates:
+Emit via `EmitListTruncationHint(cmd.ErrOrStderr(), ...)` after the payload
+encode, from the same finalized metadata as the payload, so the hint and
+`metadata.next` can never disagree. It routes through `EmitHint` (agent mode
+emits the JSONL `class:"hint"` form with the continuation in `command`).
+No-op for a complete list. TTY templates:
 
 ```
 hint: showing first 5 of 219. See all results with: gcx datasources list --limit 0          # total known
 hint: showing first 50; more results are available. See more with: gcx ... list --limit 100  # total unknown (doubled limit)
 hint: showing first 1000 (safety cap). Refine filters to narrow the result set               # cap was the bound
 ```
+
+When `filters.available` is non-empty the hint names those flags before the
+continuation, for example `Narrow with --filter, or see more with: ...`.
 
 Rules baked into the helper:
 
@@ -594,34 +616,42 @@ Rules baked into the helper:
 
 ### 15.5 `--json` guarantees
 
-The reserved key is transparent to field selection and discovery
-(`internal/output/field_select.go`, `format.go`):
+The envelope is recognized by its Go type, never by key names on arbitrary
+maps: `{metadata, items}` is also the Kubernetes List shape, and raw
+passthrough payloads (`gcx api`) keep whole-object behavior.
 
-- `--json field1,field2` on a truncated envelope selects from the **items**
-  and **re-attaches** `list_meta` to the output — the truncation signal
-  survives selection.
-- `--json list` / `--json ?` discovery samples the first item; `list_meta.*`
-  paths are never listed, and the reserved field on the envelope struct does
-  not break empty-envelope discovery.
+- `--json field1,field2` selects fields inside each item and keeps `type`,
+  `schema_version` and `metadata` unchanged.
+- `--jq` runs on the whole envelope.
+- `--json list` / `--json ?` discovery samples the first item and never lists
+  `type`, `schema_version` or `metadata.*`; an empty list falls back to the
+  item type's fields.
 
-Only the reserved `list_meta` key gets this treatment; envelopes with other
-extra keys keep the pre-existing selection behavior.
+### 15.6 Deprecated: `list_meta`
 
-These guarantees hold for typed envelope structs and for envelopes assembled as dynamic `map[string]any` values — for dynamic maps, the reserved key itself is the opt-in signal: a map without `list_meta` keeps whole-object selection and as-is discovery even when it happens to be items-shaped, so raw passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope handling JSON-normalizes the map first, so producers don't have to pre-flatten to the JSON-decoded representation. An empty dynamic envelope has no element type to reflect on, so discovery degrades to the envelope's own keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not part of the contract yet — no producer attaches truncation metadata to unstructured lists. A resources-pipeline migration would need to establish that contract.
+Before RFC 030, a truncated page carried a reserved `list_meta` sibling key in
+a command-specific envelope, and its absence meant the set was complete:
 
-### 15.6 Reference migrations
+```json
+{"datasources": [ ... ], "list_meta": {"truncated": true, "returned": 50, "total": 219, "continue": "gcx datasources list --limit 0"}}
+```
 
-- `cmd/gcx/datasources/list.go` — cheaply complete source, binder,
-  default `--limit 0`, known total.
-- `internal/providers/irm/oncall_commands_extra.go` (alert-groups list) —
-  paginated source, both server-reported (`PagedListMeta`, no safety cap:
-  `--limit 0` drains every `next` cursor) and over-fetch-by-one
-  (`TruncatePagedList`, alternate-implementation fallback path) variants.
+Commands still emitting it: `datasources list`, `docs search`, `metrics
+list`, `frontend apps list`, `fleet collectors list`, `irm oncall
+alert-groups list`, `synthetic-monitoring suggestions list`, `agento11y rules
+list-scores`, `datasources prometheus search-metric-names` /
+`search-label-names` / `search-label-values`, and `datasources tempo
+baseline`. Do not add new producers. Until they migrate, the `list_meta`
+guarantees still hold: `--json` selection re-attaches `list_meta`, discovery
+never lists `list_meta.*`, and a dynamic `map[string]any` opts in only by
+carrying the key.
 
-`alert rules list` is deliberately not migrated yet: its JSON/YAML output is a bare array (no envelope to carry `list_meta`) and its `--limit` counts different units per format (flattened rules in the table, groups in JSON). The envelope shape and counting unit need to be settled before migration.
+`alert rules list` is not migrated yet: its JSON/YAML output is a bare array
+and its `--limit` counts different units per format (flattened rules in the
+table, groups in JSON). Its migration must settle the counting unit.
 
 ### 15.7 IRM bulk-by-filter mutations
 
 **Implemented behavior:** IRM alert-group bulk-by-filter mutations retain a separate 1000-item target-enumeration cap (`alertGroupBulkTargetCap` in `internal/providers/irm/oncall_actions.go`). `resolveBulkTargets` limits enumeration to the first 1000 matching raw items, deduplicates the returned targets, and discards pagination metadata. When more matches exist, the mutation proceeds on that bounded set without disclosing the truncation; `summary.matched` counts the selected targets, not all matching groups. This cap does not apply to the read-only `irm oncall alert-groups list` command, whose `--limit 0` follows cursors to exhaustion.
 
-**Open decision:** whether a truncated bulk mutation should warn, refuse to proceed, or disclose partial targeting another way remains unresolved. The proposed list-output contract above does not settle this mutation behavior; this subsection records the current implementation and the decision still needed, without prescribing a runtime change.
+**Open decision:** whether a truncated bulk mutation should warn, refuse to proceed, or disclose partial targeting another way remains unresolved. The list output contract above does not settle this mutation behavior; this subsection records the current implementation and the decision still needed, without prescribing a runtime change.

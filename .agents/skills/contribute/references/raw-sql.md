@@ -76,10 +76,11 @@ When `--limit` is omitted (default 100):
 
 Handing back fewer rows than asked for without saying so is a completeness
 defect — T3 in `.agents/skills/contribute/references/self-review.md`.
-A stderr warning discharges it here because `docs/design/output.md` §15 is
-PROPOSED and opt-in, not because this shape earns lighter treatment:
-`QueryResponse{columns, rows}` is envelope-shaped, and T3's table would ask an
-envelope for `list_meta` in the payload if §15 were binding.
+A stderr warning discharges it here because `docs/design/output.md` §15
+covers list commands only and query results are outside its scope
+([RFC 030](../../../../docs/rfcs/030-list-output-envelope.md)), not because
+this shape earns lighter treatment. Schema discovery commands (`list-tables`,
+`describe-table`) are list commands and use the §15 envelope.
 
 ## The bail predicate
 
