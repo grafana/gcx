@@ -1,6 +1,7 @@
 package clickhouse
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -54,6 +55,9 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			table := args[0]
+			if table == "" {
+				return errors.New("table name must not be empty")
+			}
 			ctx := cmd.Context()
 
 			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
