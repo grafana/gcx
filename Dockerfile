@@ -20,6 +20,7 @@ ENV MISE_TRUSTED_CONFIG_PATHS=/src \
     MISE_TASK_RUN_AUTO_INSTALL=false
 
 COPY mise.toml go.mod go.sum ./
+COPY experimental/pluginsdk/go.mod ./experimental/pluginsdk/go.mod
 RUN mise install go && mise exec -- go mod download
 
 COPY . .
