@@ -43,6 +43,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newCancelCommand(loader),
 		newListScoresCommand(loader),
 		newGetReportCommand(loader),
+		newListFilterValuesCommand(loader),
 		newListTrialsCommand(loader),
 		newPullCommand(loader),
 		newTestSuitesCommand(loader),
