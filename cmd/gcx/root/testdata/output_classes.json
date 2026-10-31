@@ -602,7 +602,7 @@
  "gcx ml outlier-detectors list-alerts": "finite",
  "gcx ml outlier-detectors update": "finite",
  "gcx ml outlier-detectors update-alert": "finite",
- "gcx profiles adaptive": "prose",
+ "gcx profiles adaptive": "finite",
  "gcx profiles diff": "finite",
  "gcx profiles query-anomalies": "finite",
  "gcx profiles data-range": "finite",
