@@ -384,15 +384,20 @@ func (m *listTrackingMockClient) List(
 	return m.mockPushClient.List(ctx, desc, opts)
 }
 
-func TestPusher_SLOAmbiguousNaturalKey(t *testing.T) {
-	for _, kind := range []string{"SLO", "Report"} {
+func TestPusher_DeclaredUniqueNaturalKey(t *testing.T) {
+	for _, tc := range []struct{ group, kind, label string }{
+		{group: "slo.ext.grafana.app", kind: "SLO", label: "UUID"},
+		{group: "slo.ext.grafana.app", kind: "Report", label: "UUID"},
+		{group: "policy.test.grafana.app", kind: "Gadget", label: "test ID"},
+	} {
+		kind := tc.kind
 		t.Run(kind, func(t *testing.T) {
 			desc := resources.Descriptor{
-				GroupVersion: schema.GroupVersion{Group: "slo.ext.grafana.app", Version: "v1alpha1"},
+				GroupVersion: schema.GroupVersion{Group: tc.group, Version: "v1alpha1"},
 				Kind:         kind,
 			}
 			gvk := desc.GroupVersionKind()
-			adapter.RegisterNaturalKey(gvk, adapter.SpecFieldKey("name"))
+			adapter.RegisterNaturalKeyWithPolicy(gvk, adapter.SpecFieldKey("name"), adapter.NaturalKeyPolicy{RequireUnique: true, IDLabel: tc.label})
 			for _, secondName := range []string{"HTTP Availability", "http-availability!"} {
 				t.Run(secondName, func(t *testing.T) {
 					local := resources.MustFromObject(map[string]any{
@@ -413,6 +418,7 @@ func TestPusher_SLOAmbiguousNaturalKey(t *testing.T) {
 						IncludeManaged: true, StopOnError: true,
 					})
 					require.ErrorContains(t, err, `multiple `+kind+` resources have natural key "http-availability"`)
+					require.ErrorContains(t, err, "specify metadata.name "+tc.label)
 					require.Equal(t, 1, summary.FailedCount())
 					require.Empty(t, client.operations, "ambiguous names must not create or update")
 				})
