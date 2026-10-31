@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Run fresh claude + codex reviewers in parallel against the current branch's PR.
+# Usage: .agents/skills/independent-review/run-reviews [OUT_DIR]   (run from the repo root of the PR's worktree)
+set -uo pipefail
+
+out=${1:-$(mktemp -d -t independent-review.XXXX)}
+mkdir -p "$out"
+
+pr=$(gh pr view --json number -q .number 2>/dev/null) || { echo "no PR for current branch" >&2; exit 1; }
+base=$(gh pr view --json baseRefName -q .baseRefName)
+git fetch -q origin "$base"
+
+# Fresh processes: no shared context with the session that wrote the code.
+claude -p "/code-review high $pr" \
+  --no-session-persistence \
+  --permission-mode bypassPermissions \
+  --disallowedTools Edit Write NotebookEdit \
+  >"$out/claude.md" 2>"$out/claude.err" &
+cpid=$!
+
+codex review --base "origin/$base" >"$out/codex.md" 2>"$out/codex.err" &
+xpid=$!
+
+wait $cpid; echo "claude exit=$?" >>"$out/status"
+wait $xpid; echo "codex exit=$?"  >>"$out/status"
+
+echo "PR #$pr reviews in $out"
+cat "$out/status"
