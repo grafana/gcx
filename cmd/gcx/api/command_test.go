@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
@@ -318,6 +319,46 @@ func TestCommand_RecordsAPIRequestBeforeConfigLoad(t *testing.T) {
 	require.NotNil(t, got, "api command must record its usage shape even on config failure")
 	assert.Equal(t, "DELETE", got.Method)
 	assert.Equal(t, "/api/dashboards/uid/{uid}", got.Route)
+}
+
+func TestCommand_RejectsInvalidPathBeforeConfigLoad(t *testing.T) {
+	t.Setenv("GCX_CONFIG", filepath.Join(t.TempDir(), "missing.yaml"))
+	for _, tt := range []struct {
+		path    string
+		message string
+		irmHint bool
+	}{
+		{path: "https://example.invalid/api/health", message: "URL is not relative", irmHint: true},
+		{path: "http:/api/health", message: "URL is not relative", irmHint: true},
+		{path: "//example.invalid/api/health", message: "URL is not relative", irmHint: true},
+		{path: "///api/health", message: "URL is not relative", irmHint: true},
+		{path: "https://", message: "URL is not relative", irmHint: true},
+		{path: " ", message: "PATH is empty"},
+		{path: "/api/%zz", message: "malformed path"},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			cmd := Command()
+			cmd.SetArgs([]string{tt.path})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid PATH")
+			assert.Contains(t, err.Error(), tt.path)
+			assert.Contains(t, err.Error(), tt.message)
+			assert.Equal(t, tt.irmHint, strings.Contains(err.Error(), "gcx irm"))
+			var usageErr *gcxerrors.UsageError
+			require.ErrorAs(t, err, &usageErr)
+			assert.Contains(t, usageErr.Suggestions, "Use a stack-relative path: gcx api /api/health")
+			assert.NotContains(t, err.Error(), "missing.yaml")
+		})
+	}
+}
+
+func TestValidateAPIPath_RelativePaths(t *testing.T) {
+	for _, path := range []string{"/api/health", "api/health", "/api/dashboards?limit=1"} {
+		require.NoError(t, validateAPIPath(path))
+	}
 }
 
 func TestApiOpts_EffectiveMethod(t *testing.T) {
