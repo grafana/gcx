@@ -572,7 +572,7 @@
  "gcx metrics search label-values": "finite",
  "gcx metrics search metric-names": "finite",
  "gcx metrics series": "finite",
- "gcx profiles adaptive": "prose",
+ "gcx profiles adaptive": "finite",
  "gcx profiles diff": "finite",
  "gcx profiles query-anomalies": "finite",
  "gcx profiles data-range": "finite",
