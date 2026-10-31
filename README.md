@@ -299,6 +299,10 @@ gcx metrics metadata
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx logs labels
 gcx logs series --match '{app="nginx"}'
+
+# SQL query files and declared table constraints
+gcx datasources mysql query -d UID --query-file ./query.sql -o json
+gcx datasources postgres describe-table public.orders --include-constraints -o json
 ```
 
 > `gcx` also supports Pyroscope (profiling) and Tempo (traces) data sources.
