@@ -45,6 +45,7 @@ than replacing the old one, so history stays readable.`,
 		newCreateCommand(loader),
 		newListCommand(loader),
 		newDeleteCommand(loader),
+		newResolveCommand(loader),
 	)
 	return cmd
 }
