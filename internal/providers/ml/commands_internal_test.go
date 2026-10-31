@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -334,7 +335,7 @@ func TestListLimitReportsTruncation(t *testing.T) {
 			require.NoError(t, json.Unmarshal(out.Bytes(), &items))
 			require.Len(t, items, 1)
 			require.Contains(t, errOut.String(), "showing first 1 of 2")
-			require.Contains(t, errOut.String(), "--limit 0")
+			require.Contains(t, errOut.String(), cmdio.BuildListLimitCommand(os.Args, 0))
 		})
 	}
 }
