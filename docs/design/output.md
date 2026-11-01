@@ -335,6 +335,27 @@ are always populated. Select the shape that fits the operation:
 Batch counts cover every matched target exactly once. Successes and skips are
 counted; zero `skipped` is omitted.
 
+**Rules:**
+- Default text summarizes successes by count.
+- With `resources push --include-successes`, structured results include
+  `successes` with real-write identity references in JSON, YAML, and agents output.
+  Without the option, output keeps success counts only. The option changes receipt retention, but does not change API requests.
+  Each entry has `action` (`created` or `updated`), `requested`
+  (the input kind, name, and source path), and `target`
+  (`kind`, `name`, `uid`, and `namespace` when available).
+  These references use the API response. They contain no resource body.
+  Dry-run and skipped operations do not produce applied identity references.
+  API responses without a resource name also produce no reference.
+  If the option is set and no reference is returned, successes is an empty array.
+  If an abort follows a successful write, the result keeps the completed identity
+  references and reports a partial failure.
+  Entries follow completion order, not input order.
+  Large results use the agents codec spill receipt and file.
+- Failures are always enumerated individually — they require action.
+- Skipped resources are enumerated if count < 20, otherwise grouped.
+- `cmdio.Success/Warning/Error` remain for progress feedback *during*
+  execution. The summary table is the *final* output.
+
 Batch results and artifact receipts always include `failures` (`[]` when
 empty). Each failure contains `target` and `error`. The optional `source`
 field identifies the input file when available; it is omitted when the
@@ -432,6 +453,8 @@ A populated `NewArtifactReceipt("pulled", "json")` result:
   "failures": []
 }
 ```
+
+`resources push --include-successes` adds a `"successes"` array for audit.
 
 ---
 
