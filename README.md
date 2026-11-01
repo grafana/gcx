@@ -267,7 +267,7 @@ While the alerting example uses the Grafana Assistant, which requires Grafana Cl
 
 - **Resource GitOps**. Pull writable resource types to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`).
 - **Explore your data**. Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`).
-- **Bring Assistant context into your agent**. Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`).
+- **Bring Assistant context into your agent**. Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`). Legacy transcript JSON preserves tool calls, results, durations, thinking blocks, and panel artifacts.
 - **Look up product docs**. Search and read Grafana documentation from the terminal (`gcx docs search`, `gcx docs get`).
 - **SLO management**. Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`).
 - **Onboarding & setup**. Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`).

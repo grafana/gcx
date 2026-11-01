@@ -150,16 +150,39 @@ type ContentJSON []ContentBlock
 type ContentBlock struct {
 	Type         string          `json:"type"`
 	Text         string          `json:"text,omitempty"`
-	ToolID       *string         `json:"toolId,omitempty"`
-	ToolName     *string         `json:"toolName,omitempty"`
+	ToolID       string          `json:"toolId,omitempty"`
+	ToolName     string          `json:"toolName,omitempty"`
 	ToolInput    json.RawMessage `json:"toolInput,omitempty"`
-	ToolUseID    *string         `json:"toolUseId,omitempty"`
+	ToolUseID    string          `json:"toolUseId,omitempty"`
 	ToolResult   json.RawMessage `json:"toolResult,omitempty"`
-	IsError      *bool           `json:"isError,omitempty"`
-	DurationMs   json.RawMessage `json:"durationMs,omitempty"`
+	IsError      bool            `json:"isError,omitempty"`
+	DurationMs   json.Number     `json:"durationMs,omitempty"`
 	Thinking     string          `json:"thinking,omitempty"`
 	ArtifactType string          `json:"artifactType,omitempty"`
 	Panel        json.RawMessage `json:"panel,omitempty"`
+	raw          json.RawMessage
+}
+
+// UnmarshalJSON keeps the received block for lossless transcript output.
+func (b *ContentBlock) UnmarshalJSON(data []byte) error {
+	type fields ContentBlock
+	var decoded fields
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*b = ContentBlock(decoded)
+	b.raw = append(json.RawMessage(nil), data...)
+	return nil
+}
+
+// MarshalJSON preserves received fields, including unknown and explicit empty values.
+// Blocks constructed locally use the typed fields.
+func (b ContentBlock) MarshalJSON() ([]byte, error) {
+	if b.raw != nil {
+		return b.raw, nil
+	}
+	type fields ContentBlock
+	return json.Marshal(fields(b))
 }
 
 // ExtractText extracts all text content from a ChatMessage.
@@ -174,11 +197,11 @@ func (m *ChatMessage) ExtractText() string {
 			result += block.Text
 		}
 	}
-	return stripContextTags(result)
+	return StripContextTags(result)
 }
 
-// stripContextTags removes <context>...</context> tags from text.
-func stripContextTags(text string) string {
+// StripContextTags removes <context>...</context> tags from text.
+func StripContextTags(text string) string {
 	for {
 		start := strings.Index(text, "<context>")
 		if start == -1 {

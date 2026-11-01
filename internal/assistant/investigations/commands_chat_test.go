@@ -29,8 +29,8 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 					Type:       "tool_result",
 					ToolUseID:  "tu_1",
 					ToolName:   "search_skills",
-					DurationMs: 42,
-					ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "result text"}},
+					DurationMs: json.Number("42"),
+					ToolResult: json.RawMessage(`[{"type":"text","text":"result text"}]`),
 				},
 			},
 		},
@@ -85,7 +85,7 @@ func TestChatThreadTextCodec_ErrorMarker(t *testing.T) {
 				Type:       "tool_result",
 				ToolUseID:  "tu_1",
 				IsError:    true,
-				ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "boom"}},
+				ToolResult: json.RawMessage(`[{"type":"text","text":"boom"}]`),
 			},
 		}},
 	}
@@ -117,15 +117,15 @@ func TestToolsTableCodec_Encode(t *testing.T) {
 		{
 			ID:         "tu_1",
 			Name:       "search_skills",
-			DurationMs: 42,
+			DurationMs: json.Number("42"),
 			Input:      json.RawMessage(`{"queries":[{"query":"q"}]}`),
-			Result:     []investigations.ToolResultPart{{Type: "text", Text: "ok"}},
+			Result:     json.RawMessage(`[{"type":"text","text":"ok"}]`),
 		},
 		{
 			ID:      "tu_2",
 			Name:    "prometheus_query_handler",
 			IsError: true,
-			Result:  []investigations.ToolResultPart{{Type: "text", Text: "x"}},
+			Result:  json.RawMessage(`[{"type":"text","text":"x"}]`),
 		},
 		{ID: "tu_3", Name: "loki_query_handler_investigator"},
 	}

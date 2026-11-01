@@ -518,3 +518,40 @@ func TestLegacyNonTextTranscriptHint(t *testing.T) {
 		assert.NotContains(t, transcript.FormatText(), "(no user/assistant messages)")
 	}
 }
+
+func TestLegacyContentPreservesUnknownAndEmptyFields(t *testing.T) {
+	for _, wire := range []string{
+		`{"type":"thinking","thinking":"","signature":"signed","status":null}`,
+		`{"type":"text","text":"","artifactType":"","toolId":null,"toolName":"","toolUseId":null,"isError":null}`,
+		`{"type":"tool_result","durationMs":null,"toolResult":null,"future":{"count":9007199254740993}}`,
+	} {
+		t.Run(wire, func(t *testing.T) {
+			var block assistant.ContentBlock
+			require.NoError(t, json.Unmarshal([]byte(wire), &block))
+			encoded, err := json.Marshal(block)
+			require.NoError(t, err)
+			assert.Equal(t, wire, string(encoded))
+		})
+	}
+}
+
+func TestLegacyDurationRejectsNonNumbers(t *testing.T) {
+	for _, value := range []string{`"slow"`, `{}`, `[]`, `true`} {
+		t.Run(value, func(t *testing.T) {
+			var block assistant.ContentBlock
+			require.Error(t, json.Unmarshal([]byte(`{"type":"tool_result","durationMs":`+value+`}`), &block))
+		})
+	}
+}
+
+func TestLegacyOmissionHintIgnoresOtherRolesAndHiddenMessages(t *testing.T) {
+	for _, role := range []string{"tool", "system", "internal", "assistant"} {
+		t.Run(role, func(t *testing.T) {
+			transcript := assistant.ConversationTranscript{Messages: []assistant.ChatMessage{
+				{Role: "assistant", Content: assistant.ContentJSON{{Type: "text", Text: "answer"}}},
+				{Role: role, Hidden: role == "assistant", Content: assistant.ContentJSON{{Type: "tool_result"}}, Parts: json.RawMessage(`[{"type":"tool-result"}]`)},
+			}}
+			assert.NotContains(t, transcript.FormatText(), "use --output json")
+		})
+	}
+}
