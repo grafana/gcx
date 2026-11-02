@@ -1571,7 +1571,10 @@ func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
 		},
 		{
 			name: "pointer-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
-			err:  fmt.Errorf("context: %w", &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+			// DetailedError implements error on the value receiver, so vet's printf
+			// check flags a bare *DetailedError %w operand; this case deliberately
+			// exercises the pointer form, so pass it through the error interface.
+			err: fmt.Errorf("context: %w", error(&gcxerrors.DetailedError{ExitCode: &two, Summary: "test"})),
 		},
 	}
 
