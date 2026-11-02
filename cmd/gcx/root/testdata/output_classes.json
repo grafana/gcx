@@ -3,6 +3,7 @@
  "gcx agent skills get": "finite",
  "gcx agent skills install": "finite",
  "gcx agent skills list": "finite",
+ "gcx agent skills search": "finite",
  "gcx agent skills uninstall": "finite",
  "gcx agent skills update": "finite",
  "gcx agento11y agents get": "finite",

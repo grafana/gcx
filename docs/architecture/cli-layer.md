@@ -24,7 +24,7 @@ and replacement existence at build time, not on the uninstall recovery path.
 It also requires the catalog to retain every name in the committed, append-only
 `internal/skills/testdata/shipped_skills.txt` snapshot, independently of current
 bundle contents. New bundled names must be appended to that snapshot. Install, update, list,
-and uninstall share this read-only reconciliation; get reads bundled content only.
+and uninstall share this read-only reconciliation; unqualified get reads bundled content only.
 CLI wiring and codecs remain in `cmd/gcx/skills`; the background update notifier
 uses the same update preview, including retirement notices.
 
@@ -33,6 +33,8 @@ manageable across skipped releases. Uncataloged local directories are unmanaged.
 Catalog membership does not prove ownership; no installation manifest or file
 pruning is implemented. See [skill lifecycle](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skill-lifecycle)
 for maintenance rules and command behavior.
+
+Explicit local imports use a separate `<root>/custom-skills` store, with an ownership marker and a `custom/<name>` identity. Metadata discovery can select bundled, custom or both sources; default list and bundled bulk operations preserve their released behavior. Import, snapshot replacement and removal live in `internal/skills`, while the current coding agent executes instructions read through get. Per-identity writer locks protect simultaneous mutations. This draft capability and its tradeoffs are described in the [custom-skills proposal](../rfcs/031-user-managed-skills.md).
 
 ## Provider Command Groups
 

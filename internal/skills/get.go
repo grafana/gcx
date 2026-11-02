@@ -14,6 +14,7 @@ type GetResult struct {
 	CatalogEntry
 
 	Name        string   `json:"name"`
+	Source      string   `json:"source,omitempty"`
 	Description string   `json:"description"`
 	Path        string   `json:"path"`
 	Body        string   `json:"body"`

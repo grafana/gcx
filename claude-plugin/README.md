@@ -120,7 +120,7 @@ retired entries, including incomplete installations without `SKILL.md`. `update`
 refreshes installed bundled skills and reports retired copies without changing
 them. It never installs replacements automatically or prunes obsolete local files.
 Install/update receipts include lifecycle notices in JSON as well as warnings on
-stderr. `get` reads only bundled content, not a local copy.
+stderr. Unqualified `get` reads bundled content, not a local copy.
 
 Directories absent from the catalog are unmanaged and never targeted. Reconciliation
 tracks catalog membership internally in `SkillState.Known`, separate from the
@@ -131,6 +131,12 @@ there is no installation receipt or local-modification tracking yet. Explicit
 uninstall removes the selected directory and its local edits. These lifecycle
 rules apply to `gcx agent skills`; the Claude plugin manager consumes the skill
 content directly and does not interpret the catalog.
+
+### Custom user workflows (draft)
+
+Local user-authored workflows can be imported with `gcx agent skills install ./service-debug`, discovered with `gcx agent skills search latency --source custom`, and read with `gcx agent skills get custom/service-debug -o text`. The front-matter name supplies the identity. `--dir` selects the installation root for all operations. The separate `<root>/custom-skills` store is not scanned automatically by the harness, and bundled bulk/lifecycle operations do not own it. An explicit `update custom/service-debug --from ./service-debug` replaces the saved snapshot; `uninstall custom/service-debug --yes` removes only the saved copy.
+
+The [custom workflow guide](skills/gcx/references/custom-skills.md) teaches the coding agent how to author, import, discover, read and verify user workflows. Search returns metadata only, with a match count and truncation disclosure; it does not execute skill contents or start another agent. The [proposed design](../docs/rfcs/031-user-managed-skills.md) records the draft's scope and unresolved demand question.
 
 ## Agents
 
