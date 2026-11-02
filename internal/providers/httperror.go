@@ -94,8 +94,7 @@ func HandleErrorResponse(resp *http.Response) error {
 		return statusErr
 	}
 	formatted := FormatError(resp.StatusCode, body)
-	var statusErr *gcxerrors.HTTPStatusError
-	if errors.As(formatted, &statusErr) {
+	if statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](formatted); ok {
 		statusErr.ContentType = resp.Header.Get("Content-Type")
 	}
 	return formatted

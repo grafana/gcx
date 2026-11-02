@@ -18,13 +18,13 @@ import (
 // This enables cross-stack push: when Get-by-metadata.name returns NotFound
 // (because the server-generated ID from Stack A doesn't exist on Stack B),
 // we fall back to matching by natural key (e.g., SLO name, check job+target).
-func findByNaturalKey( //nolint:nonamedreturns // Named returns document the match contract.
+func findByNaturalKey(
 	ctx context.Context,
 	cache *naturalKeyCache,
 	desc resources.Descriptor,
 	localObj *unstructured.Unstructured,
 	desiredNativeIdentity string,
-) (matched *unstructured.Unstructured, found bool, err error) {
+) (matched *unstructured.Unstructured, found bool, err error) { //nolint:nonamedreturns // Named returns document the match contract.
 	// 1. Get the extractor for this GVK.
 	extractor := adapter.GetNaturalKeyExtractor(desc.GroupVersionKind())
 	nativePolicy := extractor == nil && resources.HasServerDerivedName(desc.GroupVersionKind())

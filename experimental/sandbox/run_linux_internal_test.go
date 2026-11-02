@@ -240,7 +240,11 @@ func TestCloseGivesUpWhenCtxDone(t *testing.T) {
 	}
 
 	release.close()
-	<-runErr
+	// The run was cancelled, but its stuck stdin read ignored that; once the
+	// read returns, the guest may exit normally before it sees the cancellation.
+	if err := <-runErr; err != nil && !errors.Is(err, ErrClosed) {
+		t.Fatalf("Run: %v, want nil or ErrClosed", err)
+	}
 	if err := r.Close(t.Context()); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}

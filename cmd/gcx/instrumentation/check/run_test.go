@@ -165,12 +165,10 @@ func classify(err error) error {
 	case errors.Is(err, otelutils.ErrManualInstrumentationFile):
 		return errors.New("--instrumentation-file is required when --language=js and --manual-instrumentation are set")
 	}
-	var ule *otelutils.UnsupportedLanguageError
-	if errors.As(err, &ule) {
+	if ule, ok := errors.AsType[*otelutils.UnsupportedLanguageError](err); ok {
 		return errors.New("language \"" + ule.Language + "\" is not supported")
 	}
-	var uce *otelutils.UnsupportedComponentError
-	if errors.As(err, &uce) {
+	if uce, ok := errors.AsType[*otelutils.UnsupportedComponentError](err); ok {
 		return errors.New("component \"" + uce.Component + "\" is not supported")
 	}
 	return err

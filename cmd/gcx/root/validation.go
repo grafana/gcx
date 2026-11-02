@@ -92,8 +92,7 @@ func trimLeadingRootFlags(rootCmd *cobra.Command, args []string) ([]string, bool
 }
 
 func commandUsageError(cmd *cobra.Command, err error) error {
-	var usageErr *fail.UsageError
-	if errors.As(err, &usageErr) {
+	if _, ok := errors.AsType[*fail.UsageError](err); ok {
 		return err
 	}
 	return fail.NewCommandUsageError(cmd, "", err)
