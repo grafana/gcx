@@ -430,8 +430,7 @@ func TestSnapshot_AllFail_RawErrorNotPartial(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute() = nil, want the render error")
 	}
-	var emitted *gcxerrors.EmittedError
-	if errors.As(err, &emitted) {
+	if emitted, ok := errors.AsType[*gcxerrors.EmittedError](err); ok {
 		t.Fatalf("Execute() error = EmittedError (exit %d), want a raw error on total failure", emitted.Code)
 	}
 	if strings.TrimSpace(stdout) != "" {

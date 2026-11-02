@@ -78,8 +78,7 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 // simplifyQueryError rewrites the Azure error body wrapped inside a query API
 // error message to its most specific inner message.
 func simplifyQueryError(err error) error {
-	var apiErr *queryerror.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*queryerror.APIError](err); ok {
 		apiErr.Message = simplifyPluginError(apiErr.Message)
 	}
 	return err

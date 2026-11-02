@@ -138,7 +138,7 @@ func discoverEnvVars(typeDef reflect.Type, typesCommentsMap map[string]typeComme
 
 		for field := range typeDef.Fields() {
 			fieldKind := field.Type.Kind()
-			envName := strings.Split(field.Tag.Get("env"), ",")[0]
+			envName, _, _ := strings.Cut(field.Tag.Get("env"), ",")
 
 			if envName != "" {
 				envVarMap[envName] = comments.Fields[field.Name]

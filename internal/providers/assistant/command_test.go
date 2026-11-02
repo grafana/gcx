@@ -101,8 +101,7 @@ contexts:
 				t.Fatal("expected an error")
 			}
 			if tt.blocked {
-				var de gcxerrors.DetailedError
-				if !errors.As(err, &de) {
+				if _, ok := errors.AsType[gcxerrors.DetailedError](err); !ok {
 					t.Fatalf("expected self-hosted guard DetailedError, got %T: %v", err, err)
 				}
 			} else if err.Error() != "cannot use both --context-id and --continue flags" {
@@ -286,8 +285,7 @@ func TestRequireGrafanaCloud(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				var de gcxerrors.DetailedError
-				if !errors.As(err, &de) {
+				if _, ok := errors.AsType[gcxerrors.DetailedError](err); !ok {
 					t.Fatalf("expected gcxerrors.DetailedError, got %T", err)
 				}
 			} else if err != nil {

@@ -50,19 +50,16 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	// A signup that failed after the browser step renders its own failure and
 	// then the recovery. Checked before DetailedError extraction, which would
 	// otherwise return the inner error without the recovery.
-	var signupErr *login.SignupIncompleteError
-	if errors.As(err, &signupErr) {
+	if signupErr, ok := errors.AsType[*login.SignupIncompleteError](err); ok {
 		return signupIncompleteDetailedError(signupErr)
 	}
 
 	// Match value-typed DetailedError returns (e.g. `return gcxerrors.DetailedError{...}`).
-	var val gcxerrors.DetailedError
-	if errors.As(err, &val) {
+	if val, ok := errors.AsType[gcxerrors.DetailedError](err); ok {
 		return &val
 	}
 	// Match pointer-typed DetailedError returns (e.g. `return &gcxerrors.DetailedError{...}`).
-	var ptr *gcxerrors.DetailedError
-	if errors.As(err, &ptr) {
+	if ptr, ok := errors.AsType[*gcxerrors.DetailedError](err); ok {
 		return ptr
 	}
 
@@ -430,8 +427,7 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertAgento11yPluginUnavailable(err error) (*gcxerrors.DetailedError, bool) {
-	var pluginErr *agento11yhttp.PluginUnavailableError
-	if !errors.As(err, &pluginErr) {
+	if _, ok := errors.AsType[*agento11yhttp.PluginUnavailableError](err); !ok {
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{
@@ -1012,8 +1008,7 @@ func joinErrorDetails(parts ...string) string {
 }
 
 func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
-	var unsupported *resources.UnsupportedResourceError
-	if errors.As(err, &unsupported) {
+	if _, ok := errors.AsType[*resources.UnsupportedResourceError](err); ok {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: gcxerrors.SummaryEndpointNotAvailable,
@@ -1108,8 +1103,7 @@ func isEmittedError(err error) bool {
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
-	var basicErr *login.BasicAuthCheckError
-	if errors.As(err, &basicErr) {
+	if basicErr, ok := errors.AsType[*login.BasicAuthCheckError](err); ok {
 		detail := &gcxerrors.DetailedError{
 			Parent:      err,
 			Summary:     gcxerrors.SummaryAPIError,
@@ -1138,18 +1132,15 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return detail, true
 	}
 
-	var gcomErr *login.GCOMStackError
-	if errors.As(err, &gcomErr) {
+	if gcomErr, ok := errors.AsType[*login.GCOMStackError](err); ok {
 		return convertGCOMStackError(gcomErr), true
 	}
 
-	var healthErr *login.HealthCheckError
-	if errors.As(err, &healthErr) {
+	if healthErr, ok := errors.AsType[*login.HealthCheckError](err); ok {
 		return convertHealthCheckError(healthErr), true
 	}
 
-	var k8sErr *login.K8sDiscoveryError
-	if errors.As(err, &k8sErr) {
+	if k8sErr, ok := errors.AsType[*login.K8sDiscoveryError](err); ok {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: gcxerrors.SummaryEndpointNotAvailable,
@@ -1164,8 +1155,7 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	// Delegate VersionCheckError to convertVersionErrors so ExitCode and copy
 	// stay consistent with VersionIncompatibleError raised from other call sites.
-	var versionErr *login.VersionCheckError
-	if errors.As(err, &versionErr) {
+	if versionErr, ok := errors.AsType[*login.VersionCheckError](err); ok {
 		if d, ok := convertVersionErrors(versionErr.Cause); ok {
 			d.Parent = err
 			return d, true

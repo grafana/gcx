@@ -154,8 +154,7 @@ Combining --use-defaults with any --<feat> flag is an error.`,
 
 			err = rmw.Update(ctx, getFn, mutateFn, setFn, appListEqual, 2)
 			if err != nil {
-				var ce rmw.ConflictError
-				if errors.As(err, &ce) {
+				if ce, ok := errors.AsType[rmw.ConflictError](err); ok {
 					ce.Command = "apps configure"
 					ce.Namespace = namespace
 					return ce

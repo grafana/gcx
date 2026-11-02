@@ -243,8 +243,7 @@ func doStatus[Req any](ctx context.Context, c *Client, method, path string, body
 
 func handleNotFoundResponse(resp *http.Response, notFoundErr error) error {
 	err := HandleErrorResponse(resp)
-	var pluginErr *PluginUnavailableError
-	if errors.As(err, &pluginErr) {
+	if _, ok := errors.AsType[*PluginUnavailableError](err); ok {
 		return err
 	}
 	return notFoundErr

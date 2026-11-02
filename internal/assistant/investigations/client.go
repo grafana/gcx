@@ -16,8 +16,7 @@ import (
 const readPermission = "grafana-assistant-app.investigations:read"
 
 func withReadPermission(err error) error {
-	var forbidden *assistanthttp.ForbiddenError
-	if errors.As(err, &forbidden) {
+	if forbidden, ok := errors.AsType[*assistanthttp.ForbiddenError](err); ok {
 		forbidden.Permission = readPermission
 	}
 	return err

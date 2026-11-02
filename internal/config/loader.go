@@ -1222,8 +1222,7 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		return cfg, nil
 	}
 	merged, err := loadLayeredSources(ctx, sources, opts, nil)
-	var changed *layeredConfigChangedError
-	if errors.As(err, &changed) {
+	if _, ok := errors.AsType[*layeredConfigChangedError](err); ok {
 		merged, err = loadLayeredSourcesLocked(ctx, opts)
 	}
 	if err != nil {

@@ -51,7 +51,7 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 	// alternative of an inclusive regex matcher (e.g. {app=~"foo|bar"}) for
 	// the path segment; the full value is unaffected and still goes into
 	// var-filters below via primary.Value.
-	pathValue := strings.SplitN(primary.Value, "|", 2)[0]
+	pathValue, _, _ := strings.Cut(primary.Value, "|")
 	path := "/explore/" + pathLabelName + "/" + escapePrimaryLabel(pathValue) + "/logs"
 
 	if end.IsZero() {

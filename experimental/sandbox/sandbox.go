@@ -394,8 +394,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	if err != nil && ctx.Err() != nil { // stopped by the caller's deadline or cancellation
 		return Result{}, ctx.Err()
 	}
-	var exit *sys.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*sys.ExitError](err); ok {
 		return Result{ExitCode: int(exit.ExitCode())}, nil
 	}
 	if err != nil {

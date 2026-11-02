@@ -596,8 +596,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if errors.Is(err, errLoginAborted) {
 		return nil
 	}
-	var runtimeOnlyDestination *login.RuntimeOnlyBearerDestinationError
-	if errors.As(err, &runtimeOnlyDestination) {
+	if runtimeOnlyDestination, ok := errors.AsType[*login.RuntimeOnlyBearerDestinationError](err); ok {
 		err = runtimeOnlyBearerDestinationError(mutationTarget, persistedSourceCtx, &opts, runtimeOnlyDestination)
 	}
 	if err != nil {

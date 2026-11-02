@@ -11,6 +11,7 @@ linters:
     - err113
     - exhaustive
     - exhaustruct
+    - exhaustruct_v5
     - funcorder
     - funlen
     - gocognit
@@ -57,6 +58,12 @@ linters:
         - pattern: ^http\.Transport$
           pkg: ^net/http$
           msg: build transports in httputils so they pass through WireTransport
+    modernize:
+      disable:
+        # Go 1.27 allows promoted fields in composite literals; embedlit
+        # flattens literals such as login.Options{Inputs: ..., Hooks: ...},
+        # dropping the grouping those structs exist to document.
+        - embedlit
     gomoddirectives:
       replace-allow-list:
         - github.com/hashicorp/memberlist
