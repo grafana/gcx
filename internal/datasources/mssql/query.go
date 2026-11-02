@@ -66,6 +66,9 @@ it in your browser after the query succeeds.`,
   gcx datasources mssql query -d UID -f ./query.sql -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := shared.ValidateInputFlags(cmd); err != nil {
+				return err
+			}
 			if err := shared.Validate(); err != nil {
 				return err
 			}

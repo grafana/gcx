@@ -98,18 +98,28 @@ func TestSQLFilenameValidationBeforeIO(t *testing.T) {
 	for _, kind := range []string{"mysql", "postgres", "clickhouse", "athena", "mssql", "bigquery", "pinot"} {
 		for _, flags := range [][]string{
 			{"-f", "-", "--limit", "0"}, {"-f", "-", "--limit", "100"},
+			{"-f", "-", "--limit=-1"}, {"--limit", "-1", "--filename", "missing.sql"},
 			{"--filename="}, {"-f", "-", "--expr", "SELECT 1"},
 			{"-f", "-", "SELECT 1"}, {"-f", "-"},
 		} {
 			t.Run(kind+"/"+strings.Join(flags, " "), func(t *testing.T) {
 				testutils.SandboxConfigEnv(t)
 				cmd := root.Command("test")
-				cmd.SetOut(&bytes.Buffer{})
-				cmd.SetErr(&bytes.Buffer{})
+				var stdout, stderr bytes.Buffer
+				cmd.SetOut(&stdout)
+				cmd.SetErr(&stderr)
 				cmd.SetIn(strings.NewReader(""))
 				cmd.SetArgs(append([]string{"datasources", kind, "query"}, flags...))
 				var usage *gcxerrors.UsageError
-				require.ErrorAs(t, cmd.Execute(), &usage)
+				err := cmd.Execute()
+				require.ErrorAs(t, err, &usage)
+				for _, flag := range flags {
+					if strings.HasPrefix(flag, "--limit") {
+						assert.ErrorContains(t, err, "--filename cannot be combined with --limit")
+						assert.NotContains(t, stderr.String(), "Reading SQL from stdin")
+						break
+					}
+				}
 			})
 		}
 	}

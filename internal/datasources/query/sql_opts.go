@@ -25,17 +25,26 @@ func (opts *SQLQueryOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
 	flags.StringVarP(&opts.Filename, "filename", "f", "", "Read SQL verbatim from FILE (- for stdin); disables the default row limit and cannot be combined with --limit")
 }
 
+// ValidateInputFlags checks input-source conflicts before individual flag
+// validation, so even a negative --limit remains a file-input usage error.
+func (opts *SQLQueryOpts) ValidateInputFlags(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("filename") && cmd.Flags().Changed("limit") {
+		return gcxerrors.NewCommandUsageError(cmd, "--filename cannot be combined with --limit", nil)
+	}
+	return nil
+}
+
 // ResolveExpr validates and reads file input before config or datasource I/O.
 func (opts *SQLQueryOpts) ResolveExpr(cmd *cobra.Command, args []string, exprArgIndex int) (string, error) {
+	if err := opts.ValidateInputFlags(cmd); err != nil {
+		return "", err
+	}
 	if !cmd.Flags().Changed("filename") {
 		expr, err := opts.SharedOpts.ResolveExpr(args, exprArgIndex)
 		if err != nil {
 			return "", gcxerrors.NewCommandUsageError(cmd, err.Error(), err)
 		}
 		return expr, nil
-	}
-	if cmd.Flags().Changed("limit") {
-		return "", gcxerrors.NewCommandUsageError(cmd, "--filename cannot be combined with --limit", nil)
 	}
 	if cmd.Flags().Changed("expr") || exprArgIndex < len(args) {
 		return "", gcxerrors.NewCommandUsageError(cmd, "provide SQL as a positional argument, via --expr, or via --filename, not multiple sources", nil)

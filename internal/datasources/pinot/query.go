@@ -128,6 +128,9 @@ open it in your browser after the query succeeds.`,
   gcx datasources pinot query -d UID -f ./query.sql -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.ValidateInputFlags(cmd); err != nil {
+				return err
+			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}

@@ -45,6 +45,7 @@ func TestSQLQueryOptsResolveExpr(t *testing.T) {
 		{name: "empty stdin", flags: []string{"-f", "-"}, wantErr: "is empty"},
 		{name: "limit", flags: []string{"-f", file, "--limit", "100"}, wantErr: "cannot be combined with --limit"},
 		{name: "unlimited", flags: []string{"-f", "-", "--limit", "0"}, wantErr: "cannot be combined with --limit"},
+		{name: "negative limit", flags: []string{"-f", "-", "--limit=-1"}, wantErr: "cannot be combined with --limit"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &dsquery.SQLQueryOpts{}

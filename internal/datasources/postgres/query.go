@@ -71,6 +71,9 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
   gcx datasources postgres query 'SELECT * FROM big_table' --limit 0`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.ValidateInputFlags(cmd); err != nil {
+				return err
+			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}
