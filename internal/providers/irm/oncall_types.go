@@ -114,6 +114,12 @@ func ApplyListOpts(opts []ListOption) ListConfig {
 //
 //nolint:interfacebloat // accepted: covers the full OnCall surface area
 type OnCallAPI interface {
+	ListPersonalNotificationRules(ctx context.Context) ([]PersonalNotificationRule, error)
+	GetPersonalNotificationRule(ctx context.Context, id string) (*PersonalNotificationRule, error)
+	CreatePersonalNotificationRule(ctx context.Context, rule PersonalNotificationRule) (*PersonalNotificationRule, error)
+	UpdatePersonalNotificationRule(ctx context.Context, id string, rule PersonalNotificationRule) (*PersonalNotificationRule, error)
+	DeletePersonalNotificationRule(ctx context.Context, id string) error
+
 	ListIntegrations(ctx context.Context) ([]Integration, error)
 	GetIntegration(ctx context.Context, id string) (*Integration, error)
 	CreateIntegration(ctx context.Context, i Integration) (*Integration, error)

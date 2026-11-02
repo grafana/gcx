@@ -260,7 +260,7 @@ We are migrating from the old `grafana-cloud-cli` to the new `gcx` codebase. Thi
 | OnCall organizations | Manage orgs | Provider: exists |
 | OnCall user-groups | Manage groups | Provider: exists |
 | OnCall slack-channels | Manage Slack | Provider: exists |
-| OnCall personal-notification-rules | Manage rules | **Missing** |
+| OnCall personal-notification-rules | Manage rules | Provider: Full CRUD |
 | OnCall teams | Manage teams | Provider: exists |
 | OnCall users | Manage users | Provider: exists |
 
