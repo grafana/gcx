@@ -235,6 +235,16 @@ Provider-specific runtime endpoints are accepted only when their matching
 runtime credential is supplied in the same invocation; that pair does not
 authorize an auto-discovered repository stack's TLS or proxy configuration.
 
+## Data source authentication failures
+
+Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
+
+Run `gcx datasources health <uid>` to see the data source health. To find the UID, use `gcx datasources list -o json`.
+
+The health check uses a different API path and doesn't establish that ruler access works.
+
+Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
+
 ## Verify your configuration
 
 Run `gcx config check` to check your configuration.
