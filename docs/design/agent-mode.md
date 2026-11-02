@@ -73,8 +73,8 @@ The following are **not yet implemented**:
 
 Confirmation behavior follows [safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented): agent detection alone never grants approval.
 
-**Agent-mode field-selection hint.** gcx shows this hint only when it can
-help and cannot break the output. The hint text is:
+**Agent-mode field-selection hint.** gcx suppresses this hint for small or
+already-selected results, where its value is low. The hint text is:
 
 ```
 {"class":"hint","summary":"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed"}
@@ -88,7 +88,8 @@ gcx shows the hint when all of these conditions are true:
 4. The command does not use `--jq`.
 5. The command does not pin its default format (file-output commands).
 6. The encoded payload is 8 KiB or larger (`fieldsHintMinBytes` in
-   `internal/output/format.go`).
+   `internal/output/format.go`), or the agents codec spills it to a file.
+   A custom spill threshold can put the hint in a receipt below 8 KiB.
 
 Where the hint goes:
 
@@ -109,6 +110,11 @@ was then the first line of the merged stream, and `jq` failed
 82 analyzed trials. A small payload costs few tokens, so the hint gives no
 value there. A command with `--json` fields already has the selection, so
 the hint gives no value there either.
+
+This rule reduces advisory noise. It does not make merged streams safe for
+JSON parsing. Large inline results can still produce this hint. Truncation
+notices and other diagnostics can also appear on stderr. Keep stdout and
+stderr separate; see [output.md § 15.4](output.md#154-human-readable-stderr-hint).
 
 **Spill receipts in agent mode** do not write a stderr hint. The receipt on
 stdout already names the file in `spilled_to` and `message`. Outside agent

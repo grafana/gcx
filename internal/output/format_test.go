@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	goio "io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -438,3 +441,28 @@ type dummyCodec struct{}
 func (*dummyCodec) Encode(_ goio.Writer, _ any) error { return nil }
 func (*dummyCodec) Decode(_ goio.Reader, _ any) error { return nil }
 func (*dummyCodec) Format() format.Format             { return "text" }
+
+func TestEncode_AgentHintPreservesRegularFileDestination(t *testing.T) {
+	testutils.SetAgentMode(t, true)
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "64")
+	spillDir := t.TempDir()
+	setSpillTempDir(t, spillDir)
+	dst, err := os.Create(filepath.Join(t.TempDir(), "out.json"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dst.Close() })
+	var stderr bytes.Buffer
+	opts := &cmdio.Options{ErrWriter: &stderr}
+	opts.BindFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+	require.NoError(t, opts.Validate())
+	value := map[string]string{"name": strings.Repeat("x", 9*1024)}
+	require.NoError(t, opts.Encode(dst, value))
+	require.NoError(t, dst.Close())
+	written, err := os.ReadFile(dst.Name())
+	require.NoError(t, err)
+	var got map[string]string
+	require.NoError(t, json.Unmarshal(written, &got))
+	assert.Equal(t, value, got)
+	entries, err := os.ReadDir(spillDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}

@@ -299,12 +299,10 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// Offer the field-selection hint only when it can help. The hint must not
-	// reach stderr for a small result: agents often merge stderr into stdout
-	// ("2>&1 | jq"), and an extra JSONL line then breaks the parse. Pinned
-	// file-output commands reject --json and --jq, so they get no hint.
+	// Suppress low-value hints for small or already-selected results.
+	// Pinned file-output commands reject --json and --jq, so they get no hint.
 	isJSONLike := IsJSONFormat(string(codec.Format()))
-	offerHint := !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike &&
+	offerHint := !opts.jsonFieldsHintShown && agent.IsAgentMode() &&
 		!opts.JSONDiscovery && len(opts.JSONFields) == 0 && opts.jqQuery == nil && !opts.defaultFormatPinned
 
 	if !isJSONLike {
