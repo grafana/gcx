@@ -68,7 +68,7 @@ func newRuntime(t *testing.T, cfg sandbox.Config) *sandbox.Runtime {
 // fakeGrafana answers /bootdata with a stack namespace and everything else
 // with a health body, recording each request's Authorization header, method
 // and path. /slow never answers until the client gives up; /big answers with
-// bigBody.
+// bigBody; /docs-index returns a synthetic documentation index.
 type fakeGrafana struct {
 	*httptest.Server
 
@@ -102,6 +102,9 @@ func newFakeGrafana(t *testing.T, name string) *fakeGrafana {
 			return
 		case "/bootdata": // gcx discovers the stack namespace before anything else
 			_, _ = w.Write([]byte(`{"settings":{"namespace":"stacks-12345"}}`))
+			return
+		case "/docs-index":
+			_, _ = io.WriteString(w, "## Grafana documentation\n- [Example dashboard](https://grafana.com/docs/grafana/latest/dashboards/): Example dashboard guide\n")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -291,6 +294,30 @@ func TestRun(t *testing.T) {
 			t.Errorf("took %v to stop", d)
 		}
 	})
+}
+
+// TestDocsSearchHostTransport uses docs search because its index dependency uses
+// http.DefaultTransport. The fixture has one matching entry so --limit 1 does not
+// emit a truncation hint. Explicit non-agent mode insulates the empty-stderr
+// assertion from advisory JSON hints if sandbox defaults change.
+func TestDocsSearchHostTransport(t *testing.T) {
+	srv := newFakeGrafana(t, "docs")
+	rt := newRuntime(t, sandbox.Config{Transport: multiTransport(srv)})
+	inv, _ := invocation(srv, "docs-token", "docs", "search", "example", "--limit", "1", "-o", "json")
+	inv.Env["DOCS_INDEX_URL"] = srv.url() + "/docs-index"
+	inv.Env["GCX_AGENT_MODE"] = "false"
+	var stdout, stderr bytes.Buffer
+	inv.Stdout, inv.Stderr = &stdout, &stderr
+	res, err := rt.Run(context.Background(), inv)
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("exit %d, err %v, stderr:\n%s", res.ExitCode, err, stderr.String())
+	}
+	if !srv.saw("GET /docs-index") || !strings.Contains(stdout.String(), "Example dashboard") {
+		t.Fatalf("docs search did not return the host's index: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("successful host request wrote to stderr: %s", stderr.String())
+	}
 }
 
 // TestRunIO covers what an invocation passes in besides args and env.
