@@ -219,6 +219,9 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 // they asked for. Any stat error reports false, keeping the protective
 // behavior as the default.
 func isRegularFile(w io.Writer) bool {
+	if counter, ok := w.(*countingWriter); ok {
+		w = counter.w
+	}
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
