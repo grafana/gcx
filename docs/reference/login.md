@@ -326,7 +326,12 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 
 `gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management reaches its API through the `grafana-collector-app` plugin proxy on your stack, so your Grafana login alone is enough. See [RFC 024](../rfcs/024-fleet-via-collector-app-proxy.md).
 
-The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6). IRM, SLO, and signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. For the Grafana roles and plugin permissions each product needs, see [Roles and permissions](../sources/permissions.md). When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+The Cloud Access Policy token is for Grafana Cloud product APIs, including stack
+management, Synthetic Monitoring, and k6. IRM, SLO, and signal queries use your
+Grafana token. See [Roles and permissions](../sources/permissions.md) for the
+Grafana roles and plugin permissions each product needs. Start with narrow
+Cloud policy scopes. Add scopes when a command reports that one is missing.
+You can change the token scopes without running `gcx login` again.
 
 The interactive `gcx login` prompt links to this guidance when it offers Cloud
 authentication choices.
@@ -560,7 +565,11 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
     - *Fix:* Run the exact raw `gcx config edit ...` command from the error, split the Cloud entry into one entry per environment, and update each `contexts.<name>.cloud` binding. Ordinary config loading remains blocked until the ambiguity is removed.
 
-15. **`Configuration changed during authentication`**
+15. **`Invalid command usage`** for a Grafana Cloud portal URL
+    - *Means:* The provided value for `--server` is for the Grafana Cloud portal (`grafana.com`) rather than a stack.
+    - *Fix:* pass the stack URL, in the form `https://<stack>.grafana.net`. Find it on your stack list at grafana.com, or in the browser address bar while you view the stack.
+
+16. **`Configuration changed during authentication`**
     - *Means:* the selected owner or the discovered config source set changed while OAuth or connectivity validation was in progress. The freshly authenticated credential was not written.
     - *Fix:* Review every changed file, then retry. If you intend to trust one document as authoritative, rerun with its explicit `--config <path>`.
 
