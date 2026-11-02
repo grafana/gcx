@@ -512,3 +512,10 @@ To add a new operation to the dynamic client path (e.g., `Patch`):
 ## Implementation Boundary
 
 [internal/config](../../internal/config/) constructs the selected REST configuration. [Dynamic resource clients](../../internal/resources/dynamic/) own Kubernetes request and version semantics, while [remote pipelines](../../internal/resources/remote/) depend on operation-specific client interfaces. [Query clients](../../internal/query/) reuse authenticated HTTP transport without taking on dynamic-resource behavior.
+
+## Signed download URLs
+
+Callers mark signed-URL requests with `secrets.WithRedactedURLQuery`.
+The logging and retry transports redact query strings in URL fields, request dumps, and errors.
+The request sent to the server retains the signed query.
+Redacted errors retain their cause for cancellation handling.
