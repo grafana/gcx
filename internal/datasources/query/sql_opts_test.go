@@ -56,7 +56,11 @@ func TestSQLQueryOptsResolveExpr(t *testing.T) {
 			var stderr bytes.Buffer
 			cmd.SetErr(&stderr)
 			cmd.SetIn(strings.NewReader(tt.stdin))
-			got, err := opts.ResolveExpr(cmd, cmd.Flags().Args(), 0)
+			var got string
+			err := opts.ValidateInputFlags(cmd)
+			if err == nil {
+				got, err = opts.ResolveExpr(cmd, cmd.Flags().Args(), 0)
+			}
 			if tt.wantErr != "" {
 				var usage *gcxerrors.UsageError
 				require.ErrorAs(t, err, &usage)
@@ -91,4 +95,22 @@ func TestSQLQueryOptsSetupDoesNotLeakIntoSharedOpts(t *testing.T) {
 	require.NotNil(t, sqlFlags.Lookup("filename"))
 	require.NoError(t, sqlFlags.Parse([]string{"-f", "query.sql"}))
 	assert.Equal(t, "query.sql", sql.Filename)
+}
+
+func TestSQLQueryOptsMissingFileReportsOSCause(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.sql")
+	opts := &dsquery.SQLQueryOpts{}
+	cmd := &cobra.Command{Use: "query"}
+	opts.Setup(cmd.Flags(), false)
+	require.NoError(t, cmd.ParseFlags([]string{"-f", missing}))
+	require.NoError(t, opts.ValidateInputFlags(cmd))
+
+	_, err := opts.ResolveExpr(cmd, nil, 0)
+	var usage *gcxerrors.UsageError
+	require.ErrorAs(t, err, &usage)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	var pathErr *os.PathError
+	require.ErrorAs(t, err, &pathErr)
+	assert.Contains(t, usage.Message, missing)
+	assert.Contains(t, usage.Message, pathErr.Err.Error())
 }

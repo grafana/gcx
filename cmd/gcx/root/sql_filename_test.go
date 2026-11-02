@@ -108,7 +108,15 @@ func TestSQLFilenameValidationBeforeIO(t *testing.T) {
 				var stdout, stderr bytes.Buffer
 				cmd.SetOut(&stdout)
 				cmd.SetErr(&stderr)
-				cmd.SetIn(strings.NewReader(""))
+				input := ""
+				for _, flag := range flags {
+					if strings.HasPrefix(flag, "--limit") {
+						input = "SELECT 1"
+						break
+					}
+				}
+				stdin := strings.NewReader(input)
+				cmd.SetIn(stdin)
 				cmd.SetArgs(append([]string{"datasources", kind, "query"}, flags...))
 				var usage *gcxerrors.UsageError
 				err := cmd.Execute()
@@ -117,6 +125,7 @@ func TestSQLFilenameValidationBeforeIO(t *testing.T) {
 					if strings.HasPrefix(flag, "--limit") {
 						assert.ErrorContains(t, err, "--filename cannot be combined with --limit")
 						assert.NotContains(t, stderr.String(), "Reading SQL from stdin")
+						assert.Equal(t, len(input), stdin.Len(), "input conflicts must fail before reading stdin")
 						break
 					}
 				}

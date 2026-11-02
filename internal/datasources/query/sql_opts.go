@@ -35,10 +35,8 @@ func (opts *SQLQueryOpts) ValidateInputFlags(cmd *cobra.Command) error {
 }
 
 // ResolveExpr validates and reads file input before config or datasource I/O.
+// Callers must run ValidateInputFlags before other flag validation and ResolveExpr.
 func (opts *SQLQueryOpts) ResolveExpr(cmd *cobra.Command, args []string, exprArgIndex int) (string, error) {
-	if err := opts.ValidateInputFlags(cmd); err != nil {
-		return "", err
-	}
 	if !cmd.Flags().Changed("filename") {
 		expr, err := opts.SharedOpts.ResolveExpr(args, exprArgIndex)
 		if err != nil {
@@ -62,7 +60,7 @@ func (opts *SQLQueryOpts) ResolveExpr(cmd *cobra.Command, args []string, exprArg
 		data, err = os.ReadFile(opts.Filename)
 	}
 	if err != nil {
-		return "", gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("failed to read --filename %q", opts.Filename), err)
+		return "", gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("failed to read --filename %q: %v", opts.Filename, err), err)
 	}
 	if strings.TrimSpace(string(data)) == "" {
 		return "", gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--filename %q is empty", opts.Filename), nil)
