@@ -40,6 +40,8 @@ unmodified CLI, a fresh instance per command) with in-process isolation:
   variables it's given, and no sockets.
 - **The host controls the network.** gcx hands every HTTP request to the host,
   which applies an egress policy and can add credentials the guest never sees.
+  The host also negotiates HTTP versions; the guest's default transport does
+  not configure HTTP/2 itself.
 - **Pure Go.** No cgo and no external runtime.
 
 ## How it works
