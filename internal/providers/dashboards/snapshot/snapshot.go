@@ -3,9 +3,11 @@
 package snapshot
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image/png"
 	"io"
 	"log/slog"
 	"os"
@@ -62,8 +64,8 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(flags)
 
-	flags.IntVar(&opts.Width, "width", 0, "Width of the rendered image in pixels (default: 1920 for dashboard, 800 for panel)")
-	flags.IntVar(&opts.Height, "height", 0, "Height of the rendered image in pixels (default: -1/full-page for dashboard, 600 for panel)")
+	flags.IntVar(&opts.Width, "width", 0, "Requested image width in pixels; renderer may adjust (default: 1920 for dashboard, 800 for panel)")
+	flags.IntVar(&opts.Height, "height", 0, "Requested image height in pixels; renderer may adjust (default: -1/full-page for dashboard, 600 for panel)")
 	flags.StringVar(&opts.Theme, "theme", "dark", "Grafana theme (light or dark)")
 	flags.StringVar(&opts.From, "from", "", "Start time (relative like 'now-1h', RFC3339, Unix seconds, or Unix milliseconds)")
 	flags.StringVar(&opts.To, "to", "", "End time (relative like 'now', RFC3339, Unix seconds, or Unix milliseconds)")
@@ -189,7 +191,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot <name> [name...]",
 		Short: "Render dashboard snapshots as PNG images",
-		Long:  "Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer.",
+		Long:  "Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer. JSON and YAML receipts report the actual PNG dimensions, which may differ from the requested dimensions.",
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 			agent.AnnotationLLMHint:   "my-dashboard-name --width 1920",
@@ -271,9 +273,15 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 						Vars:    opts.Vars,
 					}
 
-					png, err := client.Render(ctx, req)
+					pngBytes, err := client.Render(ctx, req)
 					if err != nil {
 						errs[i] = fmt.Errorf("failed to render %q: %w", name, err)
+						return nil
+					}
+
+					imageConfig, err := png.DecodeConfig(bytes.NewReader(pngBytes))
+					if err != nil {
+						errs[i] = fmt.Errorf("failed to read PNG dimensions from render response for %q: %w", name, err)
 						return nil
 					}
 
@@ -294,7 +302,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 						slog.Debug("overwriting existing snapshot", "path", filePath)
 					}
 
-					if err := os.WriteFile(filePath, png, 0o600); err != nil {
+					if err := os.WriteFile(filePath, pngBytes, 0o600); err != nil {
 						errs[i] = fmt.Errorf("failed to write %q: %w", filePath, err)
 						return nil
 					}
@@ -309,11 +317,11 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 						UID:        name,
 						PanelID:    panelID,
 						FilePath:   filePath,
-						Width:      opts.Width,
-						Height:     opts.Height,
+						Width:      imageConfig.Width,
+						Height:     imageConfig.Height,
 						Theme:      opts.Theme,
 						RenderedAt: time.Now(),
-						FileSize:   int64(len(png)),
+						FileSize:   int64(len(pngBytes)),
 					}
 					return nil
 				})
