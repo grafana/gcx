@@ -87,6 +87,7 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 | Product | Command | Examples |
 |---------|---------|----------|
+| **Machine Learning** | `gcx ml` | `ml jobs list`, `ml holidays list`, `ml outlier-detectors list` |
 | **SLOs** | `gcx slo` | `slo definitions list`, `slo reports list` |
 | **Synthetic Monitoring** | `gcx synthetic-monitoring` | `synthetic-monitoring checks list`, `synthetic-monitoring probes list`, `synthetic-monitoring probes deploy` |
 | **IRM** | `gcx irm` | `irm oncall schedules list`, `irm oncall integrations list`, `irm incidents list`, `irm incidents create -f incident.yaml` |
