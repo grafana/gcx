@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/gcx/internal/format"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const agentsFormat format.Format = "agents"
@@ -37,7 +38,7 @@ const (
 	// spillPreviewItems is the maximum number of items in preview_sample.
 	spillPreviewItems = 3
 	// spillPreviewBytes is the maximum encoded size of preview_sample. A
-	// preview that is larger than this limit loses items from the end.
+	// preview skips entries that do not fit in this budget.
 	spillPreviewBytes = 2 * 1024
 )
 
@@ -47,16 +48,17 @@ type agentsCodec struct {
 
 // spillSummary replaces oversized output with a typed, versioned file reference.
 type spillSummary struct {
-	Type          string `json:"type"`
-	SchemaVersion string `json:"schema_version"`
-	SpilledTo     string `json:"spilled_to"`
-	Bytes         int    `json:"bytes"`
-	ContentFormat string `json:"content_format"`
-	PreviewSample any    `json:"preview_sample"`
-	Message       string `json:"message"`
-	Hint          string `json:"hint"`
-	TotalItems    *int   `json:"total_items,omitempty"`
-	TotalValues   *int   `json:"total_values,omitempty"` // jq stream values, not array elements
+	Type             string `json:"type"`
+	SchemaVersion    string `json:"schema_version"`
+	SpilledTo        string `json:"spilled_to"`
+	Bytes            int    `json:"bytes"`
+	ContentFormat    string `json:"content_format"`
+	PreviewSample    any    `json:"preview_sample"`
+	PreviewTruncated bool   `json:"preview_truncated,omitempty"`
+	Message          string `json:"message"`
+	Hint             string `json:"hint"`
+	TotalItems       *int   `json:"total_items,omitempty"`
+	TotalValues      *int   `json:"total_values,omitempty"` // jq stream values, not array elements
 }
 
 const (
@@ -178,7 +180,7 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		ContentFormat: "json",
 		Hint:          spillDocumentHint,
 	}
-	s.PreviewSample, s.TotalItems = previewOf(value, payload)
+	s.PreviewSample, s.TotalItems, s.PreviewTruncated = previewOf(value, payload)
 	return c.writeSpillSummary(dst, s)
 }
 
@@ -258,15 +260,14 @@ func previewIDFields() []string {
 // For a list shape, the preview contains the identifying fields of the first
 // spillPreviewItems items, and total_items is the item count. For an object
 // that is not a list, the preview contains the sorted top-level key names,
-// and total_items is nil. The encoded preview is never larger than
-// spillPreviewBytes: the preview loses entries from the end until it fits.
-// If no entry fits, the preview is nil.
-func previewOf(value any, payload []byte) (any, *int) {
+// and total_items is nil. Entries that exceed the byte budget are skipped.
+// preview_truncated reports these omissions. If no entry fits, the preview is nil.
+func previewOf(value any, payload []byte) (any, *int, bool) {
 	dec := json.NewDecoder(bytes.NewReader(payload))
 	dec.UseNumber()
 	var doc any
 	if err := dec.Decode(&doc); err != nil {
-		return nil, nil
+		return nil, nil, false
 	}
 
 	items, ok := spillItems(value, doc)
@@ -276,48 +277,55 @@ func previewOf(value any, payload []byte) (any, *int) {
 		for _, item := range items[:min(n, spillPreviewItems)] {
 			preview = append(preview, previewItem(item))
 		}
-		return fitPreview(preview), &n
+		sample, truncated := fitPreview(preview)
+		return sample, &n, truncated
 	}
 
 	m, ok := doc.(map[string]any)
 	if !ok {
-		return nil, nil
+		return nil, nil, false
 	}
 	names := make([]any, 0, len(m))
 	for _, k := range slices.Sorted(maps.Keys(m)) {
 		names = append(names, k)
 	}
-	return fitPreview(names), nil
+	sample, truncated := fitPreview(names)
+	return sample, nil, truncated
 }
 
-// spillItems returns the item array of a list shape in the decoded payload.
-// It recognizes the same shapes as --json field selection: a top-level
-// array, the declared key of a ListEnvelope, an "items" array, and a
-// single-key list envelope (with an optional list_meta sibling).
+// spillItems follows field-selection envelope rules. Dynamic maps must opt
+// in with valid list_meta; raw API objects keep whole-object selection.
 func spillItems(value any, doc any) ([]any, bool) {
+	switch value.(type) {
+	case unstructured.Unstructured, *unstructured.Unstructured:
+		return nil, false
+	}
 	switch d := doc.(type) {
 	case []any:
 		return d, true
 	case map[string]any:
 		if env, ok := value.(ListEnvelope); ok {
-			if arr, ok := d[env.ListItemsKey()].([]any); ok {
+			raw := d[env.ListItemsKey()]
+			if raw == nil {
+				return []any{}, true
+			}
+			arr, ok := raw.([]any)
+			return arr, ok
+		}
+		if _, dynamic := value.(map[string]any); dynamic && !hasListMetaEntry(d) {
+			return nil, false
+		}
+		if raw, exists := d["items"]; exists {
+			if raw == nil {
+				return []any{}, true
+			}
+			if arr, ok := raw.([]any); ok {
 				return arr, true
 			}
 		}
-		for _, key := range []string{"items", "Items"} {
-			if arr, ok := d[key].([]any); ok {
-				return arr, true
-			}
-		}
-		if nonListMetaKeyCount(d) == 1 {
-			for key, raw := range d {
-				if isListMetaEntry(key, raw) {
-					continue
-				}
-				if arr, ok := raw.([]any); ok {
-					return arr, true
-				}
-			}
+		if key, _, ok := singleKeyItems(d); ok {
+			arr, ok := d[key].([]any)
+			return arr, ok
 		}
 	}
 	return nil, false
@@ -349,19 +357,23 @@ func previewItem(item any) any {
 	return item
 }
 
-// fitPreview removes entries from the end of preview until its encoded size
-// is not more than spillPreviewBytes. It returns nil if a non-empty preview
-// has no entry that fits.
-func fitPreview(preview []any) any {
+// fitPreview skips entries that exceed the remaining byte budget and reports
+// whether it skipped any. A large first entry does not hide later small entries.
+func fitPreview(preview []any) (any, bool) {
 	if len(preview) == 0 {
-		return preview
+		return preview, false
 	}
-	for n := len(preview); n > 0; n-- {
-		if encodedLen(preview[:n]) <= spillPreviewBytes {
-			return preview[:n]
+	var fitted []any
+	for _, entry := range preview {
+		fitted = append(fitted, entry)
+		if encodedLen(fitted) > spillPreviewBytes {
+			fitted = fitted[:len(fitted)-1]
 		}
 	}
-	return nil
+	if len(fitted) == 0 {
+		return nil, true
+	}
+	return fitted, len(fitted) < len(preview)
 }
 
 // encodedLen returns the size of v in the encoding that the receipt uses.
@@ -369,8 +381,7 @@ func encodedLen(v any) int {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return spillPreviewBytes + 1
-	}
+	// Preview values came from valid JSON, so they always encode.
+	_ = enc.Encode(v)    //nolint:errchkjson // Values came from valid JSON, so encoding cannot fail.
 	return buf.Len() - 1 // Encode appends a newline.
 }

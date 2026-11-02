@@ -72,9 +72,10 @@ keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
 | `content_format` | yes | `json` for documents; `jsonl` for jq streams (see § 1.6) |
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
-| `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape. Set for every list shape: a top-level array, the declared key of a `ListEnvelope`, an `items` array, and a single-key list envelope (with an optional `list_meta` sibling) |
+| `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape. Set for top-level arrays, declared `ListEnvelope` keys, and typed items or single-key envelopes. Dynamic maps require a valid `list_meta` entry; raw API maps retain whole-object selection |
 | `total_values` | only for jq streams | Yielded-value count, not list elements; replaces `total_items` |
 | `preview_sample` | yes | A bounded sample, never the complete dataset (thus not named `preview`). For list shapes: the first 3 items, each reduced to its identifying fields (see below). For object/map shapes: the sorted top-level key names. `null` for other shapes and jq streams. The encoded sample is never larger than 2 KiB |
+| `preview_truncated` | no | True when the byte budget omits preview entries, including object key names |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
 | `hint` | yes | Short instruction to get a result that stays inline: select fields with `--json <fields>` or `--jq`, and discover fields with `--json list`. For jq streams, the hint tells the agent to select less in the `--jq` expression |
 
@@ -83,8 +84,9 @@ identifying fields that it has: `metadata.name`, `spec.title`, `name`,
 `title`, `uid`, and `id`. The keys are the dot paths, as in `--json` field
 selection. An item without an identifying field keeps its top-level string,
 number, and boolean fields. Other items stay unchanged. If the encoded sample
-is larger than 2 KiB, the codec removes items from the end until it fits. If
-the first item alone does not fit, `preview_sample` is `null`. Thus a list of
+cannot fit an entry within 2 KiB, the codec skips that entry and tries the
+next one. `preview_truncated` reports these omissions. If no entry fits,
+`preview_sample` is `null`. Thus a list of
 large items (for example alert rule groups) cannot make the receipt larger
 than the spill threshold.
 

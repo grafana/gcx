@@ -17,7 +17,7 @@ import (
 
 func setSpillTempDir(t *testing.T, dir string) {
 	t.Helper()
-	setSpillTempDir(t, dir)
+	t.Setenv("TMPDIR", dir)
 	t.Setenv("TMP", dir)
 	t.Setenv("TEMP", dir)
 }
@@ -307,6 +307,7 @@ func TestAgentsCodec_SpillPreview(t *testing.T) {
 			name: "projects nested k8s fields",
 			value: map[string]any{
 				"apiVersion": "v1",
+				"list_meta":  nil,
 				"items": []any{
 					map[string]any{"metadata": map[string]any{"name": "d1", "labels": big}, "spec": map[string]any{"title": "Dash 1", "panels": big}},
 				},
@@ -315,10 +316,9 @@ func TestAgentsCodec_SpillPreview(t *testing.T) {
 			wantTotal:   1.0,
 		},
 		{
-			name:        "single-key envelope counts items",
+			name:        "raw map keeps whole-object selection",
 			value:       map[string]any{"datasources": []any{map[string]any{"name": "prom", "jsonData": big}, map[string]any{"name": "loki", "jsonData": big}}},
-			wantPreview: []any{map[string]any{"name": "prom"}, map[string]any{"name": "loki"}},
-			wantTotal:   2.0,
+			wantPreview: []any{"datasources"},
 		},
 		{
 			name:        "single-key envelope with list_meta counts items",
@@ -346,9 +346,9 @@ func TestAgentsCodec_SpillPreview(t *testing.T) {
 			wantTotal: 3.0,
 		},
 		{
-			name:        "omits preview when one item does not fit",
+			name:        "skips oversized first item",
 			value:       []map[string]any{{"name": big}, {"name": "small"}},
-			wantPreview: nil,
+			wantPreview: []any{map[string]any{"name": "small"}},
 			wantTotal:   2.0,
 		},
 		{
@@ -370,7 +370,7 @@ func TestAgentsCodec_SpillPreview(t *testing.T) {
 		},
 		{
 			name:        "empty list has empty preview",
-			value:       map[string]any{"items": []any{}, "metadata": map[string]any{"blob": big}},
+			value:       map[string]any{"items": []any{}, "metadata": map[string]any{"blob": big}, "list_meta": nil},
 			wantPreview: []any{},
 			wantTotal:   0.0,
 		},
@@ -636,4 +636,48 @@ func TestAgentsCodec_PipeDestination_StillSpills(t *testing.T) {
 	require.NoError(t, json.Unmarshal(<-read, &summary))
 	assert.Equal(t, cmdio.SpillReferenceType, summary["type"])
 	assert.NotEmpty(t, summary["spilled_to"])
+}
+
+func TestAgentsCodec_DynamicMapPreviewShapes(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		value   any
+		preview any
+		total   any
+	}{
+		{"raw items map", map[string]any{"items": []any{map[string]any{"name": "one"}}}, []any{"items"}, nil},
+		{"invalid list metadata", map[string]any{"items": []any{map[string]any{"name": "one"}}, "list_meta": false}, []any{"items", "list_meta"}, nil},
+		{"null items with metadata", map[string]any{"items": nil, "list_meta": nil}, []any{}, float64(0)},
+		{"valid list metadata", map[string]any{"items": []any{map[string]any{"name": "one"}}, "list_meta": nil}, []any{map[string]any{"name": "one"}}, float64(1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+			setSpillTempDir(t, t.TempDir())
+			var out bytes.Buffer
+			require.NoError(t, cmdio.NewAgentsCodecWithErrWriter(&bytes.Buffer{}).Encode(&out, tc.value))
+			var receipt map[string]any
+			require.NoError(t, json.Unmarshal(out.Bytes(), &receipt))
+			assert.Equal(t, tc.preview, receipt["preview_sample"])
+			assert.Equal(t, tc.total, receipt["total_items"])
+		})
+	}
+}
+
+func TestAgentsCodec_PreviewBudgetReportsOmissions(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+	setSpillTempDir(t, t.TempDir())
+	for _, value := range []any{
+		map[string]any{strings.Repeat("a", 2100): true, "small": true},
+		[]map[string]any{{"name": strings.Repeat("x", 2100)}, {"name": "small"}},
+	} {
+		var out bytes.Buffer
+		require.NoError(t, cmdio.NewAgentsCodecWithErrWriter(&bytes.Buffer{}).Encode(&out, value))
+		var receipt map[string]any
+		require.NoError(t, json.Unmarshal(out.Bytes(), &receipt))
+		assert.Equal(t, true, receipt["preview_truncated"])
+		preview, err := json.Marshal(receipt["preview_sample"])
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(preview), 2048)
+		assert.Contains(t, string(preview), "small")
+	}
 }
