@@ -278,7 +278,7 @@ func TestDestinationsCreate_FromFlags(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			api := &fakeArchiveAPI{}
-			res := runArchiveCmd(t, newTestLoader(t, api), false, "", append([]string{"destinations", "create"}, tc.args...)...)
+			res := runArchiveCmd(t, newTestLoader(t, api), false, "", append([]string{"destinations", "create", "-o", "json"}, tc.args...)...)
 			require.NoError(t, res.err, "stderr: %s", res.stderr)
 
 			assert.Equal(t, []string{"POST /archive-replay/api/v1/archives"}, api.archiveRequests())
@@ -387,7 +387,7 @@ func TestDestinationsCreate_FailedBucketCheckExplainsTheFix(t *testing.T) {
 }
 
 func TestDestinationsCreate_DryRun(t *testing.T) {
-	args := []string{"destinations", "create", "--name", "prod-archive", "--type", "s3", "--bucket", "acme-logs", "--region", "us-east-1", "--dry-run"}
+	args := []string{"destinations", "create", "--name", "prod-archive", "--type", "s3", "--bucket", "acme-logs", "--region", "us-east-1", "--dry-run", "-o", "json"}
 
 	t.Run("calls validate only and reports a dry-run mutation", func(t *testing.T) {
 		api := &fakeArchiveAPI{}
@@ -591,7 +591,7 @@ func TestStreamsCreate(t *testing.T) {
 	t.Run("the destination is fetched by ID", func(t *testing.T) {
 		api := &fakeArchiveAPI{}
 		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
-			"streams", "create", "--destination", prodID, "--name", "payments", "--selector", `{service="payments"}`)
+			"streams", "create", "--destination", prodID, "--name", "payments", "--selector", `{service="payments"}`, "-o", "json")
 		require.NoError(t, res.err, "stderr: %s", res.stderr)
 
 		assert.Equal(t, []string{
@@ -634,7 +634,7 @@ func TestStreamsUpdate(t *testing.T) {
 	t.Run("changed flags are merged into the current stream", func(t *testing.T) {
 		api := &fakeArchiveAPI{}
 		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
-			"streams", "update", paymentsID, "--destination", euID)
+			"streams", "update", paymentsID, "--destination", euID, "-o", "json")
 		require.NoError(t, res.err, "stderr: %s", res.stderr)
 
 		assert.JSONEq(t,
@@ -648,7 +648,7 @@ func TestStreamsUpdate(t *testing.T) {
 	t.Run("the destination name is looked up when it did not change", func(t *testing.T) {
 		api := &fakeArchiveAPI{}
 		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
-			"streams", "update", paymentsID, "--selector", `{service=~"payments|billing"}`)
+			"streams", "update", paymentsID, "--selector", `{service=~"payments|billing"}`, "-o", "json")
 		require.NoError(t, res.err, "stderr: %s", res.stderr)
 
 		assert.JSONEq(t,

@@ -228,7 +228,7 @@ func (o *streamsCreateOpts) setup(cmd *cobra.Command) {
 	_ = cmd.MarkFlagRequired("destination")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("selector")
-	o.IO.DefaultFormat("json")
+	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(cmd.Flags())
 }
 
@@ -306,7 +306,7 @@ func (o *streamsUpdateOpts) setup(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.Destination, "destination", "", "ID of the destination to move the stream to")
 	cmd.Flags().StringVar(&o.Name, "name", "", "New stream name")
 	cmd.Flags().StringVar(&o.Selector, "selector", "", "New log stream selector")
-	o.IO.DefaultFormat("json")
+	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(cmd.Flags())
 }
 

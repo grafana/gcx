@@ -228,7 +228,7 @@ func (o *destinationsCreateOpts) setup(cmd *cobra.Command) {
 	flags.StringVar(&o.StorageAccount, "storage-account", "", "Storage account name (azure)")
 	flags.StringVar(&o.Container, "container", "", "Blob container name (azure)")
 	flags.StringVar(&o.AzureTenantID, "azure-tenant-id", "", "Azure AD tenant ID that owns the storage account (azure)")
-	o.IO.DefaultFormat("json")
+	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }
 
