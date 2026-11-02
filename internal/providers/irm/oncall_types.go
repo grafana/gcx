@@ -181,6 +181,8 @@ type OnCallAPI interface {
 
 	ListTeams(ctx context.Context) ([]Team, error)
 	GetTeam(ctx context.Context, id string) (*Team, error)
+	GetTeamWorkingHours(ctx context.Context, id string) (map[string]any, error)
+	UpdateTeamWorkingHours(ctx context.Context, id string, hours map[string]any) (map[string]any, error)
 
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)

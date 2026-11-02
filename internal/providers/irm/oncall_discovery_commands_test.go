@@ -17,7 +17,10 @@ type fakeDiscoveryAPI struct {
 }
 
 func (f *fakeDiscoveryAPI) ListEscalationStepOptions(context.Context) ([]EscalationStepOption, error) {
-	return []EscalationStepOption{{Value: 19, DisplayName: "Declare incident"}}, nil
+	return []EscalationStepOption{
+		{Value: 19, DisplayName: "Declare incident"},
+		{Value: 27, CreateDisplayName: "Pause escalation until team's working hours", DisplayName: "Pause escalation until {{pause_team}} working hours"},
+	}, nil
 }
 
 func (f *fakeDiscoveryAPI) ListRouteFilterTypes(context.Context) ([]RouteFilterType, error) {
@@ -59,6 +62,7 @@ type discoveryCase struct {
 	compound string
 	noun     string
 	want     string
+	also     []string // further substrings the listing must contain
 }
 
 // discoveryCases lists the four catalogs and the two spellings of each.
@@ -70,6 +74,9 @@ func discoveryCases() []discoveryCase {
 			compound: "list-step-types",
 			noun:     "steps",
 			want:     "Declare incident",
+			// The pause-until-working-hours step: its numeric value is what a
+			// policy manifest puts in the step field.
+			also: []string{"27", "Pause escalation until team's working hours"},
 		},
 		{
 			name:     "route filter types",
@@ -108,16 +115,20 @@ func TestDiscoveryCatalogHasBothInvocations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(compound, tt.want) {
-				t.Errorf("`%s` did not list the catalog, got %q", tt.compound, compound)
+			for _, want := range append([]string{tt.want}, tt.also...) {
+				if !strings.Contains(compound, want) {
+					t.Errorf("`%s` did not list %q, got %q", tt.compound, want, compound)
+				}
 			}
 
 			nounGroup, err := runDiscoveryCmd(t, parent, tt.noun, "list")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(nounGroup, tt.want) {
-				t.Errorf("`%s list` did not list the catalog, got %q", tt.noun, nounGroup)
+			for _, want := range append([]string{tt.want}, tt.also...) {
+				if !strings.Contains(nounGroup, want) {
+					t.Errorf("`%s list` did not list %q, got %q", tt.noun, want, nounGroup)
+				}
 			}
 		})
 	}
