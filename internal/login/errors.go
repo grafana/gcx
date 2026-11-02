@@ -97,3 +97,14 @@ func (e *SignupIncompleteError) Error() string {
 }
 
 func (e *SignupIncompleteError) Unwrap() error { return e.Err }
+
+// PortalServerURLError reports a Cloud portal URL used as a stack URL.
+type PortalServerURLError struct {
+	Server      string
+	Host        string
+	StackSuffix string
+}
+
+func (e *PortalServerURLError) Error() string {
+	return fmt.Sprintf("server %s resolves to the Grafana Cloud portal %s", e.Server, e.Host)
+}

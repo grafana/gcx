@@ -1132,6 +1132,9 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return detail, true
 	}
 
+	if portalErr, ok := errors.AsType[*login.PortalServerURLError](err); ok {
+		return convertPortalServerURLError(portalErr), true
+	}
 	if gcomErr, ok := errors.AsType[*login.GCOMStackError](err); ok {
 		return convertGCOMStackError(gcomErr), true
 	}
@@ -1163,6 +1166,17 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// convertPortalServerURLError reports a portal URL used as a stack URL.
+func convertPortalServerURLError(err *login.PortalServerURLError) *gcxerrors.DetailedError {
+	return &gcxerrors.DetailedError{
+		Parent:      err,
+		Summary:     gcxerrors.SummaryInvalidCommandUsage,
+		Details:     "This is the URL for the Grafana Cloud portal. Use the URL for your Grafana Cloud stack instead.",
+		Suggestions: []string{"Pass --server https://<stack>" + err.StackSuffix},
+		ExitCode:    new(gcxerrors.ExitUsageError),
+	}
 }
 
 func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
