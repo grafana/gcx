@@ -18,6 +18,8 @@ func TestValidateEndpointURL_AcceptsTrustedDomains(t *testing.T) {
 		endpoint string
 	}{
 		{"grafana.net", "https://mystack.grafana.net"},
+		{"mixed-case stack", "https://MyStack.GRAFANA.NET"},
+		{"mixed-case localhost", "http://LocalHost:3000"},
 		{"grafana-dev.net", "https://mystack.grafana-dev.net"},
 		{"grafana-ops.net", "https://mystack.grafana-ops.net"},
 		{"localhost", "http://127.0.0.1:3000"},
@@ -40,6 +42,7 @@ func TestValidateEndpointURL_RejectsUntrustedDomains(t *testing.T) {
 		{"random domain", "https://evil.example.com"},
 		{"http non-local", "http://mystack.grafana.net"},
 		{"subdomain bypass", "https://evil.grafana.net.attacker.com"},
+		{"mixed-case bypass", "https://MYSTACK.GRAFANA.NET.attacker.com"},
 	}
 
 	for _, tt := range tests {

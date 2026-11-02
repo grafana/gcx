@@ -127,6 +127,9 @@ gcx login cloud --server https://myorg.grafana.net \
   --token glsa_XXXXXXXXXXXXXXXX --cloud-token glc_XXXXXXXXXXXXXXXX --yes
 ```
 
+`--cloud-token` adds a Cloud credential to the Grafana login.
+`--server` takes the stack URL, such as `https://myorg.grafana.net`.
+
 For interactive use, the Cloud step of `gcx login` can keep an existing CAP or
 unexpired OAuth credential, accept a CAP, run the experimental direct Cloud
 OAuth flow, or skip. `gcx cloud login --context cloud` runs direct Cloud OAuth
