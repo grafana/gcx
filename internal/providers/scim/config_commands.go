@@ -3,10 +3,13 @@ package scim
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/spf13/cobra"
@@ -17,23 +20,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
-type configOptions struct {
+type configUpdateOptions struct {
 	IO                                                cmdio.Options
 	UserSync, GroupSync, RejectNonProvisioned, DryRun bool
 }
 
-func (o *configOptions) setup(flags *pflag.FlagSet, update bool) {
-	o.IO.DefaultFormat("yaml")
+func (o *configUpdateOptions) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("text", &configMutationTextCodec{})
+	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
-	if update {
-		flags.BoolVar(&o.UserSync, "user-sync", false, "Enable SCIM user sync")
-		flags.BoolVar(&o.GroupSync, "group-sync", false, "Enable SCIM group sync")
-		flags.BoolVar(&o.RejectNonProvisioned, "reject-non-provisioned", false, "Reject users that SCIM did not provision")
-		flags.BoolVar(&o.DryRun, "dry-run", false, "Show the proposed settings without a write")
-	}
+	flags.BoolVar(&o.UserSync, "user-sync", false, "Set SCIM user sync; true enables, false disables; omit to keep unchanged")
+	flags.BoolVar(&o.GroupSync, "group-sync", false, "Set SCIM group sync; true enables, false disables; omit to keep unchanged")
+	flags.BoolVar(&o.RejectNonProvisioned, "reject-non-provisioned", false, "Set rejection of users that SCIM did not provision; true enables, false disables; omit to keep unchanged")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Show current and proposed settings without a write")
 }
-func (o *configOptions) Validate(cmd *cobra.Command, update bool) error {
-	if update && !cmd.Flags().Changed("user-sync") && !cmd.Flags().Changed("group-sync") && !cmd.Flags().Changed("reject-non-provisioned") {
+func (o *configUpdateOptions) Validate(cmd *cobra.Command) error {
+	if !cmd.Flags().Changed("user-sync") && !cmd.Flags().Changed("group-sync") && !cmd.Flags().Changed("reject-non-provisioned") {
 		return fail.NewCommandUsageError(cmd, "set at least one SCIM setting flag", nil)
 	}
 	return o.IO.Validate()
@@ -45,9 +47,9 @@ func newConfigCommand(binding native.Binding) *cobra.Command {
 	return cmd
 }
 func newConfigGetCommand(binding native.Binding) *cobra.Command {
-	o := &configOptions{}
+	o := &cmdio.Options{}
 	cmd := &cobra.Command{Use: "get", Short: "Get SCIM sync settings", Args: cobra.NoArgs, Example: "  gcx scim config get -o json", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := o.Validate(cmd, false); err != nil {
+		if err := o.Validate(); err != nil {
 			return err
 		}
 		access, err := binding.Load(cmd.Context(), native.LoadOptions{})
@@ -62,15 +64,16 @@ func newConfigGetCommand(binding native.Binding) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return o.IO.Encode(cmd.OutOrStdout(), safe)
+		return o.Encode(cmd.OutOrStdout(), safe)
 	}}
-	o.setup(cmd.Flags(), false)
+	o.DefaultFormat("yaml")
+	o.BindFlags(cmd.Flags())
 	return cmd
 }
 func newConfigUpdateCommand(binding native.Binding) *cobra.Command {
-	o := &configOptions{}
-	cmd := &cobra.Command{Use: "update", Short: "Update selected SCIM sync settings", Long: "Update only the settings named by flags. Keep other settings unchanged.\nThe update uses the current resource version. A conflict requires a new attempt.\nUse --dry-run to read and show the proposed settings without a write.", Args: cobra.NoArgs, Example: "  gcx scim config update --user-sync=true --dry-run", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := o.Validate(cmd, true); err != nil {
+	o := &configUpdateOptions{}
+	cmd := &cobra.Command{Use: "update", Short: "Update selected SCIM sync settings", Long: "Update only the settings named by flags. Keep other settings unchanged.\nThe update uses the current resource version. A conflict requires a new attempt.\nUse --dry-run to show current and proposed settings without a write.", Args: cobra.NoArgs, Example: "  gcx scim config update --user-sync=true --dry-run", RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := o.Validate(cmd); err != nil {
 			return err
 		}
 		access, err := binding.Load(cmd.Context(), native.LoadOptions{})
@@ -100,12 +103,22 @@ func newConfigUpdateCommand(binding native.Binding) *cobra.Command {
 				}
 			}
 		}
+		currentView, err := safeConfig(item)
+		if err != nil {
+			return err
+		}
+		proposedView, err := safeConfig(proposed)
+		if err != nil {
+			return err
+		}
+		result := configMutationResult{
+			SingleMutation: cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "SCIMConfig", Name: proposed.GetName(), Namespace: proposed.GetNamespace()}),
+			Current:        currentView.Settings,
+			Proposed:       proposedView.Settings,
+		}
 		if o.DryRun {
-			safe, err := safeConfig(proposed)
-			if err != nil {
-				return err
-			}
-			return o.IO.Encode(cmd.OutOrStdout(), map[string]any{"type": "gcx.scim_config_preview", "schema_version": "1", "dry_run": true, "config": safe})
+			result.DryRun = true
+			return o.IO.Encode(cmd.OutOrStdout(), result)
 		}
 		updated, err := access.Client.Update(cmd.Context(), access.Descriptor, proposed, metav1.UpdateOptions{})
 		if apierrors.IsConflict(err) {
@@ -114,34 +127,93 @@ func newConfigUpdateCommand(binding native.Binding) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return o.IO.Encode(cmd.OutOrStdout(), cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "SCIMConfig", Name: updated.GetName(), Namespace: updated.GetNamespace()}))
+		result.Target = cmdio.MutationTarget{Kind: "SCIMConfig", Name: updated.GetName(), Namespace: updated.GetNamespace()}
+		return o.IO.Encode(cmd.OutOrStdout(), result)
 	}}
-	o.setup(cmd.Flags(), true)
+	o.setup(cmd.Flags())
 	return cmd
 }
 
+// configSettingsView is a partial view of public settings, not a resource manifest.
+type configSettingsView struct {
+	Name            string          `json:"name" yaml:"name"`
+	Namespace       string          `json:"namespace" yaml:"namespace"`
+	ResourceVersion string          `json:"resourceVersion" yaml:"resourceVersion"`
+	Settings        map[string]bool `json:"settings" yaml:"settings"`
+}
+
 // safeConfig selects public settings. Unknown fields can contain credentials.
-func safeConfig(item *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	safe := &unstructured.Unstructured{Object: map[string]any{"apiVersion": item.GetAPIVersion(), "kind": item.GetKind(), "metadata": map[string]any{"name": item.GetName(), "namespace": item.GetNamespace(), "resourceVersion": item.GetResourceVersion()}, "spec": map[string]any{}}}
+func safeConfig(item *unstructured.Unstructured) (configSettingsView, error) {
+	safe := configSettingsView{Name: item.GetName(), Namespace: item.GetNamespace(), ResourceVersion: item.GetResourceVersion(), Settings: map[string]bool{}}
 	for _, key := range []string{"enableUserSync", "enableGroupSync", "rejectNonProvisionedUsers"} {
 		value, found, err := unstructured.NestedBool(item.Object, "spec", key)
 		if err != nil {
-			return nil, fmt.Errorf("invalid SCIM setting %s: expected a boolean", key)
+			return configSettingsView{}, fmt.Errorf("invalid SCIM setting %s: expected a boolean", key)
 		}
 		if found {
-			if err := unstructured.SetNestedField(safe.Object, value, "spec", key); err != nil {
-				return nil, err
-			}
+			safe.Settings[key] = value
 		}
 	}
 	return safe, nil
 }
 
+type configMutationResult struct {
+	cmdio.SingleMutation `yaml:",inline"`
+
+	Current  map[string]bool `json:"current" yaml:"current"`
+	Proposed map[string]bool `json:"proposed" yaml:"proposed"`
+}
+
+type configMutationTextCodec struct{}
+
+func (*configMutationTextCodec) Format() format.Format { return "text" }
+func (*configMutationTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(configMutationResult)
+	if !ok {
+		return errors.New("SCIM config summary requires a config mutation result")
+	}
+	heading := "Updated SCIM sync settings"
+	if result.DryRun {
+		heading = "Would update SCIM sync settings (dry run)"
+	}
+	var text strings.Builder
+	fmt.Fprintln(&text, heading)
+	changed := false
+	for _, key := range []string{"enableUserSync", "enableGroupSync", "rejectNonProvisionedUsers"} {
+		current, hadCurrent := result.Current[key]
+		proposed, hasProposed := result.Proposed[key]
+		if hadCurrent == hasProposed && current == proposed {
+			continue
+		}
+		before, after := "unset", "unset"
+		if hadCurrent {
+			before = strconv.FormatBool(current)
+		}
+		if hasProposed {
+			after = strconv.FormatBool(proposed)
+		}
+		fmt.Fprintf(&text, "  %s: %s -> %s\n", key, before, after)
+		changed = true
+	}
+	if !changed {
+		fmt.Fprintln(&text, "  No setting values change")
+	}
+	_, err := io.WriteString(w, text.String())
+	return err
+}
+func (*configMutationTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+type endpointResult struct {
+	URL string `json:"url" yaml:"url"`
+}
+
 func newEndpointCommand(binding native.Binding) *cobra.Command {
 	parent := &cobra.Command{Use: "endpoint", Short: "Show the SCIM tenant endpoint"}
-	o := &configOptions{}
+	o := &cmdio.Options{}
 	cmd := &cobra.Command{Use: "get", Short: "Get the SCIM tenant base URL", Long: "Get the SCIM tenant base URL from the active Grafana server and the namespace returned by the SCIM config API. No token is included.", Args: cobra.NoArgs, Example: "  gcx scim endpoint get -o json", RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := o.Validate(cmd, false); err != nil {
+		if err := o.Validate(); err != nil {
 			return err
 		}
 		access, err := binding.Load(cmd.Context(), native.LoadOptions{})
@@ -156,9 +228,10 @@ func newEndpointCommand(binding native.Binding) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return o.IO.Encode(cmd.OutOrStdout(), map[string]string{"url": endpoint})
+		return o.Encode(cmd.OutOrStdout(), endpointResult{URL: endpoint})
 	}}
-	o.setup(cmd.Flags(), false)
+	o.DefaultFormat("yaml")
+	o.BindFlags(cmd.Flags())
 	parent.AddCommand(cmd)
 	return parent
 }

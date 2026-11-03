@@ -18,10 +18,17 @@ setting. Other fields stay unchanged. The command reads the current resource
 version before the write. If the server reports a conflict, read the settings
 again and repeat the update. The command does not retry a conflict.
 
-`--dry-run` reads the current config and shows the proposed public settings.
-It does not send a write request. Config output includes only the three public
-sync settings and the resource identity. It excludes unknown fields and
-annotations that can contain credentials.
+`--dry-run` reads the current config and shows the changes without a write.
+Both a dry run and a write return the same mutation result. A dry run sets
+`dry_run` to `true`. Both results include the public settings in `current`
+and `proposed`. The human default shows each changed value, for example
+`enableGroupSync: true -> false`. Use `-o json` or `-o yaml` for the structured
+result. Unknown fields stay private in both modes.
+
+`config get` returns a partial settings view with the resource identity and
+the three public sync settings under `settings`. It is not a resource manifest.
+It excludes unknown fields and annotations that can contain credentials.
+Use `gcx scim config update` to change these settings.
 
 `gcx scim endpoint get` shows the tenant base URL for an identity provider.
 It uses the active Grafana server URL and the namespace returned by the SCIM
