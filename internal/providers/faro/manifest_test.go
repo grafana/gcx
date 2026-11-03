@@ -1,4 +1,4 @@
-package faro
+package faro //nolint:testpackage // Exercises the unexported readAppFromFile manifest loader.
 
 import (
 	"encoding/json"
