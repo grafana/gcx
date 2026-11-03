@@ -57,7 +57,7 @@ gcx scim endpoint get
 gcx scim users create --user-name test@example.com --external-id test-0001 --token-from-file ./scim-token
 gcx scim users list --token-from-file ./scim-token
 gcx scim users get <id> --token-from-file ./scim-token
-gcx scim users delete <id> --token-from-file ./scim-token --force
+gcx scim users deactivate <id> --token-from-file ./scim-token
 ```
 
 The user first reads the current state. A dry run shows the planned change and
@@ -65,8 +65,9 @@ sends no write request. A successful write prints a structured result. A failed
 write names the subject and the failed step. The token creation command writes
 the secret to a new file with owner-only access. Normal output gives the file
 path and token metadata. It never gives the token value. The user can delete
-the test SCIM user and service account after verification. `scim endpoint get`
-prints the base URL for the selected stack. It does not print a token.
+the test service account after verification. The operator can deactivate a test
+SCIM user. Grafana retains that user record. `scim endpoint get` prints the
+base URL for the selected stack. It does not print a token.
 
 ## Technical design
 
@@ -113,8 +114,9 @@ SCIM user commands call the SCIM user API with a service account identity.
 They preserve the server's user ID and return the server's resource fields.
 When user sync is off, the error points to `gcx scim config update
 --user-sync=true`. The command does not turn sync on without a request.
-The delete command removes a test user after the live read and write check,
-subject to the API's supported operations and the shared confirmation rules.
+The deactivate command sets the user's active state to false. A live write test
+must use an owned test identity. It must record that Grafana keeps the user
+record after deactivation.
 
 ### Token file failure handling
 
@@ -165,8 +167,8 @@ SCIM-only token in the context. It requires a file for each SCIM invocation.
   match that response without treating every 403 as disabled sync.
 - Define the role and permission checks for each write after testing the
   endpoints with the identities used in the implementation PR.
-- Verify that the SCIM user API supports deletion. If it does not, define
-  another cleanup operation before the live write test.
+- Verify the SCIM API's deactivation and reactivation behavior with an owned
+  test identity before the live write test.
 
 ## Future possibilities
 
