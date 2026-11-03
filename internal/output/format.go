@@ -178,7 +178,9 @@ func (opts *Options) Validate() error {
 	}
 
 	if opts.listLimit != nil && *opts.listLimit < 0 {
-		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means all results are returned)", *opts.listLimit)
+		return &gcxerrors.UsageError{
+			Message: fmt.Sprintf("invalid --limit %d: must be >= 0 (0 means all results are returned)", *opts.listLimit),
+		}
 	}
 
 	if err := opts.applyJSONFlag(); err != nil {
