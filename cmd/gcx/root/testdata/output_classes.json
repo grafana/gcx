@@ -614,7 +614,7 @@
  "gcx ml outlier-detectors list-alerts": "finite",
  "gcx ml outlier-detectors update": "finite",
  "gcx ml outlier-detectors update-alert": "finite",
- "gcx org users delete": "finite",
+ "gcx org users remove": "finite",
  "gcx org users get": "finite",
  "gcx org users list": "finite",
  "gcx profiles adaptive": "finite",

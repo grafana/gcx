@@ -158,6 +158,7 @@ func TestCommands(t *testing.T) {
 			var result deleteResult
 			require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
 			require.Equal(t, "gcx.mutation_batch", result.Type)
+			require.Equal(t, "removed", result.Action)
 			require.Equal(t, tt.succeeded, result.Summary.Succeeded)
 			require.Equal(t, tt.failed, result.Summary.Failed)
 			require.Equal(t, tt.skipped, result.Summary.Skipped)
