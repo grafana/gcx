@@ -49,8 +49,8 @@ gcx org service-accounts create <name> --role None
 gcx org service-accounts delete <name|id> --force
 gcx org service-accounts create-token <service-account-id> <token-name> --ttl 24h --output-file ./scim-token
 gcx org service-accounts delete-token <service-account-id> <token-id> --force
+gcx org service-accounts add-role <service-account-id> <role-uid> --dry-run
 gcx org roles list --filter org.users
-gcx org roles assign <role-uid> --service-account-id <id>
 
 gcx scim config get
 gcx scim config update --user-sync=true --group-sync=false --reject-non-provisioned=false --dry-run
@@ -85,11 +85,14 @@ The existing `--insecure-log-http-payload` flag can expose secrets when the user
 explicitly enables it. Its global warning and behavior still apply.
 
 The SCIM client must construct its base URL from trusted context data. It must
-reject a context without the required stack identity. It uses the existing
-token file reader for size and empty-value checks. It must not send the token
+reject a context without the required stack identity. Its token reader uses
+the existing size and empty-value rules. It must not send the token
 to a URL from a redirect or an untrusted response. A service account token has
 the permissions granted to that account; gcx does not grant permissions on
 behalf of the user.
+SCIM user and organization access write requests make one HTTP attempt. A
+connection error can occur after the server applies a write, so gcx does not
+replay the request.
 
 ### Subjects and writes
 
@@ -105,9 +108,9 @@ Service account creation and role assignment are separate actions. This keeps
 the state after each action visible. A later setup workflow can combine them
 only if it defines partial failure and cleanup behavior. Role assignment uses
 the fixed role UID returned by the role API. It does not infer a role from a
-display name alone. `org roles assign` adds one direct role assignment to one
-service account. It does not replace other assignments. The service account ID
-selects the recipient. The role UID selects the role.
+display name alone. `org service-accounts add-role` adds one direct role
+assignment to one service account. It does not replace other assignments. The
+service account ID selects the recipient. The role UID selects the role.
 
 SCIM config uses the server-discovered `SCIMConfig` resource through the shared
 native binding. The update changes only flags supplied by the user and keeps
@@ -163,7 +166,7 @@ SCIM-only token in the context. It requires a file for each SCIM invocation.
 ## Prior art
 
 The design uses `providers.ConfirmDestructive` for removals, the native binding
-for `SCIMConfig`, and the existing `--token-file` reader for secret input.
+for `SCIMConfig`, and the established `--token-file` rules for secret input.
 Exclusive file creation gives token output a no-replace rule without a rename.
 
 ## Approved naming exception
@@ -179,18 +182,13 @@ token. This approval applies to this command shape in this RFC.
 - Approve `org users remove` as a domain verb. It removes one or more
   memberships from the selected organization. It does not delete a Grafana
   account. The name follows the subject of the actual change.
-- Approve `org roles assign` as a domain verb. It adds one direct role
-  assignment to one service account and preserves other assignments. The
-  [naming guide](../design/command-naming.md#domain-verbs) requires explicit
-  review for a new domain verb.
-- Verify the SCIM base URL rule and redirect behavior against public Grafana
-  documentation and a live test before implementing the SCIM client.
+- Confirm the SCIM base URL rule against public Grafana documentation. The
+  client used the selected stack's endpoint in the live test and did not follow
+  redirects in transport tests.
 - Verify the API's exact error response when user sync is off. The command must
   match that response without treating every 403 as disabled sync.
-- Define the role and permission checks for each write after testing the
-  endpoints with the identities used in the implementation PR.
-- Verify the SCIM API's deactivation and reactivation behavior with an owned
-  test identity before the live write test.
+- Verify the SCIM API's reactivation behavior with an owned test identity.
+  Deactivation was tested with a temporary identity. The record stayed inactive.
 
 ## Future possibilities
 
