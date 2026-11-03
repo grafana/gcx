@@ -57,7 +57,7 @@ func (o *sendOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringArrayVar(&o.Fields, "field", nil, "Add a named field as key=value (repeatable; the last value for a key wins)")
-	flags.BoolVar(&o.DryRun, "dry-run", false, "Print the exact payload that would be sent, after scrubbing, and send nothing")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Print the payload that would be sent, after scrubbing, and send nothing")
 }
 
 func (o *sendOpts) Validate() error {

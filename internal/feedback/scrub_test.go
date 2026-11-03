@@ -61,6 +61,11 @@ func TestScrub(t *testing.T) {
 			want: "Cookie: <redacted:secret>",
 		},
 		{
+			name: "percent after colon text that is not an address",
+			in:   "from=2026-11-03T12:30:45%2B01:00 to=now",
+			want: "from=2026-11-03T12:30:45%2B01:00 to=now",
+		},
+		{
 			name: "ipv6 after a word and colon",
 			in:   "listen addr:2001:db8::1 failed",
 			want: "listen addr:<redacted:ip> failed",
@@ -77,17 +82,17 @@ func TestScrub(t *testing.T) {
 		},
 		{
 			name: "bare stack hostnames",
-			in:   "context prod points at example-stack.grafana.net, dev at mystack.grafana-dev.net and ops at x.grafana-ops.net",
+			in:   "context prod points at example-stack.grafana.net, dev at mystack.grafana-dev.net and ops at x.grafana-ops.net", // trufflehog:ignore
 			want: "context prod points at <redacted:host>, dev at <redacted:host> and ops at <redacted:host>",
 		},
 		{
 			name: "grafana service account token",
-			in:   "gcx login --token glsa_FAKEfakeFAKEfake0123456789_abcdef01 failed",
+			in:   "gcx login --token glsa_FAKEfakeFAKEfake0123456789_abcdef01 failed", // trufflehog:ignore
 			want: "gcx login --token <redacted:token> failed",
 		},
 		{
 			name: "grafana cloud access policy token",
-			in:   "GRAFANA_CLOUD_TOKEN=glc_ZmFrZS10b2tlbi1mb3ItdGVzdHMtb25seQ==",
+			in:   "GRAFANA_CLOUD_TOKEN=glc_ZmFrZS10b2tlbi1mb3ItdGVzdHMtb25seQ==", // trufflehog:ignore
 			want: "GRAFANA_CLOUD_TOKEN=<redacted:token>",
 		},
 		{
@@ -153,7 +158,7 @@ func TestScrub(t *testing.T) {
 		{
 			name: "full gcx error",
 			in: "Error: Authentication failed\n│ GET https://example-stack.grafana.net/api/user returned 401\n" +
-				"│ config: /Users/jdoe/.config/gcx/config.yaml (token=glsa_FAKEfakeFAKEfake0123456789_abcdef01)",
+				"│ config: /Users/jdoe/.config/gcx/config.yaml (token=glsa_FAKEfakeFAKEfake0123456789_abcdef01)", // trufflehog:ignore
 			want: "Error: Authentication failed\n│ GET <redacted:url> returned 401\n" +
 				"│ config: ~/.config/gcx/config.yaml (token=<redacted:token>)",
 		},

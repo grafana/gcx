@@ -95,17 +95,19 @@ func redactIPv6(match string) string {
 		}
 		return match
 	}
-	match, _, _ = strings.Cut(match, "%")
-	if net.ParseIP(match) == nil {
+	// Check the address without its zone, but return the match untouched when
+	// it is not one, so text like 12:30:45%2B01 keeps its tail.
+	addr, _, _ := strings.Cut(match, "%")
+	if net.ParseIP(addr) == nil {
 		return match
 	}
 	groups := 0
-	for g := range strings.SplitSeq(match, ":") {
+	for g := range strings.SplitSeq(addr, ":") {
 		if g != "" {
 			groups++
 		}
 	}
-	if groups == 0 || (groups < 2 && !strings.HasPrefix(match, "::")) {
+	if groups == 0 || (groups < 2 && !strings.HasPrefix(addr, "::")) {
 		return match
 	}
 	return "<redacted:ip>"

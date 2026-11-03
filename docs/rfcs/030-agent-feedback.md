@@ -141,7 +141,7 @@ Every key and value is scrubbed before `--dry-run` prints it and before it is se
 
 Home directory paths under `/Users/<name>`, `/home/<name>` and `C:\Users\<name>` become `~`.
 
-The rules run in a fixed order: whole URLs first, token formats before key=value secrets, emails before hostnames, IPv4 before IPv6. Scrubbing is pattern based and over-redacts rather than under-redacts. It is a safety net, not a guarantee, which is why the help text and the docs ask people not to include secrets at all.
+The rules run in a fixed order: whole URLs first, token formats before key=value secrets, emails before hostnames, IPv6 before IPv4 (so an IPv4-mapped address such as `::ffff:10.0.0.1` is replaced whole). Scrubbing is pattern based and over-redacts rather than under-redacts. It is a safety net, not a guarantee, which is why the help text and the docs ask people not to include secrets at all.
 
 ## Drawbacks
 
