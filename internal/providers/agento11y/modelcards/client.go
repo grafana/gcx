@@ -40,8 +40,14 @@ type LookupQuery struct {
 	SourceModelID string
 }
 
-// Lookup returns the backend's lookup envelope ({data, freshness}) untouched.
-func (c *Client) Lookup(ctx context.Context, q LookupQuery) (map[string]any, error) {
+// LookupResult is one card and the catalog freshness reported with it.
+type LookupResult struct {
+	Data      Card      `json:"data"`
+	Freshness Freshness `json:"freshness"`
+}
+
+// Lookup returns the card for q along with the catalog freshness.
+func (c *Client) Lookup(ctx context.Context, q LookupQuery) (LookupResult, error) {
 	query := url.Values{}
 	if q.ModelKey != "" {
 		query.Set("model_key", q.ModelKey)
@@ -52,7 +58,7 @@ func (c *Client) Lookup(ctx context.Context, q LookupQuery) (map[string]any, err
 	if q.SourceModelID != "" {
 		query.Set("source_model_id", q.SourceModelID)
 	}
-	return agento11yhttp.DoJSON[any, map[string]any](ctx, c.base, http.MethodGet, lookupPath+"?"+query.Encode(), nil, http.StatusOK)
+	return agento11yhttp.DoJSON[any, LookupResult](ctx, c.base, http.MethodGet, lookupPath+"?"+query.Encode(), nil, http.StatusOK)
 }
 
 // ListQuery holds the optional catalog filters. Zero values are not sent.
@@ -87,7 +93,7 @@ func (q ListQuery) values() url.Values {
 }
 
 // ListResult is the cards found, whether more exist beyond the limit, and the
-// catalog freshness the backend reported with the last page.
+// catalog freshness the backend reported.
 type ListResult struct {
 	Cards     []Card
 	HasMore   bool
@@ -96,8 +102,7 @@ type ListResult struct {
 
 // Freshness reports how current the catalog is.
 type Freshness struct {
-	Stale                  bool   `json:"stale"`
-	CatalogLastRefreshedAt string `json:"catalog_last_refreshed_at,omitempty"`
+	Stale bool `json:"stale"`
 }
 
 type listPage struct {
@@ -125,9 +130,6 @@ func (c *Client) List(ctx context.Context, q ListQuery, limit int) (ListResult, 
 		result.Cards = append(result.Cards, page.Data...)
 		// Staleness is sticky: one stale page makes the whole result stale.
 		result.Freshness.Stale = result.Freshness.Stale || page.Freshness.Stale
-		if page.Freshness.CatalogLastRefreshedAt != "" {
-			result.Freshness.CatalogLastRefreshedAt = page.Freshness.CatalogLastRefreshedAt
-		}
 		result.HasMore = page.NextCursor != ""
 
 		if limit > 0 && len(result.Cards) >= limit {

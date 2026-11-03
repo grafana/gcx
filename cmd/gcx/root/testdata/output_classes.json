@@ -65,7 +65,7 @@
  "gcx agento11y model-cards list": "finite",
  "gcx agento11y model-rates create": "finite",
  "gcx agento11y model-rates delete": "finite",
- "gcx agento11y model-rates get-effective": "finite",
+ "gcx agento11y model-rates resolve": "finite",
  "gcx agento11y model-rates list": "finite",
  "gcx agento11y rules create": "finite",
  "gcx agento11y rules delete": "finite",

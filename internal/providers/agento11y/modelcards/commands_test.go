@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -44,18 +45,12 @@ func TestCommands_InvalidInput(t *testing.T) {
 	}
 }
 
-// A limited list that leaves cards behind must say so on stderr while stdout
-// stays a plain list.
-func TestList_WarnsWhenTruncated(t *testing.T) {
+// serve points a sandboxed gcx config at handler, so the command under test
+// loads its config like a real invocation.
+func serve(t *testing.T, handler http.Handler) {
+	t.Helper()
 	home := testutils.SandboxConfigEnv(t)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{
-			"data":        []map[string]any{{"model_key": "openai/a"}},
-			"next_cursor": "more",
-			"freshness":   map[string]any{"stale": false},
-		})
-	}))
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
 	cfgPath := filepath.Join(home, ".config", "gcx", "config.yaml")
@@ -73,17 +68,75 @@ contexts:
 current-context: default
 `, srv.URL)
 	require.NoError(t, os.WriteFile(cfgPath, []byte(cfg), 0o600))
+}
 
+func run(t *testing.T, args ...string) (stdout, stderr string) {
+	t.Helper()
 	cmd := modelcards.Commands(nil)
-	var stdout, stderr bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"list", "--limit", "1", "-o", "json"})
-	require.NoError(t, cmd.ExecuteContext(context.Background()), "stderr: %s", stderr.String())
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs(args)
+	require.NoError(t, cmd.ExecuteContext(context.Background()), "stderr: %s", errOut.String())
+	return out.String(), errOut.String()
+}
+
+// get prints the card itself, not the backend's {data, freshness} envelope, and
+// reports a stale catalog on stderr.
+func TestGet_EncodesCardAndWarnsWhenStale(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantQuery url.Values
+	}{
+		{name: "model key", args: []string{"get", "openai/gpt-4o-mini", "-o", "json"}, wantQuery: url.Values{"model_key": {"openai/gpt-4o-mini"}}},
+		{name: "source pair", args: []string{"get", "--source", "openrouter", "--source-model-id", "openai/gpt-4o-mini", "-o", "json"}, wantQuery: url.Values{"source": {"openrouter"}, "source_model_id": {"openai/gpt-4o-mini"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.wantQuery, r.URL.Query())
+				writeJSON(w, map[string]any{
+					"data":      map[string]any{"model_key": "openai/gpt-4o-mini", "future_dimension": "retained"},
+					"freshness": map[string]any{"stale": true},
+				})
+			}))
+
+			stdout, stderr := run(t, tt.args...)
+
+			var card map[string]any
+			require.NoError(t, json.Unmarshal([]byte(stdout), &card))
+			assert.Equal(t, map[string]any{"model_key": "openai/gpt-4o-mini", "future_dimension": "retained"}, card)
+			assert.Contains(t, stderr, "stale")
+		})
+	}
+}
+
+func TestGet_NoWarningWhenFresh(t *testing.T) {
+	serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"data": map[string]any{"model_key": "openai/a"}, "freshness": map[string]any{"stale": false}})
+	}))
+
+	_, stderr := run(t, "get", "openai/a", "-o", "json")
+	assert.Empty(t, stderr)
+}
+
+// A limited list that leaves cards behind must say so on stderr while stdout
+// stays a plain list.
+func TestList_WarnsWhenTruncated(t *testing.T) {
+	serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"data":        []map[string]any{{"model_key": "openai/a"}},
+			"next_cursor": "more",
+			"freshness":   map[string]any{"stale": false},
+		})
+	}))
+
+	stdout, stderr := run(t, "list", "--limit", "1", "-o", "json")
 
 	var cards []map[string]any
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &cards))
+	require.NoError(t, json.Unmarshal([]byte(stdout), &cards))
 	assert.Len(t, cards, 1)
-	assert.Contains(t, stderr.String(), "truncated")
-	assert.Contains(t, stderr.String(), "--limit")
+	assert.Contains(t, stderr, "truncated")
+	assert.Contains(t, stderr, "--limit")
 }

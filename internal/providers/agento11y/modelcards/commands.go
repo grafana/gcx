@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const staleWarning = "The model catalog is stale; prices and limits may be out of date."
+
 func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
 	base, err := agento11yhttp.NewClientFromCommand(cmd, loader)
 	if err != nil {
@@ -31,7 +33,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Read model catalog metadata, not tenant-negotiated prices.",
 		Long: `Read the public model catalog: provider, context limits, modalities and catalog pricing.
 
-Catalog prices are not your negotiated rates. Use 'gcx agento11y model-rates get-effective' for the price that applies to your tenant.`,
+Catalog prices are not your negotiated rates. Use 'gcx agento11y model-rates resolve' for the price that applies to your tenant.`,
 	}
 	cmd.AddCommand(
 		newGetCommand(loader),
@@ -95,7 +97,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Look up a canonical model key, including provider and available limits.",
 		Long: `Read the model card for a canonical model key such as openai/gpt-4o-mini, or for a catalog source and that source's own model ID.
 
-The result is the backend envelope: the card under "data" and catalog freshness under "freshness". Missing limits mean unknown, not zero. A failed lookup does not prove the model does not exist.`,
+The result is the card itself. When the catalog reports itself stale, a warning is written to stderr. Missing limits mean unknown, not zero. A failed lookup does not prove the model does not exist.`,
 		Example: `  # Look up a model card by canonical key.
   gcx agento11y model-cards get openai/gpt-4o-mini -o json
 
@@ -115,7 +117,10 @@ The result is the backend envelope: the card under "data" and catalog freshness 
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			if result.Freshness.Stale {
+				cmdio.EmitWarn(cmd.ErrOrStderr(), staleWarning)
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result.Data)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -225,7 +230,7 @@ Prices in the table are catalog prices in USD per million tokens, shown as given
 				return err
 			}
 			if result.Freshness.Stale {
-				cmdio.EmitWarn(cmd.ErrOrStderr(), "The model catalog is stale; prices and limits may be out of date.")
+				cmdio.EmitWarn(cmd.ErrOrStderr(), staleWarning)
 			}
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result.Cards); err != nil {
 				return err

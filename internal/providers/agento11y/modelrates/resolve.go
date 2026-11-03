@@ -42,13 +42,18 @@ type ResolveResponse struct {
 }
 
 // Resolve prices one model at one moment, from the tenant override if present
-// and the catalog otherwise.
-func (c *Client) Resolve(ctx context.Context, item ResolveItem) (*ResolveResponse, error) {
+// and the catalog otherwise. The backend answers in batches; this sends a batch
+// of one and returns its single answer. A model nothing prices comes back as a
+// rate with an empty source and null pricing, not as an error.
+func (c *Client) Resolve(ctx context.Context, item ResolveItem) (*ResolvedRate, error) {
 	result, err := agento11yhttp.DoJSON[ResolveRequest, ResolveResponse](ctx, c.base, http.MethodPost, basePath+":resolve", &ResolveRequest{Items: []ResolveItem{item}}, http.StatusOK)
 	if err != nil {
 		return nil, err
 	}
-	return &result, nil
+	if len(result.Items) != 1 {
+		return nil, fmt.Errorf("model rate resolve returned %d results for 1 requested", len(result.Items))
+	}
+	return &result.Items[0], nil
 }
 
 type resolveOpts struct {
@@ -90,10 +95,10 @@ func (o *resolveOpts) Validate(flags *pflag.FlagSet) error {
 func newResolveCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &resolveOpts{}
 	cmd := &cobra.Command{
-		Use: "get-effective", Args: cobra.NoArgs,
-		Short:   "Read the effective model price and whether it came from an override or catalog.",
-		Long:    "Resolve a model price without changing it. Returns the pricing source and per-token rates (not per-million). An unknown price is not zero cost. Omit --at to use server time; pass a telemetry timestamp for historical pricing.",
-		Example: "  gcx agento11y model-rates get-effective --provider openai --model gpt-5.5 -o json",
+		Use: "resolve", Args: cobra.NoArgs,
+		Short:   "Resolve the price that applies to a model and whether it came from an override or the catalog.",
+		Long:    "Resolve a model price without changing it. Returns one object with the pricing source and per-token rates (not per-million). When nothing prices the model, the source is empty and pricing is null; an unknown price is not zero cost. Omit --at to use server time; pass a telemetry timestamp for historical pricing.",
+		Example: "  gcx agento11y model-rates resolve --provider openai --model gpt-5.5 -o json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err

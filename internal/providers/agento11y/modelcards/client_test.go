@@ -65,10 +65,8 @@ func TestClient_Lookup(t *testing.T) {
 
 			result, err := client.Lookup(context.Background(), tt.query)
 			require.NoError(t, err)
-			data, ok := result["data"].(map[string]any)
-			require.True(t, ok)
-			assert.Equal(t, "retained", data["future_dimension"])
-			assert.Contains(t, result, "freshness")
+			assert.Equal(t, "retained", result.Data["future_dimension"])
+			assert.False(t, result.Freshness.Stale)
 		})
 	}
 }
@@ -125,7 +123,7 @@ func TestClient_List_Paging(t *testing.T) {
 					writeJSON(w, map[string]any{
 						"data":        []any{map[string]any{"model_key": "a"}, map[string]any{"model_key": "b"}},
 						"next_cursor": "c1",
-						"freshness":   map[string]any{"stale": true, "catalog_last_refreshed_at": "2026-01-02T03:04:05Z"},
+						"freshness":   map[string]any{"stale": true},
 					})
 					return
 				}
@@ -138,7 +136,6 @@ func TestClient_List_Paging(t *testing.T) {
 			assert.Equal(t, tt.wantMore, result.HasMore)
 			// Page 2 omits freshness, which must not clear page 1's report.
 			assert.Equal(t, tt.wantStale, result.Freshness.Stale)
-			assert.Equal(t, "2026-01-02T03:04:05Z", result.Freshness.CatalogLastRefreshedAt)
 			assert.Equal(t, tt.wantCursors, cursors)
 		})
 	}
@@ -178,4 +175,5 @@ func TestTable(t *testing.T) {
 	assert.Equal(t, "-", cell(cards[1], "CONTEXT"))
 	assert.Equal(t, "-", cell(cards[1], "INPUT /1M"))
 	assert.Equal(t, "yes", cell(cards[1], "FREE"))
+	assert.Equal(t, "-", cell(cards[0], "FREE"))
 }
