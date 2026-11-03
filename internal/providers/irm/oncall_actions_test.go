@@ -142,6 +142,19 @@ func TestRunAcknowledge_RejectsIDPlusFilter(t *testing.T) {
 	}
 }
 
+func TestRunAcknowledge_InvalidFilterIsUsageError(t *testing.T) {
+	resetAgentMode(t)
+	for name, opts := range map[string]*alertGroupActionVerbOpts{
+		"state":   {States: []string{"nope"}},
+		"max-age": {MaxAge: "nope"},
+	} {
+		_, _, _, err := runAck(t, nil, opts, &fakeOnCallAPI{})
+		if _, ok := errors.AsType[*fail.UsageError](err); !ok {
+			t.Errorf("%s: runActionVerb() = %v (%T), want a usage error", name, err, err)
+		}
+	}
+}
+
 // --- Single-target tests (locked shape: {action, target, changed}) ---
 
 func TestRunAcknowledge_SingleTarget_Changes(t *testing.T) {
