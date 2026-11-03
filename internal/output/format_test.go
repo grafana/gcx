@@ -2,11 +2,13 @@ package output_test
 
 import (
 	"bytes"
+	"errors"
 	goio "io"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
@@ -355,3 +357,16 @@ type dummyCodec struct{}
 func (*dummyCodec) Encode(_ goio.Writer, _ any) error { return nil }
 func (*dummyCodec) Decode(_ goio.Reader, _ any) error { return nil }
 func (*dummyCodec) Format() format.Format             { return "text" }
+
+func TestUnknownOutputFormatIsUsageError(t *testing.T) {
+	opts := &cmdio.Options{}
+	opts.BindFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+	opts.OutputFormat = "bogus"
+
+	_, err := opts.Codec()
+	for name, err := range map[string]error{"Validate": opts.Validate(), "Codec": err} {
+		_, ok := errors.AsType[*gcxerrors.UsageError](err)
+		assert.True(t, ok, "%s() = %v (%T), want a usage error", name, err, err)
+		assert.ErrorContains(t, err, "unknown output format 'bogus'")
+	}
+}
