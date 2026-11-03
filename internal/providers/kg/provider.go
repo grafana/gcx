@@ -52,20 +52,29 @@ It does not hold time series, log lines or spans: use 'gcx metrics',
 'gcx logs' and 'gcx traces' for measured values and events, and
 'gcx datasources' to list data sources.
 
-Time window: every read covers the last hour by default, so on older data an
-empty or near-empty result means the window is wrong, not that nothing exists.
-Pass --from/--to (or --since) to the command.
+Time window: graph reads (graph query, entities, stats, meta schema and meta
+scopes) cover the last hour by default, so on older data an empty or
+near-empty result means the window is wrong, not that nothing exists. Pass
+--from/--to (or --since) to the command.
 
 Read:
-  graph query  who calls, writes to or depends on an entity, paths between
-               entities, counts (Cypher)
-  entities     list entities of a type or scope, with their properties
+  graph query  what calls or depends on an entity, what a failure would
+               affect, paths between entities, counts (read-only Cypher)
+  entities     list entities of one type (--type is required), optionally
+               within an env, namespace or site, with their properties and
+               active insights (--insight); correlate maps an alert to its
+               entity
   meta         entity and relationship types (meta schema), env/namespace/site
-               values (meta scopes)
+               values (meta scopes), and the entity-property to metric, log,
+               trace and profile label mappings used to build queries (meta
+               metrics|logs|traces|profiles)
   stats        entity and active-insight counts
 
-Configure: rules, model-rules, thresholds, suppressions and notification
-configs change how the graph is built and when it raises insights.`,
+Configure: prom-rules, model-rules, thresholds, suppressions and
+notifications change how the graph is built and when it raises insights.
+relabel-rules shows the relabel rules in effect (read-only). Custom entities
+and relationships are written with 'entities upsert|delete' and
+'relationships upsert|delete' (experimental).`,
 	}
 
 	loader.BindFlags(kgCmd.PersistentFlags())

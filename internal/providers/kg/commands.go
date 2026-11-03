@@ -1890,8 +1890,8 @@ func joinStringSlice(v any) string {
 func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
-		Short: "List and look up Knowledge Graph entities with their type, scope and properties.",
-		Long: `List and look up Knowledge Graph entities.
+		Short: "List and look up Knowledge Graph entities with their type, scope and properties; also upsert and delete custom ones.",
+		Long: `List, look up and manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
 properties — the labels used to build PromQL/Loki queries); it is cheap and is
