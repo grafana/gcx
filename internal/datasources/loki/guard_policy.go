@@ -38,8 +38,6 @@ const (
 	// fetch the policy from. Production selection is "Grafana Cloud target"
 	// (config.Context.IsCloud); a local Grafana can never satisfy that.
 	policyURLEnv = "GCX_LOKI_POLICY_URL"
-	// GCX_LOKI_POLICY_CACHE_DIR overrides the on-disk policy cache directory.
-	policyCacheDirEnv = "GCX_LOKI_POLICY_CACHE_DIR"
 )
 
 // policyMode is how a tenant wants guard decisions applied.
@@ -66,9 +64,11 @@ type queryPolicy struct {
 // catch-all selector over a long window.
 const defaultMaxBytes = 50 << 30 // 50 GiB
 
-// defaultQueryPolicy is used when the tenant policy cannot be fetched.
+// defaultQueryPolicy is used when the tenant policy cannot be fetched. It runs
+// in shadow mode: only a policy the server actually served can enforce, so a
+// missing or failing policy route never starts refusing queries.
 func defaultQueryPolicy() queryPolicy {
-	return queryPolicy{Mode: modeEnforce, MaxBytes: defaultMaxBytes, MaxRangeSeconds: 24 * 60 * 60, Source: "default"}
+	return queryPolicy{Mode: modeShadow, MaxBytes: defaultMaxBytes, MaxRangeSeconds: 24 * 60 * 60, Source: "default"}
 }
 
 func (p queryPolicy) validate() error {
@@ -143,9 +143,6 @@ func resolveGuardTarget(cfgCtx *config.Context, cfg config.NamespacedRESTConfig)
 }
 
 func policyCacheDir() string {
-	if dir := os.Getenv(policyCacheDirEnv); dir != "" && filepath.IsAbs(dir) {
-		return dir
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(os.TempDir(), "gcx", "loki-policy")

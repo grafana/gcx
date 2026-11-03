@@ -62,7 +62,7 @@ func TestPolicySource_Fetch(t *testing.T) {
 			p, reason := policySource{url: srv.URL, client: srv.Client()}.fetch(t.Context(), now)
 			assert.NotEmpty(t, reason)
 			assert.Equal(t, defaultQueryPolicy(), p)
-			assert.Equal(t, queryPolicy{Mode: modeEnforce, MaxBytes: 50 << 30, MaxRangeSeconds: 86400, Source: "default"}, p)
+			assert.Equal(t, queryPolicy{Mode: modeShadow, MaxBytes: 50 << 30, MaxRangeSeconds: 86400, Source: "default"}, p)
 		})
 	}
 
@@ -201,7 +201,7 @@ func TestQueryGuard_Check(t *testing.T) {
 			var stderr bytes.Buffer
 			g := &queryGuard{
 				policy: policySource{url: srv.URL, client: srv.Client()}, client: client, stderr: &stderr,
-				agent: tc.agent, now: time.Now, timeout: 5 * time.Second,
+				agent: tc.agent, timeout: 5 * time.Second,
 			}
 			err := g.check(context.Background(), "uid", tc.expr, true, now.Add(-tc.window), now, now)
 
@@ -228,7 +228,7 @@ func TestQueryGuard_Check(t *testing.T) {
 		var hits atomic.Int32
 		srv := newPolicyServer(t, `{"status":"success","data":{"mode":"enforce","maxBytes":52428800,"maxRangeSeconds":86400}}`, http.StatusOK, &hits)
 		client, calls := statsClient(t, cheap)
-		g := &queryGuard{policy: policySource{url: srv.URL, client: srv.Client()}, client: client, stderr: &bytes.Buffer{}, now: time.Now, timeout: time.Second}
+		g := &queryGuard{policy: policySource{url: srv.URL, client: srv.Client()}, client: client, stderr: &bytes.Buffer{}, timeout: time.Second}
 		require.Error(t, g.check(context.Background(), "uid", `{job=~".+"}`, true, now.Add(-time.Hour), now, now))
 		assert.Zero(t, calls.Load())
 	})
@@ -237,10 +237,31 @@ func TestQueryGuard_Check(t *testing.T) {
 		var hits atomic.Int32
 		srv := newPolicyServer(t, `{"status":"success","data":{"mode":"enforce","maxBytes":52428800,"maxRangeSeconds":86400}}`, http.StatusOK, &hits)
 		client, _ := statsClient(t, cheap)
-		g := &queryGuard{policy: policySource{url: srv.URL, client: srv.Client()}, client: client, stderr: &bytes.Buffer{}, now: time.Now, timeout: time.Second}
+		g := &queryGuard{policy: policySource{url: srv.URL, client: srv.Client()}, client: client, stderr: &bytes.Buffer{}, timeout: time.Second}
 		require.NoError(t, g.check(context.Background(), "uid", `rate({app="api"}[5m])`, false, time.Time{}, time.Time{}, now))
 		require.Error(t, g.check(context.Background(), "uid", `rate({app="api"}[7d])`, false, time.Time{}, time.Time{}, now))
 	})
+}
+
+func TestBlockedErrorSuggestionsFromRealGuidance(t *testing.T) {
+	// Build the splitter's input from the pinned lokiguard's own wording, so a
+	// reworded or reflowed Guidance turns this red.
+	p := queryPolicy{Mode: modeEnforce, MaxBytes: 50 << 30, MaxRangeSeconds: 86400}
+	now := time.Now()
+	d := lokiguard.Assess(context.Background(), lokiguard.Query{LogQL: `{app="api"}`, Start: now.Add(-48 * time.Hour), End: now}, p.guardPolicy(), nil)
+	require.Equal(t, lokiguard.Block, d.Verdict)
+
+	advice := splitGuidance(lokiguard.Guidance(d, p.guardPolicy(), guardScopeHint))
+	require.Greater(t, len(advice), 1, "guidance should hold a reasons sentence plus at least one suggestion")
+	for _, a := range advice {
+		assert.NotEmpty(t, a)
+		assert.False(t, strings.HasSuffix(a, "e.g"), "an e.g. abbreviation must not split a sentence: %q", a)
+	}
+
+	var de gcxerrors.DetailedError
+	require.ErrorAs(t, blockedError(d, p), &de)
+	assert.GreaterOrEqual(t, len(de.Suggestions), len(advice)+1)
+	assert.Contains(t, de.Suggestions, advice[1])
 }
 
 func TestSplitGuidance(t *testing.T) {

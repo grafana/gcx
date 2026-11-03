@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"strings"
 	"time"
 
@@ -35,12 +34,11 @@ type queryGuard struct {
 	client  *loki.Client
 	stderr  io.Writer
 	agent   bool
-	now     func() time.Time
 	timeout time.Duration
 }
 
 // guardStatsTimeout bounds the whole index-stats estimate (all selectors).
-var guardStatsTimeout = 5 * time.Second //nolint:gochecknoglobals // test-overridable timeout
+const guardStatsTimeout = 5 * time.Second
 
 // newQueryGuard returns nil when the guard does not apply to the target
 // (self-hosted Grafana is out of scope by design).
@@ -54,7 +52,6 @@ func newQueryGuard(cfgCtx *config.Context, cfg config.NamespacedRESTConfig, clie
 		client:  client,
 		stderr:  stderr,
 		agent:   agent.IsAgentMode(),
-		now:     time.Now,
 		timeout: guardStatsTimeout,
 	}
 }
@@ -64,9 +61,9 @@ func newQueryGuard(cfgCtx *config.Context, cfg config.NamespacedRESTConfig, clie
 func (g *queryGuard) check(ctx context.Context, datasourceUID, expr string, isRange bool, start, end, now time.Time) error {
 	log := logging.FromContext(ctx)
 
-	policy, fallbackReason := g.policy.fetch(ctx, g.now())
+	policy, fallbackReason := g.policy.fetch(ctx, now)
 	if fallbackReason != "" {
-		log.Warn("Loki query policy unavailable, using the built-in default (enforce, 50 GiB, 24h)", slog.String("reason", fallbackReason))
+		log.Warn("Loki query policy unavailable, using the built-in default (shadow, 50 GiB, 24h)", slog.String("reason", fallbackReason))
 	}
 	if policy.Mode == modeOff {
 		log.Info("Loki query guardrail is off for this tenant", slog.String("policy_source", policy.Source))
@@ -123,16 +120,14 @@ func (g *queryGuard) check(ctx context.Context, datasourceUID, expr string, isRa
 }
 
 // statsFunc adapts index/stats to lokiguard. The returned cancel releases the
-// deadline that bounds the whole assessment.
+// deadline that bounds the whole assessment. The per-call context lokiguard
+// passes is deliberately ignored: all selectors share this one deadline.
 func (g *queryGuard) statsFunc(ctx context.Context, datasourceUID string) (lokiguard.StatsFunc, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(ctx, g.timeout)
 	return func(_ context.Context, selector string, start, end time.Time) (int64, error) {
 		resp, err := g.client.IndexStats(ctx, datasourceUID, selector, start, end)
 		if err != nil {
 			return 0, err
-		}
-		if resp.Bytes > math.MaxInt64 {
-			return math.MaxInt64, nil
 		}
 		return int64(resp.Bytes), nil
 	}, cancel
