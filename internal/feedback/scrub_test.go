@@ -36,6 +36,36 @@ func TestScrub(t *testing.T) {
 			want: "<redacted:ip> and <redacted:ip> and [<redacted:ip>]:443",
 		},
 		{
+			name: "escaped quotes and backslashes inside a quoted secret",
+			in:   `{"password":"prefix\"remaining-secret","api_key":"a\\b"} done`,
+			want: `{"password":"<redacted:secret>","api_key":"<redacted:secret>"} done`,
+		},
+		{
+			name: "quoted flag values in a pasted command",
+			in:   `gcx login --token "synthetic opaque credential" --password 'two words' failed`,
+			want: `gcx login --token "<redacted:secret>" --password '<redacted:secret>' failed`,
+		},
+		{
+			name: "legacy grafana api key",
+			in:   "key eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk used",
+			want: "key <redacted:token> used",
+		},
+		{
+			name: "curl basic auth",
+			in:   "curl -u admin:hunter2 http and curl --user=bob:pw2",
+			want: "curl -u <redacted:userinfo> http and curl --user=<redacted:userinfo>",
+		},
+		{
+			name: "cookie header",
+			in:   "Cookie: grafana_session=abcdef0123456789; other=1",
+			want: "Cookie: <redacted:secret>",
+		},
+		{
+			name: "ipv6 after a word and colon",
+			in:   "listen addr:2001:db8::1 failed",
+			want: "listen addr:<redacted:ip> failed",
+		},
+		{
 			name: "url with credentials",
 			in:   "server: https://admin:hunter2@grafana.internal.example:3000/api/health",
 			want: "server: <redacted:url>",

@@ -32,14 +32,19 @@ var scrubRules = []scrubRule{
 	{re: regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@:]+:[^\s/@]*@`), repl: "${1}<redacted:userinfo>@"},
 	{re: regexp.MustCompile(`(?i)(\bauthorization"?\s*[:=]\s*"?)(?:(?:bearer|basic|token)\s+)?[^\s"',;]+`), repl: "${1}<redacted:auth>"},
 	{re: regexp.MustCompile(`(?i)\b(bearer|basic)(\s+)([A-Za-z0-9\-._~+/]{8,}=*)`), replace: redactAuthScheme},
+	{re: regexp.MustCompile(`(?i)\b((?:set-)?cookie"?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*"|[^\r\n"]+)`), repl: "${1}<redacted:secret>"},
+	{re: regexp.MustCompile(`((?:^|\s)-u\s+|--user[\s=]+)"?[^\s:"]+:[^\s"]+"?`), repl: "${1}<redacted:userinfo>"},
+	{re: regexp.MustCompile(`\beyJrIjoi[A-Za-z0-9+/=]+`), repl: "<redacted:token>"},
 	{re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*`), repl: "<redacted:token>"},
 	{re: regexp.MustCompile(`\b(?:glc_|glsa[_-])[A-Za-z0-9+/=_-]{8,}`), repl: "<redacted:token>"},
 	{re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,})`), repl: "<redacted:token>"},
 	{re: regexp.MustCompile(`\bxox[abpr]-[A-Za-z0-9-]{8,}`), repl: "<redacted:token>"},
 	{re: regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`), repl: "<redacted:token>"},
-	{re: regexp.MustCompile(`(?i)(` + secretKey + `"?\s*[:=]\s*)"[^"]*"`), repl: `${1}"<redacted:secret>"`},
-	{re: regexp.MustCompile(`(?i)(` + secretKey + `"?\s*[:=]\s*)'[^']*'`), repl: `${1}'<redacted:secret>'`},
+	{re: regexp.MustCompile(`(?i)(` + secretKey + `"?\s*[:=]\s*)"(?:[^"\\]|\\.)*"`), repl: `${1}"<redacted:secret>"`},
+	{re: regexp.MustCompile(`(?i)(` + secretKey + `"?\s*[:=]\s*)'(?:[^'\\]|\\.)*'`), repl: `${1}'<redacted:secret>'`},
 	{re: regexp.MustCompile(`(?i)(` + secretKey + `"?\s*[:=]\s*"?)([^\s"',;&<]+)`), repl: "${1}<redacted:secret>"},
+	{re: regexp.MustCompile(`(?i)(--` + secretKey + `\s+)"(?:[^"\\]|\\.)*"`), repl: `${1}"<redacted:secret>"`},
+	{re: regexp.MustCompile(`(?i)(--` + secretKey + `\s+)'(?:[^'\\]|\\.)*'`), repl: `${1}'<redacted:secret>'`},
 	{re: regexp.MustCompile(`(?i)(--` + secretKey + `\s+)([^\s"',;&<-][^\s"',;&<]*)`), repl: "${1}<redacted:secret>"},
 	{re: regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`), repl: "<redacted:email>"},
 	{re: regexp.MustCompile(`(?i)\b(?:[a-z0-9-]+\.)+grafana(?:-dev|-ops)?\.net\b`), repl: "<redacted:host>"},
@@ -49,6 +54,10 @@ var scrubRules = []scrubRule{
 	{re: regexp.MustCompile(`[A-Za-z]:\\{1,2}Users\\{1,2}[^\\\s"':,;]+`), repl: "~"},
 	{re: regexp.MustCompile(`(?:/Users|/home)/[^/\s"':,;]+`), repl: "~"},
 }
+
+// secretFieldName matches a --field key that names a secret. Keys and
+// values are scrubbed separately, so key=value rules never see the pair.
+var secretFieldName = regexp.MustCompile(`(?i)^` + secretKey + `$`)
 
 // secretKey matches a key name that holds a secret, with any prefix or suffix
 // (GRAFANA_TOKEN, cloud-token, access_token, db_password).
@@ -78,6 +87,14 @@ func looksLikeCredential(s string) bool {
 // clock times and MAC addresses survive. A single group before "::" is not
 // enough, so scope operators such as "std::string" survive too.
 func redactIPv6(match string) string {
+	// "addr:2001:db8::1" yields the candidate ":2001:db8::1". Keep the
+	// separator and check the address after it.
+	if strings.HasPrefix(match, ":") && !strings.HasPrefix(match, "::") {
+		if r := redactIPv6(match[1:]); r != match[1:] {
+			return ":" + r
+		}
+		return match
+	}
 	match, _, _ = strings.Cut(match, "%")
 	if net.ParseIP(match) == nil {
 		return match
@@ -99,6 +116,19 @@ func redactIPv6(match string) string {
 // directory paths with ~. It is applied to every key and value before
 // feedback is printed by --dry-run or sent.
 func Scrub(s string) string {
+	return scrub(s)
+}
+
+// ScrubField scrubs one --field pair. When the key names a secret the whole
+// value is replaced.
+func ScrubField(key, value string) (string, string) {
+	if secretFieldName.MatchString(strings.TrimSpace(key)) {
+		return Scrub(key), "<redacted:secret>"
+	}
+	return Scrub(key), Scrub(value)
+}
+
+func scrub(s string) string {
 	for _, rule := range scrubRules {
 		if rule.replace != nil {
 			s = rule.re.ReplaceAllStringFunc(s, rule.replace)

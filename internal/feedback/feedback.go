@@ -124,7 +124,8 @@ func NewPayload(data map[string]string, metadata *Metadata) (Payload, error) {
 		if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
 			continue
 		}
-		scrubbed[Scrub(k)] = Scrub(v)
+		sk, sv := ScrubField(k, v)
+		scrubbed[sk] = sv
 	}
 	if len(scrubbed) == 0 {
 		return Payload{}, ErrEmpty
@@ -158,8 +159,8 @@ func (p Payload) Encode() ([]byte, error) {
 	return body, nil
 }
 
-// RejectedError means the receiver answered with a status other than 200.
-// The feedback was not stored.
+// RejectedError means the receiver answered with a status below 500 other
+// than 200. The feedback was not stored.
 type RejectedError struct {
 	Status int
 }
@@ -207,6 +208,11 @@ func Send(ctx context.Context, endpoint string, body []byte) error {
 	}
 	defer resp.Body.Close()
 
+	// A 5xx can follow a stored row (a lost acknowledgement, or a proxy error
+	// after the handler replied), so it is not proof of rejection.
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return &UnknownOutcomeError{Cause: fmt.Errorf("receiver replied HTTP %d", resp.StatusCode)}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return &RejectedError{Status: resp.StatusCode}
 	}

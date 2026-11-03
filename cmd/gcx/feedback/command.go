@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
@@ -121,12 +122,16 @@ only when usage statistics are enabled. No login or configured context is needed
 	return cmd
 }
 
-// flagError keeps flag errors that name only a long flag and replaces the
-// rest. Shorthand errors quote the whole token, which for this command can be
-// the start of the note: `gcx feedback send "-x is broken"` parses as flags.
+// safeFlagError matches a pflag error that names a single plausible long
+// flag. pflag quotes the whole token after "--", which for this command can
+// be the note itself: `gcx feedback send "--my token is x"`.
+var safeFlagError = regexp.MustCompile(`^(?:unknown flag|flag needs an argument): --[A-Za-z0-9][A-Za-z0-9-]*$`)
+
+// flagError keeps flag errors that only name a flag and replaces the rest, so
+// no part of the note is ever printed back.
 func flagError(cmd *cobra.Command, err error) error {
 	msg := err.Error()
-	if strings.HasPrefix(msg, "unknown flag: --") || strings.HasPrefix(msg, "flag needs an argument: --") {
+	if safeFlagError.MatchString(msg) {
 		return fail.NewCommandUsageError(cmd, msg, nil)
 	}
 	return fail.NewCommandUsageError(cmd,
@@ -166,7 +171,7 @@ func runSend(cmd *cobra.Command, opts *sendOpts, args []string) error {
 	}
 
 	if err := feedback.Send(cmd.Context(), feedback.Endpoint(), body); err != nil {
-		return deliveryError(err)
+		return deliveryError(err, payload.FeedbackID)
 	}
 
 	result := cmdio.NewSingleMutation("sent", cmdio.MutationTarget{Kind: "feedback", ID: payload.FeedbackID})
@@ -227,7 +232,10 @@ func emptyError(cmd *cobra.Command) error {
 	return fail.NewCommandUsageError(cmd, "nothing to send; pass a note or at least one --field with a value", nil)
 }
 
-func deliveryError(err error) error {
+// deliveryError maps a send failure to the user-facing error. The feedback ID
+// is included so a report can be matched to a stored row later.
+func deliveryError(err error, feedbackID string) error {
+	idLine := " Feedback ID: " + feedbackID + "."
 	if rejected, ok := errors.AsType[*feedback.RejectedError](err); ok {
 		details := fmt.Sprintf("Feedback could not be submitted (HTTP %d). Try again later.", rejected.Status)
 		if rejected.Status == http.StatusTooManyRequests {
@@ -235,13 +243,13 @@ func deliveryError(err error) error {
 		}
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryAPIError,
-			Details: details,
+			Details: details + idLine,
 		}
 	}
 	if unknown, ok := errors.AsType[*feedback.UnknownOutcomeError](err); ok {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryNetworkError,
-			Details: "Could not confirm that the feedback was received. It may have been submitted. gcx did not retry.",
+			Details: "Could not confirm that the feedback was received. It may have been submitted. gcx did not retry." + idLine,
 			Parent:  unknown.Cause,
 		}
 	}

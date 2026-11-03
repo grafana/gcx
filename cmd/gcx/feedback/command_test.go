@@ -195,11 +195,26 @@ func TestSend_DeliveryFailures(t *testing.T) {
 			response: "slow down",
 		},
 		{
+			name:     "bad request",
+			status:   http.StatusBadRequest,
+			summary:  gcxerrors.SummaryAPIError,
+			details:  "Feedback could not be submitted (HTTP 400). Try again later.",
+			response: `{"success":false,"error":"bad"}`,
+		},
+		{
+			// A 5xx can follow a stored row, so it is an unknown outcome.
 			name:     "server error",
 			status:   http.StatusInternalServerError,
-			summary:  gcxerrors.SummaryAPIError,
-			details:  "Feedback could not be submitted (HTTP 500). Try again later.",
+			summary:  gcxerrors.SummaryNetworkError,
+			details:  "Could not confirm that the feedback was received. It may have been submitted. gcx did not retry.",
 			response: `{"success":false,"error":"storage"}`,
+		},
+		{
+			name:     "bad gateway",
+			status:   http.StatusBadGateway,
+			summary:  gcxerrors.SummaryNetworkError,
+			details:  "Could not confirm that the feedback was received. It may have been submitted. gcx did not retry.",
+			response: "upstream error",
 		},
 		{
 			name:     "unparseable reply",
@@ -229,7 +244,8 @@ func TestSend_DeliveryFailures(t *testing.T) {
 			d := fail.ErrorToDetailedError(err)
 			require.NotNil(t, d)
 			assert.Equal(t, tc.summary, d.Summary)
-			assert.Equal(t, tc.details, d.Details)
+			sent := decode(t, r.requests()[0])
+			assert.Equal(t, tc.details+" Feedback ID: "+sent.FeedbackID+".", d.Details)
 			assert.Equal(t, gcxerrors.ExitGeneralError, exitCode(err))
 		})
 	}
@@ -296,6 +312,8 @@ func TestSend_UsageErrors(t *testing.T) {
 		{name: "field without equals", args: []string{"send", "--field", "fake-secret-value"}},
 		{name: "field with empty key", args: []string{"send", "--field", "=fake-secret-value"}},
 		{name: "note parsed as flags", args: []string{"send", secretNote}},
+		{name: "note parsed as a long flag", args: []string{"send", "--my token is fake-secret-value"}},
+		{name: "note parsed as a long flag with value", args: []string{"send", "--my=fake-secret-value"}},
 		{name: "oversized note", args: []string{"send", strings.Repeat("x", 70*1024)}},
 		{name: "oversized stdin", stdin: strings.Repeat("x", 70*1024), args: []string{"send", "-"}},
 		{name: "oversized after scrubbing", args: []string{"send", strings.Repeat("1.2.3.4 ", 5000)}},
@@ -323,4 +341,19 @@ func TestFeedbackGroupPrintsHelpAndSendsNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "send")
 	assert.Empty(t, r.requests())
+}
+
+func TestSend_SecretFieldValuesAreRedacted(t *testing.T) {
+	isolate(t, "disabled")
+	r := newReceiver(t, http.StatusOK, `{"success":true}`)
+
+	out, err := run(t, "", "send", "--field", "password=fake-secret-value", "--field", "GRAFANA_TOKEN=fake-secret-value",
+		"--field", "type=bug", "--dry-run")
+	require.NoError(t, err)
+	assert.Empty(t, r.requests())
+	assert.Equal(t, map[string]string{
+		"password":      "<redacted:secret>",
+		"GRAFANA_TOKEN": "<redacted:secret>",
+		"type":          "bug",
+	}, decode(t, []byte(out)).Data)
 }

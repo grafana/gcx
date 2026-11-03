@@ -120,10 +120,9 @@ Response semantics:
 | `400` | Malformed request | `Feedback could not be submitted (HTTP 400). Try again later.` |
 | `413` | Body over 64 KiB | Same, with the status |
 | `429` | Rate limited | Same, with a note that too many requests were sent |
-| `5xx` | Storage failed | Same, with the status |
-| Network error, or `200` without a confirmation | Unknown | `Could not confirm that the feedback was received. It may have been submitted. gcx did not retry.` |
+| Network error, any `5xx`, or `200` without a confirmation | Unknown. A `5xx` can follow a stored row, for example when the storage acknowledgement is lost or a proxy fails after the handler replied | `Could not confirm that the feedback was received. It may have been submitted. gcx did not retry.` |
 
-gcx makes a single attempt with a ten second timeout, follows no redirects and never retries. A redirect is reported as a rejection with its status. Rejections and unknown outcomes exit 1. Usage errors, including oversized input, exit 2 and send nothing.
+gcx makes a single attempt with a ten second timeout, follows no redirects and never retries. A redirect is reported as a rejection with its status. Rejections and unknown outcomes exit 1, and both print the `feedback_id` so a report can be matched to a stored row. Usage errors, including oversized input, exit 2 and send nothing.
 
 The size check runs on the encoded body after scrubbing, since placeholders can make the text longer. Stdin is read only up to one byte past the limit, so a large stream is rejected without being buffered.
 
@@ -167,7 +166,6 @@ The rules run in a fixed order: whole URLs first, token formats before key=value
 
 ## Unresolved questions
 
-- Whether the receiver deduplicates on `feedback_id` reliably enough to make an unknown outcome safe to resend. Resolved by the receiver's behavior under repeated delivery.
 - Which fields the team actually uses in triage, and whether the recommended list should change. Resolved by reviewing the first weeks of received feedback.
 - When the command leaves experimental. Resolved once the receiver and triage process are stable.
 
