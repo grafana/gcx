@@ -757,3 +757,62 @@ func TestClient_GetReport_TransportError(t *testing.T) {
 	_, err := client.GetReport(context.Background(), "r-1")
 	require.Error(t, err)
 }
+
+func TestClient_ListFilterValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter experiments.FacetsFilter
+		want   map[string]string
+	}{
+		{name: "no filter", want: map[string]string{}},
+		{
+			name:   "all filters",
+			filter: experiments.FacetsFilter{Source: "external", ExecutionKind: "agent_run", From: "2026-10-01T00:00:00Z", To: "2026-10-08T00:00:00Z"},
+			want:   map[string]string{"source": "external", "execution_kind": "agent_run", "from": "2026-10-01T00:00:00Z", "to": "2026-10-08T00:00:00Z"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiment-facets", r.URL.Path)
+				got := map[string]string{}
+				for key := range r.URL.Query() {
+					got[key] = r.URL.Query().Get(key)
+				}
+				assert.Equal(t, tt.want, got)
+
+				w.Header().Set("Content-Type", "application/json")
+				writeJSON(w, map[string]any{"owners": []string{"alice"}, "suites": []string{"suite-1", "suite-2"}, "tags": []string{"nightly"}})
+			}))
+
+			facets, err := client.ListFilterValues(context.Background(), tt.filter)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"alice"}, facets.Owners)
+			assert.Equal(t, []string{"suite-1", "suite-2"}, facets.Suites)
+			assert.Equal(t, []string{"nightly"}, facets.Tags)
+		})
+	}
+}
+
+func TestClient_ListFilterValues_EmptyResultEncodesEmptyLists(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, map[string]any{"owners": nil})
+	}))
+
+	facets, err := client.ListFilterValues(context.Background(), experiments.FacetsFilter{})
+	require.NoError(t, err)
+	encoded, err := json.Marshal(facets)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"owners":[],"suites":[],"tags":[]}`, string(encoded))
+}
+
+func TestClient_ListFilterValues_BadRequest(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "invalid source", http.StatusBadRequest)
+	}))
+
+	_, err := client.ListFilterValues(context.Background(), experiments.FacetsFilter{Source: "bogus"})
+	require.ErrorContains(t, err, "invalid source")
+}
