@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -133,9 +135,12 @@ func TestCommands(t *testing.T) {
 			}
 			require.ElementsMatch(t, tt.wantPaths, paths)
 			if tt.command == "list" {
-				var users []User
-				require.NoError(t, json.Unmarshal(stdout.Bytes(), &users))
-				require.Len(t, users, 1)
+				var result listResult
+				require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+				require.Len(t, result.Users, 1)
+				require.NotNil(t, result.ListMeta)
+				require.Equal(t, 1, result.ListMeta.Returned)
+				require.Equal(t, 2, *result.ListMeta.Total)
 				require.Contains(t, stderr.String(), "limit")
 				return
 			}
@@ -236,7 +241,11 @@ func TestListResponses(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, "[]", strings.TrimSpace(stdout.String()))
+			var result listResult
+			require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+			require.NotNil(t, result.Users)
+			require.Empty(t, result.Users)
+			require.Nil(t, result.ListMeta)
 		})
 	}
 }
@@ -278,12 +287,116 @@ func TestUserResponseFields(t *testing.T) {
 			if tt.get {
 				require.NoError(t, yaml.Unmarshal(stdout.Bytes(), &actual))
 			} else {
-				var users []map[string]any
-				require.NoError(t, yaml.Unmarshal(stdout.Bytes(), &users))
-				require.Len(t, users, 1)
-				actual = users[0]
+				var result struct {
+					Users []map[string]any `yaml:"users"`
+				}
+				require.NoError(t, yaml.Unmarshal(stdout.Bytes(), &result))
+				require.Len(t, result.Users, 1)
+				actual = result.Users[0]
 			}
 			require.Equal(t, expected, actual)
 		})
+	}
+}
+
+func TestReadTableFormats(t *testing.T) {
+	tests := []struct {
+		name      string
+		get, wide bool
+	}{
+		{name: "list default"}, {name: "list wide", wide: true},
+		{name: "get default", get: true}, {name: "get wide", get: true, wide: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutils.SetAgentMode(t, false)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/org/users", r.URL.Path)
+				_, _ = w.Write([]byte(`[{"userId":42,"login":"alice","email":"alice@example.com","role":"Viewer","name":"Alice Example"}]`))
+			}))
+			defer server.Close()
+			loader := &testLoader{host: server.URL}
+			var cmd *cobra.Command
+			args := []string{}
+			if tt.get {
+				cmd = newGetCommand(loader)
+				args = append(args, "alice")
+			} else {
+				cmd = newListCommand(loader)
+			}
+			if tt.wide {
+				args = append(args, "-o=wide")
+			}
+			cmd.SetArgs(args)
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			require.NoError(t, cmd.Execute())
+			require.Contains(t, stdout.String(), "ID")
+			require.Contains(t, stdout.String(), "LOGIN")
+			require.Contains(t, stdout.String(), "alice@example.com")
+			if tt.wide {
+				require.Contains(t, stdout.String(), "NAME")
+				require.Contains(t, stdout.String(), "Alice Example")
+			} else {
+				require.NotContains(t, stdout.String(), "Alice Example")
+			}
+		})
+	}
+}
+
+func TestListMetadataFormats(t *testing.T) {
+	formats := []struct {
+		name     string
+		args     []string
+		agent    bool
+		selected bool
+	}{
+		{name: "JSON", args: []string{"-o=json"}},
+		{name: "YAML", args: []string{"-o=yaml"}},
+		{name: "agent", agent: true},
+		{name: "field selection", args: []string{"--json=login"}, selected: true},
+	}
+	for _, format := range formats {
+		for _, limit := range []int{0, 1, 2} {
+			t.Run(format.name+"/limit="+strconv.Itoa(limit), func(t *testing.T) {
+				testutils.SetAgentMode(t, format.agent)
+				testutils.PinArgv(t, "gcx", "org", "users", "list", "--limit", strconv.Itoa(limit))
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, http.MethodGet, r.Method)
+					assert.Equal(t, "/api/org/users", r.URL.Path)
+					_, _ = w.Write([]byte(`[{"userId":1,"login":"alice"},{"userId":2,"login":"bob"}]`))
+				}))
+				defer server.Close()
+				cmd := newListCommand(&testLoader{host: server.URL})
+				cmd.SetArgs(append([]string{"--limit=" + strconv.Itoa(limit)}, format.args...))
+				var stdout, stderr bytes.Buffer
+				cmd.SetOut(&stdout)
+				cmd.SetErr(&stderr)
+				require.NoError(t, cmd.Execute())
+				var result struct {
+					Users    []map[string]any `yaml:"users"`
+					ListMeta *cmdio.ListMeta  `yaml:"list_meta"`
+				}
+				require.NoError(t, yaml.Unmarshal(stdout.Bytes(), &result))
+				if limit == 1 {
+					require.Len(t, result.Users, 1)
+					require.NotNil(t, result.ListMeta)
+					require.True(t, result.ListMeta.Truncated)
+					require.Equal(t, 1, result.ListMeta.Returned)
+					require.NotNil(t, result.ListMeta.Total)
+					require.Equal(t, 2, *result.ListMeta.Total)
+					require.Equal(t, "gcx org users list --limit 0", result.ListMeta.Continue)
+				} else {
+					require.Len(t, result.Users, 2)
+					require.Nil(t, result.ListMeta)
+				}
+				require.Equal(t, "alice", result.Users[0]["login"])
+				if format.selected {
+					require.Len(t, result.Users[0], 1)
+				}
+			})
+		}
 	}
 }

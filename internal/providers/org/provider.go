@@ -17,7 +17,7 @@ type Provider struct{}
 func (*Provider) Name() string { return "org" }
 
 // ShortDesc describes the provider.
-func (*Provider) ShortDesc() string { return "Manage the selected Grafana organization" }
+func (*Provider) ShortDesc() string { return "Manage the selected Grafana instance organization." }
 
 // ConfigKeys returns no extra authentication keys.
 func (*Provider) ConfigKeys() []providers.ConfigKey { return nil }
@@ -31,9 +31,9 @@ func (*Provider) TypedRegistrations() []adapter.Registration { return nil }
 // Commands returns the organization command tree.
 func (p *Provider) Commands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
-	cmd := &cobra.Command{Use: "org", Short: p.ShortDesc()}
+	cmd := &cobra.Command{Use: "org", Short: p.ShortDesc(), Long: "Manage the organization on the Grafana server selected by the current context or --context. Use gcx cloud orgs to inspect Grafana Cloud account organizations."}
 	loader.BindFlags(cmd.PersistentFlags())
-	users := &cobra.Command{Use: "users", Short: "Manage users in the selected organization"}
+	users := &cobra.Command{Use: "users", Short: "Manage users in the selected organization."}
 	users.AddCommand(newListCommand(loader), newGetCommand(loader), newDeleteCommand(loader))
 	cmd.AddCommand(users)
 	return []*cobra.Command{cmd}
