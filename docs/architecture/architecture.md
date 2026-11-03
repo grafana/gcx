@@ -82,3 +82,10 @@ See [configuration](config-system.md), [authentication](auth-system.md), and [lo
 Using Kubernetes client libraries avoids duplicating discovery, pagination, and API error machinery at the cost of a substantial dependency graph. Direct query clients bypass that machinery while reusing authentication. Unified datasource-query requests share transport and data-frame types instead of duplicating fallback and response-limit logic.
 
 See [client/API layer](client-api-layer.md) for transport construction and error translation, [CLI layer](cli-layer.md) for command lifecycle and output, and [project structure](project-structure.md) for module and build boundaries.
+
+## Temporary IRM synchronization
+
+`gcx irm plugin sync` requests a refresh of IRM's copy of Grafana users and teams.
+The refresh runs in the background. A later write can still need a retry.
+The command is experimental. The IRM backend team owns the permanent fix.
+Remove the command when new users and teams are available without a caller-triggered refresh.
