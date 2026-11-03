@@ -18,13 +18,13 @@ import (
 // This enables cross-stack push: when Get-by-metadata.name returns NotFound
 // (because the server-generated ID from Stack A doesn't exist on Stack B),
 // we fall back to matching by natural key (e.g., SLO name, check job+target).
-func findByNaturalKey( //nolint:nonamedreturns // Named returns document the match contract.
+func findByNaturalKey(
 	ctx context.Context,
 	cache *naturalKeyCache,
 	desc resources.Descriptor,
 	localObj *unstructured.Unstructured,
 	desiredNativeIdentity string,
-) (matched *unstructured.Unstructured, found bool, err error) {
+) (matched *unstructured.Unstructured, found bool, err error) { //nolint:nonamedreturns // Named returns document the match contract.
 	// 1. Get the extractor for this GVK.
 	extractor := adapter.GetNaturalKeyExtractor(desc.GroupVersionKind())
 	nativePolicy := extractor == nil && resources.HasServerDerivedName(desc.GroupVersionKind())
@@ -63,13 +63,12 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		return nil, false, nil
 	}
 
-	// SLO names must be unique to avoid silently updating an arbitrary definition or report.
-	sloPolicy := desc.GroupVersion.Group == "slo.ext.grafana.app" && (desc.Kind == "SLO" || desc.Kind == "Report")
+	policy := adapter.GetNaturalKeyPolicy(desc.GroupVersionKind())
 	matches := 0
 	for i := range remoteList.Items {
 		remoteKey, ok := extractor(&remoteList.Items[i])
 		if ok && remoteKey == localKey {
-			if !nativePolicy && !sloPolicy {
+			if !nativePolicy && !policy.RequireUnique {
 				return remoteList.Items[i].DeepCopy(), true, nil
 			}
 			matches++
@@ -77,8 +76,8 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		}
 	}
 
-	if matches > 1 && sloPolicy {
-		return nil, false, fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name UUID", desc.Kind, localKey)
+	if matches > 1 && policy.RequireUnique {
+		return nil, false, fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name %s", desc.Kind, localKey, policy.IDLabel)
 	}
 	if matches > 1 {
 		return nil, false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)

@@ -24,6 +24,19 @@ func convertHTTPStatusErrors(err error) (*gcxerrors.DetailedError, bool) {
 		operation := wrappedTypedErrorContext(err, statusErr)
 		detailed.Details = httpFailureDetails(operation, statusErr.ServerMessage, statusErr.Status, statusErr.TraceID)
 	}
+	// Grafana's datasource proxy translates an upstream 401 into HTTP 400
+	// with this exact plain-text body. JSON responses use the canonical
+	// server message selected by providers.FormatError.
+	if statusErr.Status == http.StatusBadRequest && statusErr.ServerMessage == "Authentication to data source failed" {
+		detailed.Summary = gcxerrors.SummaryAuthenticationFailed
+		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
+		detailed.Suggestions = []string{
+			"Check datasource health: gcx datasources health <uid>",
+			"Find the datasource UID if needed: gcx datasources list -o json",
+			"For datasource-managed rules, inspect gcx datasources get <uid> -o json and check its credentials and ruler configuration in Grafana",
+		}
+		return detailed, true
+	}
 	switch statusErr.Status {
 	case http.StatusUnauthorized:
 		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)

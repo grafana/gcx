@@ -198,8 +198,7 @@ func runConfigure(
 
 	err = rmw.Update[instrumentation.Cluster](ctx, getFn, mutateFn, setFn, rmw.ClusterEqual, 2)
 	if err != nil {
-		var ce rmw.ConflictError
-		if errors.As(err, &ce) {
+		if ce, ok := errors.AsType[rmw.ConflictError](err); ok {
 			ce.Command = "clusters configure"
 			return ce
 		}

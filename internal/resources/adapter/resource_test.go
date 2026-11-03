@@ -377,3 +377,14 @@ func TestResource_TypedCRUD(t *testing.T) {
 		})
 	}
 }
+
+func TestResourceNaturalKeyPolicySurvivesTypedBinding(t *testing.T) {
+	policy := adapter.NaturalKeyPolicy{RequireUnique: true, IDLabel: "test ID"}
+	r := adapter.Resource[fakeGadget]{Group: "policy-binding.test", Version: "v1", Kind: "Gadget", NaturalKey: "name", NaturalKeyPolicy: policy}
+	p := adapter.NewProvider("policy-binding", "test", fakeDeps, r)
+	gvk := p.TypedRegistrations()[0].GVK
+	require.Equal(t, policy, adapter.GetNaturalKeyPolicy(gvk))
+	r.TypedCRUD(&readOnlyGadgetClient{}, "default")
+	require.Equal(t, policy, adapter.GetNaturalKeyPolicy(gvk))
+	require.NotNil(t, adapter.GetNaturalKeyExtractor(gvk))
+}

@@ -144,7 +144,7 @@ by `NewNamespacedRESTConfig` via `WrapTransport`).
 | 1 | General error | Unexpected error, business logic failure |
 | 2 | Usage error | Invalid selectors, unknown commands, bad flags or positional arguments, missing required flags |
 | 3 | Auth failure | 401/403, missing or invalid credentials |
-| 4 | Partial failure | Some resources succeeded, others failed |
+| 4 | Partial failure | Some resources succeeded, others failed; lint reported violations |
 | 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, explicit confirmation cancellation, or server-reported cancellation; see [legacy confirmation exceptions](docs/design/exit-codes.md#24-declined-confirmations) |
 | 6 | Version incompatible | Grafana < 12 detected |
 

@@ -82,3 +82,84 @@ func TestHelpFunc_AdditionalTopics(t *testing.T) {
 		}
 	}
 }
+
+// renderLong must show placeholders such as <title>, which markdown would
+// otherwise parse as HTML tags that glamour drops, without altering code or
+// breaking autolinks.
+func TestRenderLong_KeepsPlaceholders(t *testing.T) {
+	tests := []struct {
+		name string
+		long string
+		want string
+	}{
+		{
+			name: "bare placeholder",
+			long: "<title>",
+			want: "<title>",
+		},
+		{
+			name: "placeholder mid-sentence",
+			long: "Select one exact title with --name <title> and choose yaml.",
+			want: "Select one exact title with --name <title> and choose yaml.",
+		},
+		{
+			name: "kebab-case placeholders in a path",
+			long: "Archives are written under <path-prefix>/tenant=<logs-instance-id>/.",
+			want: "Archives are written under <path-prefix>/tenant=<logs-instance-id>/.",
+		},
+		{
+			name: "placeholder in inline code",
+			long: "Run `gcx instrumentation explain <id>` for details.",
+			want: "Run gcx instrumentation explain <id> for details.",
+		},
+		{
+			name: "placeholder in fenced code block",
+			long: "Example:\n\n```\ngcx alert rules get <name>\n```",
+			want: "Example: gcx alert rules get <name>",
+		},
+		{
+			name: "placeholder in tilde fenced code block",
+			long: "Example:\n\n~~~\ngcx alert rules get <name>\n~~~",
+			want: "Example: gcx alert rules get <name>",
+		},
+		{
+			name: "placeholder in indented code block",
+			long: "Example:\n\n    gcx alert rules get <name>",
+			want: "Example: gcx alert rules get <name>",
+		},
+		{
+			name: "placeholder in a code span containing a backtick",
+			long: "Run ``echo ` <name>`` for details.",
+			want: "Run echo ` <name> for details.",
+		},
+		{
+			name: "already escaped placeholder",
+			long: `Pass \<name> to select one.`,
+			want: "Pass <name> to select one.",
+		},
+		{
+			name: "autolink",
+			long: "See <https://grafana.com/docs/> for details.",
+			want: "See https://grafana.com/docs/ for details.",
+		},
+		{
+			name: "no placeholders",
+			long: "Operators: =, !=, >, <, >=, <= compare values.",
+			want: "Operators: =, !=, >, <, >=, <= compare values.",
+		},
+	}
+
+	// Strip SGR colors and OSC 8 hyperlinks, then collapse whitespace,
+	// including the non-breaking spaces glamour pads inline code with.
+	ansi := regexp.MustCompile(`\x1b\[[0-9;]*m|\x1b\]8;[^\a]*\a`)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := renderLong(tc.long)
+			require.NoError(t, err)
+
+			plain := strings.Join(strings.Fields(ansi.ReplaceAllString(out, "")), " ")
+			assert.Equal(t, tc.want, plain)
+		})
+	}
+}

@@ -127,8 +127,7 @@ func runGcxStreams(t *testing.T, args ...string) (string, string, int) {
 	cmd.Stderr = &errBuf
 	err := cmd.Run()
 	code := 0
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		code = exitErr.ExitCode()
 	} else if err != nil {
 		t.Fatalf("running gcx %v: %v", args, err)
@@ -461,8 +460,7 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 		return outBuf.String(), -1, true
 	}
 	code := 0
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		code = exitErr.ExitCode()
 	} else if err != nil {
 		t.Fatalf("running gcx %v: %v", args, err)

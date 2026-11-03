@@ -254,8 +254,7 @@ func (p *Puller) pullFilter(ctx, invocationCtx context.Context, req PullRequest,
 	switch filt.Type {
 	case resources.FilterTypeAll:
 		res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
-		var partial adapter.PartialReadError
-		if errors.As(err, &partial) {
+		if partial, ok := errors.AsType[adapter.PartialReadError](err); ok {
 			if recordErr := recordPartialRead(ctx, summary, partial, req.StopOnError); recordErr != nil {
 				return nil, recordErr
 			}
@@ -290,8 +289,7 @@ func (p *Puller) pullFilter(ctx, invocationCtx context.Context, req PullRequest,
 		}
 	case resources.FilterTypeMultiple:
 		res, err := p.client.GetMultiple(ctx, filt.Descriptor, filt.ResourceUIDs, metav1.GetOptions{})
-		var partial adapter.PartialReadError
-		if errors.As(err, &partial) {
+		if partial, ok := errors.AsType[adapter.PartialReadError](err); ok {
 			if recordErr := recordPartialRead(ctx, summary, partial, req.StopOnError); recordErr != nil {
 				return nil, recordErr
 			}

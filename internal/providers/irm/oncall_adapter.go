@@ -3,7 +3,9 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -72,12 +74,19 @@ func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
 	}
 }
 
+//nolint:dupl // Each resource keeps the same create, update, and delete wiring.
 func scheduleCRUDOpts() []crudOption[Schedule] {
 	return []crudOption[Schedule]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
+			if err := validateScheduleType(item.Type); err != nil {
+				return nil, err
+			}
 			return c.CreateSchedule(ctx, *item)
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
+			if err := validateScheduleType(item.Type); err != nil {
+				return nil, err
+			}
 			return c.UpdateSchedule(ctx, name, *item)
 		}),
 		adapter.WithDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
@@ -89,9 +98,15 @@ func scheduleCRUDOpts() []crudOption[Schedule] {
 func shiftCRUDOpts() []crudOption[Shift] {
 	return []crudOption[Shift]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
+			if err := validateShiftValues(item); err != nil {
+				return nil, err
+			}
 			return c.CreateShift(ctx, shiftToRequest(item))
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
+			if err := validateShiftValues(item); err != nil {
+				return nil, err
+			}
 			return c.UpdateShift(ctx, name, shiftToRequest(item))
 		}),
 		adapter.WithDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
@@ -114,18 +129,73 @@ func routeCRUDOpts() []crudOption[Route] {
 	}
 }
 
+//nolint:dupl // Each resource keeps the same create, update, and delete wiring.
 func webhookCRUDOpts() []crudOption[Webhook] {
 	return []crudOption[Webhook]{
 		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
+			if err := validateWebhookTrigger(item.TriggerType); err != nil {
+				return nil, err
+			}
 			return c.CreateWebhook(ctx, *item)
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
+			if err := validateWebhookTrigger(item.TriggerType); err != nil {
+				return nil, err
+			}
 			return c.UpdateWebhook(ctx, name, *item)
 		}),
 		adapter.WithDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteWebhook(ctx, name)
 		}),
 	}
+}
+
+func validateScheduleType(value any) error {
+	if value == nil || value == "" {
+		return errors.New("schedule type is required; use a numeric value from an existing schedule")
+	}
+	return validateNonNegativeInteger(value, "schedule type")
+}
+
+func validateWebhookTrigger(value any) error {
+	if value == nil {
+		return nil // A preset can control the trigger.
+	}
+	if err := validateNonNegativeInteger(value, "webhook trigger_type"); err != nil {
+		return fmt.Errorf("%w; see webhooks list-triggers for current values", err)
+	}
+	return nil
+}
+
+func validateShiftValues(shift *Shift) error {
+	for _, field := range []struct {
+		name     string
+		value    any
+		optional bool
+	}{
+		{"type", shift.Type, false},
+		{"frequency", shift.Frequency, true},
+	} {
+		if field.value == nil {
+			if field.optional {
+				continue
+			}
+			return errors.New("shift type is required; use a numeric value from the OnCall shift API")
+		}
+		if err := validateNonNegativeInteger(field.value, "shift "+field.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNonNegativeInteger(value any, field string) error {
+	text := fmt.Sprint(value)
+	number, err := strconv.ParseUint(text, 10, 64)
+	if err != nil || strconv.FormatUint(number, 10) != text {
+		return fmt.Errorf("%s %q must be a nonnegative integer", field, text)
+	}
+	return nil
 }
 
 func resolutionNoteCRUDOpts() []crudOption[ResolutionNote] {
@@ -345,6 +415,11 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 		shiftSwapCRUDOpts()...,
 	))
 
+	// 17. PersonalNotificationRule — full CRUD
+	meta = oncallMeta("PersonalNotificationRule", "personalnotificationrule", "personalnotificationrules")
+	meta.Example = personalNotificationRuleExample()
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
+		listPersonalNotificationRules, getPersonalNotificationRule, personalNotificationRuleCRUDOpts()...))
 	return regs
 }
 
@@ -452,7 +527,7 @@ func webhookExample() json.RawMessage {
 		"spec": map[string]any{
 			"name":               "my-webhook",
 			"url":                "https://example.com/webhook",
-			"trigger_type":       "escalation",
+			"trigger_type":       1,
 			"is_webhook_enabled": true,
 			"http_method":        "POST",
 		},
@@ -491,4 +566,12 @@ func mustMarshal(v any) json.RawMessage {
 		panic(fmt.Sprintf("irm: failed to marshal example: %v", err))
 	}
 	return b
+}
+
+func personalNotificationRuleExample() json.RawMessage {
+	return mustMarshal(map[string]any{
+		"apiVersion": APIVersion, "kind": "PersonalNotificationRule",
+		"metadata": map[string]any{"name": "my-wait-rule"},
+		"spec":     map[string]any{"user": "<user-id>", "important": false, "step": 0, "notify_by": nil, "wait_delay": "300.0"},
+	})
 }
