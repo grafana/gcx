@@ -95,18 +95,27 @@ func (c *Client) SetRubric(ctx context.Context, collectionID string, request *Ru
 func (c *Client) SubmitReview(ctx context.Context, collectionID string, request *ReviewRequest) (*ReviewResult, error) {
 	result, err := agento11yhttp.DoJSON[ReviewRequest, ReviewResult](ctx, c.base, http.MethodPost, queuePath(collectionID)+"/reviews", request, http.StatusOK, http.StatusCreated)
 	if err != nil {
-		if statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err); ok && statusErr.Status == http.StatusNotFound {
-			message := strings.TrimSpace(statusErr.ServerMessage)
-			if strings.Contains(message, "was not found") || strings.Contains(message, "is not a review queue") {
-				return nil, fmt.Errorf("%s: %w", message, adapter.ErrNotFound)
-			}
-			if _, unavailable := errors.AsType[*agento11yhttp.PluginUnavailableError](err); !unavailable {
-				return nil, fmt.Errorf("%s: %w", collectionID, ErrNotFound)
-			}
-		}
-		return nil, err
+		return nil, submitReviewError(err, collectionID)
 	}
 	return &result, nil
+}
+
+// submitReviewError keeps the backend's own text for a 404 that names the
+// missing generation or collection, and the generic queue text for any other
+// 404 that is not a plugin outage.
+func submitReviewError(err error, collectionID string) error {
+	statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+	if !ok || statusErr.Status != http.StatusNotFound {
+		return err
+	}
+	message := strings.TrimSpace(statusErr.ServerMessage)
+	if strings.Contains(message, "was not found") || strings.Contains(message, "is not a review queue") {
+		return fmt.Errorf("%s: %w", message, adapter.ErrNotFound)
+	}
+	if _, unavailable := errors.AsType[*agento11yhttp.PluginUnavailableError](err); unavailable {
+		return err
+	}
+	return fmt.Errorf("%s: %w", collectionID, ErrNotFound)
 }
 
 // ExportScores downloads the queue's answers (the scores.csv export) and

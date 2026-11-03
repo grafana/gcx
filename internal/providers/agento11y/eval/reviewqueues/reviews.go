@@ -13,8 +13,9 @@ import (
 // ReviewManifest is the manifest of 'reviews create': the review queue's
 // collection ID alongside one reviewer's answers for one conversation.
 type ReviewManifest struct {
-	CollectionID string `json:"collection_id"`
 	ReviewRequest
+
+	CollectionID string `json:"collection_id"`
 }
 
 // ReviewCommands returns the reviews command group.
