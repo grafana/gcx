@@ -3,10 +3,10 @@ package scim //nolint:testpackage // Tests inject native bindings into private c
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/grafana/gcx/internal/resources"
@@ -62,7 +62,7 @@ func TestConfigReadRedactsUnknownFields(t *testing.T) {
 	c := &configClient{object: fixtureConfig()}
 	out, err := executeConfig(newConfigCommand(configBinding(c)), "get", "-o", "json")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"apiVersion":"scim.grafana.app/v0alpha1","kind":"SCIMConfig","metadata":{"name":"default","namespace":"stacks-12345","resourceVersion":"17"},"spec":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false}}`, out)
+	require.JSONEq(t, `{"name":"default","namespace":"stacks-12345","resourceVersion":"17","settings":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false}}`, out)
 	require.NotContains(t, out, "hidden")
 	require.Zero(t, c.writes)
 }
@@ -91,16 +91,7 @@ func TestConfigUpdateDryRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, c.gets)
 	require.Zero(t, c.writes)
-	var result struct {
-		DryRun bool `json:"dry_run"`
-		Config struct {
-			Spec map[string]bool `json:"spec"`
-		} `json:"config"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	require.True(t, result.DryRun)
-	require.False(t, result.Config.Spec["enableGroupSync"])
-	require.True(t, result.Config.Spec["rejectNonProvisionedUsers"])
+	require.JSONEq(t, `{"type":"gcx.mutation","schema_version":"1","action":"updated","target":{"kind":"SCIMConfig","name":"default","namespace":"stacks-12345"},"dry_run":true,"current":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false},"proposed":{"enableUserSync":true,"enableGroupSync":false,"rejectNonProvisionedUsers":true}}`, out)
 	require.NotContains(t, out, "hidden")
 }
 func TestConfigValidationBeforeLoad(t *testing.T) {
@@ -147,4 +138,59 @@ func TestTenantEndpointRejectsUnsafeInput(t *testing.T) {
 	got, err := tenantEndpoint("https://example.net/grafana/", "stacks-12345", "v0alpha1")
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(got, "https://example.net/grafana/apis/"))
+}
+
+func TestConfigUpdateResultShapes(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		c := &configClient{object: fixtureConfig()}
+		args := []string{"update", "--user-sync=false", "-o", "json"}
+		expected := `{"type":"gcx.mutation","schema_version":"1","action":"updated","target":{"kind":"SCIMConfig","name":"default","namespace":"stacks-12345"},"current":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false},"proposed":{"enableUserSync":false,"enableGroupSync":true,"rejectNonProvisionedUsers":false}}`
+		if dryRun {
+			args = append(args, "--dry-run")
+			expected = `{"type":"gcx.mutation","schema_version":"1","action":"updated","target":{"kind":"SCIMConfig","name":"default","namespace":"stacks-12345"},"dry_run":true,"current":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false},"proposed":{"enableUserSync":false,"enableGroupSync":true,"rejectNonProvisionedUsers":false}}`
+		}
+		out, err := executeConfig(newConfigCommand(configBinding(c)), args...)
+		require.NoError(t, err)
+		require.JSONEq(t, expected, out)
+		require.NotContains(t, out, "hidden")
+		if dryRun {
+			require.Zero(t, c.writes)
+		} else {
+			require.Equal(t, 1, c.writes)
+		}
+	}
+}
+func TestConfigUpdateHumanSummary(t *testing.T) {
+	t.Cleanup(agent.ResetForTesting)
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	for _, dryRun := range []bool{false, true} {
+		c := &configClient{object: fixtureConfig()}
+		args := []string{"update", "--group-sync=false"}
+		expected := "Updated SCIM sync settings\n  enableGroupSync: true -> false\n"
+		if dryRun {
+			args = append(args, "--dry-run")
+			expected = "Would update SCIM sync settings (dry run)\n  enableGroupSync: true -> false\n"
+		}
+		out, err := executeConfig(newConfigCommand(configBinding(c)), args...)
+		require.NoError(t, err)
+		require.Equal(t, expected, out)
+	}
+}
+func TestConfigReadIsNotManifest(t *testing.T) {
+	c := &configClient{object: fixtureConfig()}
+	out, err := executeConfig(newConfigCommand(configBinding(c)), "get", "-o", "yaml")
+	require.NoError(t, err)
+	require.Contains(t, out, "settings:")
+	for _, field := range []string{"apiVersion:", "kind:", "metadata:", "spec:", "hidden"} {
+		require.NotContains(t, out, field)
+	}
+}
+func TestConfigSettingFlagHelp(t *testing.T) {
+	cmd := newConfigUpdateCommand(native.Binding{})
+	for _, name := range []string{"user-sync", "group-sync", "reject-non-provisioned"} {
+		flag := cmd.Flags().Lookup(name)
+		require.NotNil(t, flag)
+		require.Contains(t, flag.Usage, "true enables, false disables; omit to keep unchanged")
+	}
 }
