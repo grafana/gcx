@@ -101,7 +101,7 @@ func (c *client) delete(ctx context.Context, user User) error {
 
 // remove attempts every target with bounded concurrency and keeps input order for failures.
 func (c *client) remove(ctx context.Context, targets []User) cmdio.BatchMutation {
-	result := cmdio.NewBatchMutation("deleted")
+	result := cmdio.NewBatchMutation("removed")
 	failures := make([]error, len(targets))
 	var group errgroup.Group
 	group.SetLimit(10)

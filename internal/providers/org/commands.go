@@ -136,7 +136,7 @@ type deleteResult struct {
 
 func newDeleteCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
-	cmd := &cobra.Command{Use: "delete <login|email|id>...", Short: "Remove users from the selected organization", Args: cobra.MinimumNArgs(1),
+	cmd := &cobra.Command{Use: "remove <login|email|id>...", Short: "Remove users from the selected organization", Args: cobra.MinimumNArgs(1),
 		Long:        "Remove organization membership only. Other organizations and the Grafana user account remain. Resolve each argument by exact, case-sensitive login, email, or numeric ID in the selected organization. Missing or ambiguous identities fail before any write. Duplicate users are removed once. A dry run shows the resolved users. A batch reports each failed removal.",
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -158,7 +158,7 @@ func newDeleteCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result := deleteResult{BatchMutation: cmdio.NewBatchMutation("deleted")}
+			result := deleteResult{BatchMutation: cmdio.NewBatchMutation("removed")}
 			result.DryRun = opts.DryRun
 			if opts.DryRun {
 				for _, user := range targets {
