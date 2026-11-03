@@ -370,3 +370,17 @@ func TestUnknownOutputFormatIsUsageError(t *testing.T) {
 		assert.ErrorContains(t, err, "unknown output format 'bogus'")
 	}
 }
+
+func TestNegativeListLimitIsUsageError(t *testing.T) {
+	opts := &cmdio.Options{}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.BindFlags(flags)
+	var limit int
+	opts.BindListLimit(flags, &limit, "items", 50)
+	require.NoError(t, flags.Set("limit", "-1"))
+
+	err := opts.Validate()
+	_, ok := errors.AsType[*gcxerrors.UsageError](err)
+	assert.True(t, ok, "Validate() = %v (%T), want a usage error", err, err)
+	assert.ErrorContains(t, err, "invalid --limit -1")
+}
