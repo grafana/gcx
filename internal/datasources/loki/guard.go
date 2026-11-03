@@ -129,7 +129,7 @@ func (g *queryGuard) statsFunc(ctx context.Context, datasourceUID string) (lokig
 		if err != nil {
 			return 0, err
 		}
-		return int64(resp.Bytes), nil
+		return int64(resp.Bytes), nil //nolint:gosec // a single selector cannot match over 8 EiB
 	}, cancel
 }
 
