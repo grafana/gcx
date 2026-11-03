@@ -62,6 +62,11 @@ func listCustom(root string) ([]SkillState, error) {
 		return nil, err
 	}
 	for _, entry := range entries {
+		if name, ok := strings.CutPrefix(entry.Name(), ".previous-"); ok {
+			if err := checkCustomReady(store, name); err != nil {
+				return nil, err
+			}
+		}
 		if strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}

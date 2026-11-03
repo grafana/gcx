@@ -1,12 +1,10 @@
 package skills
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gofrs/flock"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,10 +24,13 @@ var customNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // CustomMutation reports an explicitly targeted local skill mutation.
 type CustomMutation struct {
-	ID      string `json:"id"`
-	Path    string `json:"path"`
-	Changed bool   `json:"changed"`
-	DryRun  bool   `json:"dry_run"`
+	ID             string             `json:"id"`
+	Path           string             `json:"path"`
+	Changed        bool               `json:"changed"`
+	DryRun         bool               `json:"dry_run"`
+	BeforeRevision string             `json:"before_revision,omitempty"`
+	Revision       string             `json:"revision,omitempty"`
+	Changes        []CustomFileChange `json:"changes,omitempty"`
 }
 
 type customSnapshot struct {
@@ -82,15 +84,15 @@ func readCustom(directory string) (customSnapshot, error) {
 			}
 			return nil
 		}
-		if p == customMarker {
-			return nil
-		}
 		stat, statErr := entry.Info()
 		if statErr != nil {
 			return statErr
 		}
 		if !stat.Mode().IsRegular() {
 			return fmt.Errorf("skill file must be regular (symlinks are not supported): %s", p)
+		}
+		if p == customMarker || p == customEditFile {
+			return nil
 		}
 		if stat.Size() > 2<<20 || len(result.files) >= 256 {
 			return errors.New("skill exceeds local import limits: 256 files, 2 MiB per file, 16 MiB total")
@@ -189,15 +191,57 @@ func requireManaged(store *os.Root, name string) error {
 
 func acquireCustomLock(store *os.Root, name string) (func(), error) {
 	lockName := ".lock-" + name
-	lock, err := store.OpenFile(lockName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("custom skill is already being modified, or its lock is unavailable: %w", err)
-	}
-	if err := lock.Close(); err != nil {
-		_ = store.Remove(lockName)
+	if info, err := store.Lstat(lockName); err == nil && !info.Mode().IsRegular() {
+		return nil, errors.New("custom skill lock must be a regular file")
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	return func() { _ = store.Remove(lockName) }, nil
+	// Keep the inode: removing an advisory lock file can let two processes lock
+	// different inodes. The OS releases the lock even if the writer is killed.
+	lock := flock.New(filepath.Join(store.Name(), lockName))
+	ok, err := lock.TryLock()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("custom skill is already being modified; retry after the writer finishes")
+	}
+	return func() { _ = lock.Unlock() }, nil
+}
+
+// recoverCustom completes or rolls back an interrupted directory publication.
+// Only the fixed, ownership-checked previous snapshot is eligible for recovery.
+func recoverCustom(store *os.Root, name string, dryRun bool) error {
+	backup := ".previous-" + name
+	if _, err := store.Lstat(backup); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := requireManaged(store, backup); err != nil {
+		return err
+	}
+	if dryRun {
+		return errors.New("custom skill has an interrupted update; retry an explicit update without --dry-run to recover it first")
+	}
+	if _, err := store.Lstat(name); errors.Is(err, os.ErrNotExist) {
+		return store.Rename(backup, name)
+	} else if err != nil {
+		return err
+	}
+	if err := requireManaged(store, name); err != nil {
+		return err
+	}
+	return store.RemoveAll(backup)
+}
+
+func checkCustomReady(store *os.Root, name string) error {
+	if _, err := store.Lstat(".previous-" + name); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return fmt.Errorf("custom/%s update is in progress or interrupted; retry after the writer finishes, or recover with an explicit update --from", name)
 }
 
 // InstallCustom imports a local snapshot. Updating requires an explicit matching
@@ -218,7 +262,7 @@ func InstallCustom(root, directory, id string, dryRun bool) (CustomMutation, err
 		}
 	}
 	id = "custom/" + snapshot.name
-	result := CustomMutation{ID: id, Path: filepath.Join(root, customDirectory, snapshot.name), Changed: true, DryRun: dryRun}
+	result := CustomMutation{ID: id, Path: filepath.Join(root, customDirectory, snapshot.name), Changed: true, DryRun: dryRun, Revision: snapshotRevision(snapshot), Changes: customChanges(nil, snapshot.files)}
 	store, err := customStore(root, !dryRun && !updating)
 	if errors.Is(err, os.ErrNotExist) && dryRun && !updating {
 		return result, nil
@@ -234,17 +278,15 @@ func InstallCustom(root, directory, id string, dryRun bool) (CustomMutation, err
 		}
 		defer unlock()
 	}
+	if err := recoverCustom(store, snapshot.name, dryRun); err != nil {
+		return CustomMutation{}, err
+	}
 	_, existsErr := store.Lstat(snapshot.name)
 	if updating {
-		if err := requireManaged(store, snapshot.name); err != nil {
+		if err := previewCustomUpdate(store, &result, snapshot, directory); err != nil {
 			return CustomMutation{}, err
 		}
-		previous, err := readCustom(result.Path)
-		if err != nil {
-			return CustomMutation{}, err
-		}
-		if maps.EqualFunc(previous.files, snapshot.files, bytes.Equal) {
-			result.Changed = false
+		if !result.Changed {
 			return result, nil
 		}
 	} else if !errors.Is(existsErr, os.ErrNotExist) {
@@ -274,7 +316,7 @@ func InstallCustom(root, directory, id string, dryRun bool) (CustomMutation, err
 		return CustomMutation{}, err
 	}
 	if updating {
-		backup := stageName + "-previous"
+		backup := ".previous-" + snapshot.name
 		if err := store.Rename(snapshot.name, backup); err != nil {
 			return CustomMutation{}, err
 		}
@@ -302,6 +344,9 @@ func GetCustom(root, id, reference string) (GetResult, error) {
 		return GetResult{}, err
 	}
 	defer store.Close()
+	if err := checkCustomReady(store, name); err != nil {
+		return GetResult{}, err
+	}
 	if err := requireManaged(store, name); err != nil {
 		return GetResult{}, err
 	}
@@ -350,6 +395,9 @@ func UninstallCustom(root, id string, dryRun bool) (CustomMutation, error) {
 			return CustomMutation{}, err
 		}
 		defer unlock()
+	}
+	if err := recoverCustom(store, name, dryRun); err != nil {
+		return CustomMutation{}, err
 	}
 	if err := requireManaged(store, name); err != nil {
 		return CustomMutation{}, err

@@ -12,7 +12,7 @@ Extend `gcx agent skills` with explicit local imports and metadata discovery. A 
 
 Bundled skills describe common tasks. Repeated procedures may additionally depend on a user's query conventions, resource naming or investigation steps. Today [get](../../internal/skills/get.go) reads embedded content and the [catalog](../../internal/skills/catalog.go) excludes unrelated local skills. Harness-native skills are a viable workaround; this proposal explores whether gcx-readable discovery across harnesses is useful enough to maintain.
 
-Demand is unproven. This comes from a workflow discussion, not telemetry establishing broad adoption. The prototype makes the interface and maintenance cost reviewable. It covers local user-level imports, metadata discovery, body/reference reads, replacement, removal and agent instructions. Remote repositories, marketplaces, automatic learning, project auto-discovery and task execution are outside scope. Grafana credentials and shared resources are not involved in local skill management.
+Demand is unproven. This comes from a workflow discussion, not telemetry establishing broad adoption. The prototype makes the interface and maintenance cost reviewable. It covers local user-level imports, metadata discovery, body/reference reads, complete export/edit/preview, replacement, removal and agent instructions. Remote repositories, marketplaces, automatic learning, project auto-discovery and task execution are outside scope. Grafana credentials and shared resources are not involved in local skill management.
 
 ## User experience
 
@@ -24,7 +24,10 @@ gcx agent skills install ./service-debug
 gcx agent skills search latency --source custom --tag logs --limit 5 -o json
 gcx agent skills get custom/service-debug -o text
 gcx agent skills get custom/service-debug references/queries.md -o text
-gcx agent skills update custom/service-debug --from ./service-debug
+gcx agent skills export custom/service-debug ./service-debug-edit
+# Edit the exported files.
+gcx agent skills update custom/service-debug --from ./service-debug-edit --dry-run
+gcx agent skills update custom/service-debug --from ./service-debug-edit
 gcx agent skills uninstall custom/service-debug --yes
 ```
 
@@ -32,19 +35,25 @@ Explicit `custom/` identities preserve released unqualified bundled names. Names
 
 List remains bundled-only by default. An explicit `--source bundled|custom|all` selects metadata inventory; search defaults to all. Untargeted update and the existing install/uninstall --all workflows never include custom content. Bundled retirement behavior remains unchanged.
 
+The proposed `export` leaf writes a complete local edit artifact, whereas `get` returns one body/reference. `pull` is reserved for reading remote manifests; these skills are already local. This new domain operation is explicitly registered as a naming exception for the prototype and requires maintainer review before release. Its full subject is one `custom/<name>` and a new destination directory.
+
 ## Technical design
 
-Wiring stays in [cmd/gcx/skills](../../cmd/gcx/skills); filesystem operations live in [internal/skills](../../internal/skills). Existing `--dir` selects the root, defaulting to `~/.agents`. Custom snapshots live in `<root>/custom-skills/<name>`, separate from harness-scanned `<root>/skills`. No Grafana configuration field is added. An explicit get provides instructions to the current agent without activating every saved workflow.
+Wiring stays in [cmd/gcx/skills](../../cmd/gcx/skills); filesystem operations live in [internal/skills](../../internal/skills). Existing `--dir` selects the root, defaulting to `~/.agents`. Custom snapshots live in `<root>/custom-skills/<name>`, separate from harness-scanned `<root>/skills`. No Grafana configuration field is added. gcx owns the saved workflow lifecycle; the current agent discovers and reads relevant instructions, executes the steps and verifies completion. An explicit get supplies selected content without activating every saved workflow. Harness-native installation remains an alternative to evaluate for adoption, rather than a second owner of the same stored copy.
 
 Import validates the whole source before publishing a target. Names use lowercase kebab syntax, at most 64 characters; front matter, nonempty description and workflow instructions are required. Symlinks and .git directories are rejected. Limits are 256 files, 2 MiB per file and 16 MiB total. An ownership marker distinguishes imports from unrelated directories. Rooted filesystem operations bound path access. Reads reject escaping paths and execute no content.
 
 New imports fail on existing targets. Replacement requires one custom identity, a nonempty --from directory and a matching declared name. Mixed bundled/custom batches are rejected. A staged snapshot replaces the saved directory, attempting rollback if publication fails. Removal requires an explicit custom identity and approval flag or configured auto-approval; dry-run mutates nothing. The authored source directory remains intact.
 
-Per-identity exclusive writer locks prevent simultaneous mutations. Crash recovery is manual in this prototype: interruption can leave a `.lock-<name>`, an `.import-*` staging directory, or a previous snapshot. Inspect those artifacts and verify no writer remains before recovery. Automatic stale-lock cleanup or a recovery command needs a separate design before production use.
+Export copies every saved file into a new directory outside the managed store with `.gcx-edit.json` containing the identity and a deterministic SHA-256 revision of sorted file paths and bytes. Updating that workspace checks the base revision while holding the writer lock; a stale edit fails with instructions to export again and reapply changes. A byte-identical retry succeeds without writing. Original authored directories without export metadata remain explicit full replacements. gcx does not modify the author's workspace on save; later editing sessions start with a fresh export.
 
-Finite commands reuse the output layer: structured result in agent/JSON modes, text views where supported, diagnostics on stderr. Existing invocations preserve bundled output shapes. Search carries the experimental stability annotation. The draft's added flags and identities remain subject to design review before release.
+Update results disclose sorted added, modified and removed paths, content hashes, and bounded unified text diffs. Diff work is limited to 32 KiB and 1,000 newlines per changed file, with 16 KiB total inline output; large/binary or over-budget diffs explicitly report omission. Revision fingerprints and file changes make preview useful without injecting all saved bodies into context.
 
-The portable gcx skill links [custom authoring guidance](../../claude-plugin/skills/gcx/references/custom-skills.md): applicability, bounded checks, verification, import, later discovery and maintenance. The agent must assess a saved procedure within the user's task and permissions; reading it does not authorize additional mutations.
+Per-identity OS advisory locks prevent simultaneous mutations and release on process exit, so a killed writer does not leave a stale exclusion lock. Replacement keeps a fixed, ownership-checked previous directory until publication completes. The next explicit mutation rolls back an unpublished replacement or removes a completed backup. Dry-run reports pending recovery without mutating it. Abandoned `.import-*` stages remain inert and excluded from discovery. Concurrent readers may receive a retryable filesystem error during replacement; process recovery is covered, but power-loss durability and reader snapshot isolation are not promised.
+
+Finite commands reuse the output layer: structured result in agent/JSON modes, text views where supported, diagnostics on stderr. Existing invocations preserve bundled output shapes. Search and export carry the experimental stability annotation. The draft's added flags and identities remain subject to design review before release.
+
+The gcx entry skill and the debug, alert investigation, dashboard management and dashboard authoring entry skills check custom metadata before planning a task. The portable gcx skill links [custom authoring guidance](../../claude-plugin/skills/gcx/references/custom-skills.md): applicability, bounded checks, verification, import, later discovery and maintenance. The agent must assess a saved procedure within the user's task and permissions; reading it does not authorize additional mutations.
 
 ## Drawbacks and alternatives
 
@@ -55,10 +64,9 @@ Separate storage requires an explicit read, while preventing bundled operations 
 ## Unresolved questions
 
 - Is demand sufficient? Resolve through issue feedback and observed reuse of the prototype.
-- Should harness-native installation replace separate storage? Compare task completion and discovery costs with both approaches.
 - Should sources be tracked for later refresh? This draft requires an explicit replacement directory and retains no source location.
 - Are namespace spelling, tag format and mutation flags suitable for release? Maintainer RFC review must settle them.
 
 ## Validation
 
-Coverage must exercise the author/import/search/read/update/remove loop, literal filtering and honest truncation, invalid metadata, dry-run non-mutation, path/symlink boundaries, source-copy isolation and preservation of bundled lifecycle behavior. A passing prototype establishes mechanics, not broad adoption or correctness of arbitrary user-authored instructions.
+Coverage must exercise the author/import/search/read/update/remove loop, literal filtering and honest truncation, invalid metadata, dry-run non-mutation, path/symlink boundaries, source-copy isolation and preservation of bundled lifecycle behavior. Coverage also exercises complete export with binary assets, unchanged reference retention, added/removed file previews, stale edit rejection, abrupt writer termination and interrupted-publication recovery. A fresh-context task evaluation must show metadata discovery, selected body/reference reads, evidence gathering and verified completion without explicitly asking the agent to use a custom skill. A passing fixture establishes that scenario, not broad adoption or correctness of arbitrary user-authored instructions.

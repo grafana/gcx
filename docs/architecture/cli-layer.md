@@ -34,7 +34,7 @@ Catalog membership does not prove ownership; no installation manifest or file
 pruning is implemented. See [skill lifecycle](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skill-lifecycle)
 for maintenance rules and command behavior.
 
-Explicit local imports use a separate `<root>/custom-skills` store, with an ownership marker and a `custom/<name>` identity. Metadata discovery can select bundled, custom or both sources; default list and bundled bulk operations preserve their released behavior. Import, snapshot replacement and removal live in `internal/skills`, while the current coding agent executes instructions read through get. Per-identity writer locks protect simultaneous mutations. This draft capability and its tradeoffs are described in the [custom-skills proposal](../rfcs/031-user-managed-skills.md).
+Explicit local imports use a separate `<root>/custom-skills` store, with an ownership marker and a `custom/<name>` identity. Metadata discovery can select bundled, custom or both sources; default list and bundled bulk operations preserve their released behavior. Import, snapshot replacement and removal live in `internal/skills`, while the current coding agent executes instructions read through get. Export copies every saved file plus a base revision into a new edit directory. Update checks exported revisions and reports sorted file changes with bounded text diffs. OS advisory writer locks release on process exit; the next explicit mutation recovers an interrupted snapshot publication. This draft capability and its tradeoffs are described in the [custom-skills proposal](../rfcs/031-user-managed-skills.md).
 
 ## Provider Command Groups
 

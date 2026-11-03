@@ -672,7 +672,8 @@ func TestWatcherGenericPartialCompletionAlwaysEmitsSavedReceipt(t *testing.T) {
 		for _, status := range []int{http.StatusForbidden, http.StatusServiceUnavailable} {
 			t.Run(policy+"/"+strconv.Itoa(status), func(t *testing.T) {
 				fixture := &watcherstest.Server{AllowWrites: true, Current: [][]watchers.Watcher{{watcherFixture("id-one", "Unique")}}, EnrollmentWriteStatus: map[string]int{"id-one": status}}
-				execute := watcherResourceCLI(t, fixture)
+				var diagnostics bytes.Buffer
+				execute := watcherResourceCLIWithDiagnostics(t, fixture, &diagnostics)
 				dir := t.TempDir()
 				obj := map[string]any{"apiVersion": watcher.WatcherAPIVersion, "kind": watcher.WatcherKind, "metadata": map[string]any{"name": "unique", "annotations": map[string]any{watcher.WatcherIDAnnotation: "id-one"}}, "spec": map[string]any{"title": "Unique", "prompt": "Updated prompt", "interval": "5m", "automaticRecalibration": map[string]any{"enabled": true}}}
 				data, err := json.Marshal(obj)
@@ -681,6 +682,10 @@ func TestWatcherGenericPartialCompletionAlwaysEmitsSavedReceipt(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, data, 0600))
 				output, err := execute("push", "--path", path, "--on-error", policy, "-o", "json")
 				requireWatcherPartialFailure(t, err)
+				var partial *gcxerrors.PartialFailureError
+				require.ErrorAs(t, err, &partial)
+				assert.Equal(t, gcxerrors.NewPartialFailureError("push", 1, 1), partial)
+				assert.JSONEq(t, `{"class":"warning","summary":"1 resource(s) failed to push"}`, diagnostics.String())
 				var result cmdio.BatchMutation
 				require.NoError(t, json.Unmarshal(output, &result))
 				require.Len(t, result.Failures, 1)

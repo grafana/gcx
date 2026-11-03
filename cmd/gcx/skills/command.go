@@ -36,6 +36,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(newGetCommand(source, catalog))
 	cmd.AddCommand(newUninstallCommand(source, catalog))
 	cmd.AddCommand(newSearchCommand(source, catalog))
+	cmd.AddCommand(newExportCommand())
 
 	return cmd
 }
@@ -264,7 +265,7 @@ func newUpdateCommand(source fs.FS, catalog []byte) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update [SKILL]...",
 		Short: "Refresh installed bundled skills or replace one custom workflow",
-		Long:  "With no skill names, refresh installed bundled skills only. Retired files and custom content are preserved. To replace a custom skill, specify custom/<name> --from ./directory. Mixed bundled/custom batches are not supported.",
+		Long:  "With no skill names, refresh installed bundled skills only. Retired files and custom content are preserved. To replace a custom skill, specify custom/<name> --from ./directory. Export a complete edit directory first; --dry-run reports added, modified and removed files with bounded text diffs. Omitted files are removed. Mixed bundled/custom batches are not supported.",
 		Example: `  gcx agent skills update
   gcx agent skills update --dry-run
   gcx agent skills update setup-gcx debug-with-grafana
@@ -725,8 +726,25 @@ func (c *uninstallTextCodec) Encode(dst goio.Writer, value any) error {
 }
 
 func renderCustomMutation(dst goio.Writer, result skillops.CustomMutation) error {
-	_, err := fmt.Fprintf(dst, "%s\npath: %s\nchanged: %t\ndry-run: %t\n", result.ID, result.Path, result.Changed, result.DryRun)
-	return err
+	if _, err := fmt.Fprintf(dst, "%s\npath: %s\nchanged: %t\ndry-run: %t\n", result.ID, result.Path, result.Changed, result.DryRun); err != nil {
+		return err
+	}
+	if result.Revision != "" {
+		if _, err := fmt.Fprintf(dst, "revision: %s\n", result.Revision); err != nil {
+			return err
+		}
+	}
+	for _, change := range result.Changes {
+		if _, err := fmt.Fprintf(dst, "%s %s\n%s", change.Action, change.Path, change.Diff); err != nil {
+			return err
+		}
+		if change.DiffOmitted {
+			if _, err := fmt.Fprintf(dst, "text diff omitted; before: %s; after: %s\n", change.BeforeHash, change.AfterHash); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (c *uninstallTextCodec) Decode(_ goio.Reader, _ any) error {

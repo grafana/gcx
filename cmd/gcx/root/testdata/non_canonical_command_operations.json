@@ -1,5 +1,6 @@
 [
   "gcx agent prune",
+  "gcx agent skills export",
   "gcx agent skills install",
   "gcx agent skills uninstall",
   "gcx agento11y collections add-conversations",

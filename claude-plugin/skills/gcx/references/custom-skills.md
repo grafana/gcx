@@ -41,16 +41,48 @@ Search locally matches case-insensitive literal terms in names, descriptions and
 
 Resolve the selected workflow's required inputs and perform the relevant steps with the current coding agent's tools. gcx does not execute markdown, start Grafana Assistant, or run embedded scripts on import/read. Verify the workflow's completion criterion and report missing evidence.
 
-## Maintain explicit identities
+## Edit the complete saved workflow
+
+Export before editing so references, assets and other saved files are retained:
+
+```bash
+gcx agent skills export custom/service-debug ./service-debug-edit
+# Edit only the files that need changing in ./service-debug-edit.
+gcx agent skills update custom/service-debug --from ./service-debug-edit --dry-run
+gcx agent skills update custom/service-debug --from ./service-debug-edit
+```
+
+Export requires a new destination outside the managed store and copies the whole snapshot. Keep its
+`.gcx-edit.json`: this records the identity and base revision. Update rejects an
+export made before a newer saved change; export again into a new directory and
+reapply your intended edits. Export afresh for each later editing session.
+
+Review every added, modified and removed file in the preview. Small text changes
+include unified diffs; binary, large or over-budget diffs are explicitly omitted
+and retain hashes. Read those files from the saved/exported copies if needed.
+The total inline diff budget is 16 KiB. Preview does not write files.
+
+An original authored directory without export metadata is an explicit full
+replacement and has no stale-edit check. Omitted files, including references,
+are removed. Do not reconstruct an edit directory from `get` of SKILL.md alone.
+
+## Inventory and removal
 
 ```bash
 gcx agent skills list --source custom -o json
-gcx agent skills update custom/service-debug --from ./service-debug --dry-run
-gcx agent skills update custom/service-debug --from ./service-debug
 gcx agent skills uninstall custom/service-debug --dry-run
 gcx agent skills uninstall custom/service-debug --yes
 ```
 
-Update replaces the whole saved snapshot, removing omitted old references. Removal deletes the saved copy only. Custom writes require explicit identities. Untargeted `update`, `install --all` and `uninstall --all` operate on bundled skills only; retirement does not delete or replace custom content.
+Removal deletes the saved copy only. Custom writes require explicit identities.
+Untargeted `update`, `install --all` and `uninstall --all` operate on bundled
+skills only; retirement does not delete or replace custom content.
+
+The OS releases a writer lock when a process exits, including an abrupt kill.
+If an update was interrupted between directory renames, the next explicit
+mutation restores the previous snapshot or cleans up its completed backup.
+Dry-run reports that recovery is needed without writing. Temporary `.import-*`
+directories left by a killed process are inert; do not use them as saved skills.
+This protects process interruption; it does not promise power-loss durability.
 
 Imports accept regular local files only, reject symlinks and `.git` directories, and limit a skill to 256 files, 2 MiB per file and 16 MiB total. Invalid metadata or conflicts fail before writing a target. Fix the source and retry rather than bypassing validation.
