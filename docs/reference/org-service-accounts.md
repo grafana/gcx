@@ -19,7 +19,7 @@ Find a fixed role, then use its UID to add it to the service account:
 
 ```sh
 gcx org roles list --filter fixed:org.users:writer
-gcx org roles assign <role-uid> --service-account-id 123
+gcx org service-accounts add-role 123 <role-uid>
 ```
 
 The filter matches a case-sensitive substring of the role name. Filtering occurs
@@ -59,3 +59,6 @@ account deletes all of its tokens. All mutations support `--dry-run`. A token or
 account dry run validates inputs locally. It does not validate permissions or
 reserve a file. A role assignment dry run reads the role and the service account,
 but sends no write request.
+
+POST, PATCH, and DELETE requests use one attempt. If a connection fails after
+Grafana receives a write, check the remote state before you retry the command.

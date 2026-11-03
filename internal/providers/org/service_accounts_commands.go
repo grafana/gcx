@@ -20,15 +20,14 @@ import (
 )
 
 type accountOpts struct {
-	IO        cmdio.Options
-	Role      string
-	File      string
-	TTL       string
-	AccountID int64
-	Force     bool
-	DryRun    bool
-	Limit     int
-	Filter    string
+	IO     cmdio.Options
+	Role   string
+	File   string
+	TTL    string
+	Force  bool
+	DryRun bool
+	Limit  int
+	Filter string
 }
 
 func (o *accountOpts) setup(flags *pflag.FlagSet) {
@@ -44,10 +43,10 @@ func (o *accountOpts) mutationFlags(flags *pflag.FlagSet, destructive bool) {
 		flags.BoolVar(&o.Force, "force", false, "Skip the confirmation prompt")
 	}
 }
-func positiveID(value string) (int64, error) {
+func positiveID(cmd *cobra.Command, value string) (int64, error) {
 	id, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || id <= 0 {
-		return 0, fmt.Errorf("invalid ID %q: use a positive integer, for example 123", value)
+		return 0, gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("invalid ID %q: use a positive integer, for example 123", value), nil)
 	}
 	return id, nil
 }
@@ -59,7 +58,7 @@ func smallCommand(use, short string) *cobra.Command {
 }
 func newServiceAccountsCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{Use: "service-accounts", Short: "Manage service accounts in the selected organization"}
-	cmd.AddCommand(newAccountsListCommand(loader), newAccountCreateCommand(loader), newAccountDeleteCommand(loader), newTokenCreateCommand(loader), newTokenDeleteCommand(loader))
+	cmd.AddCommand(newAccountsListCommand(loader), newAccountCreateCommand(loader), newAccountDeleteCommand(loader), newTokenCreateCommand(loader), newTokenDeleteCommand(loader), newAccountAddRoleCommand(loader))
 	return cmd
 }
 func newAccountsListCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
@@ -69,7 +68,7 @@ func newAccountsListCommand(loader providers.GrafanaConfigLoader) *cobra.Command
 	cmd.Long = "Fetch all service account pages from the selected organization. Apply the output limit after the fetch."
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if err := o.Validate(); err != nil {
-			return err
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		c, err := loadClient(cmd, loader)
 		if err != nil {
@@ -100,15 +99,15 @@ func newAccountCreateCommand(loader providers.GrafanaConfigLoader) *cobra.Comman
 	cmd.Long = "Create a service account with a basic organization role. Use None with a later fixed RBAC role assignment for narrow access. A dry run validates inputs locally."
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := o.Validate(); err != nil {
-			return err
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		if strings.TrimSpace(args[0]) == "" {
-			return errors.New("service account name must not be empty")
+			return gcxerrors.NewCommandUsageError(cmd, "service account name must not be empty", nil)
 		}
 		switch o.Role {
 		case "None", "Viewer", "Editor", "Admin":
 		default:
-			return fmt.Errorf("invalid role %q: use None, Viewer, Editor, or Admin", o.Role)
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("invalid role %q: use None, Viewer, Editor, or Admin", o.Role), nil)
 		}
 		result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{Kind: "ServiceAccount", Name: args[0]})
 		result.DryRun = o.DryRun
@@ -148,9 +147,9 @@ func newAccountDeleteCommand(loader providers.GrafanaConfigLoader) *cobra.Comman
 	cmd.Args = cobra.ExactArgs(1)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := o.Validate(); err != nil {
-			return err
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
-		id, err := positiveID(args[0])
+		id, err := positiveID(cmd, args[0])
 		if err != nil {
 			return err
 		}
@@ -180,13 +179,13 @@ func newTokenDeleteCommand(loader providers.GrafanaConfigLoader) *cobra.Command 
 	cmd.Args = cobra.ExactArgs(2)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := o.Validate(); err != nil {
-			return err
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
-		accountID, err := positiveID(args[0])
+		accountID, err := positiveID(cmd, args[0])
 		if err != nil {
 			return err
 		}
-		tokenID, err := positiveID(args[1])
+		tokenID, err := positiveID(cmd, args[1])
 		if err != nil {
 			return err
 		}
@@ -217,21 +216,21 @@ func newTokenCreateCommand(loader providers.GrafanaConfigLoader) *cobra.Command 
 	cmd.Long = "Create a service account token. Write its key and a newline to a new file with mode 0600. The file must not exist. Stdout contains a receipt, never the key. If the file write fails after creation, revoke the token. A dry run validates inputs locally and does not reserve the file."
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := o.Validate(); err != nil {
-			return err
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
-		id, err := positiveID(args[0])
+		id, err := positiveID(cmd, args[0])
 		if err != nil {
 			return err
 		}
 		if strings.TrimSpace(args[1]) == "" {
-			return errors.New("token name must not be empty")
+			return gcxerrors.NewCommandUsageError(cmd, "token name must not be empty", nil)
 		}
 		if strings.TrimSpace(o.File) == "" {
-			return errors.New("--output-file is required: use --output-file ./token.txt")
+			return gcxerrors.NewCommandUsageError(cmd, "--output-file is required: use --output-file ./token.txt", nil)
 		}
 		ttl, err := shared.ParseDuration(o.TTL)
 		if err != nil || strings.TrimSpace(o.TTL) == "" || ttl < 0 || ttl%time.Second != 0 {
-			return fmt.Errorf("invalid --ttl %q: use a non-negative duration in whole seconds, for example --ttl 24h; zero means no expiry", o.TTL)
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("invalid --ttl %q: use a non-negative duration in whole seconds, for example --ttl 24h; zero means no expiry", o.TTL), nil)
 		}
 		receipt := cmdio.NewArtifactReceipt("created", "text")
 		receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: o.File, Kind: "ServiceAccountToken", Count: 1})
@@ -298,8 +297,8 @@ func newTokenCreateCommand(loader providers.GrafanaConfigLoader) *cobra.Command 
 	return cmd
 }
 func newRolesCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{Use: "roles", Short: "Inspect RBAC roles and assign fixed roles to service accounts"}
-	cmd.AddCommand(newRolesListCommand(loader), newRoleAssignCommand(loader))
+	cmd := &cobra.Command{Use: "roles", Short: "Inspect RBAC roles"}
+	cmd.AddCommand(newRolesListCommand(loader))
 	return cmd
 }
 func newRolesListCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
@@ -309,7 +308,7 @@ func newRolesListCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	cmd.Long = "Fetch all RBAC roles. Filter names locally by a case-sensitive substring. An empty filter selects all roles. This API requires Grafana Enterprise or Grafana Cloud RBAC."
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if err := o.Validate(); err != nil {
-			return err
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		c, err := loadClient(cmd, loader)
 		if err != nil {
@@ -340,20 +339,21 @@ func newRolesListCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	o.IO.BindListLimit(cmd.Flags(), &o.Limit, "roles", 50)
 	return cmd
 }
-func newRoleAssignCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
+func newAccountAddRoleCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	o := &accountOpts{}
-	cmd := smallCommand("assign <role-uid>", "Add one fixed RBAC role to a service account")
-	cmd.Args = cobra.ExactArgs(1)
+	cmd := smallCommand("add-role <service-account-id> <role-uid>", "Add one fixed RBAC role to a service account")
+	cmd.Args = cobra.ExactArgs(2)
 	cmd.Long = "Resolve the exact role UID from the role list and require a fixed: role name. Add the organization-scoped assignment to the service account. Existing role assignments remain. This does not change the basic organization role. A dry run reads roles but sends no write request. Use roles list --filter fixed:org.users:writer to find the user writer role."
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := o.Validate(); err != nil {
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
+		}
+		if strings.TrimSpace(args[1]) == "" {
+			return gcxerrors.NewCommandUsageError(cmd, "role UID must not be empty", nil)
+		}
+		accountID, err := positiveID(cmd, args[0])
+		if err != nil {
 			return err
-		}
-		if strings.TrimSpace(args[0]) == "" {
-			return errors.New("role UID must not be empty")
-		}
-		if o.AccountID <= 0 {
-			return errors.New("--service-account-id requires a positive integer, for example --service-account-id 123")
 		}
 		c, err := loadClient(cmd, loader)
 		if err != nil {
@@ -365,37 +365,34 @@ func newRoleAssignCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 		}
 		var found *Role
 		for i := range roles {
-			if roles[i].UID == args[0] {
-				if found != nil {
-					return errors.New("role UID is ambiguous")
-				}
+			if roles[i].UID == args[1] {
 				found = &roles[i]
+				break
 			}
 		}
 		if found == nil {
-			return fmt.Errorf("role UID %q not found", args[0])
+			return fmt.Errorf("role UID %q not found", args[1])
 		}
 		if !strings.HasPrefix(found.Name, "fixed:") {
 			return fmt.Errorf("role %q is not a fixed role", found.Name)
 		}
-		result := cmdio.NewSingleMutation("assigned", cmdio.MutationTarget{Kind: "RoleAssignment", UID: args[0], Name: found.Name, ID: strconv.FormatInt(o.AccountID, 10)})
+		result := cmdio.NewSingleMutation("assigned", cmdio.MutationTarget{Kind: "RoleAssignment", UID: args[1], Name: found.Name, ID: strconv.FormatInt(accountID, 10)})
 		result.DryRun = o.DryRun
 		var account ServiceAccount
-		if err := c.send(cmd.Context(), http.MethodGet, accountPath(o.AccountID), nil, &account); err != nil {
+		if err := c.send(cmd.Context(), http.MethodGet, accountPath(accountID), nil, &account); err != nil {
 			return err
 		}
-		if account.ID != o.AccountID {
+		if account.ID != accountID {
 			return errors.New("service account response does not match the requested ID")
 		}
 		if !o.DryRun {
-			path := "/api/access-control/users/" + strconv.FormatInt(o.AccountID, 10) + "/roles"
-			if err := c.send(cmd.Context(), http.MethodPost, path, map[string]any{"roleUid": args[0], "global": false}, nil); err != nil {
+			path := "/api/access-control/users/" + strconv.FormatInt(accountID, 10) + "/roles"
+			if err := c.send(cmd.Context(), http.MethodPost, path, map[string]any{"roleUid": args[1], "global": false}, nil); err != nil {
 				return err
 			}
 		}
 		return o.IO.Encode(cmd.OutOrStdout(), result)
 	}
 	o.mutationFlags(cmd.Flags(), false)
-	cmd.Flags().Int64Var(&o.AccountID, "service-account-id", 0, "Target service account ID (required; positive integer)")
 	return cmd
 }

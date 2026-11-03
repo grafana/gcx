@@ -272,8 +272,8 @@ func TestRoles(t *testing.T) {
 			loader := &testLoader{host: server.URL}
 			var cmd *cobra.Command
 			if tt.assign {
-				cmd = newRoleAssignCommand(loader)
-				args := []string{tt.uid, "--service-account-id=12"}
+				cmd = newAccountAddRoleCommand(loader)
+				args := []string{"12", tt.uid}
 				if tt.dry {
 					args = append(args, "--dry-run")
 				}
@@ -390,7 +390,7 @@ func TestOrgTableDefaults(t *testing.T) {
 		{"roles", func(l *testLoader) *cobra.Command { return newRolesListCommand(l) }, nil, []string{"UID", "NAME", "fixed:org.users:writer"}},
 		{"create", func(l *testLoader) *cobra.Command { return newAccountCreateCommand(l) }, []string{"robot", "--dry-run"}, []string{"ACTION", "created", "robot", "true"}},
 		{"delete", func(l *testLoader) *cobra.Command { return newAccountDeleteCommand(l) }, []string{"12", "--dry-run"}, []string{"ACTION", "deleted", "12", "true"}},
-		{"assign", func(l *testLoader) *cobra.Command { return newRoleAssignCommand(l) }, []string{"writer-uid", "--service-account-id=12", "--dry-run"}, []string{"ACTION", "assigned", "writer-uid", "true"}},
+		{"assign", func(l *testLoader) *cobra.Command { return newAccountAddRoleCommand(l) }, []string{"12", "writer-uid", "--dry-run"}, []string{"ACTION", "assigned", "writer-uid", "true"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

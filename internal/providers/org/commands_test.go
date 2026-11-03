@@ -215,7 +215,7 @@ func TestListResponses(t *testing.T) {
 		{name: "empty", body: "[]", status: 200},
 		{name: "null", body: "null", status: 200},
 		{name: "permission denied", body: `{"message":"permission denied"}`, status: 403, wantError: "permission denied"},
-		{name: "invalid response", body: "invalid", status: 200, wantError: "decode organization users"},
+		{name: "invalid response", body: "invalid", status: 200, wantError: "decode organization response"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

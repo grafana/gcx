@@ -1,17 +1,10 @@
 package org
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
-
-	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/providers"
 )
 
 // ServiceAccount is an account in the selected organization.
@@ -48,41 +41,6 @@ type tokenResponse struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Key  string `json:"key"`
-}
-
-func (c *client) send(ctx context.Context, method, path string, input, output any) error {
-	var body bytes.Buffer
-	if input != nil {
-		if err := json.NewEncoder(&body).Encode(input); err != nil {
-			return err
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.deps.BaseURL, "/")+path, &body)
-	if err != nil {
-		return err
-	}
-	if input != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := c.deps.HTTP.Do(req)
-	if err != nil {
-		return fmt.Errorf("organization request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return providers.HandleErrorResponse(resp)
-	}
-	if output == nil {
-		return nil
-	}
-	data, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, output); err != nil {
-		return fmt.Errorf("decode organization response: %w", err)
-	}
-	return nil
 }
 
 func (c *client) serviceAccounts(ctx context.Context) ([]ServiceAccount, error) {
