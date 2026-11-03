@@ -166,13 +166,16 @@ The design uses `providers.ConfirmDestructive` for removals, the native binding
 for `SCIMConfig`, and the existing `--token-file` reader for secret input.
 Exclusive file creation gives token output a no-replace rule without a rename.
 
+## Approved naming exception
+
+On 2026-11-03, the requester approved
+`gcx org service-accounts create-token <service-account-id> <name>` as an
+explicit constitutional waiver for the parent-required token create shape.
+The service account ID selects the parent. The token name identifies the new
+token. This approval applies to this command shape in this RFC.
+
 ## Unresolved questions
 
-- Confirm the token command names with the gcx maintainers before code is
-  merged. Token creation requires a parent service account identity. The
-  [naming guide](../design/command-naming.md#other-operations) requires either
-  a Constitution amendment or an explicit human-approved constitutional waiver
-  in this RFC or its approving PR for that shape.
 - Approve `org users remove` as a domain verb. It removes one or more
   memberships from the selected organization. It does not delete a Grafana
   account. The name follows the subject of the actual change.
