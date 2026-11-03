@@ -50,9 +50,6 @@ func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *incidentListOpts) Validate() error {
-	if err := o.IO.Validate(); err != nil {
-		return err
-	}
 	if o.Limit < 1 {
 		return fmt.Errorf("invalid --limit value %d: must be at least 1", o.Limit)
 	}
