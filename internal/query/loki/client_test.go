@@ -399,3 +399,26 @@ func TestClientTagsRequestsAsGCX(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Source=gcx", got)
 }
+
+func TestClientIndexStats(t *testing.T) {
+	var gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query().Get("query")
+		_, _ = w.Write([]byte(`{"streams":2,"chunks":3,"bytes":4096,"entries":5}`))
+	}))
+	defer srv.Close()
+
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	now := time.Now()
+	stats, err := client.IndexStats(context.Background(), "uid", `{app="x"}`, now.Add(-time.Hour), now)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/datasources/uid/uid/resources/index/stats", gotPath)
+	assert.Equal(t, `{app="x"}`, gotQuery)
+	assert.Equal(t, uint64(4096), stats.Bytes)
+
+	_, err = client.IndexStats(context.Background(), "uid", `{app="x"}`, now, now.Add(-time.Hour))
+	require.Error(t, err)
+}
