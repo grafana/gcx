@@ -1,6 +1,7 @@
 package faro
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -467,7 +468,8 @@ another app's slug-id or ID is an error. There is no confirmation prompt.`,
 
 // readAppFromFile reads a FaroApp spec from a file path or stdin.
 // It decodes a Kubernetes-style manifest and JSON-round-trips the spec
-// into a FaroApp, so new fields are handled automatically.
+// into a FaroApp, so new fields are handled automatically. Unknown spec
+// fields are an error.
 func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	var reader io.Reader
 	if file == "-" {
@@ -497,8 +499,16 @@ func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode spec: %w", err)
 	}
+	// Reject unknown fields: a misspelled key such as allowedOrigins (for
+	// corsOrigins) would otherwise be dropped and the command would report
+	// success without storing anything.
 	var app FaroApp
-	if err := json.Unmarshal(specJSON, &app); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(specJSON))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&app); err != nil {
+		if strings.HasPrefix(err.Error(), "json: unknown field ") {
+			return nil, fmt.Errorf("failed to parse spec: %s; run \"gcx frontend apps get <app> -o yaml\" to see the valid spec fields", strings.TrimPrefix(err.Error(), "json: "))
+		}
 		return nil, fmt.Errorf("failed to parse spec: %w", err)
 	}
 
