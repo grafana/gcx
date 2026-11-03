@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers/native"
+	"github.com/grafana/gcx/internal/retry"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
@@ -95,6 +96,10 @@ func (c *usersClient) request(ctx context.Context, method, suffix string, query 
 	endpoint := c.base + "/Users" + suffix
 	if len(query) != 0 {
 		endpoint += "?" + query.Encode()
+	}
+	// A connection error can occur after the server applies a write. Do not replay it.
+	if method == http.MethodPost || method == http.MethodPatch {
+		ctx = retry.WithoutRetries(ctx)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(data))
 	if err != nil {

@@ -31,12 +31,16 @@ func (userMutationCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid SCIM mutation result for text output")
 	}
+	subject := fmt.Sprintf("SCIM user (id=%s)", result.Target.ID)
+	if result.Target.Name != "" {
+		subject = fmt.Sprintf("SCIM user %q (id=%s)", result.Target.Name, result.Target.ID)
+	}
 	if result.DryRun {
-		if _, err := fmt.Fprintf(w, "Dry run: %s SCIM user %q (id=%s). No write was sent.\n", result.Action, result.Target.Name, result.Target.ID); err != nil {
+		if _, err := fmt.Fprintf(w, "Dry run: %s %s. No write was sent.\n", result.Action, subject); err != nil {
 			return err
 		}
 		return format.NewYAMLCodec().Encode(w, result.Request)
 	}
-	_, err := fmt.Fprintf(w, "%s SCIM user %q (id=%s).\n", map[string]string{"created": "Created", "updated": "Updated", "deactivated": "Deactivated"}[result.Action], result.Target.Name, result.Target.ID)
+	_, err := fmt.Fprintf(w, "%s %s.\n", map[string]string{"created": "Created", "updated": "Updated", "deactivated": "Deactivated"}[result.Action], subject)
 	return err
 }

@@ -270,3 +270,17 @@ func TestUsersHumanAndAgentOutput(t *testing.T) {
 	_, _, err = executeUsers(t, userTestBinding(server.URL), "", "deactivate", "1", "--token-file", path)
 	require.ErrorContains(t, err, "use --force")
 }
+
+func TestUsersDryRunSubjectAndRequiredToken(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, args := range [][]string{{"update", "1", "--display-name", "Updated Name"}, {"deactivate", "1"}} {
+		args = append(args, "--dry-run")
+		_, _, err := executeUsers(t, native.Binding{}, "", args...)
+		require.ErrorContains(t, err, "--token-file")
+		args = append(args, "--token-file", tokenPath(t))
+		out, _, err := executeUsers(t, userTestBinding("https://example.grafana.net"), "", args...)
+		require.NoError(t, err)
+		require.Contains(t, out, "SCIM user (id=1)")
+		require.NotContains(t, out, `SCIM user ""`)
+	}
+}

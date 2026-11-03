@@ -241,7 +241,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx scim users get":                         {Cost: "small"},
 	"gcx scim users create":                      {Cost: "small"},
 	"gcx scim users update":                      {Cost: "small"},
-	"gcx scim users deactivate":                  {Cost: "small"},
+	"gcx scim users deactivate":                  {Cost: "small", Hint: "<id> --force --token-file <path>"},
 	"gcx scim endpoint get":                      {Cost: "small"},
 	"gcx alert routing-trees list":               {Cost: "small"},
 	"gcx alert routing-trees get":                {Cost: "small", Hint: "<name> -o yaml"},

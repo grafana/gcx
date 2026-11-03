@@ -74,7 +74,9 @@ All three write commands accept `--dry-run`. This reads the config and shows
 the request body. It sends no SCIM write. A successful write shows a short
 summary. JSON, YAML, and agent output use a structured mutation result. Its `user` field contains the full server user
 resource. If a PATCH returns no body, the command reads the user again.
-A failed read after a successful write reports both outcomes.
+A failed read after a successful write reports both outcomes. SCIM writes make
+one request attempt. They do not retry connection errors or rate limits because
+the server can apply a write before the connection fails.
 
 `deactivate` sets `active` to `false`. Grafana keeps the user record. The command
 uses the shared destructive confirmation. For standard input tokens, pass
