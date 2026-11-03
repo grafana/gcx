@@ -20,7 +20,7 @@ import (
 func newGraphCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "graph",
-		Short: "Query Knowledge Graph projections and paths.",
+		Short: "Query relationships between entities: callers, dependencies, paths and counts (Cypher).",
 	}
 	cmd.AddCommand(newGraphQueryCommand(loader))
 	return cmd
