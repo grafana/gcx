@@ -93,9 +93,12 @@ current-context: default
 
 // resolve prints the one ResolvedRate, not the batch envelope the backend uses.
 func TestResolveCommand_EncodesSingleRate(t *testing.T) {
-	out := runResolve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	out := runResolve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req modelrates.ResolveRequest
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		assert.Equal(t, []modelrates.ResolveItem{{Provider: "openai", Model: "gpt-5.5", At: "2026-10-01T00:00:00Z"}}, req.Items)
 		writeJSON(w, map[string]any{"items": []map[string]any{{"provider": "openai", "model": "gpt-5.5", "at": "2026-10-01T00:00:00Z", "source": "catalog", "pricing": map[string]any{"prompt_usd_per_token": 0.000002}}}})
-	}), "resolve", "--provider", "openai", "--model", "gpt-5.5", "-o", "json")
+	}), "resolve", "--provider", "openai", "--model", "gpt-5.5", "--at", "2026-10-01T00:00:00Z", "-o", "json")
 
 	var rate map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &rate))

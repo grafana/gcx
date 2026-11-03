@@ -146,11 +146,11 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Query, "query", "", "Free-text filter on model name and key")
+	flags.StringVar(&o.Query, "query", "", "Case-insensitive free-text filter on model name, provider and source model ID")
 	flags.StringVar(&o.Source, "source", "", "Only cards from this catalog source")
 	flags.StringVar(&o.Provider, "provider", "", "Only cards for this provider")
-	flags.StringVar(&o.Regex, "regex", "", "Only cards whose model key matches this regular expression")
-	flags.BoolVar(&o.FreeOnly, "free-only", false, "Only free models (no effect unless set to true; it does not select paid models)")
+	flags.StringVar(&o.Regex, "regex", "", "Only cards whose model key, name or provider matches this regular expression (case-sensitive; start with (?i) to ignore case)")
+	flags.BoolVar(&o.FreeOnly, "free-only", false, "Only free models (it does not select paid models)")
 	flags.IntVar(&o.MinContextLength, "min-context-length", 0, "Only models with at least this many context tokens")
 	flags.StringVar(&o.Sort, "sort", "", "Sort by name (default), provider, prompt_price, context_length or last_seen_at")
 	flags.StringVar(&o.Order, "order", "", "Sort order: asc (default) or desc")
@@ -189,7 +189,7 @@ func (o *listOpts) listQuery(flags *pflag.FlagSet) ListQuery {
 		Sort:     strings.ToLower(o.Sort),
 		Order:    strings.ToLower(o.Order),
 	}
-	if flags.Changed("free-only") {
+	if o.FreeOnly {
 		q.FreeOnly = &o.FreeOnly
 	}
 	if flags.Changed("min-context-length") {
