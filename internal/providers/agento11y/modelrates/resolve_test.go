@@ -112,7 +112,7 @@ func TestResolveCommand_UnpricedModel(t *testing.T) {
 
 	var rate map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &rate))
-	assert.Equal(t, "", rate["source"])
+	assert.Empty(t, rate["source"])
 	assert.Nil(t, rate["pricing"])
 }
 

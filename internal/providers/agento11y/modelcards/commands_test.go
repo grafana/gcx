@@ -70,7 +70,7 @@ current-context: default
 	require.NoError(t, os.WriteFile(cfgPath, []byte(cfg), 0o600))
 }
 
-func run(t *testing.T, args ...string) (stdout, stderr string) {
+func run(t *testing.T, args ...string) (string, string) {
 	t.Helper()
 	cmd := modelcards.Commands(nil)
 	var out, errOut bytes.Buffer
