@@ -23,7 +23,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List the human evaluators a review queue rubric can use.",
 		Long: `List the human evaluators a review queue rubric can use.
 
-A human evaluator is an evaluator whose answers come from a reviewer instead of a model. Use the IDs listed here as --rubric values for 'gcx agento11y collections create-review-queue' and 'gcx agento11y review-queues update'. Manage the evaluator definitions themselves with 'gcx agento11y evaluators'.`,
+A human evaluator is an evaluator whose answers come from a reviewer instead of a model. Use the IDs listed here as the rubric_evaluator_ids of a 'gcx agento11y review-queues create' manifest, or as --rubric values for 'gcx agento11y review-queues update'. Manage the evaluator definitions themselves with 'gcx agento11y evaluators'.`,
 	}
 	cmd.AddCommand(newListCommand(loader))
 	return cmd

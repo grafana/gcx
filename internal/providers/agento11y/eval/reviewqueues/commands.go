@@ -378,7 +378,7 @@ func newListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List every answer given in a review queue.",
 		Long: `List every answer given in a review queue, read from the backend's scores.csv export.
 
-Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend and --limit cannot reach past that cap. When the cap is what cuts the export, list_meta.cap in the payload says so; when --limit also trims the page, list_meta omits the cap and a warning on stderr reports it. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.`,
+Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend and --limit cannot reach past that cap; this command has no filters, so answers beyond the cap cannot be reached from the CLI. When the cap is what cuts the export, list_meta.cap in the payload says so; when --limit also trims the page, list_meta omits the cap and a warning on stderr reports it. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.`,
 		Example: `  # Export a queue's answers as JSON.
   gcx agento11y review-queues list-scores my-collection -o json
 
