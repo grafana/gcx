@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -221,9 +222,11 @@ func TestTokenFile(t *testing.T) {
 			case tt.wantError == "" && !tt.dry:
 				require.NoError(t, readErr)
 				assert.Equal(t, tt.key+"\n", string(contents))
-				info, err := os.Stat(path)
-				require.NoError(t, err)
-				assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+				if runtime.GOOS != "windows" {
+					info, err := os.Stat(path)
+					require.NoError(t, err)
+					assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+				}
 			default:
 				require.True(t, os.IsNotExist(readErr))
 			}

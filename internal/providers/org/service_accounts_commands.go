@@ -213,7 +213,7 @@ func newTokenCreateCommand(loader providers.GrafanaConfigLoader) *cobra.Command 
 	o := &accountOpts{}
 	cmd := smallCommand("create-token <service-account-id> <name>", "Create a token in a new private file")
 	cmd.Args = cobra.ExactArgs(2)
-	cmd.Long = "Create a service account token. Write its key and a newline to a new file with mode 0600. The file must not exist. Stdout contains a receipt, never the key. If the file write fails after creation, revoke the token. A dry run validates inputs locally and does not reserve the file."
+	cmd.Long = "Create a service account token. Write its key and a newline to a new private file. Use mode 0600 outside Windows and a protected ACL on Windows. The file must not exist. Stdout contains a receipt, never the key. If the file write fails after creation, revoke the token. A dry run validates inputs locally and does not reserve the file."
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if err := o.Validate(); err != nil {
 			return gcxerrors.NewCommandUsageError(cmd, "", err)
@@ -243,8 +243,8 @@ func newTokenCreateCommand(loader providers.GrafanaConfigLoader) *cobra.Command 
 		if err != nil {
 			return err
 		}
-		// Reserve the path before creating a credential. O_EXCL also rejects symlinks.
-		file, err := os.OpenFile(o.File, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		// Reserve a new private file before creating a credential.
+		file, err := createPrivateTokenFile(o.File)
 		if err != nil {
 			return fmt.Errorf("reserve token file: %w", err)
 		}

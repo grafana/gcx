@@ -36,7 +36,9 @@ gcx org service-accounts create-token 123 automation --ttl 24h --output-file ./t
 ```
 
 The default token lifetime is `1h`. Use `--ttl 24h` to change it.
-The duration must be non-negative and use whole seconds. Zero means no expiry. The command creates the file with mode `0600`. It rejects
+The duration must be non-negative and use whole seconds. Zero means no expiry. The command creates the file with mode `0600` outside Windows. On Windows, it
+sets a protected ACL at creation. Only the current user, SYSTEM, and
+Administrators have access. It rejects
 an existing file or symbolic link. The file contains the token key and a newline.
 Stdout contains an artifact receipt. It does not contain the key. The global `--insecure-log-http-payload` option can expose the token in its
 HTTP response dump.
