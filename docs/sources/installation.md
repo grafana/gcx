@@ -299,7 +299,7 @@ short-lived certificate issued against its GitHub Actions OIDC token, so a
 signature proves an artifact came out of `.github/workflows/release.yaml` in
 `grafana/gcx` on a `v*` tag.
 
-Verification needs [`cosign`](https://docs.sigstore.dev/cosign/installation/)
+Verification needs [`cosign`](https://docs.sigstore.dev/cosign/signing/overview/)
 v3 or later.
 
 Two values appear in every command below:

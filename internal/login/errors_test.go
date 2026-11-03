@@ -44,8 +44,7 @@ func TestVersionCheckError(t *testing.T) {
 		t.Errorf("Error() must contain step name; got %q", e.Error())
 	}
 
-	var vErr *intgrafana.VersionIncompatibleError
-	if !errors.As(e, &vErr) {
+	if _, ok := errors.AsType[*intgrafana.VersionIncompatibleError](e); !ok {
 		t.Error("VersionCheckError must allow errors.As to *VersionIncompatibleError")
 	}
 }

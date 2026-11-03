@@ -131,6 +131,16 @@ gcx synthetic-monitoring checks update <ID> -f check-<ID>.yaml --dry-run
 gcx synthetic-monitoring checks update <ID> -f check-<ID>.yaml
 ```
 
+To run a check once without saving or scheduling it, pass either a saved check or a manifest. Ad-hoc runs are billed like scheduled executions, so confirm before running them repeatedly:
+
+```bash
+# Run a saved check once (resource name or numeric ID)
+gcx synthetic-monitoring checks test <ID>
+
+# Run an edited manifest once, before updating
+gcx synthetic-monitoring checks test -f check-<ID>.yaml
+```
+
 ## Workflow 3: GitOps Sync (Pull/Push)
 
 When users say "pull" they mean export with `checks get -o yaml`; "push" means apply with `checks create`/`checks update -f`. Export to files, edit in source control, then update to apply:

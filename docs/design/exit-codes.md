@@ -14,7 +14,7 @@
 | 1 | `ExitGeneralError` | General error | Unexpected error, business logic failure |
 | 2 | `ExitUsageError` | Usage error | Invalid selectors, unknown commands, bad flags or positional arguments, missing required flags |
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
-| 4 | `ExitPartialFailure` | Partial failure | Some resources or mutation stages succeeded, others failed |
+| 4 | `ExitPartialFailure` | Partial failure | Some resources or mutation stages succeeded, others failed; lint reported violations |
 | 5 | `ExitCancelled` | Cancelled | Ctrl+C (SIGINT), `context.Canceled`, explicit confirmation cancellation (see § 2.4 for legacy exceptions), or server-reported cancellation |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
@@ -36,6 +36,13 @@ example scenario for each code. The topic is generated from the ordered
   and suggests credential recovery; a 403 reports `Authorization failed` and
   suggests checking roles or scopes. Adaptive Logs `invalid scope` reports
   authorization failure for both statuses.
+  The shared `HTTPStatusError` converter also exits 3 for HTTP 400 when its
+  canonical server message is exactly `Authentication to data source failed`.
+  This includes the plain-text datasource proxy response when parsed into
+  `HTTPStatusError.ServerMessage`, and points at datasource health and
+  configuration instead of caller credential recovery. Raw `gcx api` calls
+  retain the complete response body in `Message` and exit 1 for this HTTP 400.
+  Query clients using `queryerror.APIError` do not pass through this converter.
 - Missing Cloud credentials, and a missing Synthetic Monitoring token whose
   auto-discovery cannot start without Cloud credentials or stack configuration,
   exit 3. Synthetic Monitoring register/install permission failures also exit 3,
@@ -49,6 +56,7 @@ example scenario for each code. The topic is generated from the ordered
   `FailedCount > 0`. It also covers a single Watcher whose definition was saved
   but enrollment or readback failed. Dedicated commands emit its saved identity
   and stage outcomes before returning an `EmittedError` with exit 4.
+  Lint reports containing violations also exit 4.
 - Exit code 5 (cancelled) has several producers, and the taxonomy is about the
   final exit code rather than about any one of them. `isSilentCancellation` in
   `main.go` exits 5 without printing an error for an interrupted invocation.

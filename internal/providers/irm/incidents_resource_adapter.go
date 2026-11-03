@@ -3,7 +3,6 @@ package irm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -164,9 +163,6 @@ func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQue
 			// The push reports the manifest, not the list of changed fields.
 			updated, _, err := client.Update(ctx, name, inc)
 			return updated, err
-		},
-		DeleteFn: func(_ context.Context, _ string) error {
-			return errors.New("incidents: delete is not supported by the IRM API")
 		},
 		StripFields: incidentStripFields,
 		Namespace:   namespace,

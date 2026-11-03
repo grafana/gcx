@@ -77,7 +77,7 @@ func lintCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run PATH...",
 		Short: "Lint Grafana resources",
-		Long:  "Lint Grafana resources against Rego-based rules. Checks dashboards and other resource types for best practices, naming conventions, and configuration issues. Use --rules to load custom rules alongside built-in ones.",
+		Long:  "Lint Grafana resources against Rego-based rules. Checks dashboards and other resource types for best practices, naming conventions, and configuration issues. Use --rules to load custom rules alongside built-in ones. Exits 0 when no violations are found, or 4 when the report contains violations.",
 		Args:  cobra.MinimumNArgs(1),
 		Example: `
 	# Lint Grafana resources using builtin rules:

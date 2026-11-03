@@ -86,7 +86,31 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
-	return &Client{host: cfg.Host, httpClient: httpClient}, nil
+	return NewClientWithHTTP(cfg.Host, httpClient), nil
+}
+
+// NewClientWithHTTP uses an existing configured Grafana HTTP client.
+func NewClientWithHTTP(host string, client *http.Client) *Client {
+	return &Client{host: host, httpClient: client}
+}
+
+// NumericIDByUID resolves a stack-local numeric ID without adding it to portable manifests.
+func (c *Client) NumericIDByUID(ctx context.Context, uid string) (int64, error) {
+	body, err := c.do(ctx, http.MethodGet, datasourceByUIDPath+url.PathEscape(uid), nil, uid, "get datasource numeric ID")
+	if err != nil {
+		return 0, err
+	}
+	var result struct {
+		ID  int64  `json:"id"`
+		UID string `json:"uid"`
+	}
+	if err = json.Unmarshal(body, &result); err != nil {
+		return 0, fmt.Errorf("decode datasource numeric ID: %w", err)
+	}
+	if result.ID <= 0 || result.UID != uid {
+		return 0, fmt.Errorf("datasource %q did not return a matching UID and positive numeric ID", uid)
+	}
+	return result.ID, nil
 }
 
 // List returns all datasources visible to the authenticated user.

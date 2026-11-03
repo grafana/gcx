@@ -233,8 +233,7 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	// carried exit code and write nothing more: a second document on stdout
 	// would corrupt the exactly-one-JSON-value contract machine consumers
 	// rely on, and a stderr rendering would duplicate the in-band error.
-	var emitted *gcxerrors.EmittedError
-	if errors.As(err, &emitted) {
+	if emitted, ok := errors.AsType[*gcxerrors.EmittedError](err); ok {
 		if agent.IsAgentMode() && agentlog.IsEnabled() {
 			_ = agentlog.Append(agentlog.Entry{
 				Timestamp: time.Now(),
