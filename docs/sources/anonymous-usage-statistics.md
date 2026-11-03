@@ -205,6 +205,30 @@ Reports are received by Grafana's usage-stats service, the same service that rec
 
 The connecting IP address is not stored in the usage event.
 
+## Feedback you send with gcx feedback send
+
+`gcx feedback send` is the one command that sends text you write. It is separate from usage statistics: it goes to its own endpoint, `https://stats.grafana.org/gcx-feedback`, and only when you run it. The usage event for that invocation still records only the command path and flag names, never the note or the field values.
+
+Each feedback request contains:
+
+| Field | Description |
+| :---- | :---- |
+| `feedback_id` | A random UUID created for each request, so the receiver can drop a duplicate delivery. It is not derived from the device ID. |
+| `data` | Your note, under the key `note`, and every `--field key=value` you passed. Keys and values with an empty value are left out. |
+| `metadata` | The `gcx` version, OS, architecture, whether agent mode was on, the agent label, and the device ID described in [Telemetry data and identifiers](#telemetry-data-and-identifiers). This is `null` unless usage statistics are enabled. |
+
+The note and fields are always sent when you run the command, whatever the usage statistics setting. The setting controls only `metadata`: with `GCX_TELEMETRY=disabled`, `GCX_TELEMETRY=log`, `DO_NOT_TRACK=1`, or `diagnostics.telemetry: disabled`, the request carries the note and fields and `metadata` is `null`.
+
+Before printing or sending, `gcx` scrubs every key and value. It replaces known token formats, `Authorization` header values and `Bearer` or `Basic` credentials, credentials in URLs, every `http` and `https` URL, Grafana Cloud stack hostnames, email addresses, IP addresses, and values of keys that look like secrets (such as `token=` or `password:`) with placeholders like `<redacted:url>`, and home directory paths with `~`. Scrubbing is pattern based and can miss things, so don't include secrets or personal data in the first place.
+
+To see exactly what would be sent, after scrubbing, add `--dry-run`. Nothing is sent:
+
+```shell
+gcx feedback send "the error didn't say which flag was wrong" --field type=friction --dry-run
+```
+
+A request larger than 64 KiB is rejected before anything is sent. `gcx` makes one attempt with a ten second limit and never retries. When it cannot confirm that the feedback was stored, it says the feedback may or may not have arrived. To send feedback somewhere else, for example a local test server, set `GCX_FEEDBACK_ENDPOINT` to another URL.
+
 ## Inspect what would be sent
 
 To see exactly what `gcx` would report for an invocation, set `GCX_TELEMETRY=log`. The event is printed to stderr and nothing is sent:

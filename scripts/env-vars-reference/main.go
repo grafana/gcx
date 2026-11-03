@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/feedback"
 	"github.com/grafana/gcx/internal/telemetry"
 )
 
@@ -43,11 +44,17 @@ func main() {
 		log.Fatal(err)
 	}
 
+	feedbackCommentsMap, err := buildCommentsMap("internal/feedback/")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	envVarMap := make(map[string]string)
 	discoverEnvVars(reflect.TypeFor[config.Config](), typesCommentsMap, envVarMap)
 	discoverEnvVars(reflect.TypeFor[config.CLIOptions](), typesCommentsMap, envVarMap)
 	discoverEnvVars(reflect.TypeFor[telemetry.Env](), telemetryCommentsMap, envVarMap)
 	discoverEnvVars(reflect.TypeFor[agent.Env](), agentCommentsMap, envVarMap)
+	discoverEnvVars(reflect.TypeFor[feedback.Env](), feedbackCommentsMap, envVarMap)
 
 	err = os.WriteFile(filepath.Join(outputDir, "index.md"), toMarkdown(envVarMap), 0600)
 	if err != nil {

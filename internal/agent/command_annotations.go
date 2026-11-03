@@ -84,6 +84,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx config use-context":     {Cost: "small"},
 	"gcx config view":            {Cost: "medium", Hint: "--minify -o json"},
 
+	// feedback — free-text report to the gcx team; no login or context needed.
+	"gcx feedback send": {Cost: "small", Hint: "Report gcx friction when a command is missing, an error does not say what to do next, or a flag had to be guessed. Example: \"<what happened>\" --field type=friction --field command=\"<gcx command>\" --field expected=\"...\" --field actual=\"...\". Preview with --dry-run. Never include secrets or personal data."},
+
 	// datasources
 	"gcx datasources get":   {Cost: "medium", Hint: "<uid> -o json"},
 	"gcx datasources list":  {Cost: "small"},
