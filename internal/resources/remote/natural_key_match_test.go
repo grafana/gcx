@@ -97,7 +97,7 @@ func TestPusher_CrossStackUpdate_NaturalKey(t *testing.T) {
 	localRes := makeTestResource(group, "local-uuid", "My Resource")
 	testResources := resources.NewResources(localRes)
 
-	summary, err := pusher.Push(t.Context(), remote.PushRequest{
+	summary, err := pusher.Push(t.Context(), remote.PushRequest{IncludeSuccesses: true,
 		Resources:      testResources,
 		MaxConcurrency: 1,
 		IncludeManaged: true,
@@ -110,6 +110,7 @@ func TestPusher_CrossStackUpdate_NaturalKey(t *testing.T) {
 	// Should have performed an update (not create) with the remote name.
 	req.Len(mockClient.operations, 1)
 	req.Equal("update-remote-uuid", mockClient.operations[0])
+	req.Equal([]remote.OperationSuccess{{RequestedName: "local-uuid", Action: "updated", Kind: "TestResource", Name: "remote-uuid", Namespace: "default"}}, summary.Successes())
 
 	// Verify the updated object has the remote name and resource version.
 	updated, ok := mockClient.updatedObjects["remote-uuid"]
