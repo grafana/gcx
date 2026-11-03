@@ -67,10 +67,9 @@ type tagsResponse struct {
 }
 
 // MassDeleteRequest is the body for POST /api/annotations/mass-delete. Provide
-// either AnnotationID, or a DashboardID/DashboardUID together with PanelID.
+// either DashboardID or DashboardUID together with PanelID.
 type MassDeleteRequest struct {
 	DashboardID  int64  `json:"dashboardId,omitempty"`
 	PanelID      int64  `json:"panelId,omitempty"`
-	AnnotationID int64  `json:"annotationId,omitempty"`
 	DashboardUID string `json:"dashboardUID,omitempty"`
 }

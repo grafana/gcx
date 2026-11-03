@@ -47,8 +47,13 @@ func TestCreateCommandStructuredResult(t *testing.T) {
 
 func TestDeleteCommandRequiresForceInAgentMode(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "true")
-	cmd := annotations.NewDeleteCommandForTest(mutationLoader{host: "http://127.0.0.1:1"})
-	cmd.SetArgs([]string{"42"})
-	err := cmd.Execute()
-	require.ErrorContains(t, err, "--force")
+	for _, args := range [][]string{
+		{"42"},
+		{"--dashboard-uid", "dashboard", "--panel-id", "3"},
+	} {
+		cmd := annotations.NewDeleteCommandForTest(mutationLoader{host: "http://127.0.0.1:1"})
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		require.ErrorContains(t, err, "--force")
+	}
 }

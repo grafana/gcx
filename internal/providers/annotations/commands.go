@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -377,31 +378,94 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 // ---- delete ----
 
 type deleteOpts struct {
-	IO    cmdio.Options
-	Force bool
+	IO           cmdio.Options
+	DashboardUID string
+	DashboardID  int64
+	PanelID      int64
+	Force        bool
 }
 
-func (o *deleteOpts) Validate() error { return o.IO.Validate() }
+func (o *deleteOpts) Validate(args []string, flags *pflag.FlagSet) error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if len(args) == 1 {
+		if slices.ContainsFunc([]string{"dashboard-uid", "dashboard-id", "panel-id"}, flags.Changed) {
+			return errors.New("an annotation ID and dashboard/panel selector flags are mutually exclusive")
+		}
+		return validateID(args[0])
+	}
+	o.DashboardUID = strings.TrimSpace(o.DashboardUID)
+	if flags.Changed("dashboard-uid") && flags.Changed("dashboard-id") {
+		return errors.New("use only one dashboard selector (--dashboard-uid or --dashboard-id)")
+	}
+	if (o.DashboardUID == "" && o.DashboardID <= 0) || o.DashboardID < 0 || o.PanelID <= 0 {
+		return errors.New("provide an annotation ID or one dashboard selector with a positive --panel-id")
+	}
+	return nil
+}
+
+func (o *deleteOpts) delete(ctx context.Context, loader RESTConfigLoader, args []string) (cmdio.MutationTarget, error) {
+	if len(args) == 1 {
+		crud, _, err := newCommandCRUD(ctx, loader, ListOptions{})
+		if err != nil {
+			return cmdio.MutationTarget{}, err
+		}
+		if err := crud.Delete(ctx, args[0]); err != nil {
+			return cmdio.MutationTarget{}, err
+		}
+		return cmdio.MutationTarget{Kind: "annotation", ID: args[0]}, nil
+	}
+	client, err := clientFromLoader(ctx, loader)
+	if err != nil {
+		return cmdio.MutationTarget{}, err
+	}
+	if err := client.MassDelete(ctx, MassDeleteRequest{
+		DashboardUID: o.DashboardUID,
+		DashboardID:  o.DashboardID,
+		PanelID:      o.PanelID,
+	}); err != nil {
+		return cmdio.MutationTarget{}, err
+	}
+	return cmdio.MutationTarget{Kind: "annotations", Name: "selection"}, nil
+}
+
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	setupMutationOutput(&o.IO, flags, func(m cmdio.SingleMutation) string { return "Annotation deleted id=" + m.Target.ID })
+	setupMutationOutput(&o.IO, flags, func(m cmdio.SingleMutation) string {
+		if m.Target.ID != "" {
+			return "Annotation deleted id=" + m.Target.ID
+		}
+		return "Annotations deleted"
+	})
+	flags.StringVar(&o.DashboardUID, "dashboard-uid", "", "Dashboard UID (with --panel-id)")
+	flags.Int64Var(&o.DashboardID, "dashboard-id", 0, "Dashboard numeric ID (with --panel-id)")
+	flags.Int64Var(&o.PanelID, "panel-id", 0, "Positive panel ID (with one dashboard selector)")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 }
 
 func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
-		Use:     "delete ID",
-		Short:   "Delete an annotation by ID.",
-		Example: "  gcx annotations delete 1",
-		Args:    cobra.ExactArgs(1),
+		Use:   "delete [ID]",
+		Short: "Delete annotations by ID or dashboard panel.",
+		Long: `Delete one annotation by ID or all annotations for a dashboard panel.
+Use an ID, or one dashboard selector with a positive --panel-id.
+An ID and selector flags are mutually exclusive.`,
+		Example: `  # Delete one annotation
+  gcx annotations delete 1
+
+  # Delete annotations for one panel
+  gcx annotations delete --dashboard-uid abcdef123 --panel-id 3`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
+			if err := opts.Validate(args, cmd.Flags()); err != nil {
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
-			if err := validateID(args[0]); err != nil {
-				return err
+			prompt := "Delete selected annotations?"
+			if len(args) == 1 {
+				prompt = fmt.Sprintf("Delete annotation %s?", args[0])
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force, fmt.Sprintf("Delete annotation %s?", args[0]))
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force, prompt)
 			if err != nil {
 				return err
 			}
@@ -410,18 +474,11 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 				return gcxerrors.DetailedError{Summary: "delete cancelled", ExitCode: &code}
 			}
 
-			ctx := cmd.Context()
-
-			crud, _, err := newCommandCRUD(ctx, loader, ListOptions{})
+			target, err := opts.delete(cmd.Context(), loader, args)
 			if err != nil {
 				return err
 			}
-
-			if err := crud.Delete(ctx, args[0]); err != nil {
-				return err
-			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "annotation", ID: args[0]}))
+			return opts.IO.Encode(cmd.OutOrStdout(), cmdio.NewSingleMutation("deleted", target))
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -502,81 +559,6 @@ func (c *TagsTableCodec) Encode(w io.Writer, v any) error {
 // Decode is not supported for the table format.
 func (c *TagsTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
-}
-
-// ---- mass-delete ----
-
-type massDeleteOpts struct {
-	IO           cmdio.Options
-	DashboardUID string
-	DashboardID  int64
-	PanelID      int64
-	Force        bool
-}
-
-func (o *massDeleteOpts) Validate() error { return o.IO.Validate() }
-
-func (o *massDeleteOpts) setup(flags *pflag.FlagSet) {
-	setupMutationOutput(&o.IO, flags, func(cmdio.SingleMutation) string { return "Annotations deleted" })
-	flags.StringVar(&o.DashboardUID, "dashboard-uid", "", "Dashboard UID (with --panel-id)")
-	flags.Int64Var(&o.DashboardID, "dashboard-id", 0, "Dashboard numeric ID (with --panel-id)")
-	flags.Int64Var(&o.PanelID, "panel-id", 0, "Panel ID (with a dashboard selector)")
-	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
-}
-
-func newMassDeleteCommand(loader RESTConfigLoader) *cobra.Command {
-	opts := &massDeleteOpts{}
-	cmd := &cobra.Command{
-		Use:   "delete-many",
-		Short: "Delete annotations for a dashboard panel.",
-		Long: `Delete multiple annotations in a single request.
-
-Provide one dashboard selector (--dashboard-uid or --dashboard-id)
-together with --panel-id.`,
-		Example: "  gcx annotations delete-many --dashboard-uid abcdef123 --panel-id 3",
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-			opts.DashboardUID = strings.TrimSpace(opts.DashboardUID)
-			req := MassDeleteRequest{
-				DashboardUID: opts.DashboardUID,
-				DashboardID:  opts.DashboardID,
-				PanelID:      opts.PanelID,
-			}
-
-			hasDashboard := strings.TrimSpace(opts.DashboardUID) != "" || opts.DashboardID > 0
-			switch {
-			case hasDashboard && opts.PanelID > 0 && opts.DashboardID >= 0 && (opts.DashboardUID == "" || opts.DashboardID == 0):
-				// delete all annotations for a dashboard panel
-			default:
-				return errors.New("provide one dashboard selector (--dashboard-uid/--dashboard-id) and a positive --panel-id")
-			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force, "Delete selected annotations?")
-			if err != nil {
-				return err
-			}
-			if !proceed {
-				code := gcxerrors.ExitCancelled
-				return gcxerrors.DetailedError{Summary: "delete cancelled", ExitCode: &code}
-			}
-
-			ctx := cmd.Context()
-			client, err := clientFromLoader(ctx, loader)
-			if err != nil {
-				return err
-			}
-
-			if err := client.MassDelete(ctx, req); err != nil {
-				return err
-			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "annotations", Name: "selection"}))
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
 }
 
 // ---- helpers ----

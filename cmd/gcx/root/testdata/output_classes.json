@@ -129,7 +129,6 @@
  "gcx alert time-intervals update": "finite",
  "gcx annotations create": "finite",
  "gcx annotations delete": "finite",
- "gcx annotations delete-many": "finite",
  "gcx annotations get": "finite",
  "gcx annotations list": "finite",
  "gcx annotations list-tags": "finite",

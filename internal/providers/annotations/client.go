@@ -149,8 +149,7 @@ func (c *Client) Tags(ctx context.Context, limit int) ([]AnnotationTag, error) {
 	return res.Result.Tags, nil
 }
 
-// MassDelete deletes multiple annotations selected by the given request
-// (by annotation ID, or by dashboard + panel).
+// MassDelete deletes annotations for one dashboard panel.
 func (c *Client) MassDelete(ctx context.Context, req MassDeleteRequest) error {
 	return c.doJSON(ctx, http.MethodPost, basePath+"/mass-delete", req, nil)
 }

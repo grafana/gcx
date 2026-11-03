@@ -15,7 +15,4 @@ func NewDeleteCommandForTest(loader RESTConfigLoader) *cobra.Command {
 	return newDeleteCommand(loader)
 }
 
-func NewMassDeleteCommandForTest(loader RESTConfigLoader) *cobra.Command {
-	return newMassDeleteCommand(loader)
-}
 func NewUpdateCommandForTest(loader RESTConfigLoader) *cobra.Command { return newUpdateCommand(loader) }

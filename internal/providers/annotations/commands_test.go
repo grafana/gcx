@@ -61,7 +61,7 @@ func runListCmd(t *testing.T, rs *recordingServer, args ...string) error {
 	return cmd.ExecuteContext(context.Background())
 }
 
-func TestListCommand_LookbackToFromTo(t *testing.T) {
+func TestListCommand_SinceToFromTo(t *testing.T) {
 	rs := newRecordingServer(t)
 
 	before := time.Now()
@@ -91,7 +91,7 @@ func TestListCommand_LookbackToFromTo(t *testing.T) {
 	assert.InDelta(t, int64(time.Hour/time.Millisecond), toMs-fromMs, float64(tolMs))
 }
 
-func TestListCommand_DefaultLookbackIs24h(t *testing.T) {
+func TestListCommand_DefaultSinceIs24h(t *testing.T) {
 	rs := newRecordingServer(t)
 
 	err := runListCmd(t, rs)
@@ -105,7 +105,7 @@ func TestListCommand_DefaultLookbackIs24h(t *testing.T) {
 	assert.InDelta(t, int64(24*time.Hour/time.Millisecond), toMs-fromMs, float64(tolMs))
 }
 
-func TestListCommand_ExplicitFromToOverridesLookback(t *testing.T) {
+func TestListCommand_ExplicitFromToOverridesSince(t *testing.T) {
 	rs := newRecordingServer(t)
 
 	err := runListCmd(t, rs, "--from", "1000", "--to", "2000")
@@ -116,7 +116,7 @@ func TestListCommand_ExplicitFromToOverridesLookback(t *testing.T) {
 	assert.Equal(t, "2000000", q.Get("to"))
 }
 
-func TestListCommand_LookbackWithFromOrToFails(t *testing.T) {
+func TestListCommand_SinceWithFromOrToFails(t *testing.T) {
 	rs := newRecordingServer(t)
 
 	err := runListCmd(t, rs, "--since", "1h", "--from", "1000")
@@ -170,7 +170,7 @@ func TestProvider_CommandsShape(t *testing.T) {
 	for _, c := range root.Commands() {
 		subNames = append(subNames, strings.Fields(c.Use)[0])
 	}
-	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "list-tags", "delete-many"}, subNames)
+	assert.ElementsMatch(t, []string{"list", "get", "create", "update", "delete", "list-tags"}, subNames)
 }
 
 func TestTagsTableCodec(t *testing.T) {

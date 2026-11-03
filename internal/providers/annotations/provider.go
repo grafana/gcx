@@ -22,6 +22,6 @@ func newAnnotationCommands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 	root := &cobra.Command{Use: "annotations", Short: shortDesc}
 	loader.BindFlags(root.PersistentFlags())
-	root.AddCommand(newListCommand(loader), newGetCommand(loader), newCreateCommand(loader), newUpdateCommand(loader), newDeleteCommand(loader), newTagsCommand(loader), newMassDeleteCommand(loader))
+	root.AddCommand(newListCommand(loader), newGetCommand(loader), newCreateCommand(loader), newUpdateCommand(loader), newDeleteCommand(loader), newTagsCommand(loader))
 	return []*cobra.Command{root}
 }
