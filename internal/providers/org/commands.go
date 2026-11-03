@@ -39,16 +39,30 @@ type readOpts struct {
 }
 
 func (o *readOpts) setup(flags *pflag.FlagSet) {
-	cmdio.RegisterTable(&o.IO, userTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 func (o *readOpts) Validate() error { return o.IO.Validate() }
 
+type listResult struct {
+	Users    []User          `json:"users" yaml:"users"`
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
+func (listResult) ListItemsKey() string { return "users" }
+
 func newListCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	opts := &readOpts{}
-	cmd := &cobra.Command{Use: "list", Short: "List users in the selected organization", Args: cobra.NoArgs,
-		Long:        "List users in the selected organization. The API returns the full list. The limit trims the output after the fetch.",
+	cmd := &cobra.Command{Use: "list", Short: "List users in the selected organization.", Args: cobra.NoArgs,
+		Long: "List users in the selected organization. The API returns the full list. The limit trims the output after the fetch. Structured output contains users and, when truncated, list_meta.",
+		Example: `  # List the first 50 users.
+  gcx org users list
+
+  # Include user names in the table.
+  gcx org users list -o wide
+
+  # Return every user as JSON.
+  gcx org users list --limit 0 -o json`,
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -64,12 +78,15 @@ func newListCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 			}
 			users, meta := cmdio.TruncateCompleteList(users, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), users); err != nil {
+			if err := opts.IO.Encode(cmd.OutOrStdout(), listResult{Users: users, ListMeta: meta}); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
 			return nil
 		}}
+	table := cmdio.TableAdapter[listResult, User]{Table: userTable(), Rows: func(result listResult) ([]User, error) { return result.Users, nil }}
+	opts.IO.RegisterCustomCodec("table", table.Codec("table"))
+	opts.IO.RegisterCustomCodec("wide", table.Codec("wide"))
 	opts.setup(cmd.Flags())
 	opts.IO.BindListLimit(cmd.Flags(), &opts.Limit, "users", 50)
 	return cmd
@@ -86,8 +103,16 @@ func validateSubjects(args []string) error {
 
 func newGetCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	opts := &readOpts{}
-	cmd := &cobra.Command{Use: "get <login|email|id>", Short: "Get a user in the selected organization", Args: cobra.ExactArgs(1),
-		Long:        "Get one user by exact, case-sensitive login, email, or numeric ID. Lookup reads all users in the selected organization. Missing or ambiguous identities fail.",
+	cmd := &cobra.Command{Use: "get <login|email|id>", Short: "Get a user in the selected organization.", Args: cobra.ExactArgs(1),
+		Long: "Get one user by exact, case-sensitive login, email, or numeric ID. Lookup reads all users in the selected organization. Missing or ambiguous identities fail.",
+		Example: `  # Get a user by login.
+  gcx org users get alice
+
+  # Get a user by email.
+  gcx org users get alice@example.com
+
+  # Get a user by ID with all table columns.
+  gcx org users get 42 -o wide`,
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -110,6 +135,9 @@ func newGetCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), user)
 		}}
+	table := cmdio.TableAdapter[User, User]{Table: userTable(), Rows: func(user User) ([]User, error) { return []User{user}, nil }}
+	opts.IO.RegisterCustomCodec("table", table.Codec("table"))
+	opts.IO.RegisterCustomCodec("wide", table.Codec("wide"))
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -128,6 +156,9 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 }
 func (o *deleteOpts) Validate() error { return o.IO.Validate() }
 
+// deleteResult adds targets only for a dry run. A count cannot identify the
+// users who will lose access. Applied batches retain the shared count and
+// failure shape and do not enumerate successful removals.
 type deleteResult struct {
 	cmdio.BatchMutation `yaml:",inline"`
 
@@ -136,8 +167,16 @@ type deleteResult struct {
 
 func newDeleteCommand(loader providers.GrafanaConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
-	cmd := &cobra.Command{Use: "remove <login|email|id>...", Short: "Remove users from the selected organization", Args: cobra.MinimumNArgs(1),
-		Long:        "Remove organization membership only. Other organizations and the Grafana user account remain. Resolve each argument by exact, case-sensitive login, email, or numeric ID in the selected organization. Missing or ambiguous identities fail before any write. Duplicate users are removed once. A dry run shows the resolved users. A batch reports each failed removal.",
+	cmd := &cobra.Command{Use: "remove <login|email|id>...", Short: "Remove users from the selected organization.", Args: cobra.MinimumNArgs(1),
+		Long: "Remove organization membership only. Other organizations and the Grafana user account remain. Resolve each argument by exact, case-sensitive login, email, or numeric ID in the selected organization. Missing or ambiguous identities fail before any write. Duplicate users are removed once. A dry run shows the resolved users. A batch reports each failed removal.",
+		Example: `  # Preview a removal without a write request.
+  gcx org users remove alice@example.com --dry-run
+
+  # Remove one membership after confirmation.
+  gcx org users remove alice@example.com
+
+  # Remove several memberships without a prompt.
+  gcx org users remove alice@example.com bob@example.com --force`,
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
