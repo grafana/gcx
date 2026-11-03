@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/shared"
@@ -109,8 +110,11 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "List incidents.",
 		Long:  incidentListLong,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
+			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+			if err := opts.Validate(); err != nil {
+				return fail.NewCommandUsageError(cmd, "", err)
 			}
 
 			ctx := cmd.Context()
