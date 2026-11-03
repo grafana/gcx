@@ -211,7 +211,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
-			if pushErr != nil {
+			if pushErr != nil && opts.IncludeSuccesses && len(summary.Successes()) > 0 {
 				// The result includes writes completed before the abort. Keep the
 				// original cause and do not write a second result document.
 				cmdio.EmitWarn(cmd.ErrOrStderr(), "push aborted after partial success: "+pushErr.Error())

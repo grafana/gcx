@@ -31,12 +31,11 @@ const (
 // MutationTarget identifies the object a mutation acted on. All fields are
 // optional — providers populate what their domain actually has.
 type MutationTarget struct {
-	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Name       string `json:"name,omitempty" yaml:"name,omitempty"`
-	UID        string `json:"uid,omitempty" yaml:"uid,omitempty"`
-	ID         string `json:"id,omitempty" yaml:"id,omitempty"`
-	Namespace  string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
-	SourcePath string `json:"source_path,omitempty" yaml:"source_path,omitempty"`
+	Kind      string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Name      string `json:"name,omitempty" yaml:"name,omitempty"`
+	UID       string `json:"uid,omitempty" yaml:"uid,omitempty"`
+	ID        string `json:"id,omitempty" yaml:"id,omitempty"`
+	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 }
 
 // MutationSummary aggregates per-target outcomes for batch shapes.
@@ -85,6 +84,8 @@ type MutationSuccess struct {
 	Requested MutationTarget `json:"requested" yaml:"requested"`
 	Action    string         `json:"action" yaml:"action"`
 	Target    MutationTarget `json:"target" yaml:"target"`
+	// Source identifies the input file when available; it is not the API name.
+	Source string `json:"source,omitempty" yaml:"source,omitempty"`
 }
 
 // BatchMutation is the finite result of one verb applied across many targets.

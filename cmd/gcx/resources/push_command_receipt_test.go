@@ -67,9 +67,7 @@ func TestPushCommandReturnedIdentity(t *testing.T) {
 			require.NoError(t, err, stdout.String())
 			var result struct {
 				Successes []struct {
-					Requested struct {
-						SourcePath string `json:"source_path"`
-					} `json:"requested"`
+					Source string `json:"source"`
 					Target struct {
 						Name string `json:"name"`
 					} `json:"target"`
@@ -89,7 +87,7 @@ func TestPushCommandReturnedIdentity(t *testing.T) {
 			}
 			if include && !tc.dryRun {
 				require.Len(t, result.Successes, 1)
-				require.Equal(t, path, result.Successes[0].Requested.SourcePath)
+				require.Equal(t, path, result.Successes[0].Source)
 				require.Equal(t, "server-name", result.Successes[0].Target.Name)
 			} else {
 				require.Empty(t, result.Successes)
@@ -172,9 +170,7 @@ func TestPushCommandAbortPreservesReturnedIdentity(t *testing.T) {
 					Failed    int `json:"failed"`
 				} `json:"summary"`
 				Successes []struct {
-					Requested struct {
-						SourcePath string `json:"source_path"`
-					} `json:"requested"`
+					Source string `json:"source"`
 					Target struct {
 						Name string `json:"name"`
 					} `json:"target"`
@@ -187,7 +183,7 @@ func TestPushCommandAbortPreservesReturnedIdentity(t *testing.T) {
 			require.Equal(t, 1, result.Summary.Succeeded)
 			require.Equal(t, 1, result.Summary.Failed)
 			require.Len(t, result.Successes, 1)
-			require.Equal(t, folderPath, result.Successes[0].Requested.SourcePath)
+			require.Equal(t, folderPath, result.Successes[0].Source)
 			require.Equal(t, "server-folder", result.Successes[0].Target.Name)
 			require.Len(t, result.Failures, 1)
 		})

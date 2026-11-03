@@ -136,7 +136,12 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 	applied := summary.Successes()
 	successes := make([]cmdio.MutationSuccess, 0, len(applied))
 	for _, success := range applied {
-		successes = append(successes, cmdio.MutationSuccess{Requested: cmdio.MutationTarget{Kind: success.Kind, Name: success.RequestedName, SourcePath: success.SourcePath}, Action: success.Action, Target: cmdio.MutationTarget{Kind: success.Kind, Name: success.Name, UID: success.UID, Namespace: success.Namespace}})
+		successes = append(successes, cmdio.MutationSuccess{
+			Requested: cmdio.MutationTarget{Kind: success.Kind, Name: success.RequestedName},
+			Action:    success.Action,
+			Target:    cmdio.MutationTarget{Kind: success.Kind, Name: success.Name, UID: success.UID, Namespace: success.Namespace},
+			Source:    success.SourcePath,
+		})
 	}
 	if len(successes) > 0 {
 		result.Successes = &successes

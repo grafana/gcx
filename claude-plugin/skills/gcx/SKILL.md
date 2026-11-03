@@ -153,7 +153,8 @@ gcx resources push -p ./resources --include-successes -o json
 ```
 
 Save each `successes` entry before the next operation. It maps the requested
-kind/name to the action and the identity returned by the API. A server-generated
+kind/name to the action and the identity returned by the API. Its `source` field
+identifies the input file when available. A server-generated
 ID or natural-key match can differ from the input name. Use the returned ID for
 readback and later writes. Check ownership and the expected spec on readback.
 Dry-run and skipped operations have no applied identity receipt. If an API write
