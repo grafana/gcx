@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
@@ -23,17 +25,9 @@ const truncatedHeader = "X-Review-Export-Truncated"
 
 // ErrNotFound is returned when the server answers 404 for a queue. The backend
 // also answers 404 for every review-queue route when human review is not
-// enabled for the tenant, so the message names both causes. It unwraps to
+// enabled for the tenant, so the message names both causes. It wraps
 // adapter.ErrNotFound so the CLI reports it as a missing resource.
-var ErrNotFound error = notFoundError{}
-
-type notFoundError struct{}
-
-func (notFoundError) Error() string {
-	return "review queue not found: the queue does not exist, or human review is disabled for this tenant"
-}
-
-func (notFoundError) Unwrap() error { return adapter.ErrNotFound }
+var ErrNotFound = fmt.Errorf("review queue not found (the queue does not exist, or human review is disabled for this tenant): %w", adapter.ErrNotFound)
 
 // Client is an HTTP client for the review queue endpoints.
 type Client struct {
@@ -95,10 +89,21 @@ func (c *Client) SetRubric(ctx context.Context, collectionID string, request *Ru
 }
 
 // SubmitReview stores one reviewer's answers for one conversation, all or none.
+// This route answers 404 for an unknown queue and for an unknown generation, so
+// a 404 that carries the backend's own message ("... was not found") keeps it
+// instead of the generic queue text. It still wraps adapter.ErrNotFound.
 func (c *Client) SubmitReview(ctx context.Context, collectionID string, request *ReviewRequest) (*ReviewResult, error) {
-	result, err := agento11yhttp.DoJSONNotFound[ReviewRequest, ReviewResult](ctx, c.base, http.MethodPost, queuePath(collectionID)+"/reviews", request,
-		fmt.Errorf("%s: %w", collectionID, ErrNotFound), http.StatusOK, http.StatusCreated)
+	result, err := agento11yhttp.DoJSON[ReviewRequest, ReviewResult](ctx, c.base, http.MethodPost, queuePath(collectionID)+"/reviews", request, http.StatusOK, http.StatusCreated)
 	if err != nil {
+		if statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err); ok && statusErr.Status == http.StatusNotFound {
+			message := strings.TrimSpace(statusErr.ServerMessage)
+			if strings.Contains(message, "was not found") || strings.Contains(message, "is not a review queue") {
+				return nil, fmt.Errorf("%s: %w", message, adapter.ErrNotFound)
+			}
+			if _, unavailable := errors.AsType[*agento11yhttp.PluginUnavailableError](err); !unavailable {
+				return nil, fmt.Errorf("%s: %w", collectionID, ErrNotFound)
+			}
+		}
 		return nil, err
 	}
 	return &result, nil

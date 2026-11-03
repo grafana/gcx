@@ -109,13 +109,13 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 	savedConvsCmd := savedconversations.Commands(loader)
 	savedConvsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx agento11y saved-conversations create-manual -f fixture.json -o json; gcx agento11y saved-conversations list -o json; gcx agento11y saved-conversations get <id> -o yaml; gcx agento11y saved-conversations save <conv-id> --name '...' -o json; gcx agento11y saved-conversations collections <saved-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y saved-conversations create -f fixture.json -o json; gcx agento11y saved-conversations list -o json; gcx agento11y saved-conversations get <id> -o yaml; gcx agento11y saved-conversations save <conv-id> --name '...' -o json; gcx agento11y saved-conversations collections <saved-id> -o json`,
 	}
 
 	collectionsCmd := collections.Commands(loader)
 	collectionsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y collections create-review-queue <collection-id> --rubric <human-evaluator-id> -o json; gcx agento11y collections list -o json; gcx agento11y collections get <id> -o yaml; gcx agento11y collections create --name '...' -o json; gcx agento11y collections update <id> --name '...' -o json; gcx agento11y collections delete <id> --force; gcx agento11y collections list-conversations <id> -o json; gcx agento11y collections add-conversations <id> <saved-id>; gcx agento11y collections remove-conversation <id> <saved-id>`,
+		agent.AnnotationLLMHint:   `gcx agento11y collections list -o json; gcx agento11y collections get <id> -o yaml; gcx agento11y collections create --name '...' -o json; gcx agento11y collections update <id> --name '...' -o json; gcx agento11y collections delete <id> --force; gcx agento11y collections list-conversations <id> -o json; gcx agento11y collections add-conversations <id> <saved-id>; gcx agento11y collections remove-conversation <id> <saved-id>`,
 	}
 
 	humanEvaluatorsCmd := humanevaluators.Commands(loader)
@@ -127,7 +127,13 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 	reviewQueuesCmd := reviewqueues.Commands(loader)
 	reviewQueuesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx agento11y review-queues list -o json; gcx agento11y review-queues get <collection-id> -o json; gcx agento11y review-queues get <collection-id> --conversation <conversation-id> -o json; gcx agento11y review-queues update <collection-id> --rubric <human-evaluator-id> -o json; gcx agento11y review-queues create-review <collection-id> -f review.yaml -o json; gcx agento11y review-queues list-scores <collection-id> -o json`,
+		agent.AnnotationLLMHint:   `gcx agento11y review-queues list -o json; gcx agento11y review-queues get <collection-id> -o json; gcx agento11y review-queues get <collection-id> --conversation <conversation-id> -o json; gcx agento11y review-queues create -f review-queue.yaml -o json; gcx agento11y review-queues update <collection-id> --rubric <human-evaluator-id> -o json; gcx agento11y review-queues list-scores <collection-id> -o json`,
+	}
+
+	reviewsCmd := reviewqueues.ReviewCommands(loader)
+	reviewsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx agento11y reviews create -f review.yaml -o json`,
 	}
 
 	experimentsCmd := experiments.Commands(loader)
@@ -136,7 +142,7 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments get-report <run-id> -o json; gcx agento11y experiments list-filter-values -o json; gcx agento11y experiments test-suites list -o json; gcx agento11y experiments test-suites cases list <suite-id> <version> -o json; gcx agento11y experiments list-trials <run-id> -o json; gcx agento11y experiments pull <run-id> -d ./exports/<run-id>`,
 	}
 
-	agento11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, modelRatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, humanEvaluatorsCmd, reviewQueuesCmd, experimentsCmd)
+	agento11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, modelRatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, humanEvaluatorsCmd, reviewQueuesCmd, reviewsCmd, experimentsCmd)
 
 	return []*cobra.Command{agento11yCmd}
 }

@@ -39,10 +39,10 @@ func TestManualInvalidInput(t *testing.T) {
 		input string
 		want  string
 	}{
-		{name: "malformed JSON", args: []string{"create-manual", "-f", "-"}, input: "{", want: "invalid manual conversation JSON"},
-		{name: "missing fields", args: []string{"create-manual", "-f", "-"}, input: "{}", want: "saved_id, name and nonempty generations"},
-		{name: "empty generations", args: []string{"create-manual", "-f", "-"}, input: `{"saved_id":"manual","name":"Fixture","generations":[]}`, want: "nonempty generations"},
-		{name: "missing filename", args: []string{"create-manual"}, want: "--filename is required"},
+		{name: "malformed JSON", args: []string{"create", "-f", "-"}, input: "{", want: "failed to parse input"},
+		{name: "missing fields", args: []string{"create", "-f", "-"}, input: "{}", want: "saved_id, name and nonempty generations"},
+		{name: "empty generations", args: []string{"create", "-f", "-"}, input: `{"saved_id":"manual","name":"Fixture","generations":[]}`, want: "nonempty generations"},
+		{name: "missing filename", args: []string{"create"}, want: "--filename is required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

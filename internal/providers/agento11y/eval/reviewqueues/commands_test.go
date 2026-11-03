@@ -14,7 +14,9 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/reviewqueues"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,6 +25,11 @@ import (
 // config and runs args, so the command goes through config discovery, the
 // plugin client and an HTTP round-trip.
 func runCommand(t *testing.T, srv *httptest.Server, stdin string, args ...string) (string, string, error) {
+	t.Helper()
+	return runGroup(t, reviewqueues.Commands(nil), srv, stdin, args...)
+}
+
+func runGroup(t *testing.T, cmd *cobra.Command, srv *httptest.Server, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	home := testutils.SandboxConfigEnv(t)
 	cfgPath := filepath.Join(home, ".config", "gcx", "config.yaml")
@@ -41,7 +48,6 @@ current-context: default
 `, srv.URL)
 	require.NoError(t, os.WriteFile(cfgPath, []byte(cfg), 0o600))
 
-	cmd := reviewqueues.Commands(nil)
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
@@ -63,7 +69,8 @@ func TestCommands_Validation(t *testing.T) {
 		{name: "get blank conversation", args: []string{"get", "col", "--conversation", " "}, want: "--conversation cannot be blank"},
 		{name: "update needs a rubric", args: []string{"update", "col"}, want: "at least one --rubric"},
 		{name: "update blank rubric", args: []string{"update", "col", "--rubric", " "}, want: "--rubric cannot be blank"},
-		{name: "create-review needs a file", args: []string{"create-review", "col"}, want: "--filename is required"},
+		{name: "create needs a file", args: []string{"create"}, want: "--filename is required"},
+		{name: "create takes no positional argument", args: []string{"create", "col", "-f", "-"}, want: "unknown command"},
 		{name: "list-scores blank collection", args: []string{"list-scores", " "}, want: "collection ID is required"},
 		{name: "list rejects args", args: []string{"list", "extra"}, want: "unknown command"},
 	}
@@ -78,9 +85,46 @@ func TestCommands_Validation(t *testing.T) {
 	}
 }
 
-func TestCreateReview_FileInput(t *testing.T) {
-	const jsonReview = `{"conversation_id":"conv-1","generation_id":"gen-1","note":"fine","answers":[{"evaluator_id":"helpful","evaluator_version":"v1","value":{"number":4}}]}`
-	const yamlReview = `conversation_id: conv-1
+func TestCreate_Manifest(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "yaml", input: "collection_id: col\nrubric_evaluator_ids:\n  - helpful\n  - safe\n"},
+		{name: "json", input: `{"collection_id":"col","rubric_evaluator_ids":["helpful","safe"]}`},
+		{name: "missing collection", input: `{"rubric_evaluator_ids":["a"]}`, want: "collection_id is required"},
+		{name: "missing rubric", input: `{"collection_id":"col"}`, want: "rubric_evaluator_ids needs at least one"},
+		{name: "blank rubric", input: `{"collection_id":"col","rubric_evaluator_ids":[" "]}`, want: "cannot contain a blank ID"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body json.RawMessage
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, resourcesPath+"/eval/review-queues", r.URL.Path)
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				writeJSON(w, http.StatusCreated, map[string]any{"collection_id": "col"})
+			}))
+			t.Cleanup(srv.Close)
+
+			stdout, stderr, err := runCommand(t, srv, tt.input, "create", "-f", "-")
+			if tt.want != "" {
+				require.ErrorContains(t, err, tt.want)
+				assert.Empty(t, body, "nothing may be sent for an invalid manifest")
+				return
+			}
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.JSONEq(t, `{"collection_id":"col","rubric_evaluator_ids":["helpful","safe"]}`, string(body))
+			assert.JSONEq(t, `{"collection_id":"col","name":"","rubric":null,"total":0,"reviewed":0,"pending":0}`, stdout)
+		})
+	}
+}
+
+func TestReviewsCreate_Manifest(t *testing.T) {
+	const jsonReview = `{"collection_id":"col","conversation_id":"conv-1","generation_id":"gen-1","note":"fine","answers":[{"evaluator_id":"helpful","evaluator_version":"v1","value":{"number":4}}]}`
+	const yamlReview = `collection_id: col
+conversation_id: conv-1
 generation_id: gen-1
 note: fine
 answers:
@@ -96,9 +140,9 @@ answers:
 	}{
 		{name: "json", input: jsonReview},
 		{name: "yaml", input: yamlReview},
-		{name: "missing answers", input: `{"conversation_id":"c","generation_id":"g"}`, want: "at least one answer are required"},
-		{name: "missing generation", input: `{"conversation_id":"c","answers":[{"evaluator_id":"h"}]}`, want: "generation_id"},
-		{name: "not a document", input: "[1, 2", want: "parsing -"},
+		{name: "missing collection", input: `{"conversation_id":"c","generation_id":"g","answers":[{"evaluator_id":"h"}]}`, want: "collection_id, conversation_id"},
+		{name: "missing answers", input: `{"collection_id":"col","conversation_id":"c","generation_id":"g"}`, want: "at least one answer are required"},
+		{name: "not a document", input: "[1, 2", want: "failed to parse input"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -111,18 +155,32 @@ answers:
 			}))
 			t.Cleanup(srv.Close)
 
-			stdout, stderr, err := runCommand(t, srv, tt.input, "create-review", "col", "-f", "-")
+			stdout, stderr, err := runGroup(t, reviewqueues.ReviewCommands(nil), srv, tt.input, "create", "-f", "-")
 			if tt.want != "" {
 				require.ErrorContains(t, err, tt.want)
-				assert.Empty(t, body, "nothing may be sent for an invalid file")
+				assert.Empty(t, body, "nothing may be sent for an invalid manifest")
 				return
 			}
 			require.NoError(t, err, "stderr: %s", stderr)
-			assert.JSONEq(t, jsonReview, string(body))
+			assert.JSONEq(t, `{"conversation_id":"conv-1","generation_id":"gen-1","note":"fine","answers":[{"evaluator_id":"helpful","evaluator_version":"v1","value":{"number":4}}]}`, string(body), "collection_id selects the route and is not part of the body")
 			assert.JSONEq(t, `{"scores":[]}`, stdout)
 			assert.Contains(t, stderr, "conv-1")
 		})
 	}
+}
+
+func TestReviewsCreate_UnknownGenerationKeepsBackendMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `generation "gen-typo" was not found`, http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, _, err := runGroup(t, reviewqueues.ReviewCommands(nil), srv,
+		`{"collection_id":"col","conversation_id":"c","generation_id":"gen-typo","answers":[{"evaluator_id":"h","evaluator_version":"v1","value":{"number":1}}]}`,
+		"create", "-f", "-")
+	require.ErrorContains(t, err, `generation "gen-typo" was not found`)
+	assert.NotContains(t, err.Error(), "human review is disabled")
+	require.ErrorIs(t, err, adapter.ErrNotFound)
 }
 
 func TestListScores_Envelope(t *testing.T) {
@@ -135,12 +193,13 @@ func TestListScores_Envelope(t *testing.T) {
 		wantMeta   map[string]any
 		wantStderr string
 		wantNoMeta bool
+		noWarning  bool
 	}{
 		{name: "complete", wantIDs: []string{"c1", "c2", "c3"}, wantNoMeta: true},
 		{
 			name: "backend row cap rides in the payload", backendCut: true, wantIDs: []string{"c1", "c2", "c3"},
 			wantMeta:   map[string]any{"truncated": true, "returned": 3.0, "cap": 3.0},
-			wantStderr: "truncated by the backend row cap",
+			wantStderr: "safety cap", noWarning: true,
 		},
 		{
 			name: "limit trims a complete export", args: []string{"--limit", "2"}, wantIDs: []string{"c1", "c2"},
@@ -189,6 +248,9 @@ func TestListScores_Envelope(t *testing.T) {
 			}
 			if tt.wantStderr != "" {
 				assert.Contains(t, stderr, tt.wantStderr)
+			}
+			if tt.noWarning {
+				assert.NotContains(t, stderr, "truncated by the backend row cap", "the shared hint already discloses the cap")
 			}
 		})
 	}

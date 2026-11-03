@@ -1,15 +1,13 @@
 package reviewqueues
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/goccy/go-yaml"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -40,15 +38,15 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Review conversations in a collection with human evaluators.",
 		Long: `Review conversations in a collection with human evaluators.
 
-A review queue is a collection marked for human review. Its rubric is a set of human evaluators (see 'gcx agento11y human-evaluators list'); a conversation counts as reviewed once every rubric question has an answer given in the queue. Create a queue with 'gcx agento11y collections create-review-queue'.
+A review queue is a collection marked for human review. Its rubric is a set of human evaluators (see 'gcx agento11y human-evaluators list'); a conversation counts as reviewed once every rubric question has an answer given in the queue. Create a queue from a manifest with 'gcx agento11y review-queues create -f review-queue.yaml'; record a reviewer's answers with 'gcx agento11y reviews create'.
 
 Review queues are only available for tenants with human review enabled; for other tenants the backend answers 404.`,
 	}
 	cmd.AddCommand(
 		newListCommand(loader),
 		newGetCommand(loader),
+		newCreateCommand(loader),
 		newUpdateCommand(loader),
-		newCreateReviewCommand(loader),
 		newListScoresCommand(loader),
 	)
 	return cmd
@@ -178,6 +176,73 @@ func (o *getOpts) Validate(collectionID string, conversationSet bool) error {
 	return nil
 }
 
+// --- create ---
+
+type createOpts struct {
+	IO   cmdio.Options
+	File string
+}
+
+func (o *createOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the review queue manifest (use - for stdin)")
+}
+
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &createOpts{}
+	cmd := &cobra.Command{
+		Use:   "create -f FILE",
+		Short: "Create a human review queue from a manifest.",
+		Long: `Create a human review queue for an existing collection from a JSON or YAML manifest (or - for stdin).
+
+The manifest has collection_id (the collection to review) and rubric_evaluator_ids (the human evaluators that make up the rubric). The command only creates the queue: it does not submit reviews or run judge inference. The backend rejects rubrics that are not human evaluators, and rejects a collection that is already a review queue. After an uncertain response, read the queue back before retrying.`,
+		Example: `  # Review a collection against one human evaluator.
+  gcx agento11y review-queues create -f review-queue.yaml -o json
+
+  # review-queue.yaml
+  collection_id: my-collection
+  rubric_evaluator_ids:
+    - helpfulness-human`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			var request RubricRequest
+			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &request); err != nil {
+				return err
+			}
+			request.CollectionID = strings.TrimSpace(request.CollectionID)
+			if request.CollectionID == "" {
+				return errors.New("collection_id is required in the manifest")
+			}
+			if len(request.RubricEvaluatorIDs) == 0 {
+				return errors.New("rubric_evaluator_ids needs at least one human evaluator ID")
+			}
+			if slices.ContainsFunc(request.RubricEvaluatorIDs, func(id string) bool { return strings.TrimSpace(id) == "" }) {
+				return errors.New("rubric_evaluator_ids cannot contain a blank ID")
+			}
+
+			client, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+
+			queue, err := client.Create(cmd.Context(), &request)
+			if err != nil {
+				return err
+			}
+
+			cmdio.Success(cmd.ErrOrStderr(), "Review queue created for collection %s", request.CollectionID)
+			return opts.IO.Encode(cmd.OutOrStdout(), queue)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
 // --- update ---
 
 type updateOpts struct {
@@ -198,12 +263,11 @@ func (o *updateOpts) Validate(collectionID string) error {
 	if strings.TrimSpace(collectionID) == "" {
 		return errors.New("collection ID is required")
 	}
-	return ValidateRubrics(o.Rubrics)
+	return validateRubrics(o.Rubrics)
 }
 
-// ValidateRubrics checks the --rubric values shared by the commands that
-// set a queue's rubric.
-func ValidateRubrics(rubrics []string) error {
+// validateRubrics checks the --rubric values of update.
+func validateRubrics(rubrics []string) error {
 	if len(rubrics) == 0 {
 		return errors.New("at least one --rubric is required")
 	}
@@ -244,102 +308,6 @@ The --rubric list replaces the whole rubric, it is not merged with the current o
 
 			cmdio.Success(cmd.ErrOrStderr(), "Review queue %s rubric updated", collectionID)
 			return opts.IO.Encode(cmd.OutOrStdout(), queue)
-		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-// --- create-review ---
-
-type createReviewOpts struct {
-	IO   cmdio.Options
-	File string
-}
-
-func (o *createReviewOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("json")
-	o.IO.BindFlags(flags)
-	flags.StringVarP(&o.File, "filename", "f", "", "File containing the review (use - for stdin)")
-}
-
-func (o *createReviewOpts) Validate(collectionID string) error {
-	if err := o.IO.Validate(); err != nil {
-		return err
-	}
-	if strings.TrimSpace(collectionID) == "" {
-		return errors.New("collection ID is required")
-	}
-	if o.File == "" {
-		return errors.New("--filename is required (use - to read from stdin)")
-	}
-	return nil
-}
-
-// readReviewFile reads a ReviewRequest from a JSON or YAML file. Field-level
-// validation of the answers is left to the backend, which knows the rubric.
-func readReviewFile(path string, stdin io.Reader) (*ReviewRequest, error) {
-	var data []byte
-	var err error
-	if path == "-" {
-		data, err = io.ReadAll(stdin)
-	} else {
-		data, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
-	}
-
-	var request ReviewRequest
-	if err := json.Unmarshal(data, &request); err != nil {
-		var yamlRequest ReviewRequest
-		if yamlErr := yaml.Unmarshal(data, &yamlRequest); yamlErr != nil {
-			return nil, fmt.Errorf("parsing %s: %w", path, yamlErr)
-		}
-		request = yamlRequest
-	}
-	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.GenerationID) == "" || len(request.Answers) == 0 {
-		return nil, fmt.Errorf("parsing %s: conversation_id, generation_id and at least one answer are required", path)
-	}
-	return &request, nil
-}
-
-func newCreateReviewCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &createReviewOpts{}
-	cmd := &cobra.Command{
-		Use:   "create-review <collection-id>",
-		Short: "Record one reviewer's answers for one conversation in a queue.",
-		Long: `Record the calling user's answers to the queue's rubric for one conversation, from a JSON or YAML file (or - for stdin).
-
-The file has conversation_id, generation_id (the generation the answers are anchored to; use the conversation's final generation), an optional note applied to every answer, and answers: a list of {evaluator_id, evaluator_version, value}. value holds exactly one of number, bool or string. evaluator_version must be the question's current version (see 'review-queues get'); an answer to an outdated version is rejected. The backend stores all answers or none.
-
-Submitting records scores attributed to the calling user and is not idempotent: read the conversation back with 'review-queues get --conversation' after an uncertain response instead of retrying. Needs the feedback write permission, not eval write.`,
-		Example: `  # Submit answers from a file.
-  gcx agento11y review-queues create-review my-collection -f review.yaml -o json`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			collectionID := strings.TrimSpace(args[0])
-			if err := opts.Validate(collectionID); err != nil {
-				return err
-			}
-
-			request, err := readReviewFile(opts.File, cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
-
-			client, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
-
-			result, err := client.SubmitReview(cmd.Context(), collectionID, request)
-			if err != nil {
-				return err
-			}
-
-			cmdio.Success(cmd.ErrOrStderr(), "Review of %s submitted to %s", request.ConversationID, collectionID)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -410,7 +378,7 @@ func newListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List every answer given in a review queue.",
 		Long: `List every answer given in a review queue, read from the backend's scores.csv export.
 
-Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend: when it is cut short, list_meta.cap in the payload (and a warning on stderr) says so, and --limit cannot reach past it. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.`,
+Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend and --limit cannot reach past that cap. When the cap is what cuts the export, list_meta.cap in the payload says so; when --limit also trims the page, list_meta omits the cap and a warning on stderr reports it. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.`,
 		Example: `  # Export a queue's answers as JSON.
   gcx agento11y review-queues list-scores my-collection -o json
 
@@ -432,11 +400,14 @@ Cells are the export's text: a text cell that starts with =, +, - or @ carries a
 			if err != nil {
 				return err
 			}
-			if backendTruncated {
-				cmdio.Warning(cmd.ErrOrStderr(), "Export truncated by the backend row cap: %d answers fetched, more exist", len(rows))
-			}
 
 			page, meta := exportPage(rows, opts.Limit, backendTruncated)
+			// The shared hint below discloses the cap when it is the binding
+			// bound; when --limit also trimmed the page, list_meta carries no
+			// cap, so say it here.
+			if backendTruncated && meta.Cap == 0 {
+				cmdio.Warning(cmd.ErrOrStderr(), "Export truncated by the backend row cap: %d answers fetched, more exist", len(rows))
+			}
 			meta = cmdio.AttachListMeta(meta, os.Args)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), scoresEnvelope{Items: page, ListMeta: meta}); err != nil {
 				return err

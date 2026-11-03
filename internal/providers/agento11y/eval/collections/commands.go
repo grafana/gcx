@@ -39,7 +39,6 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newListCommand(loader),
 		newGetCommand(loader),
 		newCreateCommand(loader),
-		newReviewQueueCommand(loader),
 		newUpdateCommand(loader),
 		newDeleteCommand(loader),
 		newListConversationsCommand(loader),
