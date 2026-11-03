@@ -599,6 +599,14 @@ func runActionVerb(cmd *cobra.Command, args []string, opts *alertGroupActionVerb
 		return idAndFilterError()
 	}
 
+	var filters alertGroupListFilters
+	if len(args) == 0 {
+		var err error
+		if filters, err = opts.toListFilters(); err != nil {
+			return fail.NewCommandUsageError(cmd, "", err)
+		}
+	}
+
 	client, _, err := loader.LoadOnCallClient(ctx)
 	if err != nil {
 		return err
@@ -608,7 +616,7 @@ func runActionVerb(cmd *cobra.Command, args []string, opts *alertGroupActionVerb
 	if len(args) == 1 {
 		return runActionVerbSingle(ctx, client, args[0], stdout, stderr, cfg, &opts.IO)
 	}
-	return runActionVerbBulk(ctx, client, opts, stdin, stdout, stderr, cfg, &opts.IO)
+	return runActionVerbBulk(ctx, client, filters, opts.Force, stdin, stdout, stderr, cfg, &opts.IO)
 }
 
 // runActionVerbSingle executes the single-target flow and emits the
@@ -719,15 +727,15 @@ func buildBulkMutationResult(action string, outcomes []ackOutcome) bulkMutationR
 
 // runActionVerbBulk executes the bulk-by-filter flow and emits the
 // bulk-shape envelope on stdout.
-func runActionVerbBulk(ctx context.Context, client OnCallAPI, opts *alertGroupActionVerbOpts, stdin io.Reader, stdout, stderr io.Writer, cfg verbConfig, ioOpts *cmdio.Options) error {
-	targets, err := resolveBulkTargets(ctx, client, opts)
+func runActionVerbBulk(ctx context.Context, client OnCallAPI, filters alertGroupListFilters, force bool, stdin io.Reader, stdout, stderr io.Writer, cfg verbConfig, ioOpts *cmdio.Options) error {
+	targets, err := resolveBulkTargets(ctx, client, filters)
 	if err != nil {
 		return err
 	}
 
 	// Confirm if the matched set exceeds 1. Extracted to a helper to reduce
 	// nesting depth (nestif).
-	if err := confirmBulkAction(len(targets), opts.Force, cfg.Name, stdin, stderr); err != nil {
+	if err := confirmBulkAction(len(targets), force, cfg.Name, stdin, stderr); err != nil {
 		return err
 	}
 
@@ -812,12 +820,7 @@ const alertGroupBulkTargetCap = 1000
 
 // resolveBulkTargets returns the deduplicated, sorted list of targets to
 // operate on (bulk-by-filter path), plus their current state.
-func resolveBulkTargets(ctx context.Context, client OnCallAPI, opts *alertGroupActionVerbOpts) ([]acknowledgeTarget, error) {
-	filters, err := opts.toListFilters()
-	if err != nil {
-		return nil, err
-	}
-
+func resolveBulkTargets(ctx context.Context, client OnCallAPI, filters alertGroupListFilters) ([]acknowledgeTarget, error) {
 	reader, ok := client.(RichAlertGroupReader)
 	if !ok {
 		return nil, errors.New("bulk-by-filter requires the OAuth plugin proxy; SA-token mode does not support rich list operations")

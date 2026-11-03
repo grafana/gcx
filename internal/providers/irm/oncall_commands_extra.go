@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
@@ -371,7 +372,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 		Example: alertGroupListExample,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return fail.NewCommandUsageError(cmd, "", err)
 			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -379,7 +380,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 
 			filters, err := resolveAlertGroupListFilters(cmd, opts)
 			if err != nil {
-				return err
+				return fail.NewCommandUsageError(cmd, "", err)
 			}
 
 			client, namespace, err := loader.LoadOnCallClient(cmd.Context())
