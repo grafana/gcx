@@ -14,7 +14,7 @@ func init() { //nolint:gochecknoinits // Provider self-registration.
 	providers.Register(&SCIMProvider{})
 }
 
-// SCIMProvider manages SCIM provisioning settings.
+// SCIMProvider manages SCIM settings and users.
 type SCIMProvider struct{}
 
 func (*SCIMProvider) Name() string                               { return "scim" }
@@ -27,6 +27,6 @@ func (p *SCIMProvider) Commands() []*cobra.Command {
 	cmd := &cobra.Command{Use: "scim", Short: p.ShortDesc()}
 	loader.BindFlags(cmd.PersistentFlags())
 	binding := native.Bind(loader, native.Config{Group: scimGroup, Resource: "config"})
-	cmd.AddCommand(newConfigCommand(binding), newEndpointCommand(binding))
+	cmd.AddCommand(newConfigCommand(binding), newEndpointCommand(binding), newUsersCommand(binding))
 	return []*cobra.Command{cmd}
 }
