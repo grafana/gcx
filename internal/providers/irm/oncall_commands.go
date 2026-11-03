@@ -181,8 +181,7 @@ func makeListFieldValidator[T adapter.ResourceNamer](idField string) func(fields
 	validate := cmdio.MakeFieldValidator(adapter.TypedObject[T]{})
 	return func(fields []string) error {
 		err := validate(fields)
-		var arrayErr cmdio.ArrayPathSelectionError
-		if errors.As(err, &arrayErr) {
+		if _, ok := errors.AsType[cmdio.ArrayPathSelectionError](err); ok {
 			return err
 		}
 

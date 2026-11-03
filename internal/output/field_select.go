@@ -21,8 +21,8 @@ import (
 //
 // Two paths produce it. The optional validator runs before extraction and is
 // only invoked when wired by the caller (e.g. instrumentation list commands
-// via Options.SetJSONFieldValidator). Extraction itself produces it for any
-// requested path that exists in no emitted object.
+// via Options.SetJSONFieldValidator). Extraction also warns when the declared
+// item type denies a requested path and no emitted object carries it.
 type UnknownFieldSelectionError struct {
 	Fields []string // the offending dotted field paths
 

@@ -65,8 +65,8 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
-		convertAlreadyReported,             // Command already rendered a complete diagnostic report
-		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
+		convertAlreadyReported, // Command already rendered a complete diagnostic report
+		convertJQRuntimeErrors, // --jq runtime failures — includes output shape summary
 		convertSavedMutationErrors,
 		convertPartialFailureErrors,
 		convertUsageErrors,

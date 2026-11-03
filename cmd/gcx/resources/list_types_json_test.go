@@ -114,12 +114,15 @@ func TestListTypes_JSONFieldSelectsPerDescriptor(t *testing.T) {
 	require.NoError(t, err)
 	var full map[string]map[string][]map[string]any
 	require.NoError(t, json.Unmarshal([]byte(fullOutput), &full))
-	fullItems := full["dashboard.grafana.app"]["v1beta1"]
-	fullKinds := make([]string, 0, len(fullItems))
-	for _, item := range fullItems {
-		kind, ok := item["kind"].(string)
-		require.True(t, ok)
-		fullKinds = append(fullKinds, kind)
+	var fullKinds []string
+	for _, versions := range full {
+		for _, items := range versions {
+			for _, item := range items {
+				kind, ok := item["kind"].(string)
+				require.True(t, ok)
+				fullKinds = append(fullKinds, kind)
+			}
+		}
 	}
 	assert.ElementsMatch(t, fullKinds, kinds, "--json and -o json must select the same resources")
 }
