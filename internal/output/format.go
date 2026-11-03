@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/itchyny/gojq"
 	"github.com/spf13/pflag"
@@ -173,7 +174,7 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 func (opts *Options) Validate() error {
 	codec := opts.codecFor(opts.OutputFormat)
 	if codec == nil {
-		return fmt.Errorf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "))
+		return opts.unknownFormatError()
 	}
 
 	if opts.listLimit != nil && *opts.listLimit < 0 {
@@ -280,12 +281,16 @@ func (opts *Options) JQActive() bool {
 func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
 	codec := opts.codecFor(opts.OutputFormat)
 	if codec == nil {
-		return nil, fmt.Errorf(
-			"unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", "),
-		)
+		return nil, opts.unknownFormatError()
 	}
 
 	return codec, nil
+}
+
+func (opts *Options) unknownFormatError() *gcxerrors.UsageError {
+	return &gcxerrors.UsageError{
+		Message: fmt.Sprintf("unknown output format '%s'. Valid formats are: %s", opts.OutputFormat, strings.Join(opts.allowedCodecs(), ", ")),
+	}
 }
 
 // IsJSONFormat reports whether a format carries JSON results and in-band errors.
