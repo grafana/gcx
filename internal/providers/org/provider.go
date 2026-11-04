@@ -35,6 +35,6 @@ func (p *Provider) Commands() []*cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 	users := &cobra.Command{Use: "users", Short: "Manage users in the selected organization."}
 	users.AddCommand(newListCommand(loader), newGetCommand(loader), newDeleteCommand(loader))
-	cmd.AddCommand(users)
+	cmd.AddCommand(users, newServiceAccountsCommand(loader), newRolesCommand(loader))
 	return []*cobra.Command{cmd}
 }

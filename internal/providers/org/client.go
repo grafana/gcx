@@ -1,6 +1,7 @@
 package org
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/retry"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -36,14 +38,29 @@ type User struct {
 
 type client struct{ deps adapter.ClientDeps }
 
-func (c *client) request(ctx context.Context, method, path string, output any) error {
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.deps.BaseURL, "/")+path, nil)
+func (c *client) send(ctx context.Context, method, path string, input, output any) error {
+	switch method {
+	case http.MethodPost, http.MethodPatch, http.MethodDelete:
+		// A lost response can follow a completed write. Do not replay that write.
+		ctx = retry.WithoutRetries(ctx)
+	}
+
+	var body bytes.Buffer
+	if input != nil {
+		if err := json.NewEncoder(&body).Encode(input); err != nil {
+			return err
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.deps.BaseURL, "/")+path, &body)
 	if err != nil {
 		return err
 	}
+	if input != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.deps.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("organization user request: %w", err)
+		return fmt.Errorf("organization request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -52,19 +69,19 @@ func (c *client) request(ctx context.Context, method, path string, output any) e
 	if output == nil {
 		return nil
 	}
-	body, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	data, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return err
 	}
-	if err := json.Unmarshal(body, output); err != nil {
-		return fmt.Errorf("decode organization users: %w", err)
+	if err := json.Unmarshal(data, output); err != nil {
+		return fmt.Errorf("decode organization response: %w", err)
 	}
 	return nil
 }
 
 func (c *client) list(ctx context.Context) ([]User, error) {
 	users := []User{}
-	if err := c.request(ctx, http.MethodGet, "/api/org/users", &users); err != nil {
+	if err := c.send(ctx, http.MethodGet, "/api/org/users", nil, &users); err != nil {
 		return nil, err
 	}
 	if users == nil {
@@ -96,7 +113,7 @@ func resolve(users []User, subject string) (User, error) {
 }
 
 func (c *client) delete(ctx context.Context, user User) error {
-	return c.request(ctx, http.MethodDelete, "/api/org/users/"+strconv.FormatInt(user.UserID, 10), nil)
+	return c.send(ctx, http.MethodDelete, "/api/org/users/"+strconv.FormatInt(user.UserID, 10), nil, nil)
 }
 
 // remove attempts every target with bounded concurrency and keeps input order for failures.

@@ -9,3 +9,4 @@
 - [Linter rules](linter-rules/index.md)
 - [Costs and billing](costs.md)
 - [SCIM provisioning](scim.md)
+- [Organization service accounts and RBAC roles](org-service-accounts.md)
