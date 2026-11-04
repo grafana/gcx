@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Remove the experimental `gcx profiles query-anomalies` and
+  `gcx datasources pyroscope query-anomalies` commands. The stacktrace anomaly
+  detection they queried is being decommissioned in Pyroscope.
 - Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
   evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
   dropped both fields without an error, so a `sequential` rule was created as
