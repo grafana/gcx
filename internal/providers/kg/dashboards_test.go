@@ -27,7 +27,7 @@ func runDashboards(t *testing.T, server *httptest.Server, stdin string, args ...
 	return buf.String(), err
 }
 
-const dashboardsGetBody = `{"entityType":"Service","dashConfigDto":[{"uid":"u1","name":"Kafka","dashboardUri":"/d/u1/kafka","overrideEntityUri":false}]}`
+const dashboardsGetBody = `{"entityType":"Service","dashConfigDto":[{"uid":"u1","dashboardUri":"/d/u1/kafka","overrideEntityUri":false}]}`
 
 func TestDashboardsReads(t *testing.T) {
 	var paths []string
@@ -44,7 +44,7 @@ func TestDashboardsReads(t *testing.T) {
 	out, err := runDashboards(t, server, "", "list")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Service")
-	assert.Contains(t, out, "Kafka")
+	assert.Contains(t, out, "u1")
 
 	out, err = runDashboards(t, server, "", "list", "-o", "json")
 	require.NoError(t, err)
@@ -186,6 +186,14 @@ func TestDashboardsDelete(t *testing.T) {
 		_, err := runDashboards(t, server, "y\n", append(args, writeTempYAML(t, "dashboardUri: /d/u1/u1\n"))...)
 		require.NoError(t, err)
 		assert.Len(t, *got, 1)
+	})
+
+	t.Run("stdin input without -f needs --force", func(t *testing.T) {
+		server, got := recordingServer(t)
+		_, err := runDashboards(t, server, "dashboardUri: /d/u1/u1\n", "delete", "Service")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "--force")
+		assert.Empty(t, *got)
 	})
 
 	t.Run("stdin input needs --force", func(t *testing.T) {

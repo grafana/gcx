@@ -99,3 +99,31 @@ func runGuardedDelete(cmd *cobra.Command, opts *guardedDeleteOpts, loader RESTCo
 	return opts.IO.Encode(cmd.OutOrStdout(),
 		cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, Name: name}))
 }
+
+// batchMutationTextCodec renders a cmdio.BatchMutation as the styled one-line
+// summary in the default text format, e.g. "2 notification config(s) upserted",
+// while -o json/yaml emit the structured mutation document.
+type batchMutationTextCodec struct {
+	noun string // singular noun for the targets, e.g. "dashboard config"
+	verb string // past-tense action, e.g. "upserted"
+}
+
+func (c *batchMutationTextCodec) Format() format.Format { return "text" }
+
+func (c *batchMutationTextCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(cmdio.BatchMutation)
+	if !ok {
+		return errors.New("invalid data type for text codec: expected cmdio.BatchMutation")
+	}
+	if result.Summary.Failed > 0 {
+		cmdio.Warning(w, "%d %s(s) %s, %d failed (%d skipped)",
+			result.Summary.Succeeded, c.noun, c.verb, result.Summary.Failed, result.Summary.Skipped)
+		return nil
+	}
+	cmdio.Success(w, "%d %s(s) %s", result.Summary.Succeeded, c.noun, c.verb)
+	return nil
+}
+
+func (c *batchMutationTextCodec) Decode(_ io.Reader, _ any) error {
+	return errors.New("text format does not support decoding")
+}

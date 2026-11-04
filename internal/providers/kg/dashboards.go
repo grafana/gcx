@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -183,8 +182,8 @@ func newDashboardsCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Manage the dashboard configs that decide which dashboards appear in an entity
 type's KPI drawer in the Knowledge Graph.
 
-Each config links a dashboard (uid or dashboardUri) to an entity type, optionally
-restricted by property matchers and with dashboard variables mapped to entity
+Each config links a dashboard to an entity type, identified by its dashboardUri
+(for example /d/<uid>/<slug>); uid is optional. A config can be restricted by property matchers and with dashboard variables mapped to entity
 properties (dashParams).`,
 	}
 
@@ -289,7 +288,7 @@ dashParams:
 	}
 	upsertOpts.setup(upsertCmd.Flags(), "upserted")
 
-	deleteOpts := &dashboardsWriteOpts{destructive: true}
+	deleteOpts := &dashboardsDeleteOpts{}
 	deleteCmd := &cobra.Command{
 		Use:   "delete <entity-type>",
 		Short: "Unlink one or more dashboards from an entity type.",
@@ -362,7 +361,6 @@ func (o *dashboardsListOpts) setup(flags *pflag.FlagSet) {
 func DashboardTable() cmdio.Table[dashboardRow] {
 	return cmdio.Table[dashboardRow]{Columns: []cmdio.Column[dashboardRow]{
 		{Header: "ENTITY TYPE", Content: func(r dashboardRow) string { return r.EntityType }},
-		{Header: "NAME", Content: func(r dashboardRow) string { return r.Name }},
 		{Header: "UID", Content: func(r dashboardRow) string { return r.UID }},
 		{Header: "URI", Content: func(r dashboardRow) string { return r.DashboardURI }},
 		{Header: "MATCHERS", Content: func(r dashboardRow) string { return strconv.Itoa(len(r.PropertyMatchers)) }},
@@ -389,13 +387,16 @@ func (o *dashboardsGetOpts) setup(flags *pflag.FlagSet) {
 // dashboardsWriteOpts is shared by upsert and delete: an entity type, an input
 // file and the batch mutation output.
 type dashboardsWriteOpts struct {
-	Type  string // positional: the entity type, e.g. Service
-	File  string
-	Force bool
-	IO    cmdio.Options
+	Type string // positional: the entity type, e.g. Service
+	File string
+	IO   cmdio.Options
+}
 
-	// destructive marks delete, which prompts and so cannot read its input from stdin.
-	destructive bool
+// dashboardsDeleteOpts adds the confirmation bypass that only delete has.
+type dashboardsDeleteOpts struct {
+	dashboardsWriteOpts
+
+	Force bool
 }
 
 // validateDashboardEntityType rejects an empty entity type, which would turn the
@@ -407,24 +408,29 @@ func validateDashboardEntityType(entityType string) error {
 	return nil
 }
 
-// Validate checks the entity type, the output options and, for delete, that the
-// confirmation prompt has a terminal to read from.
+// Validate checks the entity type and the output options.
 func (o *dashboardsWriteOpts) Validate() error {
 	if err := validateDashboardEntityType(o.Type); err != nil {
 		return err
 	}
-	if err := o.IO.Validate(); err != nil {
+	return o.IO.Validate()
+}
+
+// Validate adds the check that the confirmation prompt has a terminal to read
+// from: input read from stdin (-f - or no -f) drains it.
+func (o *dashboardsDeleteOpts) Validate() error {
+	if err := o.dashboardsWriteOpts.Validate(); err != nil {
 		return err
 	}
-	if o.destructive && o.File == "-" && !o.Force {
-		return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force, or use a file path")
+	if (o.File == "-" || o.File == "") && !o.Force {
+		return errors.New("reading the configs from stdin leaves nothing for the confirmation prompt: pass --force, or use -f <file>")
 	}
 	return nil
 }
 
 func (o *dashboardsWriteOpts) setup(flags *pflag.FlagSet, verb string) {
 	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
-	o.IO.RegisterCustomCodec("text", &dashboardsMutationTextCodec{verb: verb})
+	o.IO.RegisterCustomCodec("text", &batchMutationTextCodec{noun: "dashboard config", verb: verb})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }
@@ -486,7 +492,8 @@ func parseDashboardConfigs(data []byte, entityType string) ([]DashboardConfig, e
 	switch root.Kind {
 	case yaml.SequenceNode:
 		var configs []DashboardConfig
-		return configs, decodeStrict(&configs)
+		err := decodeStrict(&configs)
+		return configs, err
 	case yaml.MappingNode:
 		for i := 0; i < len(root.Content); i += 2 {
 			if root.Content[i].Value != "dashConfigDto" {
@@ -539,28 +546,4 @@ func runDashboardBatch(cmd *cobra.Command, io *cmdio.Options, action string, con
 	}
 	result.Summary = cmdio.MutationSummary{Succeeded: total}
 	return io.Encode(cmd.OutOrStdout(), result)
-}
-
-// dashboardsMutationTextCodec renders the BatchMutation of upsert and delete as a
-// one-line summary in the default text format.
-type dashboardsMutationTextCodec struct{ verb string }
-
-func (c *dashboardsMutationTextCodec) Format() format.Format { return "text" }
-
-func (c *dashboardsMutationTextCodec) Encode(w io.Writer, v any) error {
-	result, ok := v.(cmdio.BatchMutation)
-	if !ok {
-		return errors.New("invalid data type for text codec: expected cmdio.BatchMutation")
-	}
-	if result.Summary.Failed > 0 {
-		cmdio.Warning(w, "%d dashboard config(s) %s, %d failed (%d skipped)",
-			result.Summary.Succeeded, c.verb, result.Summary.Failed, result.Summary.Skipped)
-		return nil
-	}
-	cmdio.Success(w, "%d dashboard config(s) %s", result.Summary.Succeeded, c.verb)
-	return nil
-}
-
-func (c *dashboardsMutationTextCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("text format does not support decoding")
 }
