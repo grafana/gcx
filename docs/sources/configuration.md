@@ -42,7 +42,7 @@ exact owner kind and name, exact secret field, and normalized destination.
 Copying a config file doesn't port its stored credentials, you need to authenticate the copied
 file separately. Refer to [Keychain credential storage](../keychain) for storage rules and keychain error procedures.
 
-A file's credentials are usable while their bound destination is unchanged. Edits to a named stack or Cloud entry affect every context that references it. If you change a credential destination, for example a Grafana
+You can use credentials owned by a file while their bound destination is unchanged. Edits to a named stack or Cloud entry affect every context that references it. If you change a credential destination, for example a Grafana
 server, Synthetic Monitoring URL, or Cloud API/OAuth endpoint, `gcx` clears the
 old credential in the same write. Supply a fresh credential before using the
 new destination. Normalization-equivalent endpoint edits preserve it.

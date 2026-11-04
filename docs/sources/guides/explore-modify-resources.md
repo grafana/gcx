@@ -105,8 +105,6 @@ You can edit resources directly from the default editor, without having to pull 
 gcx resources edit dashboard/edit-me-please
 ```
 
-This command: 
+This command opens the default editor set in the `EDITOR` environment variable, or falls back to 'vi' for Linux and 'notepad' for Windows.
 
-1. Opens the default editor set in the `EDITOR` environment variable, or falls back to 'vi' for Linux and 'notepad' for Windows.
-1. After the editor process terminates, the resource is updated in the Grafana instance targeted by the current context. 
-1. Edition is cancelled if no changes are written to the file, or if the file after edition is empty.
+After the editor process terminates, the resource is updated in the Grafana instance targeted by the current context. Edition is cancelled if no changes are written to the file, or if the file after edition is empty.

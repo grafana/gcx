@@ -134,13 +134,12 @@ To get the failure details in the output itself, run the command in agent mode o
 | `exitCode` | The exit code the command returns. |
 | `details`, `suggestions`, `docsLink` | Optional. Present when `gcx` has more to say. |
 
-Other output options don't include the `error` object, so the error text goes to `stderr` instead:
+These options remove the error object from the filtered output, so `gcx` also writes the error text to `stderr`:
 
 - `-o yaml`, and `-o json` outside agent mode.
 - `--jq`.
 - `--json <fields>` when the field list doesn't include `error`.
-
-If you use `--json <fields>` and want the error in the output, include `error` in the list.
+- `--json list`
 
 #### Exit codes
 
@@ -276,4 +275,4 @@ Run `gcx datasources health <uid>` to see the data source health.
 - The health check uses a different API path and doesn't establish that ruler access works. 
 - To find the UID, use `gcx datasources list -o json`.
 
-Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
+Inspect the data source with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
