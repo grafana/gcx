@@ -1890,8 +1890,8 @@ func joinStringSlice(v any) string {
 func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
-		Short: "Manage Knowledge Graph entities.",
-		Long: `Manage Knowledge Graph entities.
+		Short: "List and look up Knowledge Graph entities with their type, scope and properties; also upsert and delete custom ones.",
+		Long: `List, look up and manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
 properties — the labels used to build PromQL/Loki queries); it is cheap and is
@@ -3324,7 +3324,7 @@ func (c *DescribeTextCodec) Decode(_ io.Reader, _ any) error {
 func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "meta",
-		Short: "Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.",
+		Short: "Show what the Knowledge Graph contains: entity and relationship types, valid env/namespace/site values, and telemetry query configs.",
 	}
 	cmd.AddCommand(
 		newDescribeSchemaCmd(loader),
@@ -3342,7 +3342,7 @@ func newDescribeSchemaCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "schema",
-		Short: "Show entity types, properties, and relationships.",
+		Short: "Show entity types, their properties and the relationships between them (last hour by default; --from/--to for older data).",
 		Long: `Show the entity types with their properties, and the relationships between
 them as 'A --TYPE--> B', for the requested window (the last hour by default;
 pass --from/--to for older data, the same window as your queries).
@@ -3394,7 +3394,7 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "scopes",
-		Short: "Show all valid env/namespace/site filter values.",
+		Short: "List the environments, namespaces and sites the stack has (last hour by default; --from/--to for older data).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
