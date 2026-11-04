@@ -58,3 +58,26 @@ func TestDetectedLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalLevel(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"error", "error"},
+		{"  ERROR\t", "error"},
+		{"err", "error"},
+		{"Warning", "warn"},
+		{"wrn", "warn"},
+		{"warn", "warn"},
+		{"information", "info"},
+		{"inf", "info"},
+		{"dbg", "debug"},
+		{"trc", "trace"},
+		{"critical", "critical"},
+		{"fatal", "fatal"}, // not collapsed into error
+		{"crit", "crit"},   // Loki does not alias it, so neither do we
+		{"Notice", "notice"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, loki.CanonicalLevel(tt.in), "CanonicalLevel(%q)", tt.in)
+	}
+}
