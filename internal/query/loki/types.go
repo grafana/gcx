@@ -1,6 +1,9 @@
 package loki
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/query/dataframe"
@@ -95,6 +98,65 @@ type SeriesResponse struct {
 type PatternsResponse struct {
 	Status string    `json:"status"`
 	Data   []Pattern `json:"data"`
+
+	// Filter records a client-side level filter applied to Data. gcx-only: it
+	// is not in Loki's response and is kept out of JSON/YAML output.
+	Filter *PatternsFilter `json:"-"`
+}
+
+// PatternsFilter describes what a client-side level filter did to a
+// PatternsResponse, so empty results can say the filter, not Loki, emptied them.
+type PatternsFilter struct {
+	Levels    []string // requested levels, in CanonicalLevel spelling
+	Dropped   int      // patterns Loki returned that the filter removed
+	Available []string // distinct levels among the dropped patterns, sorted; empty when Loki reported none
+}
+
+// EmptyMessage explains an empty result that the level filter caused, or ""
+// when the filter did not empty the response.
+func (f *PatternsFilter) EmptyMessage() string {
+	if f == nil || f.Dropped == 0 {
+		return ""
+	}
+	flag := "--level " + strings.Join(f.Levels, ",")
+	if len(f.Available) == 0 {
+		return fmt.Sprintf("No patterns match %s: Loki returned %d, but reported no level for any of them (this Loki version may not report levels)", flag, f.Dropped)
+	}
+	return fmt.Sprintf("No patterns match %s: Loki returned %d, with levels %s", flag, f.Dropped, strings.Join(f.Available, ", "))
+}
+
+// FilterByLevel keeps only patterns whose level, spelled with CanonicalLevel,
+// is one of levels (already in CanonicalLevel spelling). Patterns without a
+// level never match. A no-op when levels is empty.
+func (r *PatternsResponse) FilterByLevel(levels []string) {
+	if len(levels) == 0 {
+		return
+	}
+	want := make(map[string]bool, len(levels))
+	for _, l := range levels {
+		want[l] = true
+	}
+
+	kept := make([]Pattern, 0, len(r.Data))
+	seen := map[string]bool{}
+	for _, p := range r.Data {
+		lvl := CanonicalLevel(p.Level)
+		if want[lvl] {
+			kept = append(kept, p)
+			continue
+		}
+		if lvl != "" {
+			seen[lvl] = true
+		}
+	}
+
+	f := &PatternsFilter{Levels: levels, Dropped: len(r.Data) - len(kept)}
+	for lvl := range seen {
+		f.Available = append(f.Available, lvl)
+	}
+	sort.Strings(f.Available)
+	r.Data = kept
+	r.Filter = f
 }
 
 // Pattern is one detected log pattern (with "<_>" placeholders for the
