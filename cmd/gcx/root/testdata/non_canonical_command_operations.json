@@ -105,6 +105,7 @@
   "gcx metrics search label-names",
   "gcx metrics search label-values",
   "gcx metrics search metric-names",
+  "gcx org service-accounts add-role",
   "gcx org users remove",
   "gcx profiles adaptive",
   "gcx profiles data-range",
