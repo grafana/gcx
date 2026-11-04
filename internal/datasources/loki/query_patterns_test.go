@@ -2,6 +2,7 @@ package loki_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -258,4 +259,51 @@ func TestQueryPatternsCmd_AcceptsDocumentedStepForms(t *testing.T) {
 func TestQueryPatternsCmd_AcceptsSelectorWithWhitespaceAndMultipleMatchers(t *testing.T) {
 	_, _, err := execQueryPatternsCmd(t, []string{`  { job="varlogs", namespace=~"a|b" }  `, "--since", "1h"})
 	require.NoError(t, err)
+}
+
+func TestQueryPatternsCmd_LevelFilter(t *testing.T) {
+	tests := map[string]struct {
+		args []string
+		want []string
+	}{
+		"single level":           {[]string{"--level", "error"}, []string{"<_> level=error <_>"}},
+		"case insensitive":       {[]string{"--level", "ERROR"}, []string{"<_> level=error <_>"}},
+		"comma separated":        {[]string{"--level", "error,info"}, []string{"zebra <_>", "<_> level=error <_>"}},
+		"repeated flag":          {[]string{"--level", "error", "--level", "info"}, []string{"zebra <_>", "<_> level=error <_>"}},
+		"level without patterns": {[]string{"--level", "debug"}, nil},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			args := append([]string{`{job="varlogs"}`, "--since", "1h", "-o", "json"}, tt.args...)
+			_, stdout, err := execQueryPatternsCmd(t, args)
+			require.NoError(t, err)
+
+			var resp struct {
+				Data []struct {
+					Pattern string `json:"pattern"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(stdout), &resp))
+			require.NotNil(t, resp.Data, "data must be an empty array, not null")
+			got := make([]string, 0, len(resp.Data))
+			for _, p := range resp.Data {
+				got = append(got, p.Pattern)
+			}
+			assert.ElementsMatch(t, tt.want, got)
+		})
+	}
+}
+
+func TestQueryPatternsCmd_LevelWarningAliasesWarn(t *testing.T) {
+	levels, err := dsloki.NormalizePatternsLevels([]string{" Warning ", "warn", "ERROR"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"warn", "error"}, levels)
+}
+
+func TestQueryPatternsCmd_RejectsEmptyLevelBeforeAnyIO(t *testing.T) {
+	requests, err := requestsMadeBy(t, []string{`{job="x"}`, "--level", "error,"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid --level")
+	assert.Zero(t, requests)
 }

@@ -14,3 +14,7 @@ func EncodeLabelFilter(key, operator, value string) (string, bool) {
 func LineFilterKeyAndValue(index int, operator, value string) (string, string) {
 	return lineFilterKeyAndValue(index, operator, value)
 }
+
+func NormalizePatternsLevels(levels []string) ([]string, error) {
+	return normalizePatternsLevels(levels)
+}

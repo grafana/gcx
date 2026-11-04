@@ -54,10 +54,53 @@ func validatePatternsStep(step string) error {
 	return fmt.Errorf("invalid --step %q: must be a positive duration (e.g. 30s) or a positive number of seconds (e.g. 1.5)", step)
 }
 
+// normalizePatternsLevels lowercases, trims and de-duplicates --level values,
+// folding "warning" into "warn" (Loki's detected_level spelling). Empty values
+// are rejected so a stray comma cannot silently match nothing.
+func normalizePatternsLevels(levels []string) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	for _, l := range levels {
+		l = strings.ToLower(strings.TrimSpace(l))
+		if l == "" {
+			return nil, errors.New("invalid --level: values must not be empty (e.g. --level error,warn)")
+		}
+		if l == "warning" {
+			l = "warn"
+		}
+		if !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
+// filterPatternsByLevel keeps only patterns whose Loki-reported level is in
+// levels. Patterns without a level never match. The filter is client-side
+// because the patterns endpoint accepts only a bare stream selector.
+func filterPatternsByLevel(resp *loki.PatternsResponse, levels []string) {
+	if len(levels) == 0 {
+		return
+	}
+	want := make(map[string]bool, len(levels))
+	for _, l := range levels {
+		want[l] = true
+	}
+	kept := make([]loki.Pattern, 0, len(resp.Data))
+	for _, p := range resp.Data {
+		if want[strings.ToLower(p.Level)] {
+			kept = append(kept, p)
+		}
+	}
+	resp.Data = kept
+}
+
 // QueryPatternsCmd returns the `query-patterns` subcommand for a Loki datasource parent.
 func QueryPatternsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var datasource string
+	var levels []string
 
 	cmd := &cobra.Command{
 		Use:   "query-patterns [EXPR]",
@@ -82,6 +125,11 @@ JSON and YAML add totalCount, the sum of each pattern's sample counts.
 Table and wide output show this total in SAMPLES.
 The total describes the returned samples, not all logs in the window.
 
+--level keeps only patterns whose level matches (case-insensitive, repeatable
+or comma-separated, e.g. --level error,warn). It filters the returned patterns
+client-side using the level Loki reports for each pattern, so patterns for which
+Loki reports no level are dropped when --level is set.
+
 Default time range is the last hour when no time flags are given. --step is
 optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 (e.g., 1.5); when omitted, Loki chooses the bucket size.`,
@@ -91,6 +139,9 @@ optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 
   # Detect patterns over a specific window
   gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 3h
+
+  # Only error and warning patterns
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' --level error,warn
 
   # Output as JSON
   gcx datasources loki query-patterns -d UID '{job="varlogs"}' -o json`,
@@ -111,6 +162,10 @@ optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 				return err
 			}
 			if err := validatePatternsStep(shared.Step); err != nil {
+				return err
+			}
+			wantLevels, err := normalizePatternsLevels(levels)
+			if err != nil {
 				return err
 			}
 
@@ -152,6 +207,8 @@ optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 				return fmt.Errorf("failed to get patterns: %w", err)
 			}
 
+			filterPatternsByLevel(resp, wantLevels)
+
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
@@ -163,6 +220,7 @@ optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 
 	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
+	cmd.Flags().StringSliceVar(&levels, "level", nil, "Only show patterns with these levels, e.g. error,warn (case-insensitive; repeatable or comma-separated)")
 
 	return cmd
 }
