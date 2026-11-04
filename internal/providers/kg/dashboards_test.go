@@ -51,12 +51,14 @@ func TestDashboardsReads(t *testing.T) {
 	assert.Contains(t, out, `"entityType": "Service"`)
 	assert.Contains(t, out, `"uid": "u1"`)
 
-	out, err = runDashboards(t, server, "", "get", "--type", "Service")
+	out, err = runDashboards(t, server, "", "get", "Service")
 	require.NoError(t, err)
 	assert.Contains(t, out, "dashConfigDto:")
 	assert.True(t, strings.HasSuffix(paths[len(paths)-1], "/v1/config/dashboard/Service"), paths)
 
 	_, err = runDashboards(t, server, "", "get")
+	require.Error(t, err)
+	_, err = runDashboards(t, server, "", "get", " ")
 	require.Error(t, err)
 }
 
@@ -73,7 +75,7 @@ dashParams: {cluster: cluster_name}
 `
 	t.Run("normalizes ops and posts one request per config", func(t *testing.T) {
 		server, got := recordingServer(t)
-		out, err := runDashboards(t, server, "", "upsert", "--type", "Service", "-f", writeTempYAML(t, file))
+		out, err := runDashboards(t, server, "", "upsert", "Service", "-f", writeTempYAML(t, file))
 		require.NoError(t, err)
 		assert.Contains(t, out, "1 dashboard config(s) upserted")
 
@@ -90,9 +92,9 @@ dashParams: {cluster: cluster_name}
 
 	t.Run("accepts the get wrapper and a list", func(t *testing.T) {
 		server, got := recordingServer(t)
-		_, err := runDashboards(t, server, dashboardsGetBody, "upsert", "--type", "Service", "-f", "-")
+		_, err := runDashboards(t, server, dashboardsGetBody, "upsert", "Service", "-f", "-")
 		require.NoError(t, err)
-		_, err = runDashboards(t, server, "- dashboardUri: /d/a/a\n- dashboardUri: /d/b/b\n", "upsert", "--type", "Service", "-f", "-")
+		_, err = runDashboards(t, server, "- dashboardUri: /d/a/a\n- dashboardUri: /d/b/b\n", "upsert", "Service", "-f", "-")
 		require.NoError(t, err)
 		assert.Len(t, *got, 3)
 	})
@@ -108,7 +110,7 @@ dashParams: {cluster: cluster_name}
 	} {
 		t.Run("rejects "+name, func(t *testing.T) {
 			server, got := recordingServer(t)
-			_, err := runDashboards(t, server, tc.input, "upsert", "--type", "Service", "-f", "-")
+			_, err := runDashboards(t, server, tc.input, "upsert", "Service", "-f", "-")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
 			assert.Empty(t, *got)
@@ -117,12 +119,12 @@ dashParams: {cluster: cluster_name}
 
 	t.Run("IS NULL needs no value", func(t *testing.T) {
 		server, got := recordingServer(t)
-		_, err := runDashboards(t, server, "dashboardUri: /d/u/u\npropertyMatchers: [{name: a, op: IS NULL}]\n", "upsert", "--type", "Service", "-f", "-")
+		_, err := runDashboards(t, server, "dashboardUri: /d/u/u\npropertyMatchers: [{name: a, op: IS NULL}]\n", "upsert", "Service", "-f", "-")
 		require.NoError(t, err)
 		assert.Len(t, *got, 1)
 	})
 
-	t.Run("requires --type", func(t *testing.T) {
+	t.Run("requires the entity type", func(t *testing.T) {
 		server, got := recordingServer(t)
 		_, err := runDashboards(t, server, "dashboardUri: /d/u/u\n", "upsert")
 		require.Error(t, err)
@@ -138,7 +140,7 @@ dashParams: {cluster: cluster_name}
 			}
 		}))
 		t.Cleanup(server.Close)
-		_, err := runDashboards(t, server, "- dashboardUri: /d/a/a\n- dashboardUri: /d/b/b\n- dashboardUri: /d/c/c\n", "upsert", "--type", "Service", "-f", "-")
+		_, err := runDashboards(t, server, "- dashboardUri: /d/a/a\n- dashboardUri: /d/b/b\n- dashboardUri: /d/c/c\n", "upsert", "Service", "-f", "-")
 		require.Error(t, err)
 		assert.Equal(t, 2, calls)
 	})
@@ -151,13 +153,13 @@ func TestDashboardsUpsertSurfacesFieldErrors(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	_, err := runDashboards(t, server, "dashboardUri: /d/u/u\nquery: \"up{\"\n", "upsert", "--type", "Service", "-f", "-")
+	_, err := runDashboards(t, server, "dashboardUri: /d/u/u\nquery: \"up{\"\n", "upsert", "Service", "-f", "-")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "query: parse error: unexpected end of input")
 }
 
 func TestDashboardsDelete(t *testing.T) {
-	args := []string{"delete", "--type", "Service", "-f"}
+	args := []string{"delete", "Service", "-f"}
 
 	t.Run("posts the whole config to the delete endpoint with --force", func(t *testing.T) {
 		server, got := recordingServer(t)
