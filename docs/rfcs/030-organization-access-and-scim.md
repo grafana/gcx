@@ -34,9 +34,9 @@ same work. It must have one implementation, not two command trees.
 
 ## User experience
 
-The examples use [the command naming rules](../design/command-naming.md)
-where those rules specify the operation. Token child operations and the new
-domain verbs still need the review noted below.
+The examples use [the command naming rules](../design/command-naming.md).
+The requester approved the token creation exception and the two organization
+domain verbs recorded below.
 
 ```text
 gcx org users list
@@ -169,7 +169,7 @@ The design uses `providers.ConfirmDestructive` for removals, the native binding
 for `SCIMConfig`, and the established `--token-file` rules for secret input.
 Exclusive file creation gives token output a no-replace rule without a rename.
 
-## Approved naming exception
+## Approved naming decisions
 
 On 2026-11-03, the requester approved
 `gcx org service-accounts create-token <service-account-id> <name>` as an
@@ -177,11 +177,19 @@ explicit constitutional waiver for the parent-required token create shape.
 The service account ID selects the parent. The token name identifies the new
 token. This approval applies to this command shape in this RFC.
 
+On 2026-11-04, the requester explicitly approved these domain verbs:
+
+- `gcx org users remove` removes one or more memberships from the selected
+  organization. It leaves the Grafana account and other memberships intact.
+- `gcx org service-accounts add-role <service-account-id> <role-uid>` adds one
+  direct role assignment to the selected service account. It does not replace
+  other assignments.
+
+These decisions approve the command names and these operation boundaries.
+They do not approve other access changes.
+
 ## Unresolved questions
 
-- Approve `org users remove` as a domain verb. It removes one or more
-  memberships from the selected organization. It does not delete a Grafana
-  account. The name follows the subject of the actual change.
 - Confirm the SCIM base URL rule against public Grafana documentation. The
   client used the selected stack's endpoint in the live test and did not follow
   redirects in transport tests.
