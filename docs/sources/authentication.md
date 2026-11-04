@@ -29,7 +29,7 @@ gcx signup
 
 `gcx` opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection. 
 
-If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. See [First-time Grafana Cloud login](../reference/login#first-time-grafana-cloud-login).
+If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. Refer to [First-time Grafana Cloud login](../../reference/login.md#first-time-grafana-cloud-login) for more details.
 
 ## Browser-based OAuth (Cloud-only, recommended)
 
