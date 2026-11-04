@@ -263,7 +263,7 @@ Refer to [Credentials in auto-discovered repositories](../configuration#credenti
 
 Run `gcx config check` to check your configuration.
 
-Refer to the [login reference](../../reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
+Refer to the [login reference](https://github.com/grafana/gcx/blob/main/docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
 
 ## Troubleshooting
 
