@@ -9,8 +9,8 @@ import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers/irm/portable"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/gcx/internal/resources/remote"
@@ -197,7 +197,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				// This includes fields like `resourceVersion`, `uid`, etc.
 				Processors: []remote.Processor{
 					&process.ServerFieldsStripper{},
-					portable.IncidentDescriptionStripper{},
+					adapter.PullFieldsStripper{},
 				},
 				ExcludeManaged: !opts.IncludeManaged,
 				StopOnError:    opts.OnError.StopOnError(),

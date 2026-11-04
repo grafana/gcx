@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/irm"
-	"github.com/grafana/gcx/internal/providers/irm/portable"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func TestIncidentDescriptionPullStripper(t *testing.T) {
 				"metadata":   map[string]any{"name": "item"},
 				"spec":       map[string]any{"description": "Visible details", "title": "Title"},
 			}, resources.SourceInfo{})
-			require.NoError(t, (portable.IncidentDescriptionStripper{}).Process(res))
+			require.NoError(t, (adapter.PullFieldsStripper{}).Process(res))
 			spec, ok := res.Object.Object["spec"].(map[string]any)
 			require.True(t, ok)
 			assert.Equal(t, tc.wantField, spec["description"] != nil)
