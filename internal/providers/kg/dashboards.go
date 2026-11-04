@@ -194,7 +194,7 @@ properties (dashParams).`,
 		Short: "List dashboard configs for every entity type.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := listOpts.IO.Validate(); err != nil {
+			if err := listOpts.Validate(); err != nil {
 				return err
 			}
 			client, err := newKGClient(cmd.Context(), loader)
@@ -218,14 +218,15 @@ properties (dashParams).`,
 
 	getOpts := &dashboardsGetOpts{}
 	getCmd := &cobra.Command{
-		Use:   "get --type <EntityType>",
+		Use:   "get <entity-type>",
 		Short: "Get the dashboard configs of one entity type.",
 		Long: `Prints the dashboard configs of one entity type. The YAML output can be edited
 and passed back to "dashboards upsert" or "dashboards delete".`,
-		Example: `  gcx kg dashboards get --type Service`,
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := getOpts.IO.Validate(); err != nil {
+		Example: `  gcx kg dashboards get Service`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			getOpts.Type = args[0]
+			if err := getOpts.Validate(); err != nil {
 				return err
 			}
 			client, err := newKGClient(cmd.Context(), loader)
@@ -240,11 +241,10 @@ and passed back to "dashboards upsert" or "dashboards delete".`,
 		},
 	}
 	getOpts.setup(getCmd.Flags())
-	_ = getCmd.MarkFlagRequired("type")
 
 	upsertOpts := &dashboardsWriteOpts{}
 	upsertCmd := &cobra.Command{
-		Use:   "upsert --type <EntityType>",
+		Use:   "upsert <entity-type>",
 		Short: "Link one or more dashboards to an entity type.",
 		Long: `Creates or updates dashboard configs for an entity type from a YAML file or stdin.
 Configs on the entity type that are absent from the file are never removed.
@@ -266,9 +266,13 @@ propertyMatchers:
     op: EQUALS
     value: kafka
 dashParams:
-  cluster: cluster_name' | gcx kg dashboards upsert --type Service`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+  cluster: cluster_name' | gcx kg dashboards upsert Service`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			upsertOpts.Type = args[0]
+			if err := upsertOpts.Validate(); err != nil {
+				return err
+			}
 			configs, err := upsertOpts.load(cmd)
 			if err != nil {
 				return err
@@ -284,23 +288,23 @@ dashParams:
 		},
 	}
 	upsertOpts.setup(upsertCmd.Flags(), "upserted")
-	_ = upsertCmd.MarkFlagRequired("type")
 
-	deleteOpts := &dashboardsWriteOpts{}
+	deleteOpts := &dashboardsWriteOpts{destructive: true}
 	deleteCmd := &cobra.Command{
-		Use:   "delete --type <EntityType>",
+		Use:   "delete <entity-type>",
 		Short: "Unlink one or more dashboards from an entity type.",
 		Long: `Unlinks the dashboard configs in the file from an entity type. The backend matches
 on dashboardUri alone, so only that field has to be right; pass the configs as
 "dashboards get" prints them. A dashboardUri that is not linked is not an error
 and removes nothing. Accepts the same input shapes as "dashboards upsert".`,
-		Example: `  gcx kg dashboards get --type Service -o yaml > dashboards.yaml
+		Example: `  gcx kg dashboards get Service -o yaml > dashboards.yaml
   # keep only the configs to remove
-  gcx kg dashboards delete --type Service -f dashboards.yaml`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if deleteOpts.File == "-" && !deleteOpts.Force {
-				return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force, or use a file path")
+  gcx kg dashboards delete Service -f dashboards.yaml`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			deleteOpts.Type = args[0]
+			if err := deleteOpts.Validate(); err != nil {
+				return err
 			}
 			configs, err := deleteOpts.load(cmd)
 			if err != nil {
@@ -331,7 +335,6 @@ and removes nothing. Accepts the same input shapes as "dashboards upsert".`,
 	}
 	deleteOpts.setup(deleteCmd.Flags(), "deleted")
 	deleteCmd.Flags().BoolVar(&deleteOpts.Force, "force", false, "Skip confirmation prompt")
-	_ = deleteCmd.MarkFlagRequired("type")
 
 	cmd.AddCommand(listCmd, getCmd, upsertCmd, deleteCmd)
 	return cmd
@@ -346,6 +349,8 @@ func newKGClient(ctx context.Context, loader RESTConfigLoader) (*Client, error) 
 }
 
 type dashboardsListOpts struct{ IO cmdio.Options }
+
+func (o *dashboardsListOpts) Validate() error { return o.IO.Validate() }
 
 func (o *dashboardsListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, DashboardTable())
@@ -365,12 +370,18 @@ func DashboardTable() cmdio.Table[dashboardRow] {
 }
 
 type dashboardsGetOpts struct {
-	Type string
+	Type string // positional: the entity type, e.g. Service
 	IO   cmdio.Options
 }
 
+func (o *dashboardsGetOpts) Validate() error {
+	if err := validateDashboardEntityType(o.Type); err != nil {
+		return err
+	}
+	return o.IO.Validate()
+}
+
 func (o *dashboardsGetOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Type, "type", "", "Entity type, e.g. Service (required)")
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }
@@ -378,28 +389,48 @@ func (o *dashboardsGetOpts) setup(flags *pflag.FlagSet) {
 // dashboardsWriteOpts is shared by upsert and delete: an entity type, an input
 // file and the batch mutation output.
 type dashboardsWriteOpts struct {
-	Type  string
+	Type  string // positional: the entity type, e.g. Service
 	File  string
 	Force bool
 	IO    cmdio.Options
+
+	// destructive marks delete, which prompts and so cannot read its input from stdin.
+	destructive bool
+}
+
+// validateDashboardEntityType rejects an empty entity type, which would turn the
+// per-type path into the collection path.
+func validateDashboardEntityType(entityType string) error {
+	if strings.TrimSpace(entityType) == "" {
+		return errors.New("entity type must not be empty")
+	}
+	return nil
+}
+
+// Validate checks the entity type, the output options and, for delete, that the
+// confirmation prompt has a terminal to read from.
+func (o *dashboardsWriteOpts) Validate() error {
+	if err := validateDashboardEntityType(o.Type); err != nil {
+		return err
+	}
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if o.destructive && o.File == "-" && !o.Force {
+		return errors.New("-f - reads the whole of stdin, leaving nothing for the confirmation prompt: pass --force, or use a file path")
+	}
+	return nil
 }
 
 func (o *dashboardsWriteOpts) setup(flags *pflag.FlagSet, verb string) {
-	flags.StringVar(&o.Type, "type", "", "Entity type, e.g. Service (required)")
 	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
 	o.IO.RegisterCustomCodec("text", &dashboardsMutationTextCodec{verb: verb})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }
 
-// load validates the options and returns the normalized configs from the input.
+// load reads the input and returns its normalized configs. Call Validate first.
 func (o *dashboardsWriteOpts) load(cmd *cobra.Command) ([]DashboardConfig, error) {
-	if err := o.IO.Validate(); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(o.Type) == "" {
-		return nil, errors.New("--type is required")
-	}
 	data, err := readFileOrStdin(cmd, o.File)
 	if err != nil {
 		return nil, err
@@ -466,7 +497,7 @@ func parseDashboardConfigs(data []byte, entityType string) ([]DashboardConfig, e
 				return nil, err
 			}
 			if wrapped.EntityType != "" && wrapped.EntityType != entityType {
-				return nil, fmt.Errorf("file is for entity type %q but --type is %q", wrapped.EntityType, entityType)
+				return nil, fmt.Errorf("file is for entity type %q but the requested entity type is %q", wrapped.EntityType, entityType)
 			}
 			return wrapped.Configs, nil
 		}
