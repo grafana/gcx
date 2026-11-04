@@ -1227,34 +1227,9 @@ type notificationsCreateOpts struct {
 
 func (o *notificationsCreateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin. Reads from stdin if omitted.")
-	o.IO.RegisterCustomCodec("text", &NotificationsUpsertTextCodec{})
+	o.IO.RegisterCustomCodec("text", &batchMutationTextCodec{noun: "notification config", verb: "upserted"})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
-}
-
-// NotificationsUpsertTextCodec renders the `notifications upsert` write result
-// (a cmdio.BatchMutation) as the styled one-line summary in the default text
-// format, while -o json/yaml emit the structured mutation document.
-type NotificationsUpsertTextCodec struct{}
-
-func (c *NotificationsUpsertTextCodec) Format() format.Format { return "text" }
-
-func (c *NotificationsUpsertTextCodec) Encode(w io.Writer, v any) error {
-	result, ok := v.(cmdio.BatchMutation)
-	if !ok {
-		return errors.New("invalid data type for text codec: expected cmdio.BatchMutation")
-	}
-	if result.Summary.Failed > 0 {
-		cmdio.Warning(w, "%d notification config(s) upserted, %d failed (%d skipped)",
-			result.Summary.Succeeded, result.Summary.Failed, result.Summary.Skipped)
-		return nil
-	}
-	cmdio.Success(w, "%d notification config(s) upserted", result.Summary.Succeeded)
-	return nil
-}
-
-func (c *NotificationsUpsertTextCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("text format does not support decoding")
 }
 
 func NotificationTable() cmdio.Table[AlertConfig] {
