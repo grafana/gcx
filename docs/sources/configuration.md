@@ -28,7 +28,7 @@ Run `gcx config path` to display the configuration files currently in use. `gcx`
 2. User: `$HOME/.config/gcx/config.yaml`, falling back to the platform user config directory such as `$XDG_CONFIG_HOME/gcx/config.yaml`.
 3. Repository: `.gcx.yaml` in the current working directory.
 
-High-priority named `stacks` and `cloud` entries replace same-named lower entry completely. This keeps a credential
+Named `stacks` and `cloud` entries are atomic across sources: a higher-priority entry replaces the same-named lower-priority entry completely. This keeps a credential
 and its server or Cloud endpoint in the same trust source. Context references and data source defaults may merge field-by-field.
 
 Use `--config <path>` or `GCX_CONFIG=<path>` to select one explicit file and bypass layering. 
