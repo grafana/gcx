@@ -237,3 +237,79 @@ func TestFormatQueryRaw_EmptyIsSilent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, buf.String())
 }
+
+func TestFormatPatternsTableWide_AddsLevelColumn(t *testing.T) {
+	resp := &loki.PatternsResponse{
+		Data: []loki.Pattern{
+			{Pattern: "boom", Level: "error", TotalCount: 3},
+			{Pattern: "plain", TotalCount: 1},
+		},
+	}
+
+	var narrow, wide bytes.Buffer
+	require.NoError(t, loki.FormatPatternsTable(&narrow, resp))
+	require.NoError(t, loki.FormatPatternsTableWide(&wide, resp))
+
+	assert.NotContains(t, narrow.String(), "LEVEL")
+	rows := strings.Split(strings.TrimSpace(wide.String()), "\n")
+	require.Len(t, rows, 3)
+	assert.Equal(t, []string{"PATTERN", "SAMPLES", "LEVEL"}, strings.Fields(rows[0]))
+	assert.Equal(t, []string{"boom", "3", "error"}, strings.Fields(rows[1]))
+	assert.Equal(t, []string{"plain", "1"}, strings.Fields(rows[2]))
+}
+
+func TestPatternsResponse_FilterByLevel(t *testing.T) {
+	newResp := func() *loki.PatternsResponse {
+		return &loki.PatternsResponse{Data: []loki.Pattern{
+			{Pattern: "a", Level: "error"},
+			{Pattern: "b", Level: "Warning"}, // not normalized upstream
+			{Pattern: "c", Level: "info"},
+			{Pattern: "d"},
+		}}
+	}
+
+	t.Run("matches data-side spelling variants", func(t *testing.T) {
+		resp := newResp()
+		resp.FilterByLevel([]string{"warn", "error"})
+		require.Len(t, resp.Data, 2)
+		assert.Equal(t, "a", resp.Data[0].Pattern)
+		assert.Equal(t, "b", resp.Data[1].Pattern)
+		assert.Equal(t, 2, resp.Filter.Dropped)
+	})
+
+	t.Run("no levels is a no-op", func(t *testing.T) {
+		resp := newResp()
+		resp.FilterByLevel(nil)
+		assert.Len(t, resp.Data, 4)
+		assert.Nil(t, resp.Filter)
+	})
+
+	t.Run("empty result names the levels Loki returned", func(t *testing.T) {
+		resp := newResp()
+		resp.FilterByLevel([]string{"eror"})
+		require.NotNil(t, resp.Data)
+		assert.Empty(t, resp.Data)
+		assert.Equal(t, []string{"error", "info", "warn"}, resp.Filter.Available)
+
+		var buf bytes.Buffer
+		require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+		assert.Contains(t, buf.String(), "No patterns match --level eror: Loki returned 4, with levels error, info, warn")
+		assert.NotContains(t, buf.String(), "may prune")
+	})
+
+	t.Run("empty result when Loki reported no levels", func(t *testing.T) {
+		resp := &loki.PatternsResponse{Data: []loki.Pattern{{Pattern: "a"}}}
+		resp.FilterByLevel([]string{"error"})
+		assert.Contains(t, resp.Filter.EmptyMessage(), "reported no level")
+	})
+
+	t.Run("no filter message when Loki itself returned nothing", func(t *testing.T) {
+		resp := &loki.PatternsResponse{}
+		resp.FilterByLevel([]string{"error"})
+		assert.Empty(t, resp.Filter.EmptyMessage())
+
+		var buf bytes.Buffer
+		require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+		assert.Contains(t, buf.String(), "No patterns returned for this selector and range")
+	})
+}

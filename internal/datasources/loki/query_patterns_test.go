@@ -33,6 +33,12 @@ func writePatternsTestConfig(t *testing.T, content string) string {
 
 func execQueryPatternsCmd(t *testing.T, args []string) (map[string]url.Values, string, error) {
 	t.Helper()
+	captured, stdout, _, err := execQueryPatternsCmdWithStderr(t, args)
+	return captured, stdout, err
+}
+
+func execQueryPatternsCmdWithStderr(t *testing.T, args []string) (map[string]url.Values, string, string, error) {
+	t.Helper()
 	testutils.SetAgentMode(t, false)
 
 	captured := map[string]url.Values{}
@@ -78,7 +84,7 @@ current-context: default
 	root.SetArgs(append([]string{"query-patterns", "-d", "loki-uid"}, args...))
 
 	err := root.Execute()
-	return captured, stdout.String(), err
+	return captured, stdout.String(), stderr.String(), err
 }
 
 const patternsPath = "/api/datasources/uid/loki-uid/resources/patterns"
@@ -169,13 +175,43 @@ func TestQueryPatternsCmd_AcceptsBareSecondsStep(t *testing.T) {
 	assert.Equal(t, "30", query.Get("step"))
 }
 
-func TestQueryPatternsCmd_WideOutputMatchesTable(t *testing.T) {
+func TestQueryPatternsCmd_WideOutputAddsLevelColumn(t *testing.T) {
 	_, table, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "table"})
 	require.NoError(t, err)
-
 	_, wide, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "wide"})
 	require.NoError(t, err)
-	assert.Equal(t, table, wide)
+
+	assert.NotContains(t, table, "LEVEL")
+	assert.Contains(t, wide, "LEVEL")
+	assert.Contains(t, wide, "error")
+	assert.Contains(t, wide, "info")
+}
+
+func TestQueryPatternsCmd_LevelFilterEmptyResultSaysFilterDidIt(t *testing.T) {
+	_, stdout, stderr, err := execQueryPatternsCmdWithStderr(t, []string{`{job="varlogs"}`, "--since", "1h", "--level", "eror"})
+	require.NoError(t, err)
+	assert.Empty(t, stderr, "table output carries the message itself; it must not be repeated on stderr")
+	assert.Contains(t, stdout, "No patterns match --level eror")
+	assert.Contains(t, stdout, "levels error, info")
+	assert.NotContains(t, stdout, "may prune")
+}
+
+func TestQueryPatternsCmd_LevelFilterEmptyStructuredOutputWarnsOnStderr(t *testing.T) {
+	_, stdout, stderr, err := execQueryPatternsCmdWithStderr(t, []string{`{job="varlogs"}`, "--since", "1h", "--level", "eror", "-o", "json"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"status":"success","data":[]}`, stdout)
+	assert.Contains(t, stderr, "No patterns match --level eror")
+
+	_, _, stderr, err = execQueryPatternsCmdWithStderr(t, []string{`{job="varlogs"}`, "--since", "1h", "--level", "error", "-o", "json"})
+	require.NoError(t, err)
+	assert.Empty(t, stderr, "no warning when the filter kept patterns")
+}
+
+func TestQueryPatternsCmd_LevelFilterKeepsLevelColumnInWide(t *testing.T) {
+	_, stdout, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--level", "error", "-o", "wide"})
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "level=error")
+	assert.NotContains(t, stdout, "zebra")
 }
 
 // requestsMadeBy runs query-patterns against a server that counts every request

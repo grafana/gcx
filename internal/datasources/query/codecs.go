@@ -106,7 +106,7 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
 	case *loki.PatternsResponse:
-		return loki.FormatPatternsTable(w, resp)
+		return loki.FormatPatternsTableWide(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.BaselineResult:
