@@ -1,6 +1,7 @@
 package root
 
 import (
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -11,8 +12,8 @@ func NewCommandForTest(version string, pp []providers.Provider) *cobra.Command {
 	return newCommand(version, pp)
 }
 
-// ExplicitHumanOutputForTest exposes the internal explicitHumanOutput helper
+// ExplicitHumanOutputForTest exposes the shared explicit output helper
 // for use in external (_test) packages. It is only compiled during `go test`.
 func ExplicitHumanOutputForTest(cmd *cobra.Command) bool {
-	return explicitHumanOutput(cmd)
+	return output.IsHumanOutputFlagActive(cmd)
 }

@@ -116,13 +116,18 @@ type diffFrame struct {
 	parent        *diffFrame
 }
 
-func decodeDiffSpan(offset, total, self, previousEnd, ticks int64) (diffSpan, error) {
+// decodeProfileSpan validates a delta-encoded interval without overflowing int64.
+// Both ordinary and diff flamegraphs use this encoding.
+func decodeProfileSpan(offset, total, self, previousEnd, ticks int64) (diffSpan, error) {
+	if offset < 0 || total < 0 || self < 0 || self > total || previousEnd < 0 || ticks < previousEnd {
+		return diffSpan{}, errors.New("invalid profile span")
+	}
 	if offset > ticks-previousEnd {
-		return diffSpan{}, errors.New("profile diff offset exceeds tick counts")
+		return diffSpan{}, errors.New("profile offset exceeds tick counts")
 	}
 	start := previousEnd + offset
 	if total > ticks-start {
-		return diffSpan{}, errors.New("profile diff node exceeds tick counts")
+		return diffSpan{}, errors.New("profile node exceeds tick counts")
 	}
 	return diffSpan{start: start, end: start + total, self: self}, nil
 }
@@ -139,11 +144,11 @@ func decodeDiffNode(values []string, fg *DiffFlamegraph, leftEnd, rightEnd int64
 	if v[6] >= int64(len(fg.Names)) || v[2] > v[1] || v[5] > v[4] {
 		return nil, errors.New("invalid profile diff node")
 	}
-	before, err := decodeDiffSpan(v[0], v[1], v[2], leftEnd, fg.LeftTicks)
+	before, err := decodeProfileSpan(v[0], v[1], v[2], leftEnd, fg.LeftTicks)
 	if err != nil {
 		return nil, err
 	}
-	after, err := decodeDiffSpan(v[3], v[4], v[5], rightEnd, fg.RightTicks)
+	after, err := decodeProfileSpan(v[3], v[4], v[5], rightEnd, fg.RightTicks)
 	if err != nil {
 		return nil, err
 	}

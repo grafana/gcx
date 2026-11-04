@@ -44,6 +44,8 @@ func (err ParseError) Error() string {
 	return fmt.Sprintf("parse error in '%s': %s", err.File, err.Err)
 }
 
+type ErrorListener func(err error, path string)
+
 // FSReader is a reader that reads resources from the filesystem.
 //
 // The reader will read all resources from the filesystem and return them as
@@ -58,6 +60,10 @@ type FSReader struct {
 	MaxConcurrentReads int
 	// Warn receives deprecation and duplicate-identity diagnostics; nil uses logging for duplicates.
 	Warn io.Writer
+
+	// errorListeners contains a list of listeners that can be notified on
+	// error. Only used when StopOnError is false.
+	errorListeners []ErrorListener
 }
 
 // Read reads all resources from the filesystem and returns them as an unstructured list.
@@ -91,6 +97,7 @@ func (reader *FSReader) Read(
 				}
 
 				logger.Warn("Failed to stat path", slog.String("path", path), logs.Err(err))
+				reader.notifyErrorListeners(err, path)
 				continue
 			}
 
@@ -117,6 +124,7 @@ func (reader *FSReader) Read(
 						return err
 					}
 					logger.Warn("Failed to traverse directory", slog.String("path", path), logs.Err(err))
+					reader.notifyErrorListeners(err, path)
 					return nil
 				}
 
@@ -158,6 +166,7 @@ func (reader *FSReader) Read(
 					}
 
 					logger.Warn("failed to read file", slog.String("path", path), logs.Err(err))
+					reader.notifyErrorListeners(err, path)
 					return nil
 				}
 
@@ -196,9 +205,19 @@ func (reader *FSReader) Read(
 			obj := res.Object
 			gvk := obj.GroupVersionKind()
 			target := resources.NormalizeGVK(gvk)
-			if reader.Warn != nil && !warned[gvk.GroupVersion()] && resources.MatchesGroupAlias(target, gvk.Group) {
-				output.EmitWarn(reader.Warn, fmt.Sprintf("apiVersion %q is deprecated; use %q instead", gvk.GroupVersion(), target.GroupVersion()))
-				warned[gvk.GroupVersion()] = true
+			if resources.MatchesGroupAlias(target, gvk.Group) {
+				// only write on reader.Warn once
+				if reader.Warn != nil && !warned[gvk.GroupVersion()] {
+					output.EmitWarn(reader.Warn, fmt.Sprintf("apiVersion %q is deprecated; use %q instead", gvk.GroupVersion(), target.GroupVersion()))
+					warned[gvk.GroupVersion()] = true
+				}
+
+				// but notify for every resource (used by the linter)
+				reader.notifyErrorListeners(resources.DeprecatedResourceError{
+					Ref:         obj.Ref(),
+					Used:        gvk.GroupVersion(),
+					Alternative: target.GroupVersion(),
+				}, res.Path)
 			}
 
 			if adapter.RetainsLocalDuplicates(obj.GroupVersionKind()) {
@@ -213,6 +232,12 @@ func (reader *FSReader) Read(
 				} else {
 					logger.Warn(message)
 				}
+
+				reader.notifyErrorListeners(resources.DuplicatedResourceError{
+					Ref:   obj.Ref(),
+					Files: []string{idx[obj.Ref()], res.Path},
+				}, res.Path)
+
 				continue
 			}
 			idx[obj.Ref()] = res.Path
@@ -299,7 +324,7 @@ func (reader *FSReader) readRaw(
 	object := &unstructured.Unstructured{}
 
 	if err := decoder.Decode(src, object); err != nil {
-		return ParseError{Err: err}
+		return ParseError{Err: err, File: path}
 	}
 
 	if err := dst.SetUnstructured(object); err != nil {
@@ -322,6 +347,17 @@ func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) {
 		return reader.Decoders[format.YAML], nil
 	default:
 		return nil, UnrecognisedFormatError{Format: input}
+	}
+}
+
+// AddErrorListener registers a new error listener.
+func (reader *FSReader) AddErrorListener(listener ErrorListener) {
+	reader.errorListeners = append(reader.errorListeners, listener)
+}
+
+func (reader *FSReader) notifyErrorListeners(err error, path string) {
+	for _, listener := range reader.errorListeners {
+		listener(err, path)
 	}
 }
 

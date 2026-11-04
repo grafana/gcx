@@ -412,6 +412,10 @@ func (c *IncidentClient) Get(ctx context.Context, id string) (*Incident, error) 
 // label, not the identifier. The label resolves before the create call,
 // because the IRM API cannot delete an incident that a later step abandons.
 func (c *IncidentClient) Create(ctx context.Context, inc *Incident) (*Incident, error) {
+	if inc.Description != "" {
+		return nil, errors.New("incidents: create: spec.description is read-only; remove it from the manifest before creating the incident")
+	}
+
 	label, err := c.resolveSeverityLabel(ctx, inc)
 	if err != nil {
 		return nil, err
@@ -528,7 +532,8 @@ func (c *IncidentClient) UpdateTitle(ctx context.Context, id, title string) (*In
 //
 // Update drops every other field of inc, because the IRM API has no update
 // operation for it: a pushed manifest that changes labels, incidentType,
-// isDrill, description or fieldGroupUUID leaves those values on the server.
+// isDrill or fieldGroupUUID leaves those values on the server. A non-empty
+// description change is rejected because the field is read-only through gcx.
 //
 // The second result names the fields that reached the server. An empty list
 // means the incident already matched the request.
@@ -540,6 +545,9 @@ func (c *IncidentClient) Update(ctx context.Context, id string, inc *Incident) (
 	current, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, nil, err
+	}
+	if inc.Description != "" && inc.Description != current.Description {
+		return nil, nil, errors.New("incidents: update: spec.description is read-only; remove the changed value from the manifest before updating the incident")
 	}
 
 	// The resolve reads the severity list of the organization, and writes

@@ -45,6 +45,8 @@ func TestOnCallTableGolden(t *testing.T) {
 		table func(wide bool) format.Codec
 		wide  bool
 	}{
+		{name: "personal_notification_rules", spec: map[string]any{"user": "U1", "important": true, "step": int64(0), "notify_by": nil, "wait_delay": "300.0"}, table: func(bool) format.Codec { return personalNotificationRuleTable().Codec("table") }},
+
 		{
 			name: "integrations",
 			spec: map[string]any{"verbal_name": longText, "integration": "grafana", "team": "sre", "integration_url": "https://example.invalid/hook"},
@@ -68,7 +70,7 @@ func TestOnCallTableGolden(t *testing.T) {
 		},
 		{
 			name: "schedules",
-			spec: map[string]any{"name": "weekday", "type": "calendar", "time_zone": "Europe/London", "team": "sre"},
+			spec: map[string]any{"name": "weekday", "type": float64(0), "time_zone": "Europe/London", "team": "sre"},
 			table: func(wide bool) format.Codec {
 				return scheduleTable().Codec(oncallFormat(wide))
 			},
@@ -76,7 +78,7 @@ func TestOnCallTableGolden(t *testing.T) {
 		},
 		{
 			name: "shifts",
-			spec: map[string]any{"name": "morning", "type": "rolling_users", "shift_start": "2026-03-14T09:00:00Z", "shift_end": "2026-03-14T17:00:00Z", "frequency": "daily", "interval": int64(2)},
+			spec: map[string]any{"name": "morning", "type": float64(2), "shift_start": "2026-03-14T09:00:00Z", "shift_end": "2026-03-14T17:00:00Z", "frequency": float64(0), "interval": float64(2)},
 			table: func(wide bool) format.Codec {
 				return shiftTable().Codec(oncallFormat(wide))
 			},
@@ -92,7 +94,7 @@ func TestOnCallTableGolden(t *testing.T) {
 		},
 		{
 			name: "webhooks",
-			spec: map[string]any{"name": "servicenow", "url": "https://example.invalid/wh", "http_method": "POST", "trigger_type": "resolved", "is_webhook_enabled": true},
+			spec: map[string]any{"name": "servicenow", "url": "https://example.invalid/wh", "http_method": "POST", "trigger_type": "3", "is_webhook_enabled": true},
 			table: func(wide bool) format.Codec {
 				return webhookTable().Codec(oncallFormat(wide))
 			},

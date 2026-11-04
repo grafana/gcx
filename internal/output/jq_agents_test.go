@@ -244,6 +244,36 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 	}
 }
 
+// TestOptions_JQ_AgentsStream_RegularFileDestination covers
+// `gcx ... --jq EXPR > out.jsonl` in agent mode. The JSONL stream has the same
+// spill budget as a document, and the same reason to ignore it when the caller
+// named the destination file.
+func TestOptions_JQ_AgentsStream_RegularFileDestination(t *testing.T) {
+	testutils.SetAgentMode(t, true)
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "8")
+	spillDir := t.TempDir()
+	setSpillTempDir(t, spillDir)
+
+	dst, err := os.Create(filepath.Join(t.TempDir(), "out.jsonl"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dst.Close() })
+
+	var stderr bytes.Buffer
+	opts := jqAgentsOptions(t, ".[]", &stderr)
+	require.NoError(t, opts.Encode(dst, []string{"a", "b", "c"}))
+	require.NoError(t, dst.Close())
+
+	written, err := os.ReadFile(dst.Name())
+	require.NoError(t, err)
+	assert.Equal(t, "\"a\"\n\"b\"\n\"c\"\n", string(written), "the redirect target holds the stream, not a receipt")
+	assert.NotContains(t, string(written), cmdio.SpillReferenceType)
+
+	files, err := os.ReadDir(spillDir)
+	require.NoError(t, err)
+	assert.Empty(t, files, "nothing should be spilled when the destination is a file")
+	assert.Empty(t, stderr.String())
+}
+
 func jqAgentsOptions(t *testing.T, query string, stderr io.Writer) *cmdio.Options {
 	t.Helper()
 	opts := &cmdio.Options{ErrWriter: stderr}

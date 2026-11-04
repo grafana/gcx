@@ -120,3 +120,42 @@ func TestNew_LeavesTransportStatusZero(t *testing.T) {
 	assert.Zero(t, err.TransportStatus,
 		"a directly constructed APIError carries no transport status for telemetry to report")
 }
+
+// TestIsPermissionError pins the markers that distinguish a provider's
+// authorization failure, tunneled through a non-403 status, from an ordinary
+// query failure. A false positive here would report a genuine syntax error as
+// an authorization failure with exit code 3.
+func TestIsPermissionError(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    bool
+	}{
+		{
+			name:    "bigquery googleapi accessDenied",
+			message: "googleapi: Error 403: Access Denied: Project p: User does not have bigquery.jobs.create permission in project p., accessDenied",
+			want:    true,
+		},
+		{"gcp permission_denied", "PERMISSION_DENIED: caller lacks access", true},
+		{"plain permission denied", "permission denied", true},
+		{"insufficient permission", "Request had insufficient permissions for this resource", true},
+		{"long form without a marker word", "User does not have the required permission", true},
+		{"empty message", "", false},
+		{"parse error", "parse error at line 1: unexpected token", false},
+		{"not found", "Table p.d.t was not found", false},
+		{
+			// "does not have" alone must not match: a schema complaint reads
+			// the same way and is not an authorization failure.
+			name:    "does not have without permission",
+			message: "Table p.d.t does not have a column named ts",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := queryerror.New("bigquery", "query", 400, tt.message, "")
+			assert.Equal(t, tt.want, err.IsPermissionError())
+		})
+	}
+}

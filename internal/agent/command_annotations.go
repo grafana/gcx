@@ -41,6 +41,13 @@ var commandAnnotations = map[string]annotation{
 
 	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},
 
+	"gcx annotations list":      {Cost: "medium", Hint: "--since 24h --tags deploy --limit 20 -o json"},
+	"gcx annotations get":       {Cost: "small", Hint: "<id> -o json"},
+	"gcx annotations create":    {Cost: "small", Hint: "-f annotation.json"},
+	"gcx annotations update":    {Cost: "small", Hint: "<id> -f patch.json"},
+	"gcx annotations delete":    {Cost: "small", Hint: "<id> or --dashboard-uid <uid> --panel-id <n>"},
+	"gcx annotations list-tags": {Cost: "small", Hint: "-o json"},
+
 	// assistant
 	"gcx assistant investigations cancel":          {Cost: "small"},
 	"gcx assistant investigations create":          {Cost: "small", Hint: "Starts a multi-agent Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user requests a Grafana Assistant investigation or continues an authorized Assistant workflow; handle an ordinary request to investigate or root-cause with direct signal queries. v1 stacks require --title and v2 stacks require --instruction; pass both to cover either. Example: --title=\"Checkout latency\" --instruction=\"Checkout latency spike after deploy\""},
@@ -318,14 +325,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx k6 projects list-allowed-load-zones":   {Cost: "small"},
 	"gcx k6 projects update":                    {Cost: "small"},
 	"gcx k6 projects update-allowed-load-zones": {Cost: "small"},
-	"gcx k6 runs list":                          {Cost: "small"},
+	"gcx k6 runs list":                          {Cost: "medium", Hint: "--id <load-test-id> --json id,options.thresholds to inspect configured thresholds without the complete run configuration"},
 	"gcx k6 schedules create":                   {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx k6 schedules get":                      {Cost: "small"},
 	"gcx k6 schedules list":                     {Cost: "small"},
 	"gcx k6 schedules update":                   {Cost: "small"},
 	"gcx k6 test-run emit":                      {Cost: "small", Hint: "[test-name] --project-id <id> [--apply]. --apply starts a run that consumes billable VU hours (" + docs.PerformanceTestingInvoice + ")."},
-	"gcx k6 test-run runs list":                 {Cost: "small"},
-	"gcx k6 test-run status":                    {Cost: "small"},
+	"gcx k6 test-run runs list":                 {Cost: "medium", Hint: "--id <load-test-id> --json id,options.thresholds to inspect configured thresholds without the complete run configuration"},
+	"gcx k6 test-run status":                    {Cost: "medium", Hint: "--id <load-test-id> --json id,options.thresholds to inspect configured thresholds without the complete run configuration"},
 
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
@@ -404,6 +411,18 @@ var commandAnnotations = map[string]annotation{
 	"gcx logs adaptive segments delete":   {Cost: "small"},
 	"gcx logs adaptive segments list":     {Cost: "small"},
 	"gcx logs adaptive segments update":   {Cost: "small"},
+
+	// Logs archive
+	"gcx logs archive destinations create": {Cost: "small"},
+	"gcx logs archive destinations delete": {Cost: "small"},
+	"gcx logs archive destinations get":    {Cost: "small"},
+	"gcx logs archive destinations list":   {Cost: "small", Hint: "Docs: " + docs.AdaptiveLogsArchive},
+	"gcx logs archive principal get":       {Cost: "small"},
+	"gcx logs archive streams create":      {Cost: "small"},
+	"gcx logs archive streams delete":      {Cost: "small"},
+	"gcx logs archive streams get":         {Cost: "small"},
+	"gcx logs archive streams list":        {Cost: "small"},
+	"gcx logs archive streams update":      {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// Metrics provider
@@ -503,6 +522,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall integrations start-maintenance":      {Cost: "small", Hint: "<id> [--mode maintenance|debug] [--duration 3600|10800|21600|43200|86400]"},
 	"gcx irm oncall integrations stop-maintenance":       {Cost: "small"},
 	"gcx irm oncall organizations get":                   {Cost: "small"},
+	"gcx irm oncall personal-notification-rules create":  {Cost: "small", Hint: "-f rule.yaml"},
+	"gcx irm oncall personal-notification-rules delete":  {Cost: "small"},
+	"gcx irm oncall personal-notification-rules get":     {Cost: "small"},
+	"gcx irm oncall personal-notification-rules list":    {Cost: "medium", Hint: "Use --json spec.user,spec.important or --jq to select rules after the full fetch"},
+	"gcx irm oncall personal-notification-rules update":  {Cost: "small", Hint: "<id> -f rule.yaml"},
 	"gcx irm oncall resolution-notes create":             {Cost: "small", Hint: "-f note.yaml"},
 	"gcx irm oncall resolution-notes delete":             {Cost: "small"},
 	"gcx irm oncall resolution-notes get":                {Cost: "small"},
@@ -589,12 +613,17 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y judge list-models":    {Cost: "small"},
 	"gcx agento11y judge list-providers": {Cost: "small"},
 
-	"gcx agento11y rules create":      {Cost: "small"},
-	"gcx agento11y rules delete":      {Cost: "small"},
-	"gcx agento11y rules get":         {Cost: "small"},
-	"gcx agento11y rules list":        {Cost: "small"},
-	"gcx agento11y rules list-scores": {Cost: "medium", Hint: "<rule-id> --passed=false --limit 100 -o json"},
-	"gcx agento11y rules update":      {Cost: "small"},
+	"gcx agento11y rules create":         {Cost: "small"},
+	"gcx agento11y rules delete":         {Cost: "small"},
+	"gcx agento11y rules get":            {Cost: "small"},
+	"gcx agento11y rules list":           {Cost: "small"},
+	"gcx agento11y rules list-scores":    {Cost: "medium", Hint: "<rule-id> --passed=false --limit 100 -o json"},
+	"gcx agento11y rules update":         {Cost: "small"},
+	"gcx agento11y rules actions create": {Cost: "small"},
+	"gcx agento11y rules actions delete": {Cost: "small"},
+	"gcx agento11y rules actions get":    {Cost: "small"},
+	"gcx agento11y rules actions list":   {Cost: "small"},
+	"gcx agento11y rules actions update": {Cost: "small"},
 
 	"gcx agento11y templates get":           {Cost: "small"},
 	"gcx agento11y templates list":          {Cost: "small"},
@@ -619,13 +648,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y collections add-conversations":   {Cost: "small"},
 	"gcx agento11y collections remove-conversation": {Cost: "small"},
 
-	"gcx agento11y experiments list":        {Cost: "small"},
-	"gcx agento11y experiments get":         {Cost: "small"},
-	"gcx agento11y experiments create":      {Cost: "small"},
-	"gcx agento11y experiments update":      {Cost: "small"},
-	"gcx agento11y experiments cancel":      {Cost: "small"},
-	"gcx agento11y experiments list-scores": {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
-	"gcx agento11y experiments get-report":  {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments list":               {Cost: "small"},
+	"gcx agento11y experiments get":                {Cost: "small"},
+	"gcx agento11y experiments create":             {Cost: "small"},
+	"gcx agento11y experiments update":             {Cost: "small"},
+	"gcx agento11y experiments cancel":             {Cost: "small"},
+	"gcx agento11y experiments list-scores":        {Cost: "medium", Hint: "<run-id> --limit 50 -o json"},
+	"gcx agento11y experiments get-report":         {Cost: "medium", Hint: "<run-id> -o json"},
+	"gcx agento11y experiments list-filter-values": {Cost: "small", Hint: "--source external -o json"},
 	"gcx agento11y experiments list-trials": {
 		Cost: "small",
 		Hint: "<run-id> -o json",

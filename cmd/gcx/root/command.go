@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path"
-	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -36,6 +35,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	_ "github.com/grafana/gcx/internal/providers/agento11y"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/alert"           // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/annotations"     // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/appo11y"         // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/assistant"       // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/dashboards"      // Provider registrations — blank imports trigger init() self-registration.
@@ -49,6 +49,7 @@ import (
 	_ "github.com/grafana/gcx/internal/providers/kg"              // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/logs"            // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/metrics"         // Provider registrations — blank imports trigger init() self-registration.
+	_ "github.com/grafana/gcx/internal/providers/ml"              // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/profiles"        // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/slo"             // Provider registrations — blank imports trigger init() self-registration.
 	_ "github.com/grafana/gcx/internal/providers/stacks"          // Provider registrations — blank imports trigger init() self-registration.
@@ -90,35 +91,6 @@ var humanOutputFlagActive atomic.Bool
 // Safe for concurrent use.
 func IsHumanOutputFlagActive() bool {
 	return humanOutputFlagActive.Load()
-}
-
-// explicitHumanOutput reports whether cmd has an explicitly set -o that selects
-// the stdout format and is neither json nor agents, with no --json/--jq field
-// selection or filtering. It is false where -o does not own stdout: a -o that
-// is not an output-format flag (output.FormatFlagAnnotation, e.g. a
-// destination directory), pinned-format commands (resources pull/edit) and
-// artifact formats (-o pprof) keep their JSON receipt on stdout.
-func explicitHumanOutput(cmd *cobra.Command) bool {
-	for _, name := range []string{"json", "jq"} {
-		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
-			return false
-		}
-	}
-	f := cmd.Flags().Lookup("output")
-	if f == nil || !f.Changed {
-		return false
-	}
-	if _, isFormat := f.Annotations[output.FormatFlagAnnotation]; !isFormat {
-		return false
-	}
-	if _, pinned := f.Annotations[output.PinnedFormatAnnotation]; pinned {
-		return false
-	}
-	value := f.Value.String()
-	if slices.Contains(f.Annotations[output.ArtifactFormatsAnnotation], value) {
-		return false
-	}
-	return value != "json" && value != "agents"
 }
 
 func shouldNotifySkills(cmd *cobra.Command) bool {
@@ -198,14 +170,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			jsonFlagActive.Store(false)
-			humanOutputFlagActive.Store(explicitHumanOutput(cmd))
-			// Track whether --json was explicitly set on the resolved command.
-			// Only mark active when the command actually declares a --json flag,
-			// preventing false positives for subcommands that don't support it.
-			if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
-				jsonFlagActive.Store(true)
-			}
+			jsonFlagActive.Store(output.IsJSONFlagActive(cmd))
+			humanOutputFlagActive.Store(output.IsHumanOutputFlagActive(cmd))
 
 			// Detect TTY state first so all downstream decisions can use it.
 			terminal.Detect()
@@ -287,9 +253,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		return commandUsageError(cmd, err)
 	})
 
-	defaultHelp := rootCmd.HelpFunc()
-	rootCmd.SetHelpFunc(style.HelpFunc(defaultHelp))
-
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
 	rootCmd.SetIn(os.Stdin)
@@ -351,6 +314,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// traversing the command tree before ExecuteContext() sees the same shape
 	// that Cobra will execute.
 	rootCmd.InitDefaultHelpCmd()
+	topics := registerHelpTopics(rootCmd)
+	rootCmd.SetHelpFunc(style.HelpFunc(rootCmd.HelpFunc(), topics...))
 	rootCmd.InitDefaultCompletionCmd()
 
 	wrapArgumentErrors(rootCmd)

@@ -26,6 +26,8 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Short: "Manage Adaptive Logs resources.",
+		Long: "Manage Adaptive Logs resources.\n\n" +
+			"To archive log streams to a cloud storage bucket you own, see 'gcx logs archive'.",
 	}
 	h := &logsHelper{loader: loader}
 	cmd.AddCommand(

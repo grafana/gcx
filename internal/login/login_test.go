@@ -1551,8 +1551,7 @@ func TestRun_ValidationFailure_YesFlagBypassesPrompt(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	var needClar *login.ErrNeedClarification
-	if errors.As(err, &needClar) {
+	if needClar, ok := errors.AsType[*login.ErrNeedClarification](err); ok {
 		t.Errorf("--yes should not trigger ErrNeedClarification; got %v", needClar)
 	}
 }

@@ -288,6 +288,11 @@ func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
 	return codec, nil
 }
 
+// IsJSONFormat reports whether a format carries JSON results and in-band errors.
+func IsJSONFormat(name string) bool {
+	return name == string(format.JSON) || name == string(agentsFormat)
+}
+
 func (opts *Options) Encode(dst io.Writer, value any) error {
 	codec, err := opts.Codec()
 	if err != nil {
@@ -296,7 +301,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 
 	// Nudge agents toward jq once, even with field selection. Pinned file-output
 	// commands reject --json/--jq, so recommending those flags would be wrong.
-	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
+	isJSONLike := IsJSONFormat(string(codec.Format()))
 	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil && !opts.defaultFormatPinned {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter

@@ -60,7 +60,7 @@ func listRulesCmd() *cobra.Command {
 }
 
 func listRules(cmd *cobra.Command, opts rulesOpts) error {
-	engine, err := linter.New(linter.WithCustomRules(opts.rules))
+	engine, err := linter.New(linter.WithCustomRules(opts.rules), linter.ExternalRules(externalRules()))
 	if err != nil {
 		return err
 	}

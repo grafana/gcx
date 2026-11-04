@@ -92,6 +92,44 @@ for role assignment guidance.
 
 `gcx setup status` doesn't check Assistant access.
 
+### Permissions to check instrumentation status
+
+To use `gcx setup status` and `gcx instrumentation clusters list` to check Kubernetes monitoring through the Collector app you need both the `grafana-collector-app:read` and the `grafana-collector-app:admin` permissions.
+
+Inspect your allowed actions with:
+
+```bash
+gcx api /api/access-control/user/actions
+```
+
+Ask your Grafana administrator to check your roles for the required action. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
+for role assignment guidance.
+
+#### Status check outputs
+
+A successful check still reports `true` or `false`.
+
+When a setup status check fails, the state is unknown.
+
+- The text table shows `unknown`, JSON and YAML keep the `enabled` field with a `null` value.
+- The `fleet-management` row also has `enabled: null` when the Collector app plugin state is unknown.
+- The structured status document keeps its `type`, `schema_version`, and `products` fields.
+- Agent mode and the `--json` flag add an `error` object on failure. It contains the fields `summary`, `exitCode`, and optional `details`, `suggestions`, and `docsLink`.
+- Explicit human formats such as `-o yaml`, and plain `-o json` without agent mode, omit the `error` object from stdout.
+
+The converted diagnostic goes to `stderr` whenever stdout has no `error` object (including explicit human formats such as text and `-o yaml`, and plain `-o json` without agent mode), or with `--jq`, `--json <fields>` that omits `error`, or field discovery with `--json list`:
+
+- With JSONL warnings for the summary and details in agent mode.
+- With formatted text otherwise.
+
+Without `--jq` or field discovery, an in-band error has no duplicate `stderr` diagnostic, including when `--json <fields>` includes `error`.
+
+#### Exit codes
+
+- HTTP 401 and 403 failures exit with code 3.
+- Other failed status probes, such as HTTP 500, exit with code 1 even when another product row succeeded.
+- A setup snapshot is a diagnostic check; exit 4 is reserved for partial batch or mutation failures.
+
 ### Grafana Cloud product API 
 
 Grafana Cloud platform APIs use a separate credential stored in a named Cloud entry in addition to the Grafana instance auth. 
@@ -196,6 +234,16 @@ provider endpoints, authorize it explicitly with `--config .gcx.yaml` or
 Provider-specific runtime endpoints are accepted only when their matching
 runtime credential is supplied in the same invocation; that pair does not
 authorize an auto-discovered repository stack's TLS or proxy configuration.
+
+## Data source authentication failures
+
+Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
+
+Run `gcx datasources health <uid>` to see the data source health. To find the UID, use `gcx datasources list -o json`.
+
+The health check uses a different API path and doesn't establish that ruler access works.
+
+Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
 
 ## Verify your configuration
 

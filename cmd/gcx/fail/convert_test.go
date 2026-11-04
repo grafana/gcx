@@ -451,28 +451,37 @@ func TestErrorToDetailedError_GenericServiceAPIAuthFailure(t *testing.T) {
 }
 
 func TestErrorToDetailedError_AdaptiveLogsScopeSuggestion(t *testing.T) {
-	for _, status := range []int{401, 403} {
-		t.Run(strconv.Itoa(status), func(t *testing.T) {
-			got := toDetailedError(t, fmt.Errorf("adaptive-logs: list exemptions: %w", fakeServiceAPIError{
-				statusCode: status,
-				service:    "Adaptive Logs",
-				message:    "authentication error: invalid scope requested",
-			}))
+	services := []struct {
+		name    string
+		context string
+	}{
+		{"Adaptive Logs", "adaptive-logs: list exemptions"},
+		{"Logs Archive", "failed to list archive destinations"},
+	}
+	for _, svc := range services {
+		for _, status := range []int{401, 403} {
+			t.Run(svc.name+" "+strconv.Itoa(status), func(t *testing.T) {
+				got := toDetailedError(t, fmt.Errorf("%s: %w", svc.context, fakeServiceAPIError{
+					statusCode: status,
+					service:    svc.name,
+					message:    "authentication error: invalid scope requested",
+				}))
 
-			require.NotNil(t, got)
-			assert.Equal(t, "Authorization failed", got.Summary, "a scope error is a permission problem regardless of status")
-			assert.Contains(t, got.Details, fmt.Sprintf("Adaptive Logs API request failed (HTTP %d)", status))
-			assert.Contains(t, got.Details, "adaptive-logs: list exemptions")
-			assert.Contains(t, got.Details, "invalid scope requested")
-			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			require.Len(t, got.Suggestions, 1)
-			assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
+				require.NotNil(t, got)
+				assert.Equal(t, "Authorization failed", got.Summary, "a scope error is a permission problem regardless of status")
+				assert.Contains(t, got.Details, fmt.Sprintf("%s API request failed (HTTP %d)", svc.name, status))
+				assert.Contains(t, got.Details, svc.context)
+				assert.Contains(t, got.Details, "invalid scope requested")
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+				require.Len(t, got.Suggestions, 1)
+				assert.Contains(t, got.Suggestions[0], "adaptive-logs:admin")
 
-			var rendered bytes.Buffer
-			require.NoError(t, got.WriteJSON(&rendered, *got.ExitCode))
-			assert.Contains(t, rendered.String(), "invalid scope requested", "agents keep the server message")
-		})
+				var rendered bytes.Buffer
+				require.NoError(t, got.WriteJSON(&rendered, *got.ExitCode))
+				assert.Contains(t, rendered.String(), "invalid scope requested", "agents keep the server message")
+			})
+		}
 	}
 }
 
@@ -644,6 +653,67 @@ func TestErrorToDetailedError_FleetForbiddenNamesTheAction(t *testing.T) {
 	assert.Contains(t, suggestions, fleet.CollectorAppReadAction)
 	assert.Contains(t, suggestions, fleet.CollectorAppAdminAction)
 	assert.Contains(t, suggestions, "read-only commands")
+	assert.NotContains(t, suggestions, "gcx setup status")
+	assert.Contains(t, suggestions, "gcx api /api/access-control/user/actions")
+}
+
+// A route's known permission survives JSON, opaque and HTML auth responses.
+func TestFleetMonitoringAuthDetails(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		for _, body := range []string{
+			"{\"message\":\"denied\",\"extra\":\"raw-response-marker\"}\n",
+			`{"error":"denied","message":"lower-priority message","err":"lower-priority err","msg":"lower-priority msg","code":"permission_denied","traceID":"test-trace"}`,
+			`{"err":"denied","msg":"lower-priority msg"}`,
+			`{"msg":"denied"}`,
+			"Unparseable response raw-response-marker.\n",
+			"<html><body>raw-response-marker</body></html>",
+		} {
+			t.Run(fmt.Sprintf("%d/%s", status, body), func(t *testing.T) {
+				var requiredAction string
+				if status == http.StatusForbidden {
+					requiredAction = fleet.CollectorAppAdminAction
+				}
+				got := toDetailedError(t, fmt.Errorf("clusters list: %w", &fleet.HTTPError{
+					Status:         status,
+					Path:           "/discovery.v1.DiscoveryService/RunK8sMonitoring",
+					Body:           body,
+					RequiredAction: requiredAction,
+				}))
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+				assert.Contains(t, got.Details, "clusters list")
+				assert.NotContains(t, got.Error(), "/discovery.v1.DiscoveryService/RunK8sMonitoring")
+				assert.NotContains(t, got.Error(), "raw-response-marker")
+				assert.Equal(t, strings.TrimSpace(got.Details), got.Details)
+				suggestions := strings.Join(got.Suggestions, " ")
+				assert.NotContains(t, suggestions, "gcx setup status")
+				switch {
+				case strings.HasPrefix(body, "{"):
+					assert.Contains(t, got.Details, "denied")
+					assert.NotContains(t, got.Details, "lower-priority")
+				case status == http.StatusForbidden:
+					assert.Contains(t, got.Details, "Fleet Management denied the request; check the required route actions")
+				default:
+					assert.Contains(t, got.Details, "Fleet Management rejected the credentials")
+				}
+				if strings.Contains(body, "test-trace") {
+					assert.Contains(t, got.Details, "permission_denied")
+					assert.Contains(t, got.Details, "test-trace")
+				}
+				if status == http.StatusForbidden {
+					assert.Contains(t, got.Details, "requires the grafana-collector-app:admin action")
+					assert.NotContains(t, got.Details, "ask a stack admin")
+					assert.Contains(t, suggestions, "Named read routes")
+					assert.Contains(t, suggestions, "Wildcard routes")
+					assert.Contains(t, suggestions, "grant the grafana-collector-app:admin action")
+					assert.Contains(t, suggestions, "gcx api /api/access-control/user/actions")
+				} else {
+					assert.NotContains(t, got.Details, "requires the")
+					assert.Contains(t, suggestions, "gcx login")
+				}
+			})
+		}
+	}
 }
 
 func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
@@ -1510,7 +1580,10 @@ func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
 		},
 		{
 			name: "pointer-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
-			err:  fmt.Errorf("context: %w", &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+			// DetailedError implements error on the value receiver, so vet's printf
+			// check flags a bare *DetailedError %w operand; this case deliberately
+			// exercises the pointer form, so pass it through the error interface.
+			err: fmt.Errorf("context: %w", error(&gcxerrors.DetailedError{ExitCode: &two, Summary: "test"})),
 		},
 	}
 
@@ -2094,4 +2167,38 @@ func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
 	assert.Equal(t, "Sign in instead of signing up again, and choose the new stack: "+signIn, envelope.Error.Suggestions[0])
 
 	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
+}
+
+// TestErrorToDetailedError_TunneledPermissionDenial pins the whole shape of a
+// provider's permission denial that arrives under a non-403 status, and the
+// 401 boundary: a credential rejected outright must not pick up a details line
+// claiming the denial happened upstream, because the summary and the
+// suggestions both say the caller's own credential failed.
+func TestErrorToDetailedError_TunneledPermissionDenial(t *testing.T) {
+	const accessDenied = "googleapi: Error 403: Access Denied: Project p: User does not have bigquery.jobs.create permission in project p., accessDenied"
+
+	t.Run("400 names the upstream denial and exits 3", func(t *testing.T) {
+		got := toDetailedError(t, queryerror.New("bigquery", "query", 400, accessDenied, "downstream"))
+
+		require.NotNil(t, got)
+		assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, got.Summary)
+		require.NotNil(t, got.ExitCode)
+		assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+		assert.Contains(t, got.Details, "permission denied upstream")
+		// errors.md 4.2: at least one suggestion must be runnable.
+		require.NotEmpty(t, got.Suggestions)
+		assert.Equal(t, "Inspect the datasource's configured identity: gcx datasources get <uid> -o json", got.Suggestions[0])
+		// The Grafana service-account page would point at the wrong credential.
+		assert.Empty(t, got.DocsLink)
+	})
+
+	t.Run("401 stays an authentication failure without an upstream details line", func(t *testing.T) {
+		got := toDetailedError(t, queryerror.New("bigquery", "query", 401, "access denied", ""))
+
+		require.NotNil(t, got)
+		assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, got.Summary)
+		assert.NotContains(t, got.Details, "permission denied upstream",
+			"a 401 summary says the caller's credential failed; the details must not blame an upstream denial")
+		assert.Contains(t, got.Suggestions, "Review your Grafana credentials: gcx config view")
+	})
 }

@@ -2,7 +2,7 @@
 
 <p>
 <a href="https://github.com/grafana/gcx/actions/workflows/ci.yaml"><img src="https://github.com/grafana/gcx/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
-<a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go" alt="Go"></a>
+<a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.27+-00ADD8?logo=go" alt="Go"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 <img src="https://img.shields.io/badge/status-generally%20available-green" alt="Generally Available">
 </p>
@@ -87,6 +87,7 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 | Product | Command | Examples |
 |---------|---------|----------|
+| **Machine Learning** | `gcx ml` | `ml jobs list`, `ml holidays list`, `ml outlier-detectors list` |
 | **SLOs** | `gcx slo` | `slo definitions list`, `slo reports list` |
 | **Synthetic Monitoring** | `gcx synthetic-monitoring` | `synthetic-monitoring checks list`, `synthetic-monitoring probes list`, `synthetic-monitoring probes deploy` |
 | **IRM** | `gcx irm` | `irm oncall schedules list`, `irm oncall integrations list`, `irm incidents list`, `irm incidents create -f incident.yaml` |
@@ -267,7 +268,7 @@ While the alerting example uses the Grafana Assistant, which requires Grafana Cl
 
 - **Resource GitOps**. Pull writable resource types to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`).
 - **Explore your data**. Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`).
-- **Bring Assistant context into your agent**. Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`).
+- **Bring Assistant context into your agent**. Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`). Legacy transcript JSON preserves tool calls, results, durations, thinking blocks, and panel artifacts.
 - **Look up product docs**. Search and read Grafana documentation from the terminal (`gcx docs search`, `gcx docs get`).
 - **SLO management**. Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`).
 - **Onboarding & setup**. Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`).
@@ -351,6 +352,12 @@ gcx resources pull folders -p ./resources -o yaml
 
 # Push local changes back to Grafana
 gcx resources push -p ./resources
+
+# Include the resource identities returned by successful writes
+gcx resources push -p ./resources --include-successes -o json
+
+# An aborted push returns completed identities and a nonzero exit
+gcx resources push -p ./resources --include-successes -o json --on-error abort
 
 # Preview changes without applying
 gcx resources push -p ./resources --dry-run
@@ -495,6 +502,8 @@ gcx api /api/dashboards/uid/my-dashboard/versions -o yaml
 # Compare two dashboard JSONs before pushing
 gcx api /api/dashboards/calculate-diff -X POST -d @diff-request.json
 ```
+
+`gcx api` accepts paths on the configured Grafana stack. It rejects absolute URLs.
 
 ## Usage statistics
 

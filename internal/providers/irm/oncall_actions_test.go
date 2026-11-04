@@ -77,8 +77,7 @@ func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, client 
 	// document is already on stdout); mirror the old exit-code capture by
 	// extracting the carried code.
 	exitCode := -1
-	var emitted *fail.EmittedError
-	if errors.As(err, &emitted) {
+	if emitted, ok := errors.AsType[*fail.EmittedError](err); ok {
 		exitCode = emitted.Code
 	}
 	return stdout.String(), stderr.String(), exitCode, err
@@ -251,8 +250,7 @@ func TestRunAcknowledge_SingleTarget_ApplyError(t *testing.T) {
 	if exit != fail.ExitPartialFailure {
 		t.Errorf("expected exit %d (ExitPartialFailure); got %d", fail.ExitPartialFailure, exit)
 	}
-	var emitted *fail.EmittedError
-	if !errors.As(err, &emitted) {
+	if _, ok := errors.AsType[*fail.EmittedError](err); !ok {
 		t.Fatalf("expected *gcxerrors.EmittedError sentinel (result already on stdout); got %T: %v", err, err)
 	}
 

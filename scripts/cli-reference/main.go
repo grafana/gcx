@@ -7,15 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
+	"github.com/grafana/gcx/internal/markdown"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
 )
 
 func main() {
@@ -98,7 +95,7 @@ Flag defaults below are for human mode. Agent mode changes defaults such as outp
 		"- **Telemetry:** non-empty `GCX_TELEMETRY` > `DO_NOT_TRACK=1` or `true` > `diagnostics.telemetry` in configuration > the built-in default.\n\n" +
 		"Blank `GRAFANA_TOKEN`, `GRAFANA_PASSWORD`, and `GRAFANA_CLOUD_TOKEN` values are ignored. Environment overrides still follow the [configuration source and credential restrictions](../configuration/#understand-the-gcx-configuration-file-in-use).\n\n")
 	envDoc = strings.ReplaceAll(envDoc, "\n## `", "\n### `")
-	out.WriteString(escapeRawHTML(withoutTitle(envDoc)))
+	out.WriteString(markdown.EscapeRawHTML(withoutTitle(envDoc)))
 	out.WriteString("\n")
 
 	// Time-dependent defaults otherwise change on every release-docs retry.
@@ -115,7 +112,7 @@ func renderConfiguration(guide, schema, version string) (string, error) {
 	}
 	return prefix + configurationMarker + "\n\n## Configuration reference\n\n" +
 		fmt.Sprintf("This schema describes configuration fields and their types in gcx **%s**.\n\n", version) +
-		escapeRawHTML(withoutTitle(schema)) + "\n", nil
+		markdown.EscapeRawHTML(withoutTitle(schema)) + "\n", nil
 }
 
 func renderCommands(out *strings.Builder, cmd *cobra.Command) {
@@ -128,9 +125,9 @@ func renderCommands(out *strings.Builder, cmd *cobra.Command) {
 	if description == "" {
 		description = cmd.Short
 	}
-	out.WriteString(escapeRawHTML(renderDescription(description)) + "\n\n")
+	out.WriteString(markdown.EscapeRawHTML(renderDescription(description)) + "\n\n")
 	if cmd.Deprecated != "" {
-		fmt.Fprintf(out, "**Deprecated:** %s\n\n", escapeRawHTML(cmd.Deprecated))
+		fmt.Fprintf(out, "**Deprecated:** %s\n\n", markdown.EscapeRawHTML(cmd.Deprecated))
 	}
 	if len(cmd.Aliases) > 0 {
 		fmt.Fprintf(out, "**Aliases:** `%s`\n\n", strings.Join(cmd.Aliases, "`, `"))
@@ -178,50 +175,6 @@ func renderDescription(description string) string {
 		}
 		return fenced
 	})
-}
-
-// Hugo renders Markdown with raw HTML enabled, so a help placeholder such as
-// <title> reaches the browser as an element: the tokenizer then swallows the
-// rest of the document and the page loses its body and navigation. Goldmark is
-// the parser Hugo renders with, so its own classification decides which spans
-// would survive as HTML; code fences, code spans, and autolinks are left alone.
-func escapeRawHTML(markdown string) string {
-	source := []byte(markdown)
-	var spans []text.Segment
-	// The walker never fails, so the only error Walk can return is nil.
-	_ = ast.Walk(goldmark.DefaultParser().Parse(text.NewReader(source)), func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		switch node := node.(type) {
-		case *ast.RawHTML:
-			for i := range node.Segments.Len() {
-				spans = append(spans, node.Segments.At(i))
-			}
-		case *ast.HTMLBlock:
-			for i := range node.Lines().Len() {
-				spans = append(spans, node.Lines().At(i))
-			}
-			if node.HasClosure() {
-				spans = append(spans, node.ClosureLine)
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	slices.SortFunc(spans, func(a, b text.Segment) int { return a.Start - b.Start })
-	escaper := strings.NewReplacer("<", "&lt;", ">", "&gt;")
-	var out strings.Builder
-	end := 0
-	for _, span := range spans {
-		if span.Start < end {
-			continue
-		}
-		out.WriteString(markdown[end:span.Start])
-		out.WriteString(escaper.Replace(markdown[span.Start:span.Stop]))
-		end = span.Stop
-	}
-	out.WriteString(markdown[end:])
-	return out.String()
 }
 
 func withoutTitle(input string) string {

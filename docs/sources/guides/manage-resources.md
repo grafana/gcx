@@ -18,9 +18,7 @@ weight: 3
 
 ## Migrate resources between environments
 
-Grafana resources can be migrated from one environment to another, for example from a development to production environment. 
-
-You need to [configure one context per environment](../../configuration#define-contexts). In this example scenario, use `dev` for the development environment and `prod` for production.
+You can migrate Grafana resources from one environment to another, for example from a development to production environment. To do so, [configure one context per environment](../../configuration#define-contexts). This example uses `dev` for the development environment and `prod` for production.
 
 1. Make changes to dashboards and other resources using the Grafana UI in your **development instance**.
 1. Pull those resources from the development environment to your local machine:
@@ -60,12 +58,11 @@ inside its usual resource-type directory. Resources without a usable title fall
 back to `metadata.name`. The resource contents retain their original identity,
 so push, validate, and serve use these files normally.
 
-Title mode resolves filename collisions with both the current pull and existing
-destination files, preserving files that belong to other resources. See the
+Title mode resolves filename conflicts, preserving files that belong to other resources. See the
 [file naming rules](https://github.com/grafana/gcx/blob/main/docs/design/naming.md#92-file-naming)
 for the full algorithm.
 
-Pull does not remove old files. Title-mode pull warns on stderr when it finds
+`PULL` doesn't remove old files. Title-mode pull warns on stderr when it finds
 another file for the same resource at a different path, such as after a rename or
 switching naming modes. Reading resources also warns when skipping duplicate
 identities. Pull into a clean directory or remove stale files (for example, with
@@ -88,3 +85,12 @@ Follow this workflow to back up all Grafana resources from one instance and late
    ```shell
    gcx resources push --path ./backup-prod
    ```
+
+## Incident descriptions
+
+Incident descriptions remain visible in `GET` and `LIST` results. 
+
+`PULL` omits descriptions from saved manifests. You cannot restore descriptions if you backed up an incident with `gcx resources pull`. 
+
+Old backup files can contain `spec.description`. Remove that field before you push the file to create an
+incident or to change an incident with a different description. You can still update other fields.

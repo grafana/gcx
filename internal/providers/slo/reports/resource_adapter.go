@@ -13,8 +13,9 @@ import (
 func ReportResource() adapter.Resource[Report] {
 	return adapter.Resource[Report]{
 		Group: api.Group, Version: api.Version, Kind: "Report",
-		NaturalKey:  "name",
-		StripFields: []string{"uuid"},
+		NaturalKey:       "name",
+		NaturalKeyPolicy: adapter.NaturalKeyPolicy{RequireUnique: true, IDLabel: "UUID"},
+		StripFields:      []string{"uuid"},
 		Example: &Report{
 			UUID: "my-report", Name: "Weekly availability", Description: "Availability of the selected SLOs",
 			TimeSpan:         "weeklySundayToSunday",

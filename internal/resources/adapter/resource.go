@@ -25,6 +25,9 @@ type ClientDeps struct {
 	// BaseURL is the resolved Grafana (or product API) base URL.
 	BaseURL string
 
+	// GrafanaURL is the public Grafana URL before OAuth proxy routing.
+	GrafanaURL string
+
 	// Namespace is the loaded config's namespace, stamped on every produced
 	// envelope unless overridden by Resource.Namespace.
 	Namespace string
@@ -70,12 +73,18 @@ type Resource[T ResourceNamer] struct {
 	// StripFields lists spec-level keys to remove from output (e.g. "uuid").
 	StripFields []string
 
+	// PullStripFields lists spec keys removed only from saved pull manifests.
+	PullStripFields []string
+
 	// NaturalKey names a single spec field used to build a cross-stack
 	// identity extractor (SpecFieldKey), folding in RegisterNaturalKey so no
 	// separate init() is needed. Leave empty to skip natural-key
 	// registration for this type (composite keys still need a hand-written
 	// init() calling RegisterNaturalKey directly).
 	NaturalKey string
+
+	// NaturalKeyPolicy controls ambiguous matches for this resource type.
+	NaturalKeyPolicy NaturalKeyPolicy
 
 	// URLTemplate, when set, is carried on the Registration; providers.Register
 	// already folds every Registration.URLTemplate into
@@ -108,7 +117,7 @@ func (r Resource[T]) registration(loadDeps DepsLoader) Registration {
 	gvk := desc.GroupVersionKind()
 
 	if r.NaturalKey != "" {
-		RegisterNaturalKey(gvk, SpecFieldKey(r.NaturalKey))
+		RegisterNaturalKeyWithPolicy(gvk, SpecFieldKey(r.NaturalKey), r.NaturalKeyPolicy)
 	}
 
 	example := exampleJSON(r.Example, desc, r.StripFields)
@@ -128,11 +137,12 @@ func (r Resource[T]) registration(loadDeps DepsLoader) Registration {
 			crud := r.TypedCRUD(client, deps.Namespace)
 			return crud.AsAdapter(), nil
 		},
-		Descriptor:  desc,
-		GVK:         gvk,
-		Schema:      SchemaFromType[T](desc),
-		Example:     example,
-		URLTemplate: r.URLTemplate,
+		Descriptor:      desc,
+		GVK:             gvk,
+		Schema:          SchemaFromType[T](desc),
+		Example:         example,
+		URLTemplate:     r.URLTemplate,
+		PullStripFields: r.PullStripFields,
 	}
 }
 
@@ -216,7 +226,7 @@ func (r Resource[T]) TypedCRUD(client any, namespace string) *TypedCRUD[T] {
 	desc := r.descriptor()
 	// Provider commands can bind typed CRUD without registering the whole provider.
 	if r.NaturalKey != "" {
-		RegisterNaturalKey(desc.GroupVersionKind(), SpecFieldKey(r.NaturalKey))
+		RegisterNaturalKeyWithPolicy(desc.GroupVersionKind(), SpecFieldKey(r.NaturalKey), r.NaturalKeyPolicy)
 	}
 	return newCapabilityCRUD[T](client, capabilityMeta{
 		Descriptor: desc, Namespace: namespace, StripFields: r.StripFields,

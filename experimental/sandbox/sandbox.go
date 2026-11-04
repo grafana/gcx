@@ -7,10 +7,11 @@
 // gcx is compiled to WebAssembly (GOOS=wasip1, see build.sh) and run with
 // wazero, a pure-Go runtime. Compile the module once with New, then call Run
 // once per command. Each Run gets a fresh module instance that sees only what its
-// Invocation grants: its args and env, an empty read-only root with a
-// writable $HOME, and HTTP to the destinations in its egress policy. The
-// guest has no sockets; the host makes every request and can attach
-// credentials the guest never sees.
+// Invocation grants: its args and env, an empty read-only root with a $HOME
+// (a writable host directory, or a read-only in-memory fs.FS, see
+// Invocation.Home and Invocation.HomeFS), and HTTP to the destinations in
+// its egress policy. The guest has no sockets; the host makes every request
+// and can attach credentials the guest never sees.
 package sandbox
 
 import (
@@ -287,11 +288,20 @@ type Invocation struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 	// Home is the host directory mounted read-write at /home. Empty means a
-	// fresh temporary directory, removed when Run returns. Runs given the
+	// fresh temporary directory, removed when Run returns, unless HomeFS is
+	// set, which replaces Home and creates no directory. Runs given the
 	// same Home share it: each sees, and can race with, the config and token
 	// cache the others write. Give each tenant its own, and don't run one
 	// tenant's commands concurrently if those writes must not interleave.
 	Home string
+	// HomeFS, if set, is mounted at /home instead of Home, which must then be
+	// empty. It is read-only, so the guest can't write to it and nothing
+	// reaches the host's disk. Seed whatever gcx expects to find there, for
+	// example $HOME/.config/gcx/config.yaml, which gcx insists on creating
+	// if it's missing, or $HOME/.local/state/gcx/device-id to fix the device
+	// ID that gcx's usage telemetry reports. Use it when the files gcx needs
+	// are known up front; otherwise use Home.
+	HomeFS fs.FS
 	// Egress lists the only destinations the guest may reach.
 	Egress []Destination
 	// Authorize, if set, is called for every request that Egress allows,
@@ -311,6 +321,9 @@ type Result struct {
 // Run executes one gcx command in a fresh instance. Cancelling ctx, or
 // reaching its deadline, stops the guest and returns ctx's error.
 func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
+	if inv.Home != "" && inv.HomeFS != nil {
+		return Result{}, errors.New("sandbox: set at most one of Invocation.Home and Invocation.HomeFS")
+	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil) // abandons any requests still in flight on the host
 	if !r.start(&cancel) {
@@ -319,7 +332,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	defer r.finish(&cancel)
 
 	home := inv.Home
-	if home == "" {
+	if home == "" && inv.HomeFS == nil {
 		dir, err := os.MkdirTemp("", "gcx-sandbox-home")
 		if err != nil {
 			return Result{}, err
@@ -328,14 +341,18 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 		home = dir
 	}
 
+	// An empty root makes paths outside $HOME report ENOENT (as gcx
+	// expects for optional config files) instead of EBADF.
+	fsc := wazero.NewFSConfig().WithReadOnlyDirMount(r.root, "/")
+	if inv.HomeFS != nil {
+		fsc = fsc.WithFSMount(inv.HomeFS, "/home")
+	} else {
+		fsc = fsc.WithDirMount(home, "/home")
+	}
 	cfg := wazero.NewModuleConfig().
 		WithName(""). // allow concurrent instances of the same module
 		WithArgs(append([]string{"gcx"}, inv.Args...)...).
-		WithFSConfig(wazero.NewFSConfig().
-			// An empty root makes paths outside $HOME report ENOENT (as gcx
-			// expects for optional config files) instead of EBADF.
-			WithReadOnlyDirMount(r.root, "/").
-			WithDirMount(home, "/home")).
+		WithFSConfig(fsc).
 		WithEnv("HOME", "/home").
 		WithSysWalltime().WithSysNanotime().WithSysNanosleep()
 	if _, ok := inv.Env["GCX_AGENT_SPILL_BYTES"]; !ok {
@@ -377,8 +394,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	if err != nil && ctx.Err() != nil { // stopped by the caller's deadline or cancellation
 		return Result{}, ctx.Err()
 	}
-	var exit *sys.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*sys.ExitError](err); ok {
 		return Result{ExitCode: int(exit.ExitCode())}, nil
 	}
 	if err != nil {
