@@ -16,7 +16,7 @@ weight: 4
 
 - [OAuth - Grafana Cloud only](#browser-based-oauth-cloud-only-recommended): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](#required-role-for-oauth-sign-in) for the permission this flow needs.
 - [Service account token](#service-account-token): Works for Grafana Cloud and on-premises instances, and is the recommended method for CI and other non-interactive environments. Refer to [Grafana service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/) for how to create one.
-- [Basic authentication](#basic-authentication-self-managed-grafana): Username and password. Use this only when service accounts aren't available.
+- [Basic authentication - Self-managed Grafana](#basic-authentication-self-managed-grafana): Username and password. Use this only when service accounts aren't available.
 - mTLS: A client certificate and key for instances behind an identity-aware proxy. Configure the `grafana.tls` fields or corresponding TLS [environment variables](#environment-variables).
 
 ## No Grafana Cloud account yet
@@ -29,7 +29,7 @@ gcx signup
 
 `gcx` opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection. 
 
-If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. See [First-time Grafana Cloud login](/reference/login#first-time-grafana-cloud-login).
+If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. See [First-time Grafana Cloud login](../reference/login#first-time-grafana-cloud-login).
 
 ## Browser-based OAuth (Cloud-only, recommended)
 
@@ -224,29 +224,35 @@ export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
-Env vars resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
+Environment variables resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
 
-For safety, an auto-discovered repository `.gcx.yaml` cannot attach runtime
-tokens, prompted login credentials, or external mTLS keypairs to destinations
-the file supplies. If you intend that file to own credentials or direct
-provider endpoints, authorize it explicitly with `--config .gcx.yaml` or
-`GCX_CONFIG=.gcx.yaml`; a `--server` or endpoint flag alone is not sufficient.
-Provider-specific runtime endpoints are accepted only when their matching
-runtime credential is supplied in the same invocation; that pair does not
-authorize an auto-discovered repository stack's TLS or proxy configuration.
+## Auto-discovered repositories
 
-## Data source authentication failures
+For safety, an auto-discovered repository `.gcx.yaml` cannot attach runtime tokens, prompted login credentials, or external mTLS keypairs to destinations
+the file supplies. If you want that file to own credentials or direct provider endpoints you need to authorize it explicitly:
 
-Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
-
-Run `gcx datasources health <uid>` to see the data source health. To find the UID, use `gcx datasources list -o json`.
-
-The health check uses a different API path and doesn't establish that ruler access works.
-
-Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
+```bash
+gcx login --config .gcx.yaml
+# or
+GCX_CONFIG=.gcx.yaml gcx login
+```
+Refer to [Credentials in auto-discovered repositories](../sources/configuration#credentials-in-auto-discovered-repositories) for more details.
 
 ## Verify your configuration
 
 Run `gcx config check` to check your configuration.
 
-Refer to the [login reference](/docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
+Refer to the [login reference](../../reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
+
+## Troubleshooting
+
+### Data source authentication failures
+
+Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
+
+Run `gcx datasources health <uid>` to see the data source health. 
+
+- The health check uses a different API path and doesn't establish that ruler access works. 
+- To find the UID, use `gcx datasources list -o json`.
+
+Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
