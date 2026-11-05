@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -506,10 +507,17 @@ func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	dec := json.NewDecoder(bytes.NewReader(specJSON))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&app); err != nil {
-		if strings.HasPrefix(err.Error(), "json: unknown field ") {
-			return nil, fmt.Errorf("failed to parse spec: %s; run \"gcx frontend apps get <app> -o yaml\" to see the valid spec fields", strings.TrimPrefix(err.Error(), "json: "))
+		exitCode := gcxerrors.ExitUsageError
+		return nil, &gcxerrors.DetailedError{
+			Summary: "Invalid Frontend Observability app manifest: " + err.Error(),
+			Details: "spec could not be parsed into an app. Unknown fields are rejected; only the first problem is reported.",
+			Parent:  err,
+			Suggestions: []string{
+				"List the valid spec fields by exporting an existing app: gcx frontend apps get <app> -o yaml",
+				"Check field names for typos, for example corsOrigins rather than allowedOrigins",
+			},
+			ExitCode: &exitCode,
 		}
-		return nil, fmt.Errorf("failed to parse spec: %w", err)
 	}
 
 	// Extract ID from metadata.name slug.

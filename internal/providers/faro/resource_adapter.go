@@ -56,7 +56,10 @@ func FaroAppSchema() json.RawMessage {
 			},
 			"spec": map[string]any{
 				"type": "object",
+				// Matches the manifest reader, which rejects unknown spec fields.
+				"additionalProperties": false,
 				"properties": map[string]any{
+					"id":                    map[string]any{"type": "string", "description": "App ID, assigned by the API. Read-only: on update it is taken from metadata.name."},
 					"name":                  map[string]any{"type": "string", "description": "Display name, set at creation. The API cannot rename an app, so on update it must match the stored name exactly."},
 					"appType":               map[string]any{"type": "string", "enum": []string{appTypeWeb, appTypeMobile}, "description": "Application type, set at creation. Use mobile for flutter, react-native, android-native, and swift-native; use web for web-js."},
 					"runtime":               map[string]any{"type": "string", "enum": []string{runtimeWebJS, runtimeFlutter, runtimeReactNative, runtimeAndroidNative, runtimeSwiftNative}, "description": "SDK runtime. Omit to preserve the runtime on update."},
