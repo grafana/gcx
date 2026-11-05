@@ -75,7 +75,7 @@ spec:
 				require.Error(t, err)
 				var detailed *gcxerrors.DetailedError
 				require.ErrorAs(t, err, &detailed)
-				require.NotNil(t, detailed.Parent)
+				require.Error(t, detailed.Parent)
 				assert.Contains(t, strings.Join(detailed.Suggestions, "\n"), "gcx frontend apps get <app> -o yaml")
 				for _, s := range tc.wantErr {
 					assert.Contains(t, err.Error(), s)
