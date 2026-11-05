@@ -16,7 +16,7 @@ weight: 2
 
 # Explore and modify resources with `gcx`
 
-The Grafana CLI allows you to interact with Grafana resources directly from your terminal. You can browse, inspect, update, and delete resources without using the Grafana UI.
+`gcx` allows you to interact with Grafana resources directly from your terminal. You can browse, inspect, update, and delete resources without using the Grafana UI.
 
 Use this approach if you're an advanced user and want to manage resources more efficiently, or to integrate Grafana operations into automated workflows.
 
@@ -99,12 +99,12 @@ gcx resources delete dashboards/test-dashboard-from-stg,test-dashboard-from-dev
 
 ## Edit remote resources
 
-You can edit resources directly from the default editor, without having to pull them first:
+You can edit resources directly from the default editor, without having to pull them first. To do so, run:
 
 ```shell
 gcx resources edit dashboard/edit-me-please
 ```
 
-This command opens the default editor as configured by the `EDITOR` environment variable, or fall back to 'vi' for Linux or 'notepad' for Windows.
+This command opens the default editor set in the `EDITOR` environment variable, or falls back to 'vi' for Linux and 'notepad' for Windows.
 
-After the editor process terminates, the resource is updated in the Grafana instance targeted by the current context. Note that edition will be cancelled if no changes are written to the file or if the file after edition is empty.
+After the editor process terminates, the resource is updated in the Grafana instance targeted by the current context. Edition is cancelled if no changes are written to the file, or if the file after edition is empty.

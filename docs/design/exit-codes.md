@@ -34,8 +34,11 @@ example scenario for each code. The topic is generated from the ordered
   This includes provider errors, Assistant helper errors, and raw `gcx api`
   failures. A 401 reports `Authentication failed`
   and suggests credential recovery; a 403 reports `Authorization failed` and
-  suggests checking roles or scopes. Adaptive Logs `invalid scope` reports
-  authorization failure for both statuses.
+  suggests checking roles or scopes. Adaptive Logs and Logs Archive
+  `invalid scope` report authorization failure for both statuses. A failed
+  Logs Archive bucket check (HTTP 403 with field errors) is the exception: the
+  bucket refused Grafana's principal, not the gcx credential, so it reports
+  `API error` (exit 1) with bucket-access suggestions.
   The shared `HTTPStatusError` converter also exits 3 for HTTP 400 when its
   canonical server message is exactly `Authentication to data source failed`.
   This includes the plain-text datasource proxy response when parsed into

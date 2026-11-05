@@ -16,7 +16,7 @@ weight: 4
 
 - [OAuth - Grafana Cloud only](#browser-based-oauth-cloud-only-recommended): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](#required-role-for-oauth-sign-in) for the permission this flow needs.
 - [Service account token](#service-account-token): Works for Grafana Cloud and on-premises instances, and is the recommended method for CI and other non-interactive environments. Refer to [Grafana service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/) for how to create one.
-- [Basic authentication](#basic-authentication-self-managed-grafana): Username and password. Use this only when service accounts aren't available.
+- [Basic authentication - Self-managed Grafana](#basic-authentication-self-managed-grafana): Username and password. Use this only when service accounts aren't available.
 - mTLS: A client certificate and key for instances behind an identity-aware proxy. Configure the `grafana.tls` fields or corresponding TLS [environment variables](#environment-variables).
 
 ## No Grafana Cloud account yet
@@ -29,7 +29,7 @@ gcx signup
 
 `gcx` opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection. 
 
-If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. See [First-time Grafana Cloud login](/reference/login#first-time-grafana-cloud-login).
+If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. Refer to [First-time Grafana Cloud login](https://github.com/grafana/gcx/blob/main/docs/reference/login.md#first-time-grafana-cloud-login) for more details.
 
 ## Browser-based OAuth (Cloud-only, recommended)
 
@@ -48,7 +48,7 @@ This flow:
 1. Saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry, and makes the context current.
 1. `gcx` stops before the browser flow when the current process cannot write to the OS credential store. 
 
-Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](/keychain).
+Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](../keychain).
 
 ### Required role for OAuth sign-in
 
@@ -69,66 +69,86 @@ If `gcx login` fails with a `Permission Required` error naming the **gcx User** 
 
 ### Permissions to use Assistant investigations
 
-Access to the Assistant app requires `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`. A backend 403 such as `insufficient permissions` doesn't mean that app access is missing.
+The **Assistant Investigation User** role is included in the Editor and Admin basic roles. Viewers don't have it.
 
-If `gcx assistant investigations list` returns a backend HTTP 403, `gcx` reports `Authorization failed` with exit code 3 and names `grafana-assistant-app.investigations:read` as the required action by default.
+If an Assistant command such as `gcx assistant investigations list` fails with `Authorization failed` and exit code 3, your Grafana user is missing a permission. The error message tells you which one:
 
-The `grafana-assistant-app.investigations:read` action comes with the Assistant Investigation User role. Editor and Admin have this role by default. Viewer doesn't.
+| If the error mentions | You're missing | How to fix it |
+| --- | --- | --- |
+| A plugin route, for example `plugin proxy route access denied` | Access to the Assistant app: `plugins.app:access` scoped to `plugins:id:grafana-assistant-app` | Ask your Grafana administrator to grant this permission. |
+| `insufficient permissions`, or a named action such as `grafana-assistant-app.investigations:read` | Permission to read investigations: `grafana-assistant-app.investigations:read` | Ask your administrator to assign you the **Assistant Investigation User** role. |
 
-Viewing system-created investigations, for example from alerts or webhooks, requires `grafana-assistant-app.investigations.system:read`. When the HTTP 403 response names a required action, `gcx` reports that action.
+#### Check which permissions you have
 
-For other Assistant operations, including investigation mutations and MCP server calls, `gcx` gives general permission guidance unless the response names a required action.
-
-A `plugin proxy route access denied` response takes precedence over the investigation read action and gives route permission guidance; a backend denial identifies an operation permission failure.
-
-Inspect your allowed actions with:
+To list the actions your user is allowed to perform, run:
 
 ```bash
 gcx api /api/access-control/user/actions
 ```
 
-Ask your Grafana administrator to check your roles for the required action. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
-for role assignment guidance.
+Send the output to your Grafana administrator along with the error message. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.
 
-`gcx setup status` doesn't check Assistant access.
+{{< admonition type="note" >}}
+`gcx setup status` doesn't check Assistant access, so a passing status check doesn't mean Assistant commands will work.
+{{< /admonition >}}
+
+#### See investigations created by alerts and webhooks
+
+Investigations that start automatically, for example from an alert or an IRM webhook, need an additional permission: `grafana-assistant-app.investigations.system:read`. Without it, those investigations don't appear in your list.
+
+#### Other Assistant commands
+
+For commands that change things, such as creating investigations, or that call MCP servers, `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles.
+
+
 
 ### Permissions to check instrumentation status
 
-To use `gcx setup status` and `gcx instrumentation clusters list` to check Kubernetes monitoring through the Collector app you need both the `grafana-collector-app:read` and the `grafana-collector-app:admin` permissions.
+`gcx setup status` and `gcx instrumentation clusters list` check Kubernetes monitoring through the Collector app. To run them, your Grafana user needs both of these permissions:
 
-Inspect your allowed actions with:
+- `grafana-collector-app:read`
+- `grafana-collector-app:admin`
 
-```bash
-gcx api /api/access-control/user/actions
-```
+If you're missing one, the command fails with `Authorization failed` and exit code 3.
 
-Ask your Grafana administrator to check your roles for the required action. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/)
-for role assignment guidance.
+To list the actions your user is allowed to perform, refer to [Check which permissions you have](#check-which-permissions-you-have).
 
-#### Status check outputs
+#### Read the status when a check fails
 
-A successful check still reports `true` or `false`.
+`gcx setup status` reports `true` or `false` for each product it can check. `false` means `gcx` checked and the product isn't set up.
 
-When a setup status check fails, the state is unknown.
+If `gcx` can't check a product, for example because of a permissions error, the state is **unknown**. Unknown can appear as `unknown` in a text table, or as 
+`enabled: null` in JSON and YAML.
 
-- The text table shows `unknown`, JSON and YAML keep the `enabled` field with a `null` value.
-- The `fleet-management` row also has `enabled: null` when the Collector app plugin state is unknown.
-- The structured status document keeps its `type`, `schema_version`, and `products` fields.
-- Agent mode and the `--json` flag add an `error` object on failure. It contains the fields `summary`, `exitCode`, and optional `details`, `suggestions`, and `docsLink`.
-- Explicit human formats such as `-o yaml`, and plain `-o json` without agent mode, omit the `error` object from stdout.
+The `fleet-management` row also shows unknown when `gcx` can't read the state of the Collector app, because its status depends on that app.
 
-The converted diagnostic goes to `stderr` whenever stdout has no `error` object (including explicit human formats such as text and `-o yaml`, and plain `-o json` without agent mode), or with `--jq`, `--json <fields>` that omits `error`, or field discovery with `--json list`:
+#### Use status checks in scripts and agents
 
-- With JSONL warnings for the summary and details in agent mode.
-- With formatted text otherwise.
+When a check fails, the rest of the status document is still returned, with the same `type`, `schema_version`, and `products` fields. You can parse it as usual and treat `null` values as unknown.
 
-Without `--jq` or field discovery, an in-band error has no duplicate `stderr` diagnostic, including when `--json <fields>` includes `error`.
+To get the failure details in the output itself, run the command in agent mode or with `--json`. The output then includes an `error` object with these fields:
+
+| Field | Description |
+| --- | --- |
+| `summary` | A short description of the failure. |
+| `exitCode` | The exit code the command returns. |
+| `details`, `suggestions`, `docsLink` | Optional. Present when `gcx` has more to say. |
+
+These options remove the error object from the filtered output, so `gcx` also writes the error text to `stderr`:
+
+- `-o yaml`, and `-o json` outside agent mode.
+- `--jq`.
+- `--json <fields>` when the field list doesn't include `error`.
+- `--json list`
 
 #### Exit codes
 
-- HTTP 401 and 403 failures exit with code 3.
-- Other failed status probes, such as HTTP 500, exit with code 1 even when another product row succeeded.
-- A setup snapshot is a diagnostic check; exit 4 is reserved for partial batch or mutation failures.
+`gcx setup status` is a read-only check, so it never exits with code 4. 
+
+| Exit code | Meaning |
+| --- | --- |
+| 3 | A probe failed with HTTP 401 or 403. Check your permissions. |
+| 1 | Any other probe failed, for example HTTP 500. This applies even if the other products returned a result. |
 
 ### Grafana Cloud product API 
 
@@ -182,7 +202,7 @@ Both `stacks create` and `stacks list` require `--org <slug>`.
 
 ### Custom environments
 
-You do not need to set Cloud endpoints for `grafana.com` as `gcx` defaults to `https://grafana.com`. 
+You don't need to set Cloud endpoints for `grafana.com` as `gcx` defaults to `https://grafana.com`. 
 
 For a custom environment, authenticate and store a coherent OAuth/API destination pair: supplying one endpoint to a login command
 uses it for both operations unless you explicitly supply both to `gcx cloud login`. Changing a named entry's `api-url` or `oauth-url` invalidates its old credential, so re-authenticate after the edit.
@@ -224,29 +244,35 @@ export GRAFANA_CLOUD_TOKEN="your-cloud-access-policy-token"
 export GRAFANA_CLOUD_STACK="your-stack-slug"
 ```
 
-Env vars resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
+Environment variables resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
 
-For safety, an auto-discovered repository `.gcx.yaml` cannot attach runtime
-tokens, prompted login credentials, or external mTLS keypairs to destinations
-the file supplies. If you intend that file to own credentials or direct
-provider endpoints, authorize it explicitly with `--config .gcx.yaml` or
-`GCX_CONFIG=.gcx.yaml`; a `--server` or endpoint flag alone is not sufficient.
-Provider-specific runtime endpoints are accepted only when their matching
-runtime credential is supplied in the same invocation; that pair does not
-authorize an auto-discovered repository stack's TLS or proxy configuration.
+## Auto-discovered repositories
 
-## Data source authentication failures
+For safety, an auto-discovered repository `.gcx.yaml` cannot attach runtime tokens, prompted login credentials, or external mTLS keypairs to destinations
+the file supplies. If you want that file to own credentials or direct provider endpoints you need to authorize it explicitly:
 
-Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
-
-Run `gcx datasources health <uid>` to see the data source health. To find the UID, use `gcx datasources list -o json`.
-
-The health check uses a different API path and doesn't establish that ruler access works.
-
-Inspect the datasource with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.
+```bash
+gcx login --config .gcx.yaml
+# or
+GCX_CONFIG=.gcx.yaml gcx login
+```
+Refer to [Credentials in auto-discovered repositories](../configuration#credentials-in-auto-discovered-repositories) for more details.
 
 ## Verify your configuration
 
 Run `gcx config check` to check your configuration.
 
-Refer to the [login reference](/docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
+Refer to the [login reference](https://github.com/grafana/gcx/blob/main/docs/reference/login.md) for the full guide, including re-authentication, environment-variable setup, and troubleshooting for common errors.
+
+## Troubleshooting
+
+### Data source authentication failures
+
+Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
+
+Run `gcx datasources health <uid>` to see the data source health. 
+
+- The health check uses a different API path and doesn't establish that ruler access works. 
+- To find the UID, use `gcx datasources list -o json`.
+
+Inspect the data source with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.

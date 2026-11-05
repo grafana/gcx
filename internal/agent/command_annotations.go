@@ -412,6 +412,18 @@ var commandAnnotations = map[string]annotation{
 	"gcx logs adaptive segments list":     {Cost: "small"},
 	"gcx logs adaptive segments update":   {Cost: "small"},
 
+	// Logs archive
+	"gcx logs archive destinations create": {Cost: "small"},
+	"gcx logs archive destinations delete": {Cost: "small"},
+	"gcx logs archive destinations get":    {Cost: "small"},
+	"gcx logs archive destinations list":   {Cost: "small", Hint: "Docs: " + docs.AdaptiveLogsArchive},
+	"gcx logs archive principal get":       {Cost: "small"},
+	"gcx logs archive streams create":      {Cost: "small"},
+	"gcx logs archive streams delete":      {Cost: "small"},
+	"gcx logs archive streams get":         {Cost: "small"},
+	"gcx logs archive streams list":        {Cost: "small"},
+	"gcx logs archive streams update":      {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// Metrics provider
 	// -----------------------------------------------------------------------
@@ -617,9 +629,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y templates list":          {Cost: "small"},
 	"gcx agento11y templates list-versions": {Cost: "small"},
 
-	"gcx agento11y model-rates list":   {Cost: "small"},
-	"gcx agento11y model-rates create": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00"},
-	"gcx agento11y model-rates delete": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --effective-from <ts>"},
+	"gcx agento11y model-rates list":    {Cost: "small"},
+	"gcx agento11y model-rates create":  {Cost: "small", Hint: "--provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00"},
+	"gcx agento11y model-rates delete":  {Cost: "small", Hint: "--provider openai --model gpt-5.5 --effective-from <ts>"},
+	"gcx agento11y model-cards get":     {Cost: "small", Hint: "openai/gpt-4o-mini -o json"},
+	"gcx agento11y model-cards list":    {Cost: "small", Hint: "--provider openai --min-context-length 100000 -o json"},
+	"gcx agento11y model-rates resolve": {Cost: "small", Hint: "--provider openai --model gpt-5.5 -o json"},
 
 	"gcx agento11y saved-conversations list":        {Cost: "small"},
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
