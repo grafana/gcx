@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/agento11y/modelcards"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -139,4 +140,56 @@ func TestList_WarnsWhenTruncated(t *testing.T) {
 	assert.Len(t, cards, 1)
 	assert.Contains(t, stderr, "truncated")
 	assert.Contains(t, stderr, "--limit")
+}
+
+// Every filter flag reaches the server as the matching query parameter.
+func TestList_SendsFilterQuery(t *testing.T) {
+	var got url.Values
+	serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		writeJSON(w, map[string]any{"data": []any{}, "next_cursor": ""})
+	}))
+
+	run(t, "list", "--query", " gpt ", "--source", "openrouter", "--provider", "openai",
+		"--regex", "^openai/", "--sort", "PROMPT_PRICE", "--order", "DESC",
+		"--free-only", "--min-context-length", "100000", "--limit", "10", "-o", "json")
+
+	assert.Equal(t, url.Values{
+		"q":                  {"gpt"},
+		"source":             {"openrouter"},
+		"provider":           {"openai"},
+		"regex":              {"^openai/"},
+		"sort":               {"prompt_price"},
+		"order":              {"desc"},
+		"free_only":          {"true"},
+		"min_context_length": {"100000"},
+		"limit":              {"10"},
+	}, got)
+}
+
+// An explicitly empty filter is a usage error rather than an unfiltered list,
+// and no request is sent.
+func TestList_RejectsEmptyFilter(t *testing.T) {
+	for _, flag := range []string{"query", "source", "provider", "regex"} {
+		for _, value := range []string{"", "   "} {
+			t.Run(fmt.Sprintf("%s=%q", flag, value), func(t *testing.T) {
+				requests := 0
+				serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					requests++
+					writeJSON(w, map[string]any{"data": []any{}})
+				}))
+
+				cmd := modelcards.Commands(nil)
+				cmd.SilenceUsage = true
+				cmd.SilenceErrors = true
+				cmd.SetArgs([]string{"list", "--" + flag + "=" + value})
+				err := cmd.ExecuteContext(context.Background())
+
+				require.ErrorContains(t, err, "--"+flag+" cannot be empty")
+				var usageErr *gcxerrors.UsageError
+				require.ErrorAs(t, err, &usageErr)
+				assert.Zero(t, requests)
+			})
+		}
+	}
 }

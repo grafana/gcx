@@ -72,7 +72,6 @@ func TestClient_Lookup(t *testing.T) {
 }
 
 func TestClient_List_SendsFilters(t *testing.T) {
-	free := true
 	minContext := 100000
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, pluginPrefix+"/query/model-cards", r.URL.Path)
@@ -92,7 +91,7 @@ func TestClient_List_SendsFilters(t *testing.T) {
 
 	result, err := client.List(context.Background(), modelcards.ListQuery{
 		Q: "gpt", Source: "openrouter", Provider: "openai", Regex: "^openai/",
-		Sort: "prompt_price", Order: "desc", FreeOnly: &free, MinContextLength: &minContext,
+		Sort: "prompt_price", Order: "desc", FreeOnly: true, MinContextLength: &minContext,
 	}, 10)
 	require.NoError(t, err)
 	assert.Empty(t, result.Cards)

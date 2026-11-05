@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -150,16 +151,23 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Source, "source", "", "Only cards from this catalog source")
 	flags.StringVar(&o.Provider, "provider", "", "Only cards for this provider")
 	flags.StringVar(&o.Regex, "regex", "", "Only cards whose model key, name or provider matches this regular expression (case-sensitive; start with (?i) to ignore case)")
-	flags.BoolVar(&o.FreeOnly, "free-only", false, "Only free models (it does not select paid models)")
+	flags.BoolVar(&o.FreeOnly, "free-only", false, "Only free models; --free-only=false is the same as omitting the flag (it does not select paid models)")
 	flags.IntVar(&o.MinContextLength, "min-context-length", 0, "Only models with at least this many context tokens")
 	flags.StringVar(&o.Sort, "sort", "", "Sort by name (default), provider, prompt_price, context_length or last_seen_at")
 	flags.StringVar(&o.Order, "order", "", "Sort order: asc (default) or desc")
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of cards to return (0 for no limit)")
 }
 
-func (o *listOpts) Validate() error {
+func (o *listOpts) Validate(cmd *cobra.Command) error {
 	if err := o.IO.Validate(); err != nil {
 		return err
+	}
+	for _, f := range []struct{ name, value string }{
+		{"query", o.Query}, {"source", o.Source}, {"provider", o.Provider}, {"regex", o.Regex},
+	} {
+		if cmd.Flags().Changed(f.name) && strings.TrimSpace(f.value) == "" {
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--%s cannot be empty", f.name), nil)
+		}
 	}
 	if o.Limit < 0 {
 		return errors.New("--limit cannot be negative")
@@ -188,9 +196,7 @@ func (o *listOpts) listQuery(flags *pflag.FlagSet) ListQuery {
 		Regex:    o.Regex,
 		Sort:     strings.ToLower(o.Sort),
 		Order:    strings.ToLower(o.Order),
-	}
-	if o.FreeOnly {
-		q.FreeOnly = &o.FreeOnly
+		FreeOnly: o.FreeOnly,
 	}
 	if flags.Changed("min-context-length") {
 		q.MinContextLength = &o.MinContextLength
@@ -216,7 +222,7 @@ Prices in the table are catalog prices in USD per million tokens, shown as given
   # Every card matching a pattern, with all columns.
   gcx agento11y model-cards list --regex '^openai/gpt-5' --limit 0 -o wide`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd); err != nil {
 				return err
 			}
 

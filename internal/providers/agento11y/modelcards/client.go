@@ -69,7 +69,7 @@ type ListQuery struct {
 	Regex            string
 	Sort             string
 	Order            string
-	FreeOnly         *bool
+	FreeOnly         bool
 	MinContextLength *int
 }
 
@@ -83,8 +83,8 @@ func (q ListQuery) values() url.Values {
 			v.Set(key, value)
 		}
 	}
-	if q.FreeOnly != nil {
-		v.Set("free_only", strconv.FormatBool(*q.FreeOnly))
+	if q.FreeOnly {
+		v.Set("free_only", "true")
 	}
 	if q.MinContextLength != nil {
 		v.Set("min_context_length", strconv.Itoa(*q.MinContextLength))
