@@ -1,9 +1,9 @@
 package reviewqueues
 
 import (
-	"errors"
 	"strings"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -70,13 +70,17 @@ Submitting records scores attributed to the calling user and is not idempotent: 
 				return err
 			}
 
+			if opts.File == "" {
+				return gcxerrors.NewCommandUsageError(cmd, "--filename is required (use - to read from stdin)", nil)
+			}
+
 			var manifest ReviewManifest
 			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &manifest); err != nil {
 				return err
 			}
 			manifest.CollectionID = strings.TrimSpace(manifest.CollectionID)
 			if manifest.CollectionID == "" || strings.TrimSpace(manifest.ConversationID) == "" || strings.TrimSpace(manifest.GenerationID) == "" || len(manifest.Answers) == 0 {
-				return errors.New("collection_id, conversation_id, generation_id and at least one answer are required in the manifest")
+				return gcxerrors.NewCommandUsageError(cmd, "collection_id, conversation_id, generation_id and at least one answer are required in the manifest", nil)
 			}
 
 			client, err := newClient(cmd, loader)

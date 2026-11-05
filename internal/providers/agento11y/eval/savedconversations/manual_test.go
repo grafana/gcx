@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/savedconversations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,6 +54,32 @@ func TestManualInvalidInput(t *testing.T) {
 			cmd.SetArgs(tt.args)
 			cmd.SetIn(strings.NewReader(tt.input))
 			require.ErrorContains(t, cmd.Execute(), tt.want)
+		})
+	}
+}
+
+func TestManualCreate_UsageErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		input string
+	}{
+		{name: "missing filename", args: []string{"create"}},
+		{name: "missing fields", args: []string{"create", "-f", "-"}, input: "{}"},
+		{name: "empty generations", args: []string{"create", "-f", "-"}, input: `{"saved_id":"manual","name":"Fixture","generations":[]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := savedconversations.Commands(nil)
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetArgs(tt.args)
+			cmd.SetIn(strings.NewReader(tt.input))
+			err := cmd.Execute()
+			require.Error(t, err)
+			detailed := fail.ErrorToDetailedError(err)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 		})
 	}
 }

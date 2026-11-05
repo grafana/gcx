@@ -129,11 +129,15 @@ func (c *Client) ExportScores(ctx context.Context, collectionID string) ([]Score
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, false, fmt.Errorf("%s: %w", collectionID, ErrNotFound)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, false, agento11yhttp.HandleErrorResponse(resp)
+		err := agento11yhttp.HandleErrorResponse(resp)
+		if _, unavailable := errors.AsType[*agento11yhttp.PluginUnavailableError](err); unavailable {
+			return nil, false, err
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, false, fmt.Errorf("%s: %w", collectionID, ErrNotFound)
+		}
+		return nil, false, err
 	}
 
 	rows, err := decodeScoreRows(resp.Body)

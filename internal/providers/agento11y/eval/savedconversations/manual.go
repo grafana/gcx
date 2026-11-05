@@ -3,10 +3,10 @@ package savedconversations
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -60,13 +60,17 @@ Required top-level fields: saved_id, name and generations (tags is optional). Ea
 				return err
 			}
 
+			if opts.File == "" {
+				return gcxerrors.NewCommandUsageError(cmd, "--filename is required (use - to read from stdin)", nil)
+			}
+
 			var request ManualSaveRequest
 			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &request); err != nil {
 				return err
 			}
 			// Per-generation validation is left to the backend.
 			if strings.TrimSpace(request.SavedID) == "" || strings.TrimSpace(request.Name) == "" || len(request.Generations) == 0 {
-				return errors.New("saved_id, name and nonempty generations are required")
+				return gcxerrors.NewCommandUsageError(cmd, "saved_id, name and nonempty generations are required", nil)
 			}
 
 			client, err := newClient(cmd, loader)

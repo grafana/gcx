@@ -229,3 +229,14 @@ func TestClient_ExportScores(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_PluginNotFoundIsNotQueueNotFound(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Plugin not found"})
+	}))
+
+	_, _, err := client.ExportScores(context.Background(), "col")
+	var pluginErr *agento11yhttp.PluginUnavailableError
+	require.ErrorAs(t, err, &pluginErr)
+	assert.NotErrorIs(t, err, reviewqueues.ErrNotFound)
+}

@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/reviewqueues"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/testutils"
@@ -359,6 +361,35 @@ func TestProgressWarnings(t *testing.T) {
 			if tt.wantField {
 				assert.Contains(t, stdout, `"truncated": true`)
 			}
+		})
+	}
+}
+
+func TestCreateCommands_UsageErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		input string
+	}{
+		{name: "review-queues create without file", args: []string{"review-queues", "create"}},
+		{name: "review-queues create missing collection", args: []string{"review-queues", "create", "-f", "-"}, input: `{"rubric_evaluator_ids":["a"]}`},
+		{name: "review-queues create missing rubric", args: []string{"review-queues", "create", "-f", "-"}, input: `{"collection_id":"col"}`},
+		{name: "reviews create without file", args: []string{"reviews", "create"}},
+		{name: "reviews create missing fields", args: []string{"reviews", "create", "-f", "-"}, input: `{"collection_id":"col"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := &cobra.Command{Use: "agento11y"}
+			root.AddCommand(reviewqueues.Commands(nil), reviewqueues.ReviewCommands(nil))
+			root.SilenceUsage = true
+			root.SilenceErrors = true
+			root.SetIn(strings.NewReader(tt.input))
+			root.SetArgs(tt.args)
+			err := root.Execute()
+			require.Error(t, err)
+			detailed := fail.ErrorToDetailedError(err)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 		})
 	}
 }

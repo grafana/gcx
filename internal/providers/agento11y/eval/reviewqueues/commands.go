@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -210,19 +211,23 @@ The manifest has collection_id (the collection to review) and rubric_evaluator_i
 				return err
 			}
 
+			if opts.File == "" {
+				return gcxerrors.NewCommandUsageError(cmd, "--filename is required (use - to read from stdin)", nil)
+			}
+
 			var request RubricRequest
 			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &request); err != nil {
 				return err
 			}
 			request.CollectionID = strings.TrimSpace(request.CollectionID)
 			if request.CollectionID == "" {
-				return errors.New("collection_id is required in the manifest")
+				return gcxerrors.NewCommandUsageError(cmd, "collection_id is required in the manifest", nil)
 			}
 			if len(request.RubricEvaluatorIDs) == 0 {
-				return errors.New("rubric_evaluator_ids needs at least one human evaluator ID")
+				return gcxerrors.NewCommandUsageError(cmd, "rubric_evaluator_ids needs at least one human evaluator ID", nil)
 			}
 			if slices.ContainsFunc(request.RubricEvaluatorIDs, func(id string) bool { return strings.TrimSpace(id) == "" }) {
-				return errors.New("rubric_evaluator_ids cannot contain a blank ID")
+				return gcxerrors.NewCommandUsageError(cmd, "rubric_evaluator_ids cannot contain a blank ID", nil)
 			}
 
 			client, err := newClient(cmd, loader)
