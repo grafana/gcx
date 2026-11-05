@@ -51,13 +51,14 @@ inside its usual resource-type directory. Resources without a usable title fall
 back to `metadata.name`. The resource contents retain their original identity,
 so push, validate, and serve use these files normally.
 
-Title mode resolves filename conflicts, preserving files that belong to other resources. See the
+Title mode checks filename conflicts against the current pull and existing
+destination files. It preserves files that belong to other resources. See the
 [file naming rules](https://github.com/grafana/gcx/blob/main/docs/design/naming.md#92-file-naming)
 for the full algorithm.
 
-`PULL` doesn't remove old files. Title-mode pull warns on stderr when it finds
-another file for the same resource at a different path, such as after a rename or
-switching naming modes. Reading resources also warns when skipping duplicate
+`gcx resources pull` does not remove old files. Title-mode pull warns on stderr
+when it finds another file for the same resource at a different path, such as
+after a rename or a change of naming mode. Reading resources also warns when skipping duplicate
 identities. Pull into a clean directory or remove stale files (for example, with
 `git rm`) before pushing.
 
@@ -81,9 +82,12 @@ Follow this workflow to back up all Grafana resources from one instance and late
 
 ## Incident descriptions
 
-Incident descriptions remain visible in `GET` and `LIST` results. 
+Incident descriptions remain visible in `gcx resources get` and
+`gcx irm incidents list` results.
 
-`PULL` omits descriptions from saved manifests. You cannot restore descriptions if you backed up an incident with `gcx resources pull`. 
+`gcx resources pull` omits descriptions from saved manifests. These backups
+cannot restore incident descriptions.
 
-Old backup files can contain `spec.description`. Remove that field before you push the file to create an
-incident or to change an incident with a different description. You can still update other fields.
+Old backup files can contain `spec.description`. Remove that field before you
+push the file to create an incident or to change an incident with a different
+description. You can update other fields when `spec.description` is absent or equal to the current value.
