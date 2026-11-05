@@ -17,6 +17,7 @@ func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "metrics [EXPR]",
@@ -43,9 +44,11 @@ filter model can never represent — use 'loki query' for Drilldown links.
 On Grafana Cloud targets, a query cost guardrail runs first: the query is
 estimated with Loki index-stats and refused, with guidance on how to narrow it,
 when it exceeds the tenant's byte budget or time-range cap, or when its stream
-selector matches too broadly, whatever its estimated size. There is no flag to
-bypass it. In agent mode a query that cannot be assessed is also refused.
-Self-hosted Grafana targets are not guarded.`,
+selector matches too broadly, whatever its estimated size. Pass --force (or set
+GCX_AUTO_APPROVE=true) to run a query you know is wide. In agent mode a query
+whose cost estimate fails is also refused; a query gcx cannot parse is passed
+to Loki, which reports its own syntax error. Self-hosted Grafana targets are
+not guarded.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -103,7 +106,7 @@ Self-hosted Grafana targets are not guarded.`,
 				Step:  step,
 			}
 
-			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
+			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), force, datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
 				return err
 			}
 
@@ -151,6 +154,7 @@ Self-hosted Grafana targets are not guarded.`,
 	shared.Setup(cmd.Flags(), true)
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
+	cmd.Flags().BoolVar(&force, "force", false, "Run the query even if the Grafana Cloud cost guardrail would refuse it")
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd

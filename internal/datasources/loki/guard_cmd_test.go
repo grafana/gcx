@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// execGuardedCmd runs a Loki command against the fake Grafana with the POC
+// execGuardedCmd runs a Loki command against the fake Grafana with the test-only
 // policy override pointing at a policy server serving policyJSON. It returns
 // stdout, stderr, the command error, and how many real (non-stats) query
 // requests reached Grafana.
@@ -26,7 +26,7 @@ func execGuardedCmd(t *testing.T, agentMode bool, policyJSON string, newCmd func
 		_, _ = w.Write([]byte(policyJSON))
 	}))
 	defer policySrv.Close()
-	t.Setenv("GCX_LOKI_POLICY_URL", policySrv.URL)
+	dsloki.SetPolicyURLOverride(t, policySrv.URL)
 
 	prev := agent.IsAgentMode()
 	agent.SetFlag(agentMode)
@@ -93,19 +93,51 @@ func TestGuardedCmd_WithinBudgetRunsAndKeepsStderrQuiet(t *testing.T) {
 	assert.Positive(t, queries)
 }
 
-func TestGuardedCmd_UnparseableQueryWarnsInTerminalAndBlocksInAgentMode(t *testing.T) {
-	t.Run("terminal warns on stderr and runs", func(t *testing.T) {
-		stdout, stderr, queries, err := execGuardedCmd(t, false, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `not logql`, "--since", "1h")
-		require.NoError(t, err)
-		assert.Contains(t, stderr, "could not estimate")
-		assert.NotContains(t, stdout, "could not estimate", "warnings must stay off stdout")
-		assert.Positive(t, queries)
-	})
-	t.Run("agent mode blocks", func(t *testing.T) {
-		_, _, queries, err := execGuardedCmd(t, true, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `not logql`, "--since", "1h")
-		var de gcxerrors.DetailedError
-		require.ErrorAs(t, err, &de)
-		assert.Equal(t, gcxerrors.SummaryQueryBlocked, de.Summary)
-		assert.Zero(t, queries)
-	})
+func TestGuardedCmd_UnparseableQueryIsLeftForLokiToReject(t *testing.T) {
+	for name, agentMode := range map[string]bool{"terminal": false, "agent mode": true} {
+		t.Run(name, func(t *testing.T) {
+			_, stderr, queries, err := execGuardedCmd(t, agentMode, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `not logql`, "--since", "1h")
+			require.NoError(t, err)
+			assert.NotContains(t, stderr, "could not estimate")
+			assert.Positive(t, queries, "the query must reach Loki")
+		})
+	}
+}
+
+func TestGuardedCmds_ForceBypassesTheGuard(t *testing.T) {
+	for name, tc := range map[string]struct {
+		newCmd func(*providers.ConfigLoader) *cobra.Command
+		use    string
+		expr   string
+	}{
+		"query":   {dsloki.QueryCmd, "query", `{app="foo"}`},
+		"metrics": {dsloki.MetricsCmd, "metrics", `rate({app="foo"}[5m])`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Control: the same invocation without --force is blocked.
+			_, _, queries, err := execGuardedCmd(t, true, enforcePolicy, tc.newCmd, tc.use, "-d", "loki-uid", tc.expr, "--since", "1h")
+			require.Error(t, err)
+			assert.Zero(t, queries)
+
+			stdout, _, queries, err := execGuardedCmd(t, true, enforcePolicy, tc.newCmd, tc.use, "-d", "loki-uid", tc.expr, "--since", "1h", "--force")
+			require.NoError(t, err)
+			assert.NotEmpty(t, stdout)
+			assert.Positive(t, queries, "--force must let the real query run")
+		})
+	}
+}
+
+func TestGuardedCmd_AutoApproveBypassesTheGuard(t *testing.T) {
+	t.Setenv("GCX_AUTO_APPROVE", "true")
+	stdout, _, queries, err := execGuardedCmd(t, true, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`, "--since", "1h")
+	require.NoError(t, err)
+	assert.NotEmpty(t, stdout)
+	assert.Positive(t, queries)
+}
+
+func TestGuardedCmd_InvalidAutoApproveValueFails(t *testing.T) {
+	t.Setenv("GCX_AUTO_APPROVE", "on")
+	_, _, queries, err := execGuardedCmd(t, true, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`, "--since", "1h")
+	require.Error(t, err)
+	assert.Zero(t, queries)
 }

@@ -102,7 +102,7 @@ func TestResolveGuardTarget(t *testing.T) {
 	cloud := &config.Context{Grafana: &config.GrafanaConfig{Server: "https://mystack.grafana.net", APIToken: "t"}}
 
 	t.Run("self-hosted targets are not guarded", func(t *testing.T) {
-		t.Setenv(policyURLEnv, "")
+		SetPolicyURLOverride(t, "")
 		_, ok := resolveGuardTarget(selfHosted, config.NamespacedRESTConfig{})
 		assert.False(t, ok)
 		_, ok = resolveGuardTarget(nil, config.NamespacedRESTConfig{})
@@ -110,7 +110,7 @@ func TestResolveGuardTarget(t *testing.T) {
 	})
 
 	t.Run("cloud token targets use the plugin proxy route", func(t *testing.T) {
-		t.Setenv(policyURLEnv, "")
+		SetPolicyURLOverride(t, "")
 		src, ok := resolveGuardTarget(cloud, config.NamespacedRESTConfig{})
 		require.True(t, ok)
 		assert.Equal(t, "https://mystack.grafana.net"+policyPathPlugin, src.url)
@@ -118,7 +118,7 @@ func TestResolveGuardTarget(t *testing.T) {
 	})
 
 	t.Run("cloud oauth targets use the assistant proxy endpoint", func(t *testing.T) {
-		t.Setenv(policyURLEnv, "")
+		SetPolicyURLOverride(t, "")
 		oauth := &config.Context{Grafana: &config.GrafanaConfig{
 			Server: "https://mystack.grafana.net", ProxyEndpoint: "https://assistant.example/", OAuthToken: "gat_x", OAuthRefreshToken: "gar_x",
 		}}
@@ -128,7 +128,7 @@ func TestResolveGuardTarget(t *testing.T) {
 	})
 
 	t.Run("the POC override forces the guard on without cache", func(t *testing.T) {
-		t.Setenv(policyURLEnv, "http://127.0.0.1:1/policy")
+		SetPolicyURLOverride(t, "http://127.0.0.1:1/policy")
 		src, ok := resolveGuardTarget(selfHosted, config.NamespacedRESTConfig{})
 		require.True(t, ok)
 		assert.Equal(t, "http://127.0.0.1:1/policy", src.url)
@@ -185,8 +185,8 @@ func TestQueryGuard_Check(t *testing.T) {
 		{name: "range cap blocks", mode: modeEnforce, expr: `{app="api"}`, window: 48 * time.Hour, stats: cheap, wantBlock: true},
 		{name: "shadow never blocks", mode: modeShadow, expr: `{app="firehose"}`, window: time.Hour, stats: costly},
 		{name: "off never blocks", mode: modeOff, expr: `{job=~".+"}`, window: time.Hour, stats: costly},
-		{name: "unparseable blocks in agent mode", mode: modeEnforce, agent: true, expr: `not logql`, window: time.Hour, stats: cheap, wantBlock: true},
-		{name: "unparseable warns in a terminal", mode: modeEnforce, expr: `not logql`, window: time.Hour, stats: cheap, wantWarn: "could not estimate"},
+		{name: "unparseable runs in agent mode for Loki to reject", mode: modeEnforce, agent: true, expr: `not logql`, window: time.Hour, stats: cheap},
+		{name: "unparseable runs silently in a terminal", mode: modeEnforce, expr: `not logql`, window: time.Hour, stats: cheap},
 		{name: "failed estimate blocks in agent mode", mode: modeEnforce, agent: true, expr: `{app="api"}`, window: time.Hour, stats: failing, wantBlock: true},
 		{name: "failed estimate warns in a terminal", mode: modeEnforce, expr: `{app="api"}`, window: time.Hour, stats: failing, wantWarn: "index/stats estimate failed"},
 		{name: "unknown in shadow mode is silent in agent mode", mode: modeShadow, agent: true, expr: `not logql`, window: time.Hour, stats: cheap},
@@ -262,6 +262,19 @@ func TestBlockedErrorSuggestionsFromRealGuidance(t *testing.T) {
 	require.ErrorAs(t, blockedError(d, p), &de)
 	assert.GreaterOrEqual(t, len(de.Suggestions), len(advice)+1)
 	assert.Contains(t, de.Suggestions, advice[1])
+
+	joined := strings.Join(append([]string{de.Details}, de.Suggestions...), "\n")
+	assert.NotContains(t, joined, "logs stats", "gcx logs stats does not exist")
+	assert.Contains(t, joined, "--force", "the block must name its override")
+}
+
+func TestUnassessableErrorNamesTheOverride(t *testing.T) {
+	err := unassessableError(lokiguard.Decision{Verdict: lokiguard.Unknown, Cause: lokiguard.CauseEstimateFailed, Err: errors.New("boom")})
+	var de gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de)
+	joined := strings.Join(de.Suggestions, "\n")
+	assert.Contains(t, joined, "--force")
+	assert.NotContains(t, joined, "logs stats")
 }
 
 func TestSplitGuidance(t *testing.T) {
@@ -278,5 +291,4 @@ func TestSplitGuidance(t *testing.T) {
 func TestUnknownExplanation(t *testing.T) {
 	d := lokiguard.Decision{Verdict: lokiguard.Unknown, Cause: lokiguard.CauseEstimateFailed, Err: errors.New("boom")}
 	assert.Contains(t, unknownExplanation(d), "boom")
-	assert.Contains(t, unknownExplanation(lokiguard.Decision{Cause: lokiguard.CauseUnparseable}), "no stream selector")
 }

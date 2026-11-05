@@ -40,6 +40,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	drilldown := &dsquery.DrilldownLinkOpts{}
 	var limit int
 	var datasource string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -69,9 +70,11 @@ backend's own line limits, so it can undercount a busy time range.
 On Grafana Cloud targets, a query cost guardrail runs first: the query is
 estimated with Loki index-stats and refused, with guidance on how to narrow it,
 when it exceeds the tenant's byte budget or time-range cap, or when its stream
-selector matches too broadly, whatever its estimated size. There is no flag to
-bypass it. In agent mode a query that cannot be assessed is also refused.
-Self-hosted Grafana targets are not guarded.`,
+selector matches too broadly, whatever its estimated size. Pass --force (or set
+GCX_AUTO_APPROVE=true) to run a query you know is wide. In agent mode a query
+whose cost estimate fails is also refused; a query gcx cannot parse is passed
+to Loki, which reports its own syntax error. Self-hosted Grafana targets are
+not guarded.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -136,7 +139,7 @@ Self-hosted Grafana targets are not guarded.`,
 				Limit: limit,
 			}
 
-			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
+			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), force, datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
 				return err
 			}
 
@@ -207,6 +210,7 @@ Self-hosted Grafana targets are not guarded.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
+	cmd.Flags().BoolVar(&force, "force", false, "Run the query even if the Grafana Cloud cost guardrail would refuse it")
 	share.Setup(cmd.Flags(), "executed query")
 	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
 

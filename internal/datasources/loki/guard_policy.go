@@ -33,12 +33,13 @@ const (
 	policyFetchTimeout = 2 * time.Second
 	policyCacheTTL     = 5 * time.Minute
 	policyMaxBodyBytes = 64 << 10
-
-	// POC: GCX_LOKI_POLICY_URL forces the guard on and names the full URL to
-	// fetch the policy from. Production selection is "Grafana Cloud target"
-	// (config.Context.IsCloud); a local Grafana can never satisfy that.
-	policyURLEnv = "GCX_LOKI_POLICY_URL"
 )
+
+// policyURLOverride forces the guard on and names the full URL to fetch the
+// policy from. It exists only for tests, which set it through export_test.go:
+// production selection is "Grafana Cloud target" (config.Context.IsCloud), and
+// a local Grafana can never satisfy that. The shipped binary has no way to set it.
+var policyURLOverride string //nolint:gochecknoglobals // test-only seam, set from export_test.go
 
 // policyMode is how a tenant wants guard decisions applied.
 type policyMode string
@@ -105,10 +106,10 @@ type policySource struct {
 // where its policy comes from. It reports ok=false for non-Cloud targets,
 // which are out of scope by design.
 func resolveGuardTarget(cfgCtx *config.Context, cfg config.NamespacedRESTConfig) (policySource, bool) {
-	if override := strings.TrimSpace(os.Getenv(policyURLEnv)); override != "" {
-		// POC: plain client, so the target's credentials are never sent to the
+	if policyURLOverride != "" {
+		// Plain client, so the target's credentials are never sent to the
 		// override URL. No cache, so a stub can be flipped live.
-		return policySource{url: override, client: &http.Client{}}, true
+		return policySource{url: policyURLOverride, client: &http.Client{}}, true
 	}
 
 	if cfgCtx == nil || !cfgCtx.IsCloud() || cfgCtx.Grafana == nil {
