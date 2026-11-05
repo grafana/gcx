@@ -70,11 +70,10 @@ backend's own line limits, so it can undercount a busy time range.
 On Grafana Cloud targets, a query cost guardrail runs first: the query is
 estimated with Loki index-stats and refused, with guidance on how to narrow it,
 when it exceeds the tenant's byte budget or time-range cap, or when its stream
-selector matches too broadly, whatever its estimated size. Pass --force (or set
-GCX_AUTO_APPROVE=true) to run a query you know is wide. In agent mode a query
-whose cost estimate fails is also refused; a query gcx cannot parse is passed
-to Loki, which reports its own syntax error. Self-hosted Grafana targets are
-not guarded.`,
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'

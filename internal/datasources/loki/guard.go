@@ -2,7 +2,6 @@ package loki
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,7 +13,6 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/mcp-grafana/lokiguard"
@@ -24,13 +22,11 @@ import (
 // appends to its rewrite instructions.
 const guardScopeHint = "use 'gcx logs labels' to find specific label matchers to scope the query first"
 
-// guardDocsLink is a placeholder until the guardrail has a docs page.
-const guardDocsLink = "https://grafana.com/docs/grafana-cloud/loki-query-guardrail/" // POC: placeholder, page does not exist yet
-
 // queryGuard is the pre-execution Loki cost guardrail for Grafana Cloud
 // targets. The decision logic lives in lokiguard; this type fetches the tenant
 // policy, supplies index/stats, and turns a verdict into command behavior.
-// There is deliberately no bypass: the policy is the only override.
+// The only per-query override is --force (see guardQuery); the tenant policy
+// sets the budget.
 type queryGuard struct {
 	policy  policySource
 	client  *loki.Client
@@ -105,11 +101,12 @@ func (g *queryGuard) check(ctx context.Context, datasourceUID, expr string, isRa
 			log.Warn("shadow mode: this query would have been blocked", slog.String("guidance", lokiguard.Guidance(d, policy.guardPolicy(), guardScopeHint)))
 			return nil
 		}
-		return blockedError(d, policy)
+		return blockedError(d, policy, g.agent)
 	case lokiguard.Unknown:
 		// A query with no parseable selector is Loki's to reject: its own syntax
 		// error tells the caller more than "could not be assessed".
 		if d.Cause == lokiguard.CauseUnparseable {
+			log.Debug("Loki query guardrail could not parse a stream selector; leaving the query for Loki to validate")
 			return nil
 		}
 		if g.agent && enforce {
@@ -140,7 +137,9 @@ func (g *queryGuard) statsFunc(ctx context.Context, datasourceUID string) (lokig
 	}, cancel
 }
 
-func blockedError(d lokiguard.Decision, p queryPolicy) error {
+// blockedError names --force only to interactive callers: an agent is
+// expected to narrow the query from the guidance, not to reach for the override.
+func blockedError(d lokiguard.Decision, p queryPolicy, agentMode bool) error {
 	reasons := make([]string, len(d.Reasons))
 	for i, r := range d.Reasons {
 		reasons[i] = r.Message
@@ -158,13 +157,16 @@ func blockedError(d lokiguard.Decision, p queryPolicy) error {
 	suggestions := make([]string, 0, len(advice)+2)
 	suggestions = append(suggestions, "Scope the selector first: use gcx logs labels to find specific label matchers")
 	suggestions = append(suggestions, advice...)
-	suggestions = append(suggestions, "To run it anyway, pass --force (or set GCX_AUTO_APPROVE=true); a tenant admin sets the budget in the Grafana Assistant settings")
+	if agentMode {
+		suggestions = append(suggestions, "A tenant admin sets the budget in the Grafana Assistant settings")
+	} else {
+		suggestions = append(suggestions, "To run it anyway, pass --force; a tenant admin sets the budget in the Grafana Assistant settings")
+	}
 
 	return gcxerrors.DetailedError{
 		Summary:     gcxerrors.SummaryQueryBlocked,
 		Details:     "The Loki cost guardrail refused this query: " + details,
 		Suggestions: suggestions,
-		DocsLink:    guardDocsLink,
 	}
 }
 
@@ -172,13 +174,12 @@ func unassessableError(d lokiguard.Decision) error {
 	suggestions := []string{
 		"Retry the query; the index/stats estimate may have failed transiently",
 		"Check that the datasource is healthy: gcx datasources get <uid>",
-		"A persistent failure means index/stats is unavailable on this datasource, so agent-mode queries against it stay blocked unless you pass --force (or set GCX_AUTO_APPROVE=true)",
+		"A persistent failure means index/stats is unavailable on this datasource, so agent-mode queries against it stay blocked unless you pass --force",
 	}
 	return gcxerrors.DetailedError{
 		Summary:     gcxerrors.SummaryQueryBlocked,
 		Details:     "The Loki cost guardrail could not assess this query in agent mode: " + unknownExplanation(d),
 		Suggestions: suggestions,
-		DocsLink:    guardDocsLink,
 	}
 }
 
@@ -230,21 +231,17 @@ func splitGuidance(guidance string) []string {
 // guardQuery runs the Cloud guardrail when it applies to the target. It is a
 // no-op for self-hosted targets, which are not guarded by design.
 //
-// force is the --force flag. It follows the shared bypass chain in
-// docs/design/safety.md (--force, then GCX_AUTO_APPROVE): a bypassed query runs
-// without a policy fetch or a stats probe. Agent mode without a bypass is not
-// an error here; it just means the guard applies.
+// force is the --force flag: a forced query runs without a policy fetch or a
+// stats probe. GCX_AUTO_APPROVE deliberately does not bypass the guard: it
+// approves destructive operations, and an agent should correct the query from
+// the guidance instead.
 func guardQuery(ctx context.Context, cfgCtx *config.Context, cfg config.NamespacedRESTConfig, client *loki.Client, stderr io.Writer, force bool, datasourceUID, expr string, isRange bool, start, end, now time.Time) error {
 	g := newQueryGuard(cfgCtx, cfg, client, stderr)
 	if g == nil {
 		return nil
 	}
-	bypass, err := providers.CheckDestructiveBypass(force)
-	if err != nil && !errors.Is(err, providers.ErrAgentModeRequiresForce) {
-		return err
-	}
-	if bypass {
-		logging.FromContext(ctx).Info("Loki query guardrail bypassed by --force or GCX_AUTO_APPROVE")
+	if force {
+		logging.FromContext(ctx).Info("Loki query guardrail bypassed by --force")
 		return nil
 	}
 	return g.check(ctx, datasourceUID, expr, isRange, start, end, now)

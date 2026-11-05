@@ -127,17 +127,11 @@ func TestGuardedCmds_ForceBypassesTheGuard(t *testing.T) {
 	}
 }
 
-func TestGuardedCmd_AutoApproveBypassesTheGuard(t *testing.T) {
+func TestGuardedCmd_AutoApproveDoesNotBypassTheGuard(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "true")
-	stdout, _, queries, err := execGuardedCmd(t, true, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`, "--since", "1h")
-	require.NoError(t, err)
-	assert.NotEmpty(t, stdout)
-	assert.Positive(t, queries)
-}
-
-func TestGuardedCmd_InvalidAutoApproveValueFails(t *testing.T) {
-	t.Setenv("GCX_AUTO_APPROVE", "on")
 	_, _, queries, err := execGuardedCmd(t, true, enforcePolicy, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`, "--since", "1h")
-	require.Error(t, err)
-	assert.Zero(t, queries)
+	var de gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, gcxerrors.SummaryQueryBlocked, de.Summary)
+	assert.Zero(t, queries, "GCX_AUTO_APPROVE approves deletes, not expensive queries")
 }

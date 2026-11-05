@@ -97,6 +97,10 @@ type policySource struct {
 	// with the selected auth method; the built-in default then applies.
 	url    string
 	client *http.Client
+	// stack is the Grafana server the policy belongs to. It is part of the
+	// cache key because an OAuth policy URL is on the assistant proxy, which
+	// is not guaranteed to be unique per stack.
+	stack string
 	// cacheTTL is zero to disable the disk cache.
 	cacheTTL time.Duration
 	cacheDir string
@@ -116,7 +120,7 @@ func resolveGuardTarget(cfgCtx *config.Context, cfg config.NamespacedRESTConfig)
 		return policySource{}, false
 	}
 
-	src := policySource{cacheTTL: policyCacheTTL, cacheDir: policyCacheDir()}
+	src := policySource{stack: cfgCtx.Grafana.Server, cacheTTL: policyCacheTTL, cacheDir: policyCacheDir()}
 	method, err := cfgCtx.EffectiveGrafanaAuthMethod()
 	if err != nil {
 		return src, true // Cloud, but credentials unusable: default policy.
@@ -160,7 +164,7 @@ func (s policySource) fetch(ctx context.Context, now time.Time) (queryPolicy, st
 
 	cachePath := ""
 	if s.cacheTTL > 0 && s.cacheDir != "" {
-		sum := sha256.Sum256([]byte(s.url))
+		sum := sha256.Sum256([]byte(s.stack + "\n" + s.url))
 		cachePath = filepath.Join(s.cacheDir, hex.EncodeToString(sum[:8])+".json")
 		if p, ok := readPolicyCache(cachePath, now, s.cacheTTL); ok {
 			return p, ""

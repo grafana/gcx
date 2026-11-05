@@ -87,6 +87,21 @@ func TestPolicySource_Fetch(t *testing.T) {
 		assert.EqualValues(t, 2, hits.Load(), "an expired entry must be refetched")
 	})
 
+	t.Run("keeps stacks sharing a policy URL apart", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newPolicyServer(t, tenant, http.StatusOK, &hits)
+		dir := t.TempDir()
+		a := policySource{stack: "https://a.grafana.net", url: srv.URL, client: srv.Client(), cacheTTL: 5 * time.Minute, cacheDir: dir}
+		b := a
+		b.stack = "https://b.grafana.net"
+
+		_, _ = a.fetch(t.Context(), now)
+		_, _ = b.fetch(t.Context(), now)
+		assert.EqualValues(t, 2, hits.Load(), "another stack must not read this stack's cached policy")
+		_, _ = a.fetch(t.Context(), now)
+		assert.EqualValues(t, 2, hits.Load())
+	})
+
 	t.Run("does not cache the fallback default", func(t *testing.T) {
 		var hits atomic.Int32
 		srv := newPolicyServer(t, `{}`, http.StatusInternalServerError, &hits)
@@ -259,13 +274,18 @@ func TestBlockedErrorSuggestionsFromRealGuidance(t *testing.T) {
 	}
 
 	var de gcxerrors.DetailedError
-	require.ErrorAs(t, blockedError(d, p), &de)
+	require.ErrorAs(t, blockedError(d, p, false), &de)
 	assert.GreaterOrEqual(t, len(de.Suggestions), len(advice)+1)
 	assert.Contains(t, de.Suggestions, advice[1])
 
 	joined := strings.Join(append([]string{de.Details}, de.Suggestions...), "\n")
 	assert.NotContains(t, joined, "logs stats", "gcx logs stats does not exist")
-	assert.Contains(t, joined, "--force", "the block must name its override")
+	assert.Contains(t, joined, "--force", "a terminal user is told about the override")
+
+	var agentErr gcxerrors.DetailedError
+	require.ErrorAs(t, blockedError(d, p, true), &agentErr)
+	assert.NotContains(t, strings.Join(agentErr.Suggestions, "\n"), "--force", "an agent should narrow the query, not be pointed at the override")
+	assert.Contains(t, agentErr.Suggestions, advice[1])
 }
 
 func TestUnassessableErrorNamesTheOverride(t *testing.T) {
