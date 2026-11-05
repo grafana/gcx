@@ -184,8 +184,7 @@ func unassessableError(d lokiguard.Decision) error {
 }
 
 func unknownExplanation(d lokiguard.Decision) string {
-	switch d.Cause {
-	case lokiguard.CauseEstimateFailed:
+	if d.Cause == lokiguard.CauseEstimateFailed {
 		if d.Err != nil {
 			return "the index/stats estimate failed: " + d.Err.Error()
 		}

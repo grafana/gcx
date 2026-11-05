@@ -19,9 +19,9 @@ func LineFilterKeyAndValue(index int, operator, value string) (string, string) {
 
 // SetPolicyURLOverride forces the guard on for the duration of the test and
 // points its policy fetch at url.
-func SetPolicyURLOverride(t testing.TB, url string) {
-	t.Helper()
+func SetPolicyURLOverride(tb testing.TB, url string) {
+	tb.Helper()
 	prev := policyURLOverride
 	policyURLOverride = url
-	t.Cleanup(func() { policyURLOverride = prev })
+	tb.Cleanup(func() { policyURLOverride = prev })
 }
