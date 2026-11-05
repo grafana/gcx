@@ -35,6 +35,7 @@ const (
 	usageEventProcessHelper = "GCX_USAGE_EVENT_PROCESS_HELPER"
 	usageEventConfigEnv     = "GCX_USAGE_EVENT_CONFIG"
 	usageEventArgsEnv       = "GCX_USAGE_EVENT_ARGS"
+	usageEventNoConfigEnv   = "GCX_USAGE_EVENT_NO_CONFIG"
 
 	// helperRequestPath is the path the helper command asks for, and the only
 	// path these tests treat as the command's own request.
@@ -69,8 +70,9 @@ func TestUsageEventProcessHelper(_ *testing.T) {
 // helperArgs is the command the child runs: the API call most of these tests
 // use, or whatever the parent asked for. The parent passes it as JSON because an
 // environment variable cannot carry a NUL, and a separator that can appear in an
-// argument is a trap. --config is appended either way, since every test needs
-// the child pointed at its own synthetic stack.
+// argument is a trap. --config is appended unless the parent opts out for a
+// command without that flag, since every other test needs the child pointed
+// at its own synthetic stack.
 func helperArgs() []string {
 	command := []string{"api", helperRequestPath}
 	if requested := os.Getenv(usageEventArgsEnv); requested != "" {
@@ -84,6 +86,9 @@ func helperArgs() []string {
 
 	args := make([]string, 0, len(command)+2)
 	args = append(args, command...)
+	if os.Getenv(usageEventNoConfigEnv) == "1" {
+		return args
+	}
 
 	return append(args, "--config", os.Getenv(usageEventConfigEnv))
 }
@@ -589,4 +594,39 @@ func recvWithin[T any](t *testing.T, ch <-chan T, what string) T {
 		var zero T
 		return zero
 	}
+}
+
+// TestFeedbackTextNeverReachesUsageEvent pins the boundary between the two
+// payloads: `gcx feedback send` reports its usage like any other command, by
+// command path and flag names, and the note and field values stay out of it.
+func TestFeedbackTextNeverReachesUsageEvent(t *testing.T) {
+	const note, fieldValue = "synthetic-feedback-note", "synthetic-field-value"
+	events := make(chan []byte, 1)
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			return
+		}
+		select {
+		case events <- body:
+		default:
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(receiver.Close)
+
+	helper := startUsageEventHelperEnv(t, "http://127.0.0.1:1", receiver.URL,
+		[]string{usageEventNoConfigEnv + "=1"},
+		"feedback", "send", note, "--field", "type="+fieldValue, "--dry-run")
+	err := helper.cmd.Wait()
+	require.Equal(t, gcxerrors.ExitSuccess, helper.cmd.ProcessState.ExitCode(),
+		"wait err=%v stderr=%q", err, helper.stderr.String())
+	require.Contains(t, helper.stdout.String(), note, "the dry run prints the payload")
+
+	event := recvWithin(t, events, "the usage event to be exported")
+	assert.NotContains(t, string(event), note)
+	assert.NotContains(t, string(event), fieldValue)
+	fields := decodeEvent(t, event)
+	assert.Equal(t, "feedback send", fields["command"])
+	assert.Equal(t, "dry-run,field", fields["flags"])
 }
