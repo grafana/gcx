@@ -42,7 +42,7 @@ BACKEND REQUEST MAPPING
 
 COMPLETENESS
   complete | limited | capped by source — and how partiality becomes visible
-  (see self-review.md T3; list_meta is PROPOSED and opt-in, not required)
+  (see self-review.md T3; new list commands use the §15 `gcx.list` envelope)
 
 ERRORS (one row per expected failure)
   condition | summary | exit code | runnable recovery suggestion | retryable?
