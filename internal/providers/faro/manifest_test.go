@@ -138,7 +138,10 @@ func fullApp() FaroApp {
 func TestFaroAppSchema_MatchesSpecFields(t *testing.T) {
 	var schema map[string]any
 	require.NoError(t, json.Unmarshal(FaroAppSchema(), &schema))
-	spec := schema["properties"].(map[string]any)["spec"].(map[string]any)
+	topProps, ok := schema["properties"].(map[string]any)
+	require.True(t, ok, "schema must declare properties")
+	spec, ok := topProps["spec"].(map[string]any)
+	require.True(t, ok, "schema must declare properties.spec")
 
 	raw, err := json.Marshal(fullApp())
 	require.NoError(t, err)
