@@ -40,7 +40,7 @@ gcx irm oncall escalation-chains list
 
 To attribute alert load to a rotation, filter by escalation chain, not integration: one integration routes through several chains to several schedules, and the alert group record carries no chain field of its own. Chain-filtered queries over the same integration return disjoint subsets.
 
-For alert-group labels, use `--label service:api --label env:prod`: names, not IDs. All labels must match, and filtering runs server-side before pagination. Repeat the flag for each pair; commas are literal and colons cannot occur inside names. Case matching follows the server. This flag applies to `list`, not bulk actions.
+For alert-group labels, use `--label service:api --label env:prod`: names, not IDs. All labels must match, and filtering runs server-side before pagination. Repeat the flag for each pair; commas are literal and colons cannot occur inside names. Matching ignores case and accents, so `service:API` and `service:apí` match the same groups. This flag applies to `list`, not bulk actions.
 
 Escape hatches: `--all` (drops both defaults — returns resolved + child groups), `--include-child-groups`, `--state resolved`.
 

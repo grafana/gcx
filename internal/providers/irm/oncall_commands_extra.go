@@ -86,7 +86,7 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.EscalationChains, "escalation-chain", nil, "Filter by escalation chain ID (repeatable, comma-separated; see: gcx irm oncall escalation-chains list)")
 	flags.StringSliceVar(&o.AcknowledgedBy, "acknowledged-by", nil, "Filter by acknowledging user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringSliceVar(&o.ResolvedBy, "resolved-by", nil, "Filter by resolving user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
-	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; case matching follows the server)")
+	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; matching ignores case and accents)")
 	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
 	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
 	flags.StringVar(&o.ResolvedFrom, "resolved-from", "", "Start of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-30d)")
@@ -353,8 +353,9 @@ interchangeable with --integration: one integration routes to several chains.
 
 Use --label key:value to filter by alert-group label names, not IDs. Repeat the
 flag to require all labels, e.g. --label service:api --label env:prod. Filtering
-happens on the server before pagination. Names are sent unchanged; case matching
-follows the server. Commas are literal; colons cannot occur inside names.
+happens on the server before pagination and ignores case and accents, so
+service:API and service:apí match the same groups. Commas are literal; colons
+cannot occur inside names.
 
 --max-age anchors to now; use --from/--to for a historical started-at window, and
 --resolved-from/--resolved-to for a resolved-at window. They accept RFC3339, a unix
@@ -535,8 +536,10 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 	if len(opts.ResolvedBy) > 0 {
 		parts = append(parts, "resolved-by="+strings.Join(opts.ResolvedBy, ","))
 	}
-	if len(opts.Labels) > 0 {
-		parts = append(parts, "label="+strings.Join(opts.Labels, ","))
+	// Commas are literal in label names, so pairs joined by commas would make
+	// --label a:b,c --label d:e read the same as --label a:b --label c,d:e.
+	for _, label := range opts.Labels {
+		parts = append(parts, "label="+strconv.Quote(label))
 	}
 	if opts.MaxAge != "" {
 		parts = append(parts, "max-age="+opts.MaxAge)

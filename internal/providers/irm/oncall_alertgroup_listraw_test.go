@@ -4,6 +4,7 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	cmdfail "github.com/grafana/gcx/cmd/gcx/fail"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 )
 
 // alertGroupPage is one page served by newPagedAlertGroupsServer: a batch of
@@ -89,13 +93,17 @@ func onCallClientFor(srv *httptest.Server) *OnCallClient {
 
 func TestAlertGroupListLabels(t *testing.T) {
 	cases := []struct {
-		name    string
-		labels  []string
-		invalid bool
+		name     string
+		labels   []string
+		wantHint string
+		invalid  bool
 	}{
-		{name: "single label", labels: []string{"service:api"}},
-		{name: "repeated labels", labels: []string{"service:api", "env:prod"}},
-		{name: "literal case commas and URL characters", labels: []string{"service:API,worker & jobs+batch"}},
+		{name: "single label", labels: []string{"service:api"}, wantHint: `label="service:api", all`},
+		{name: "repeated labels", labels: []string{"service:api", "env:prod"}, wantHint: `label="service:api", label="env:prod", all`},
+		// Both render as label=env:prod,eu,team:sre when joined unquoted.
+		{name: "comma in first value", labels: []string{"env:prod,eu", "team:sre"}, wantHint: `label="env:prod,eu", label="team:sre", all`},
+		{name: "comma in second key", labels: []string{"env:prod", "eu,team:sre"}, wantHint: `label="env:prod", label="eu,team:sre", all`},
+		{name: "literal case commas and URL characters", labels: []string{"service:API,worker & jobs+batch"}, wantHint: `label="service:API,worker & jobs+batch", all`},
 		{name: "empty", labels: []string{""}, invalid: true},
 		{name: "whitespace", labels: []string{" "}, invalid: true},
 		{name: "missing separator", labels: []string{"service"}, invalid: true},
@@ -122,8 +130,14 @@ func TestAlertGroupListLabels(t *testing.T) {
 			cmd.SetArgs(args)
 			err := cmd.Execute()
 			if tc.invalid {
-				if err == nil || !strings.Contains(err.Error(), "invalid --label") || !strings.Contains(err.Error(), "expected key:value") {
-					t.Fatalf("Execute() = %v, want label format error", err)
+				if _, ok := errors.AsType[*fail.UsageError](err); !ok {
+					t.Fatalf("Execute() = %v (%T), want a usage error", err, err)
+				}
+				if got := exitCodeOf(err); got != fail.ExitUsageError {
+					t.Errorf("exit code = %d, want %d", got, fail.ExitUsageError)
+				}
+				if !strings.Contains(err.Error(), "invalid --label") || !strings.Contains(err.Error(), "expected key:value") {
+					t.Errorf("Execute() = %v, want label format error", err)
 				}
 				if state.requests != 0 {
 					t.Errorf("requests = %d, want 0 for invalid labels", state.requests)
@@ -136,11 +150,23 @@ func TestAlertGroupListLabels(t *testing.T) {
 			if got := state.firstQuery["label"]; !reflect.DeepEqual(got, tc.labels) {
 				t.Errorf("wire labels = %q, want %q", got, tc.labels)
 			}
-			if !strings.Contains(stderr.String(), "label="+strings.Join(tc.labels, ",")) {
-				t.Errorf("filter hint omits labels: %s", stderr.String())
+			if want := "with filter " + tc.wantHint + ":"; !strings.Contains(stderr.String(), want) {
+				t.Errorf("stderr missing %q:\n%s", want, stderr.String())
 			}
 		})
 	}
+}
+
+// exitCodeOf maps an error to the exit code the CLI would use.
+func exitCodeOf(err error) int {
+	if err == nil {
+		return fail.ExitSuccess
+	}
+	d := cmdfail.ErrorToDetailedError(err)
+	if d == nil || d.ExitCode == nil {
+		return fail.ExitGeneralError
+	}
+	return *d.ExitCode
 }
 
 // TestListAlertGroupsRaw_MultiPageDrain drives the real pagination loop
