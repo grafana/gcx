@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "container": "IABC123DEF456",
+  "message": {
+    "text": "It looks like the pool-size change is saturating payments DB connections and contributing to checkout latency. We should revert the pool-size change rather than scale the DB.",
+    "see": "payments/db/pool.go:112 (NewPool)"
+  },
+  "entities": [
+    {
+      "ref": "h1",
+      "type": "hypothesis",
+      "text": "The 14:00 pool-size change saturates payments DB connections, contributing to checkout latency"
+    },
+    {
+      "ref": "o1",
+      "type": "observation",
+      "text": "Threads_connected pinned at max_connections since 14:05",
+      "source_ref": "grafana: d/payments-db"
+    },
+    {
+      "ref": "o2",
+      "type": "observation",
+      "text": "Checkout latency was already rising at 13:50, before the pool-size change",
+      "source_ref": "grafana: d/checkout-latency"
+    },
+    {
+      "ref": "a1",
+      "type": "action",
+      "text": "Revert the pool-size change",
+      "prompted_by": "o1"
+    }
+  ],
+  "evidence_links": [
+    {
+      "source": "o1",
+      "target": "h1",
+      "stance": "supports",
+      "rationale": "saturation appears shortly after the change lands"
+    },
+    {
+      "source": "o2",
+      "target": "h1",
+      "stance": "challenges",
+      "rationale": "some latency predates the change, so saturation may not explain all of it"
+    }
+  ],
+  "message_refs": ["h1", "o1", "a1", "o2"],
+  "curated": true
+}

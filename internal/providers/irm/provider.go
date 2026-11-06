@@ -62,13 +62,18 @@ See ` + docs.IRMInvoice + `.`,
 	)
 
 	irmCmd.AddCommand(oncallCmd)
-	irmCmd.AddCommand(newIncidentsCmd(loader))
+	irmCmd.AddCommand(newIncidentsCmd(loader, loader))
+	irmCmd.AddCommand(newOpModelCmd(loader))
+	irmCmd.AddCommand(newSharesCmd(loader))
 
 	return []*cobra.Command{irmCmd}
 }
 
 func (p *IRMProvider) Validate(_ map[string]string) error { return nil }
-func (p *IRMProvider) ConfigKeys() []providers.ConfigKey  { return nil }
+
+func (p *IRMProvider) ConfigKeys() []providers.ConfigKey {
+	return nil
+}
 func (p *IRMProvider) TypedRegistrations() []adapter.Registration {
 	loader := &configLoader{}
 	regs := buildOnCallRegistrations(loader)

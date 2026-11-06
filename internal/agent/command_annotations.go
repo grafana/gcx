@@ -298,6 +298,27 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents severities list": {Cost: "small"},
 	"gcx irm incidents update":          {Cost: "small", Hint: "<id> --severity <label> --title <text>; the severity is the label, run `gcx irm incidents severities list` for the valid values"},
 
+	// irm opmodel / shares (experimental prototype over the dev-gated HTTP API)
+	"gcx irm opmodel observations edit":              {Cost: "small"},
+	"gcx irm opmodel actions edit":                   {Cost: "small"},
+	"gcx irm opmodel claims recovery":                {Cost: "small"},
+	"gcx irm opmodel observations create":            {Cost: "small"},
+	"gcx irm opmodel observations promote":           {Cost: "small"},
+	"gcx irm opmodel observations promote-to-action": {Cost: "small"},
+	"gcx irm opmodel observations verify":            {Cost: "small"},
+	"gcx irm opmodel claims create":                  {Cost: "small"},
+	"gcx irm opmodel claims assess":                  {Cost: "small"},
+	"gcx irm opmodel actions create":                 {Cost: "small"},
+	"gcx irm opmodel actions coordinate":             {Cost: "small"},
+	"gcx irm opmodel evidence-links attach":          {Cost: "small"},
+	"gcx irm opmodel evidence-links verify":          {Cost: "small"},
+	"gcx irm opmodel evidence-links withdraw":        {Cost: "small"},
+	"gcx irm opmodel entities edit-text":             {Cost: "small"},
+	"gcx irm opmodel containers get":                 {Cost: "medium", Hint: "<container> -o json returns the full projection with observations, claims, evidence links, and actions; use --json for field selection"},
+	"gcx irm opmodel containers list-events":         {Cost: "medium", Hint: "<container> --since-revision <rev> fetches only the diff since a known revision; --page-size bounds one call"},
+	"gcx irm incidents share":                        {Cost: "small"},
+	"gcx irm shares publish":                         {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// k6 provider
 	// -----------------------------------------------------------------------
