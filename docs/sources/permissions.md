@@ -28,6 +28,30 @@ gcx api /api/access-control/user/actions
 
 Send the output to your Grafana administrator along with any error message to modify them. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.
 
+## Cloud Access Policy scopes
+
+Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana instance authentication. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+
+If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), scope the access policy to the products you manage:
+
+-  **`stacks:read` is required**. It resolves your stack and is checked when you log in and when `gcx` validates the token. 
+- Add the scopes for the products you use:
+
+| Scope | Enables |
+| --- | --- |
+| `stacks:read` | Required. Stack discovery, which resolves the stack slug for all Cloud commands. Also covers `gcx k6` reads. |
+| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`). `gcx` needs these scopes to create the Synthetic Monitoring token. |
+| `stacks:write` | Creating or updating stacks. |
+| `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`). |
+
+`gcx fleet` and `gcx instrumentation` don't need a Cloud Access Policy scope to reach Fleet Management. They use the `grafana-collector-app` plugin on your stack, so your Grafana sign-in is enough.
+
+The Cloud Access Policy token is only for Grafana Cloud product APIs: stack management, Synthetic Monitoring, k6, IRM, and SLO. Signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles` use your Grafana token, either OAuth or a service account token.
+
+If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
+
+Refer to [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for how to create the policy and token.
+
 ## Permissions to check instrumentation status
 
 `gcx setup status` and `gcx instrumentation clusters list` check Kubernetes monitoring through the Collector app. To run them, your Grafana user needs both of these permissions:
@@ -37,7 +61,7 @@ Send the output to your Grafana administrator along with any error message to mo
 
 If you're missing one, the command fails with `Authorization failed` and exit code 3.
 
-To list the actions your user is allowed to perform, refer to [Check which permissions you have](#check-which-permissions-you-have).
+To list the actions your user is allowed to perform, refer to [Check which permissions your role has](#check-which-permissions-your-role-has).
 
 ### Read the status when a check fails
 
