@@ -32,6 +32,10 @@ const (
 
 	policyFetchTimeout = 2 * time.Second
 	policyCacheTTL     = 5 * time.Minute
+	// policyFallbackTTL is how long a failed fetch is remembered, so a stack
+	// that serves no policy does not cost every query a failing request, while
+	// a newly published policy is still picked up quickly.
+	policyFallbackTTL  = 30 * time.Second
 	policyMaxBodyBytes = 64 << 10
 )
 
@@ -166,8 +170,8 @@ func (s policySource) fetch(ctx context.Context, now time.Time) (queryPolicy, st
 	if s.cacheTTL > 0 && s.cacheDir != "" {
 		sum := sha256.Sum256([]byte(s.stack + "\n" + s.url))
 		cachePath = filepath.Join(s.cacheDir, hex.EncodeToString(sum[:8])+".json")
-		if p, ok := readPolicyCache(cachePath, now, s.cacheTTL); ok {
-			return p, ""
+		if p, reason, ok := readPolicyCache(cachePath, now, s.cacheTTL); ok {
+			return p, reason
 		}
 	}
 
@@ -175,10 +179,14 @@ func (s policySource) fetch(ctx context.Context, now time.Time) (queryPolicy, st
 	defer cancel()
 	p, err := fetchPolicy(ctx, s.client, s.url)
 	if err != nil {
-		return defaultQueryPolicy(), err.Error()
+		p = defaultQueryPolicy()
+		if cachePath != "" {
+			writePolicyCache(ctx, cachePath, p, err.Error(), now)
+		}
+		return p, err.Error()
 	}
 	if cachePath != "" {
-		writePolicyCache(ctx, cachePath, p, now)
+		writePolicyCache(ctx, cachePath, p, "", now)
 	}
 	return p, ""
 }
@@ -228,27 +236,35 @@ func fetchPolicy(ctx context.Context, client *http.Client, url string) (queryPol
 type policyCacheEntry struct {
 	FetchedAt time.Time   `json:"fetchedAt"`
 	Policy    queryPolicy `json:"policy"`
+	// FallbackReason is set when Policy is the built-in default after a failed
+	// fetch; such an entry expires after policyFallbackTTL instead of the TTL.
+	FallbackReason string `json:"fallbackReason,omitempty"`
 }
 
-func readPolicyCache(path string, now time.Time, ttl time.Duration) (queryPolicy, bool) {
+// readPolicyCache returns a fresh cached policy and, for a cached fallback, the
+// reason the fetch failed.
+func readPolicyCache(path string, now time.Time, ttl time.Duration) (queryPolicy, string, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return queryPolicy{}, false
+		return queryPolicy{}, "", false
 	}
 	var e policyCacheEntry
 	if err := json.Unmarshal(data, &e); err != nil || e.Policy.validate() != nil {
-		return queryPolicy{}, false
+		return queryPolicy{}, "", false
+	}
+	if e.FallbackReason != "" {
+		ttl = min(ttl, policyFallbackTTL)
 	}
 	if age := now.Sub(e.FetchedAt); age < 0 || age > ttl {
-		return queryPolicy{}, false
+		return queryPolicy{}, "", false
 	}
-	return e.Policy, true
+	return e.Policy, e.FallbackReason, true
 }
 
 // writePolicyCache is best effort: a cache that cannot be written only costs
 // one extra fetch next time.
-func writePolicyCache(ctx context.Context, path string, p queryPolicy, now time.Time) {
-	data, err := json.Marshal(policyCacheEntry{FetchedAt: now, Policy: p})
+func writePolicyCache(ctx context.Context, path string, p queryPolicy, fallbackReason string, now time.Time) {
+	data, err := json.Marshal(policyCacheEntry{FetchedAt: now, Policy: p, FallbackReason: fallbackReason})
 	if err == nil {
 		err = os.MkdirAll(filepath.Dir(path), 0o700)
 	}

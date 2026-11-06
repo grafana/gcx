@@ -102,13 +102,41 @@ func TestPolicySource_Fetch(t *testing.T) {
 		assert.EqualValues(t, 2, hits.Load())
 	})
 
-	t.Run("does not cache the fallback default", func(t *testing.T) {
+	t.Run("caches the fallback default briefly", func(t *testing.T) {
 		var hits atomic.Int32
 		srv := newPolicyServer(t, `{}`, http.StatusInternalServerError, &hits)
 		src := policySource{url: srv.URL, client: srv.Client(), cacheTTL: 5 * time.Minute, cacheDir: t.TempDir()}
+
+		_, reason := src.fetch(t.Context(), now)
+		assert.NotEmpty(t, reason)
+		p, reason := src.fetch(t.Context(), now.Add(policyFallbackTTL-time.Second))
+		assert.EqualValues(t, 1, hits.Load(), "a failure inside the fallback TTL must not refetch")
+		assert.Equal(t, defaultQueryPolicy(), p)
+		assert.NotEmpty(t, reason, "a cached fallback still says why it is in use")
+
+		_, _ = src.fetch(t.Context(), now.Add(policyFallbackTTL+time.Second))
+		assert.EqualValues(t, 2, hits.Load(), "a fallback past its TTL must be refetched, well before the policy TTL")
+	})
+
+	t.Run("a policy published after a failure is picked up once the fallback expires", func(t *testing.T) {
+		var served atomic.Bool
+		var hits atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hits.Add(1)
+			if !served.Load() {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(tenant))
+		}))
+		t.Cleanup(srv.Close)
+		src := policySource{url: srv.URL, client: srv.Client(), cacheTTL: 5 * time.Minute, cacheDir: t.TempDir()}
+
 		_, _ = src.fetch(t.Context(), now)
-		_, _ = src.fetch(t.Context(), now)
-		assert.EqualValues(t, 2, hits.Load())
+		served.Store(true)
+		p, reason := src.fetch(t.Context(), now.Add(policyFallbackTTL+time.Second))
+		assert.Empty(t, reason)
+		assert.Equal(t, "tenant", p.Source)
 	})
 }
 
