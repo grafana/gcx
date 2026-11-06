@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newIncidentsCmd(loader GrafanaConfigLoader) *cobra.Command {
+func newIncidentsCmd(loader GrafanaConfigLoader, sharing SharingClientLoader) *cobra.Command {
 	incCmd := &cobra.Command{
 		Use:     "incidents",
 		Short:   "Manage incidents.",
@@ -23,6 +23,7 @@ func newIncidentsCmd(loader GrafanaConfigLoader) *cobra.Command {
 		NewListContextsCommand(loader),
 		NewSeveritiesCommand(loader),
 		NewOpenCommand(loader),
+		newIncidentShareCmd(sharing),
 	)
 
 	return incCmd
