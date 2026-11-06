@@ -16,8 +16,9 @@ import (
 func newSharesCmd(loader ShareClientLoader) *cobra.Command {
 	shared := &opModelSharedOpts{}
 	cmd := &cobra.Command{
-		Use:   "shares",
-		Short: "Publish curated incident findings (experimental prototype).",
+		Use:    "shares",
+		Hidden: true,
+		Short:  "Publish curated incident findings (experimental prototype).",
 		Long: `Publish curated incident findings into the operational model.
 
 Experimental: writes to the op model prototype through the authenticated IRM
