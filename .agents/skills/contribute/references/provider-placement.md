@@ -29,7 +29,7 @@ and discoverable on Grafana's /apis endpoint?
               → Cannot integrate without an accessible API.
 
 NOTE: provider commands over native /apis resources must use the shared
-native binding (internal/providers/native), as required by CONSTITUTION.md.
+native binding (internal/providers/native), as required by ARCHITECTURE.md.
 Do not call the K8s dynamic client or build a discovery registry directly.
 ```
 
@@ -65,7 +65,7 @@ row rules out a provider for CRUD, not for the product.
 
 **Adapters are conditional, not mandatory.** Plain provider commands are valid
 and first-class on their own — an adapter must never be created merely to
-unlock a CRUD verb (CONSTITUTION § Provider Architecture). When a resource type
+unlock a CRUD verb (ARCHITECTURE.md § Rules). When a resource type
 does belong in the unified pipeline, the provider implements `ResourceIdentity`
 on the domain type, builds a `TypedCRUD[T]`-backed `adapter.Registration`
 (non-nil `Schema`), and returns it from `TypedRegistrations()` — the single
@@ -82,7 +82,7 @@ gcx resources delete slos/<id>  # alongside: gcx slo definitions delete <id>
 ```
 
 **Dual CRUD access paths are permanent** for adapter-backed resources
-(CONSTITUTION § Provider Architecture): neither the provider commands nor the
+(VISION.md § Core Beliefs): neither the provider commands nor the
 `resources` path is deprecated, no deprecation warnings are printed, and both
 must return identical JSON/YAML by construction (both go through the adapter's
 TypedCRUD).

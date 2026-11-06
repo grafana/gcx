@@ -44,8 +44,8 @@ func (a Annotation) GetResourceName() string {
 }
 
 // SetResourceName parses the given name as an int64 and assigns it to a.ID.
-// Parse errors are silently ignored per CONSTITUTION guidance for numeric-ID
-// resource types — the existing ID is preserved.
+// A name that does not parse leaves the existing ID in place; see the
+// SetResourceName contract in docs/architecture/resource-model.md.
 func (a *Annotation) SetResourceName(name string) {
 	if id, err := strconv.ParseInt(name, 10, 64); err == nil {
 		a.ID = id

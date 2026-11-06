@@ -114,7 +114,7 @@ Never state proposed or conventional guidance as law.
 | `llm_hint` whenever the worst case is medium/large | **Required, only partly CI-enforced** — `NonSmallCommandsHaveLLMHint` matches `"medium"`/`"large"` exactly, so a qualified cost evades it. Write the hint anyway; the rule is about the worst case, not the spelling. Trade-off in [self-review.md](self-review.md) T1.3 |
 | Cloud-only availability, command→skill mapping | **NOT enforced in that direction.** `TestConsistency_CloudOnlyPathsResolveToCommands` and `SkillMappingResolvesToCommands` iterate the entries you *declared* and check each resolves to a real command — they catch a stale entry after a rename, never a missing one. Adding the entry is review-enforced |
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
-| One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
+| One `providers.Register()` per provider; no `adapter.Register()` outside it | **Rule**, `ARCHITECTURE.md` § Rules; review-enforced |
 | Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
 | Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** an unknown flag and a missing positional arg still exit 1, not 2 (`docs/design/exit-codes.md` §2.3 has the verified table) — don't claim 2 for a path you didn't wire |
 | `Args:` on every leaf | Strong convention; no CI check |

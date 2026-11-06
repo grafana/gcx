@@ -135,7 +135,7 @@ in §3 above. Exemplar to copy:
 - No MCP-style qualified naming — gcx command paths are the namespace.
 - No invented `concise|detailed` response modes — `-o`, `--json`, `--jq` and the
   agents codec already cover output shaping.
-- No blind CRUD consolidation — CONSTITUTION dual-path and naming rules govern
+- No blind CRUD consolidation — the dual-path belief in VISION.md and the naming rules in DESIGN.md govern
   what merges. Consolidating *your own* overlapping proposal is placement's job.
 - Restate nothing from the governing docs in your PR — link them. This file
   restates only rules that are otherwise unwritten.
