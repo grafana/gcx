@@ -369,6 +369,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg prom-rules schema":    {Cost: "small", Hint: "live JSON Schema for Custom Prometheus rules from backend — pipe to file for editor autocomplete, or validate prom-rules YAML before upsert"},
 	"gcx kg quality list":         {Cost: "medium", Hint: "--env <env> [--namespace <ns>] [--sort asc|desc] [--failed-check <id> ...] -o json | rank entities by instrumentation quality percent; --sort asc surfaces the worst-instrumented services first; filter to specific gaps with --failed-check (e.g. span-metrics, service-graph-metrics)"},
 	"gcx kg quality get":          {Cost: "small", Hint: "<entity-name> --env <env> [--namespace <ns>] -o json | full quality report for one entity: per-check state/impact, remediation doc links, and resolved query templates"},
+	"gcx kg schemas list":         {Cost: "large", Hint: "installed schema domains/versions; omit --expand for compact metadata; --expand includes complete bundles; --latest-only=false includes all versions; use --jq \u0027.schemas[].domain\u0027 to select metadata; use gcx kg meta schema for observed graph types"},
 	"gcx kg status":               {Cost: "small"},
 	"gcx kg thresholds get":       {Cost: "small", Hint: "summarize the whole v1 threshold config; use -o yaml for the full kind: Thresholds resource envelope"},
 	"gcx kg thresholds list":      {Cost: "small", Hint: "--category request|resource | per-category thresholds as items with scope=custom|global (v1 has no health category)"},
