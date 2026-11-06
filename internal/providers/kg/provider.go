@@ -87,6 +87,7 @@ and relationships are written with 'entities upsert|delete' and
 		newModelRulesCommand(loader),
 		newSuppressionsCommand(loader),
 		newNotificationsCommand(loader),
+		newDashboardsCommand(loader),
 		newRelabelRulesCommand(loader),
 		// Entities
 		newEntitiesCommand(loader),
