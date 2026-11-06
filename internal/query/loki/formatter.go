@@ -204,14 +204,36 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 // FormatPatternsTable formats a PatternsResponse as a table with PATTERN and
 // SAMPLES columns, preserving the order and totals prepared by Client.Patterns.
 func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
+	return formatPatterns(w, resp, false)
+}
+
+// FormatPatternsTableWide is FormatPatternsTable with a LEVEL column, so a
+// level filter can be checked against the rows it kept.
+func FormatPatternsTableWide(w io.Writer, resp *PatternsResponse) error {
+	return formatPatterns(w, resp, true)
+}
+
+func formatPatterns(w io.Writer, resp *PatternsResponse, wide bool) error {
 	if len(resp.Data) == 0 {
+		if msg := resp.Filter.EmptyMessage(); msg != "" {
+			fmt.Fprintln(w, msg)
+			return nil
+		}
 		fmt.Fprintln(w, "No patterns returned for this selector and range (the backend may prune low-volume patterns or hold no pattern data for it)")
 		return nil
 	}
 
-	t := style.NewTable("PATTERN", "SAMPLES")
+	header := []string{"PATTERN", "SAMPLES"}
+	if wide {
+		header = append(header, "LEVEL")
+	}
+	t := style.NewTable(header...)
 	for _, p := range resp.Data {
-		t.Row(p.Pattern, strconv.FormatInt(p.TotalCount, 10))
+		row := []string{p.Pattern, strconv.FormatInt(p.TotalCount, 10)}
+		if wide {
+			row = append(row, p.Level)
+		}
+		t.Row(row...)
 	}
 	return t.Render(w)
 }
