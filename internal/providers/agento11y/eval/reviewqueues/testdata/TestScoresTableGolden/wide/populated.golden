@@ -1,0 +1,3 @@
+CONVERSATION  EVALUATOR  VERSION  KEY      VALUE  PASSED  REVIEWER  CREATED AT            GENERATION  AGENT      AGENT VERSION  NOTE
+conv-1        helpful    v1       helpful  4      true    alice     2026-09-01T12:00:00Z  gen-1       assistant  v2             clear and correct
+													-      -       -         -                                 -          -              -

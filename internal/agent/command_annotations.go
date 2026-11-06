@@ -640,6 +640,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
 	"gcx agento11y saved-conversations save":        {Cost: "small"},
 	"gcx agento11y saved-conversations delete":      {Cost: "small"},
+	"gcx agento11y saved-conversations create":      {Cost: "small", Hint: "-f fixture.json -o json"},
 	"gcx agento11y saved-conversations collections": {Cost: "small"},
 
 	"gcx agento11y collections list":                {Cost: "small"},
@@ -650,6 +651,16 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y collections list-conversations":  {Cost: "small"},
 	"gcx agento11y collections add-conversations":   {Cost: "small"},
 	"gcx agento11y collections remove-conversation": {Cost: "small"},
+
+	"gcx agento11y human-evaluators list": {Cost: "small", Hint: "-o json"},
+
+	"gcx agento11y review-queues list":        {Cost: "small"},
+	"gcx agento11y review-queues get":         {Cost: "medium", Hint: "<collection-id> [--conversation <conversation-id>] -o json"},
+	"gcx agento11y review-queues update":      {Cost: "small", Hint: "<collection-id> --rubric <human-evaluator-id> -o json"},
+	"gcx agento11y review-queues create":      {Cost: "small", Hint: "-f review-queue.yaml -o json"},
+	"gcx agento11y review-queues list-scores": {Cost: "medium", Hint: "<collection-id> --limit 100 -o json"},
+
+	"gcx agento11y reviews create": {Cost: "small", Hint: "-f review.yaml -o json"},
 
 	"gcx agento11y experiments list":               {Cost: "small"},
 	"gcx agento11y experiments get":                {Cost: "small"},
