@@ -115,45 +115,51 @@ func TestAlertGroupListLabels(t *testing.T) {
 		{name: "extra separator", labels: []string{"service:api:worker"}, invalid: true},
 		{name: "invalid second label", labels: []string{"service:api", "env"}, invalid: true},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			resetAgentMode(t)
-			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
-			cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
-			var stdout, stderr strings.Builder
-			cmd.SetOut(&stdout)
-			cmd.SetErr(&stderr)
-			args := []string{"-o", "json", "--all"}
-			for _, label := range tc.labels {
-				args = append(args, "--label", label)
-			}
-			cmd.SetArgs(args)
-			err := cmd.Execute()
-			if tc.invalid {
-				if _, ok := errors.AsType[*fail.UsageError](err); !ok {
-					t.Fatalf("Execute() = %v (%T), want a usage error", err, err)
+	for _, flag := range []struct{ name, param string }{
+		{name: "label", param: "label"},
+		{name: "label-exclude", param: "label_exclude"},
+	} {
+		for _, tc := range cases {
+			t.Run(flag.name+"/"+tc.name, func(t *testing.T) {
+				resetAgentMode(t)
+				srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+				cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
+				var stdout, stderr strings.Builder
+				cmd.SetOut(&stdout)
+				cmd.SetErr(&stderr)
+				args := []string{"-o", "json", "--all"}
+				for _, label := range tc.labels {
+					args = append(args, "--"+flag.name, label)
 				}
-				if got := exitCodeOf(err); got != fail.ExitUsageError {
-					t.Errorf("exit code = %d, want %d", got, fail.ExitUsageError)
+				cmd.SetArgs(args)
+				err := cmd.Execute()
+				if tc.invalid {
+					if _, ok := errors.AsType[*fail.UsageError](err); !ok {
+						t.Fatalf("Execute() = %v (%T), want a usage error", err, err)
+					}
+					if got := exitCodeOf(err); got != fail.ExitUsageError {
+						t.Errorf("exit code = %d, want %d", got, fail.ExitUsageError)
+					}
+					if !strings.Contains(err.Error(), "invalid --"+flag.name+` "`) || !strings.Contains(err.Error(), "expected key:value") {
+						t.Errorf("Execute() = %v, want a --%s format error", err, flag.name)
+					}
+					if state.requests != 0 {
+						t.Errorf("requests = %d, want 0 for invalid labels", state.requests)
+					}
+					return
 				}
-				if !strings.Contains(err.Error(), "invalid --label") || !strings.Contains(err.Error(), "expected key:value") {
-					t.Errorf("Execute() = %v, want label format error", err)
+				if err != nil {
+					t.Fatalf("Execute() = %v", err)
 				}
-				if state.requests != 0 {
-					t.Errorf("requests = %d, want 0 for invalid labels", state.requests)
+				if got := state.firstQuery[flag.param]; !reflect.DeepEqual(got, tc.labels) {
+					t.Errorf("wire %s = %q, want %q", flag.param, got, tc.labels)
 				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Execute() = %v", err)
-			}
-			if got := state.firstQuery["label"]; !reflect.DeepEqual(got, tc.labels) {
-				t.Errorf("wire labels = %q, want %q", got, tc.labels)
-			}
-			if want := "with filter " + tc.wantHint + ":"; !strings.Contains(stderr.String(), want) {
-				t.Errorf("stderr missing %q:\n%s", want, stderr.String())
-			}
-		})
+				hint := strings.ReplaceAll(tc.wantHint, "label=", flag.name+"=")
+				if want := "with filter " + hint + ":"; !strings.Contains(stderr.String(), want) {
+					t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+				}
+			})
+		}
 	}
 }
 
@@ -371,6 +377,12 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 			args: []string{"--acted-by", "U3"},
 			want: url.Values{"invitees_are": {"U3"}},
 			hint: "default + acted-by=U3",
+		},
+		{
+			name: "label and label-exclude are separate params",
+			args: []string{"--label", "service:api", "--label-exclude", "env:dev"},
+			want: url.Values{"label": {"service:api"}, "label_exclude": {"env:dev"}},
+			hint: `default + label="service:api", label-exclude="env:dev"`,
 		},
 		{
 			name: "started-at window from an absolute --from/--to pair",

@@ -59,6 +59,7 @@ type alertGroupListOpts struct {
 	InvolvedUsers      []string
 	ActedBy            []string
 	Labels             []string
+	LabelExcludes      []string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -93,6 +94,7 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.InvolvedUsers, "involved-user", nil, "Filter by user ID notified about, or acknowledging, resolving, or silencing the group (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringSliceVar(&o.ActedBy, "acted-by", nil, "Filter by user ID with any recorded action in the group's log (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; matching ignores case and accents)")
+	flags.StringArrayVar(&o.LabelExcludes, "label-exclude", nil, "Exclude groups carrying any of these label key:value names (repeatable; matching ignores case and accents)")
 	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
 	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
 	flags.StringVar(&o.ResolvedFrom, "resolved-from", "", "Start of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-30d)")
@@ -112,12 +114,17 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 // contract rather than bespoke capped-source wording (docs/design/output.md
 // § 15.1).
 func (o *alertGroupListOpts) Validate() error {
-	for _, label := range o.Labels {
-		key, value, ok := strings.Cut(label, ":")
-		// The API ignores pairs with extra colons, which would silently
-		// broaden the query. Preserve valid names exactly, including commas.
-		if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" || strings.Contains(value, ":") {
-			return fmt.Errorf("invalid --label %q: expected key:value with non-empty names and no extra colons (e.g. --label service:api)", label)
+	for _, f := range o.repeatedFilters() {
+		if !f.labelPairs {
+			continue
+		}
+		for _, pair := range f.values {
+			key, value, ok := strings.Cut(pair, ":")
+			// The API ignores pairs with extra colons, which would silently
+			// broaden the query. Preserve valid names exactly, including commas.
+			if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" || strings.Contains(value, ":") {
+				return fmt.Errorf("invalid --%s %q: expected key:value with non-empty names and no extra colons (e.g. --%s service:api)", f.flag, pair, f.flag)
+			}
 		}
 	}
 	// --max-age and --from/--to both compile into the same started_at range
@@ -144,9 +151,9 @@ type alertGroupListRepeatedFilter struct {
 	flag   string
 	param  string
 	values []string
-	// quoted renders each value as its own quoted part in the filter hint,
-	// for flags whose values may contain literal commas.
-	quoted bool
+	// labelPairs marks key:value label names, which Validate checks and the
+	// filter hint quotes one by one because commas inside them are literal.
+	labelPairs bool
 }
 
 // repeatedFilters lists every repeatable filter flag. A row added here reaches
@@ -163,7 +170,8 @@ func (o *alertGroupListOpts) repeatedFilters() []alertGroupListRepeatedFilter {
 		// Despite its name, invitees_are matches any log record the user
 		// authored, not just invitations.
 		{flag: "acted-by", param: "invitees_are", values: o.ActedBy},
-		{flag: "label", param: "label", values: o.Labels, quoted: true},
+		{flag: "label", param: "label", values: o.Labels, labelPairs: true},
+		{flag: "label-exclude", param: "label_exclude", values: o.LabelExcludes, labelPairs: true},
 	}
 }
 
@@ -384,10 +392,11 @@ only way to attribute alert load to the rotation that was actually paged. It is 
 interchangeable with --integration: one integration routes to several chains.
 
 Use --label key:value to filter by alert-group label names, not IDs. Repeat the
-flag to require all labels, e.g. --label service:api --label env:prod. Filtering
-happens on the server before pagination and ignores case and accents, so
-service:API and service:apí match the same groups. Commas are literal; colons
-cannot occur inside names.
+flag to require all labels, e.g. --label service:api --label env:prod.
+--label-exclude drops groups carrying any of its pairs. Filtering happens on the
+server before pagination and ignores case and accents, so service:API and
+service:apí match the same groups. Commas are literal; colons cannot occur inside
+names.
 
 --involved-user matches groups the user was notified about or acknowledged,
 resolved, or silenced; notifications only count for the user's 1000 most recently
@@ -564,7 +573,7 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 		if len(f.values) == 0 {
 			continue
 		}
-		if !f.quoted {
+		if !f.labelPairs {
 			parts = append(parts, f.flag+"="+strings.Join(f.values, ","))
 			continue
 		}
