@@ -330,6 +330,11 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 		want url.Values
 	}{
 		{
+			name: "team and integration repeat",
+			args: []string{"--team", "T1,T2", "--integration", "I1"},
+			want: url.Values{"team": {"T1", "T2"}, "integration": {"I1"}},
+		},
+		{
 			name: "escalation chains repeat, never comma-joined",
 			args: []string{"--escalation-chain", "EC1,EC2"},
 			want: url.Values{"escalation_chain": {"EC1", "EC2"}},

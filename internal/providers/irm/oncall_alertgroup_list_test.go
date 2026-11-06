@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -231,6 +232,8 @@ func TestAlertGroupList_LegacyPath_LimitZeroDrainsFully(t *testing.T) {
 func TestAlertGroupList_LegacyPath_NotesUnsupportedFilters(t *testing.T) {
 	fake := &fakeLegacyListAPI{items: []AlertGroup{{PK: "AG1"}}}
 	_, stderr := runAlertGroupList(t, fake,
+		"--team", "T1",
+		"--integration", "I1",
 		"--escalation-chain", "EC1",
 		"--acknowledged-by", "U1",
 		"--resolved-by", "U2",
@@ -247,6 +250,16 @@ func TestAlertGroupList_LegacyPath_NotesUnsupportedFilters(t *testing.T) {
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr missing %q in the unsupported-filter note:\n%s", want, stderr)
+		}
+	}
+	// --team and --integration are public-API filters, so they must be
+	// applied rather than reported.
+	if !slices.Equal(fake.gotCfg.Teams, []string{"T1"}) || !slices.Equal(fake.gotCfg.Integrations, []string{"I1"}) {
+		t.Errorf("teams = %v, integrations = %v, want [T1] and [I1] applied", fake.gotCfg.Teams, fake.gotCfg.Integrations)
+	}
+	for _, supported := range []string{"--team", "--integration"} {
+		if strings.Contains(stderr, supported) {
+			t.Errorf("%s reported unsupported, but the public API honours it:\n%s", supported, stderr)
 		}
 	}
 	// --from survives: the public API does understand a started_at lower

@@ -132,6 +132,30 @@ func (o *alertGroupListOpts) Validate() error {
 	return nil
 }
 
+// alertGroupListRepeatedFilter is one repeatable filter flag: each value is
+// sent as its own occurrence of the wire param.
+type alertGroupListRepeatedFilter struct {
+	flag   string
+	param  string
+	values []string
+	// quoted renders each value as its own quoted part in the filter hint,
+	// for flags whose values may contain literal commas.
+	quoted bool
+}
+
+// repeatedFilters lists every repeatable filter flag. A row added here reaches
+// the wire query, the filter hint, and the legacy unsupported-filter note.
+func (o *alertGroupListOpts) repeatedFilters() []alertGroupListRepeatedFilter {
+	return []alertGroupListRepeatedFilter{
+		{flag: "team", param: "team", values: o.Teams},
+		{flag: "integration", param: "integration", values: o.Integrations},
+		{flag: "escalation-chain", param: "escalation_chain", values: o.EscalationChains},
+		{flag: "acknowledged-by", param: "acknowledged_by", values: o.AcknowledgedBy},
+		{flag: "resolved-by", param: "resolved_by", values: o.ResolvedBy},
+		{flag: "label", param: "label", values: o.Labels, quoted: true},
+	}
+}
+
 // timeWindow is a resolved absolute range, ready to be rendered into the OnCall
 // internal API's `<from>_<to>` date-range param encoding.
 type timeWindow struct {
@@ -236,14 +260,11 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 // and the alternate-implementation fallback (listAlertGroupsLegacy — e.g.
 // test doubles; not reachable via the production loader today).
 type alertGroupListFilters struct {
-	Statuses           []int
-	IsRoot             *bool
-	Teams              []string
-	Integrations       []string
-	EscalationChains   []string
-	AcknowledgedBy     []string
-	ResolvedBy         []string
-	Labels             []string
+	Statuses []int
+	IsRoot   *bool
+	// Repeated holds the repeatable filters keyed by wire param, one value
+	// per query occurrence.
+	Repeated           url.Values
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -271,15 +292,15 @@ type alertGroupListFilters struct {
 // path has to parse user input.
 func resolveAlertGroupListFilters(cmd *cobra.Command, opts *alertGroupListOpts) (alertGroupListFilters, error) {
 	out := alertGroupListFilters{
-		Teams:              opts.Teams,
-		Integrations:       opts.Integrations,
-		EscalationChains:   opts.EscalationChains,
-		AcknowledgedBy:     opts.AcknowledgedBy,
-		ResolvedBy:         opts.ResolvedBy,
-		Labels:             opts.Labels,
+		Repeated:           url.Values{},
 		Mine:               opts.Mine,
 		WithResolutionNote: opts.WithResolutionNote,
 		HasRelatedIncident: opts.HasRelatedIncident,
+	}
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) > 0 {
+			out.Repeated[f.param] = f.values
+		}
 	}
 
 	now := time.Now()
@@ -521,25 +542,19 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 	if len(opts.States) > 0 {
 		parts = append(parts, "status="+strings.Join(opts.States, ","))
 	}
-	if len(opts.Teams) > 0 {
-		parts = append(parts, "team="+strings.Join(opts.Teams, ","))
-	}
-	if len(opts.Integrations) > 0 {
-		parts = append(parts, "integration="+strings.Join(opts.Integrations, ","))
-	}
-	if len(opts.EscalationChains) > 0 {
-		parts = append(parts, "escalation-chain="+strings.Join(opts.EscalationChains, ","))
-	}
-	if len(opts.AcknowledgedBy) > 0 {
-		parts = append(parts, "acknowledged-by="+strings.Join(opts.AcknowledgedBy, ","))
-	}
-	if len(opts.ResolvedBy) > 0 {
-		parts = append(parts, "resolved-by="+strings.Join(opts.ResolvedBy, ","))
-	}
-	// Commas are literal in label names, so pairs joined by commas would make
-	// --label a:b,c --label d:e read the same as --label a:b --label c,d:e.
-	for _, label := range opts.Labels {
-		parts = append(parts, "label="+strconv.Quote(label))
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) == 0 {
+			continue
+		}
+		if !f.quoted {
+			parts = append(parts, f.flag+"="+strings.Join(f.values, ","))
+			continue
+		}
+		// Joined by commas, --label a:b,c --label d:e would read the same
+		// as --label a:b --label c,d:e.
+		for _, v := range f.values {
+			parts = append(parts, f.flag+"="+strconv.Quote(v))
+		}
 	}
 	if opts.MaxAge != "" {
 		parts = append(parts, "max-age="+opts.MaxAge)
@@ -593,18 +608,17 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 // --all is in effect. Used to decide whether the filter-summary hint stays
 // silent in the "user passed --all and nothing else" case.
 func alertGroupListHasExplicitFilter(opts *alertGroupListOpts) bool {
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) > 0 {
+			return true
+		}
+	}
 	return opts.MaxAge != "" ||
 		opts.From != "" ||
 		opts.To != "" ||
 		opts.ResolvedFrom != "" ||
 		opts.ResolvedTo != "" ||
 		len(opts.States) > 0 ||
-		len(opts.Teams) > 0 ||
-		len(opts.Integrations) > 0 ||
-		len(opts.EscalationChains) > 0 ||
-		len(opts.AcknowledgedBy) > 0 ||
-		len(opts.ResolvedBy) > 0 ||
-		len(opts.Labels) > 0 ||
 		opts.Mine ||
 		opts.WithResolutionNote ||
 		opts.HasRelatedIncident ||
@@ -707,11 +721,11 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	if len(filters.Statuses) > 0 {
 		listOpts = append(listOpts, WithStatuses(filters.Statuses...))
 	}
-	if len(filters.Teams) > 0 {
-		listOpts = append(listOpts, WithTeams(filters.Teams...))
+	if teams := filters.Repeated["team"]; len(teams) > 0 {
+		listOpts = append(listOpts, WithTeams(teams...))
 	}
-	if len(filters.Integrations) > 0 {
-		listOpts = append(listOpts, WithIntegrations(filters.Integrations...))
+	if integrations := filters.Repeated["integration"]; len(integrations) > 0 {
+		listOpts = append(listOpts, WithIntegrations(integrations...))
 	}
 	if opts.Limit > 0 {
 		// Over-fetch by one: the public API has no more-pages signal, so a
@@ -723,9 +737,9 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 
 	// Surface unsupported-filter warnings once at the command edge — the
 	// public API doesn't speak is_root, mine, with_resolution_note,
-	// has_related_incident, the escalation_chain / acknowledged_by /
-	// resolved_by option filters, or either daterange's upper bound. Honor
-	// what we can and tell the user about the rest.
+	// has_related_incident, any repeatable filter besides team and
+	// integration, or either daterange's upper bound. Honor what we can and
+	// tell the user about the rest.
 	var unsupported []string
 	if filters.IsRoot != nil {
 		unsupported = append(unsupported, "is_root (root-only / include-child-groups)")
@@ -739,17 +753,10 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	if filters.HasRelatedIncident {
 		unsupported = append(unsupported, "--has-related-incident")
 	}
-	if len(filters.EscalationChains) > 0 {
-		unsupported = append(unsupported, "--escalation-chain")
-	}
-	if len(filters.AcknowledgedBy) > 0 {
-		unsupported = append(unsupported, "--acknowledged-by")
-	}
-	if len(filters.ResolvedBy) > 0 {
-		unsupported = append(unsupported, "--resolved-by")
-	}
-	if len(filters.Labels) > 0 {
-		unsupported = append(unsupported, "--label")
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) > 0 && f.param != "team" && f.param != "integration" {
+			unsupported = append(unsupported, "--"+f.flag)
+		}
 	}
 	// --from's lower bound survives as started_after above; the upper bound
 	// and the whole resolved_at window have no public-API equivalent.
@@ -873,23 +880,10 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 			params.Set("is_root", "false")
 		}
 	}
-	for _, t := range filters.Teams {
-		params.Add("team", t)
-	}
-	for _, i := range filters.Integrations {
-		params.Add("integration", i)
-	}
-	for _, e := range filters.EscalationChains {
-		params.Add("escalation_chain", e)
-	}
-	for _, u := range filters.AcknowledgedBy {
-		params.Add("acknowledged_by", u)
-	}
-	for _, u := range filters.ResolvedBy {
-		params.Add("resolved_by", u)
-	}
-	for _, label := range filters.Labels {
-		params.Add("label", label)
+	for param, values := range filters.Repeated {
+		for _, v := range values {
+			params.Add(param, v)
+		}
 	}
 	if filters.Mine {
 		params.Set("mine", "true")
