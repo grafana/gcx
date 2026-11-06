@@ -1,5 +1,5 @@
-// opmodel_claims.go; `gcx irm opmodel claims` leaves: create (state an
-// impact or hypothesis outright) and assess (a typed human judgment).
+// opmodel_claims.go; `gcx irm opmodel containers create-claim` (state an
+// impact or hypothesis outright) and `assess-claim` (a typed human judgment).
 package irm
 
 import (
@@ -10,21 +10,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newOpModelClaimsCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "claims",
-		Short: "State, assess, and track recovery of claims.",
-	}
-	cmd.AddCommand(
-		newClaimsCreateCmd(loader, shared),
-		newClaimsAssessCmd(loader, shared),
-		newClaimsRecoveryCmd(loader, shared),
-	)
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
-// claims create
+// containers create-claim
 // ---------------------------------------------------------------------------
 
 type claimsCreateOpts struct {
@@ -36,7 +23,6 @@ type claimsCreateOpts struct {
 }
 
 func (o *claimsCreateOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.ClaimType, "type", "", "What the claim asserts: impact (what is broken, for whom) or hypothesis (why) (required)")
 	flags.StringVar(&o.Text, "text", "", "The assertion itself (required)")
 	o.Actor.bind(flags)
@@ -44,7 +30,7 @@ func (o *claimsCreateOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *claimsCreateOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("type", o.ClaimType); err != nil {
@@ -62,15 +48,16 @@ func (o *claimsCreateOpts) Validate() error {
 func newClaimsCreateCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &claimsCreateOpts{}
 	cmd := &cobra.Command{
-		Use:   "create",
+		Use:   "create-claim <container>",
 		Short: "State an impact or hypothesis outright.",
 		Long: `State an impact or hypothesis without an observation origin.
 Claims start unassessed; impacts also start with unknown recovery.
 Assessment and recovery are independent human judgments.`,
-		Example: `  gcx irm opmodel claims create --container INC-123 --type impact \
+		Example: `  gcx irm opmodel containers create-claim INC-123 --type impact \
     --text "checkout is failing for EU users" --actor-kind agent --actor-id claude-code`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -95,7 +82,7 @@ func runClaimsCreate(cmd *cobra.Command, opts *claimsCreateOpts, loader OpModelC
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("create", opts.Container,
+		return newOpModelMutation("create-claim", opts.Container,
 			opModelTarget{Kind: "claim", ID: resp.ClaimID},
 			nil,
 			resp.Revision), nil
@@ -103,7 +90,7 @@ func runClaimsCreate(cmd *cobra.Command, opts *claimsCreateOpts, loader OpModelC
 }
 
 // ---------------------------------------------------------------------------
-// claims assess
+// containers assess-claim
 // ---------------------------------------------------------------------------
 
 type claimsAssessOpts struct {
@@ -118,7 +105,6 @@ type claimsAssessOpts struct {
 
 func (o *claimsAssessOpts) setup(flags *pflag.FlagSet) {
 	o.flags = flags
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.ImpactAssessment, "impact-assessment", "", "Impact assessment: unassessed, confirmed, ruled_out (exactly one typed assessment required)")
 	flags.StringVar(&o.HypothesisAssessment, "hypothesis-assessment", "", "Hypothesis assessment: unassessed, accepted, ruled_out (exactly one typed assessment required)")
 	flags.StringVar(&o.Reason, "reason", "", "Reason for this assessment (optional)")
@@ -127,7 +113,7 @@ func (o *claimsAssessOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *claimsAssessOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if o.flags.Changed("impact-assessment") == o.flags.Changed("hypothesis-assessment") {
@@ -146,20 +132,21 @@ func (o *claimsAssessOpts) Validate() error {
 func newClaimsAssessCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &claimsAssessOpts{}
 	cmd := &cobra.Command{
-		Use:   "assess <claim-id>",
+		Use:   "assess-claim <container> <claim-id>",
 		Short: "Assess an impact or hypothesis (human judgment).",
 		Long: `Record one typed assessment against the claim's current content at write time.
 This does not change impact recovery. The server requires a human
 actor; agents must not impersonate a human after prose approval.`,
-		Example: `  gcx irm opmodel claims assess clm-7 --container INC-123 \
+		Example: `  gcx irm opmodel containers assess-claim INC-123 clm-7 \
     --impact-assessment confirmed --reason "reproduced on staging" \
     --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runClaimsAssess(cmd, args[0], opts, loader, shared)
+			return runClaimsAssess(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -181,7 +168,7 @@ func runClaimsAssess(cmd *cobra.Command, claimID string, opts *claimsAssessOpts,
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("assess", opts.Container,
+		return newOpModelMutation("assess-claim", opts.Container,
 			opModelTarget{Kind: "claim", ID: claimID},
 			map[string]string{"impact_assessment": opts.ImpactAssessment, "hypothesis_assessment": opts.HypothesisAssessment},
 			resp.Revision), nil

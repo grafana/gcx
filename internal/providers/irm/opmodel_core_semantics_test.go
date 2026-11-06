@@ -42,26 +42,26 @@ type opModelWireCase struct {
 
 func coreSemanticsCases() []opModelWireCase {
 	return []opModelWireCase{
-		{"observation context", []string{"observations", "create", "--text", "observed", "--source-ref", "slack:1", "--observed-start", "2026-08-21T14:00:00Z", "--observed-end", "2026-08-21T14:01:00Z", "--scope", "checkout", "--original-author-source-id", "U1"}, "/observations", `{"text":"observed","source_ref":"slack:1","observed_start":"2026-08-21T14:00:00Z","observed_end":"2026-08-21T14:01:00Z","scope":"checkout","original_author":{"source_id":"U1"}}`, `{"observation_id":"obs-new","revision":"2"}`},
-		{"claim creation", []string{"claims", "create", "--type", "hypothesis", "--text", "cause"}, "/claims", `{"type":"hypothesis","text":"cause"}`, `{"claim_id":"claim-new","revision":"2"}`},
-		{"action creation", []string{"actions", "create", "--text", "restart", "--expected-result", "healthy", "--assignee-kind", "human", "--assignee-id", "responder", "--assignee-name", "Responder"}, "/actions", `{"text":"restart","expected_result":"healthy","assignee":{"kind":"human","id":"responder","display_name":"Responder"}}`, `{"action_id":"action-new","status":"proposed","revision":"2"}`},
-		{"promotion", []string{"observations", "promote", "obs-1", "--to", "hypothesis"}, "/observations/obs-1/promote", `{"type":"hypothesis"}`, `{"claim_id":"claim-new","revision":"2"}`},
-		{"action origin", []string{"observations", "promote-to-action", "obs-1", "--text", "restart"}, "/observations/obs-1/promote-to-action", `{"text":"restart"}`, `{"action_id":"action-new","status":"proposed","revision":"2"}`},
-		{"text preserves optional content", []string{"entities", "edit-text", "obs-1", "--text", "corrected"}, "/entities/obs-1/edit", `{"text":"corrected"}`, `{"revision":"2"}`},
-		{"observation full replacement clears", []string{"observations", "edit", "obs-1", "--text", "corrected"}, "/observations/obs-1/edit", `{"content":{"text":"corrected"}}`, `{"revision":"2"}`},
-		{"observation full replacement context", []string{"observations", "edit", "obs-1", "--text", "corrected", "--source-ref", "source", "--scope", "", "--original-author-name", "Author"}, "/observations/obs-1/edit", `{"content":{"text":"corrected","source_ref":"source","scope":"","original_author":{"display_name":"Author"}}}`, `{"revision":"2"}`},
-		{"action full replacement clears", []string{"actions", "edit", "act-1", "--text", "corrected"}, "/actions/act-1/edit", `{"content":{"text":"corrected"}}`, `{"revision":"2"}`},
-		{"action full replacement empty result", []string{"actions", "edit", "act-1", "--text", "corrected", "--expected-result", ""}, "/actions/act-1/edit", `{"content":{"text":"corrected","expected_result":""}}`, `{"revision":"2"}`},
-		{"impact assessment", []string{"claims", "assess", "clm-1", "--impact-assessment", "confirmed", "--reason", "reproduced"}, "/claims/clm-1/assess", `{"impact_assessment":"confirmed","reason":"reproduced"}`, `{"revision":"2"}`},
-		{"hypothesis assessment", []string{"claims", "assess", "clm-1", "--hypothesis-assessment", "accepted"}, "/claims/clm-1/assess", `{"hypothesis_assessment":"accepted"}`, `{"revision":"2"}`},
-		{"independent recovery", []string{"claims", "recovery", "clm-1", "--recovery", "mitigated", "--reason", "fewer failures; some remain"}, "/claims/clm-1/recovery", `{"recovery":"mitigated","reason":"fewer failures; some remain"}`, `{"revision":"2"}`},
-		{"coordination preserves assignee", []string{"actions", "coordinate", "act-1", "--status", "blocked", "--reason", "waiting"}, "/actions/act-1/coordinate", `{"status":"blocked","reason":"waiting"}`, `{"revision":"2"}`},
-		{"coordination clears assignee preserves status", []string{"actions", "coordinate", "act-1", "--clear-assignee"}, "/actions/act-1/coordinate", `{"set_assignee":true}`, `{"revision":"2"}`},
-		{"coordination assigns preserves status", []string{"actions", "coordinate", "act-1", "--assignee-kind", "agent", "--assignee-id", "worker"}, "/actions/act-1/coordinate", `{"set_assignee":true,"assignee":{"kind":"agent","id":"worker"}}`, `{"revision":"2"}`},
-		{"observation verification", []string{"observations", "verify", "obs-1", "--verification", "human_verified", "--reason", "checked"}, "/observations/obs-1/verify", `{"verification":"human_verified","reason":"checked"}`, `{"revision":"2"}`},
-		{"evidence attachment", []string{"evidence-links", "attach", "--source", "obs-1", "--target", "clm-1", "--stance", "challenges", "--rationale", "different timing"}, "/evidence-links", `{"source_id":"obs-1","target_id":"clm-1","stance":"challenges","rationale":"different timing"}`, `{"evidence_id":"evidence-new","revision":"2"}`},
-		{"evidence verification", []string{"evidence-links", "verify", "e-1", "--verification", "disputed", "--reason", "checked"}, "/evidence-links/e-1/verify", `{"verification":"disputed","reason":"checked"}`, `{"revision":"2"}`},
-		{"withdrawal has no version", []string{"evidence-links", "withdraw", "e-1", "--reason", "misread"}, "/evidence-links/e-1/withdraw", `{"reason":"misread"}`, `{"revision":"2"}`},
+		{"observation context", []string{"containers", "create-observation", "INC-1", "--text", "observed", "--source-ref", "slack:1", "--observed-start", "2026-08-21T14:00:00Z", "--observed-end", "2026-08-21T14:01:00Z", "--scope", "checkout", "--original-author-source-id", "U1"}, "/observations", `{"text":"observed","source_ref":"slack:1","observed_start":"2026-08-21T14:00:00Z","observed_end":"2026-08-21T14:01:00Z","scope":"checkout","original_author":{"source_id":"U1"}}`, `{"observation_id":"obs-new","revision":"2"}`},
+		{"claim creation", []string{"containers", "create-claim", "INC-1", "--type", "hypothesis", "--text", "cause"}, "/claims", `{"type":"hypothesis","text":"cause"}`, `{"claim_id":"claim-new","revision":"2"}`},
+		{"action creation", []string{"containers", "create-action", "INC-1", "--text", "restart", "--expected-result", "healthy", "--assignee-kind", "human", "--assignee-id", "responder", "--assignee-name", "Responder"}, "/actions", `{"text":"restart","expected_result":"healthy","assignee":{"kind":"human","id":"responder","display_name":"Responder"}}`, `{"action_id":"action-new","status":"proposed","revision":"2"}`},
+		{"promotion", []string{"containers", "promote-observation", "INC-1", "obs-1", "--to", "hypothesis"}, "/observations/obs-1/promote", `{"type":"hypothesis"}`, `{"claim_id":"claim-new","revision":"2"}`},
+		{"action origin", []string{"containers", "promote-observation-to-action", "INC-1", "obs-1", "--text", "restart"}, "/observations/obs-1/promote-to-action", `{"text":"restart"}`, `{"action_id":"action-new","status":"proposed","revision":"2"}`},
+		{"text preserves optional content", []string{"containers", "update-entity-text", "INC-1", "obs-1", "--text", "corrected"}, "/entities/obs-1/edit", `{"text":"corrected"}`, `{"revision":"2"}`},
+		{"observation full replacement clears", []string{"containers", "update-observation", "INC-1", "obs-1", "--text", "corrected"}, "/observations/obs-1/edit", `{"content":{"text":"corrected"}}`, `{"revision":"2"}`},
+		{"observation full replacement context", []string{"containers", "update-observation", "INC-1", "obs-1", "--text", "corrected", "--source-ref", "source", "--scope", "", "--original-author-name", "Author"}, "/observations/obs-1/edit", `{"content":{"text":"corrected","source_ref":"source","scope":"","original_author":{"display_name":"Author"}}}`, `{"revision":"2"}`},
+		{"action full replacement clears", []string{"containers", "update-action", "INC-1", "act-1", "--text", "corrected"}, "/actions/act-1/edit", `{"content":{"text":"corrected"}}`, `{"revision":"2"}`},
+		{"action full replacement empty result", []string{"containers", "update-action", "INC-1", "act-1", "--text", "corrected", "--expected-result", ""}, "/actions/act-1/edit", `{"content":{"text":"corrected","expected_result":""}}`, `{"revision":"2"}`},
+		{"impact assessment", []string{"containers", "assess-claim", "INC-1", "clm-1", "--impact-assessment", "confirmed", "--reason", "reproduced"}, "/claims/clm-1/assess", `{"impact_assessment":"confirmed","reason":"reproduced"}`, `{"revision":"2"}`},
+		{"hypothesis assessment", []string{"containers", "assess-claim", "INC-1", "clm-1", "--hypothesis-assessment", "accepted"}, "/claims/clm-1/assess", `{"hypothesis_assessment":"accepted"}`, `{"revision":"2"}`},
+		{"independent recovery", []string{"containers", "update-claim-recovery", "INC-1", "clm-1", "--recovery", "mitigated", "--reason", "fewer failures; some remain"}, "/claims/clm-1/recovery", `{"recovery":"mitigated","reason":"fewer failures; some remain"}`, `{"revision":"2"}`},
+		{"coordination preserves assignee", []string{"containers", "coordinate-action", "INC-1", "act-1", "--status", "blocked", "--reason", "waiting"}, "/actions/act-1/coordinate", `{"status":"blocked","reason":"waiting"}`, `{"revision":"2"}`},
+		{"coordination clears assignee preserves status", []string{"containers", "coordinate-action", "INC-1", "act-1", "--clear-assignee"}, "/actions/act-1/coordinate", `{"set_assignee":true}`, `{"revision":"2"}`},
+		{"coordination assigns preserves status", []string{"containers", "coordinate-action", "INC-1", "act-1", "--assignee-kind", "agent", "--assignee-id", "worker"}, "/actions/act-1/coordinate", `{"set_assignee":true,"assignee":{"kind":"agent","id":"worker"}}`, `{"revision":"2"}`},
+		{"observation verification", []string{"containers", "verify-observation", "INC-1", "obs-1", "--verification", "human_verified", "--reason", "checked"}, "/observations/obs-1/verify", `{"verification":"human_verified","reason":"checked"}`, `{"revision":"2"}`},
+		{"evidence attachment", []string{"containers", "attach-evidence-link", "INC-1", "--source", "obs-1", "--target", "clm-1", "--stance", "challenges", "--rationale", "different timing"}, "/evidence-links", `{"source_id":"obs-1","target_id":"clm-1","stance":"challenges","rationale":"different timing"}`, `{"evidence_id":"evidence-new","revision":"2"}`},
+		{"evidence verification", []string{"containers", "verify-evidence-link", "INC-1", "e-1", "--verification", "disputed", "--reason", "checked"}, "/evidence-links/e-1/verify", `{"verification":"disputed","reason":"checked"}`, `{"revision":"2"}`},
+		{"withdrawal has no version", []string{"containers", "withdraw-evidence-link", "INC-1", "e-1", "--reason", "misread"}, "/evidence-links/e-1/withdraw", `{"reason":"misread"}`, `{"revision":"2"}`},
 	}
 }
 
@@ -89,7 +89,7 @@ func TestOpModelCoreSemanticsCommandWireContract(t *testing.T) {
 				_, _ = io.WriteString(w, tc.response)
 			})
 			loader := &wireOpModelLoader{client: client}
-			args := append(append([]string{}, tc.args...), "--container", "INC-1", "--actor-kind", "human", "--actor-id", "responder")
+			args := append(append([]string{}, tc.args...), "--actor-kind", "human", "--actor-id", "responder")
 			stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newOpModelCmd(loader) }, args...)
 			if err != nil {
 				t.Fatal(err)
@@ -135,7 +135,7 @@ func TestOpModelRetiredPreconditionFlagsRejectedBeforeIO(t *testing.T) {
 func assertOpModelRejectedBeforeIO(t *testing.T, args []string) error {
 	t.Helper()
 	loader := &fakeOpModelLoader{op: &fakeOpModel{}}
-	args = append(append([]string{}, args...), "--container", "INC-1", "--actor-kind", "agent", "--actor-id", "codex")
+	args = append(append([]string{}, args...), "--actor-kind", "agent", "--actor-id", "codex")
 	stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newOpModelCmd(loader) }, args...)
 	if err == nil || loader.loads != 0 || stdout != "" {
 		t.Fatalf("err=%v loads=%d stdout=%s", err, loader.loads, stdout)
@@ -145,29 +145,29 @@ func assertOpModelRejectedBeforeIO(t *testing.T, args []string) error {
 
 func TestOpModelInvalidInputsAndRetiredSurface(t *testing.T) {
 	for _, args := range [][]string{
-		{"observations", "create", "--text", ""},
-		{"observations", "create", "--text", "x", "--observed-start", ""},
-		{"observations", "create", "--text", "x", "--observed-end", "2026-08-21T14:00:00Z"},
-		{"observations", "create", "--text", "x", "--observed-start", "2026-08-21T14:01:00Z", "--observed-end", "2026-08-21T14:00:00Z"},
-		{"observations", "create", "--text", "x", "--original-author-source-id", " "},
-		{"claims", "assess", "c"},
-		{"claims", "assess", "c", "--impact-assessment", "confirmed", "--hypothesis-assessment", "accepted"},
-		{"claims", "assess", "c", "--impact-assessment", "accepted"},
-		{"claims", "assess", "c", "--impact-assessment", ""},
-		{"claims", "assess", "c", "--impact-assessment", "", "--hypothesis-assessment", "accepted"},
-		{"claims", "recovery", "c", "--recovery", "mitigated", "--reason", " "},
-		{"actions", "coordinate", "a"},
-		{"actions", "coordinate", "a", "--status", ""},
-		{"actions", "coordinate", "a", "--status", "", "--clear-assignee"},
-		{"actions", "coordinate", "a", "--status", "finished"},
-		{"actions", "coordinate", "a", "--clear-assignee", "--assignee-kind", "human", "--assignee-id", "u"},
-		{"actions", "create", "--text", "x", "--assignee-kind", "human", "--assignee-id", ""},
-		{"actions", "create", "--text", "x", "--assignee-name", "u"},
-		{"evidence-links", "attach", "--source", "o", "--target", "o", "--stance", "supports"},
-		{"evidence-links", "attach", "--source", "o", "--target", "c", "--stance", "bears_on"},
-		{"evidence-links", "verify", "e", "--verification", "agent_corroborated"},
+		{"containers", "create-observation", "INC-1", "--text", ""},
+		{"containers", "create-observation", "INC-1", "--text", "x", "--observed-start", ""},
+		{"containers", "create-observation", "INC-1", "--text", "x", "--observed-end", "2026-08-21T14:00:00Z"},
+		{"containers", "create-observation", "INC-1", "--text", "x", "--observed-start", "2026-08-21T14:01:00Z", "--observed-end", "2026-08-21T14:00:00Z"},
+		{"containers", "create-observation", "INC-1", "--text", "x", "--original-author-source-id", " "},
+		{"containers", "assess-claim", "INC-1", "c"},
+		{"containers", "assess-claim", "INC-1", "c", "--impact-assessment", "confirmed", "--hypothesis-assessment", "accepted"},
+		{"containers", "assess-claim", "INC-1", "c", "--impact-assessment", "accepted"},
+		{"containers", "assess-claim", "INC-1", "c", "--impact-assessment", ""},
+		{"containers", "assess-claim", "INC-1", "c", "--impact-assessment", "", "--hypothesis-assessment", "accepted"},
+		{"containers", "update-claim-recovery", "INC-1", "c", "--recovery", "mitigated", "--reason", " "},
+		{"containers", "coordinate-action", "INC-1", "a"},
+		{"containers", "coordinate-action", "INC-1", "a", "--status", ""},
+		{"containers", "coordinate-action", "INC-1", "a", "--status", "", "--clear-assignee"},
+		{"containers", "coordinate-action", "INC-1", "a", "--status", "finished"},
+		{"containers", "coordinate-action", "INC-1", "a", "--clear-assignee", "--assignee-kind", "human", "--assignee-id", "u"},
+		{"containers", "create-action", "INC-1", "--text", "x", "--assignee-kind", "human", "--assignee-id", ""},
+		{"containers", "create-action", "INC-1", "--text", "x", "--assignee-name", "u"},
+		{"containers", "attach-evidence-link", "INC-1", "--source", "o", "--target", "o", "--stance", "supports"},
+		{"containers", "attach-evidence-link", "INC-1", "--source", "o", "--target", "c", "--stance", "bears_on"},
+		{"containers", "verify-evidence-link", "INC-1", "e", "--verification", "agent_corroborated"},
 		{"claims", "settle", "c"}, {"actions", "advance", "a"}, {"bearings", "attach"},
-		{"observations", "promote", "o", "--to", "impact", "--stance", "supports"},
+		{"containers", "promote-observation", "INC-1", "o", "--to", "impact", "--stance", "supports"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) { _ = assertOpModelRejectedBeforeIO(t, args) })
 	}
@@ -292,7 +292,7 @@ func TestOpModelNoEventWritePreservesReturnedHead(t *testing.T) {
 	})
 	loader := &wireOpModelLoader{client: client}
 	for range 2 {
-		stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newOpModelCmd(loader) }, "actions", "coordinate", "a", "--container", "INC-1", "--status", "done", "--actor-kind", "agent", "--actor-id", "recorder")
+		stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newOpModelCmd(loader) }, "containers", "coordinate-action", "INC-1", "a", "--status", "done", "--actor-kind", "agent", "--actor-id", "recorder")
 		if err != nil {
 			t.Fatal(err)
 		}

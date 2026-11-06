@@ -192,13 +192,13 @@ def operations(draft, ids):
         for entity in draft["entities"]:
             if entity["type"] != kind or "existing_id" in entity:
                 continue
-            args = ["observations", "create"] if kind == "observation" else ["claims", "create", "--type", kind]
+            args = ["create-observation"] if kind == "observation" else ["create-claim", "--type", kind]
             args += ["--text", entity["text"]]
             if entity.get("source_ref"):
                 args += ["--source-ref", entity["source_ref"]]
             yield "entities", entity["ref"], args, "observation" if kind == "observation" else "claim"
     for index, link in enumerate(draft["evidence_links"]):
-        args = ["evidence-links", "attach", "--source", ids[link["source"]],
+        args = ["attach-evidence-link", "--source", ids[link["source"]],
                 "--target", ids[link["target"]], "--stance", link["stance"]]
         if link.get("rationale"):
             args += ["--rationale", link["rationale"]]
@@ -207,10 +207,10 @@ def operations(draft, ids):
         if entity["type"] != "action" or "existing_id" in entity:
             continue
         if entity.get("prompted_by"):
-            args = ["observations", "promote-to-action", ids[entity["prompted_by"]]]
+            args = ["promote-observation-to-action", ids[entity["prompted_by"]]]
             kind = "observation"
         else:
-            args, kind = ["actions", "create"], "action"
+            args, kind = ["create-action"], "action"
         yield "entities", entity["ref"], args + ["--text", entity["text"]], kind
 
 
@@ -350,15 +350,15 @@ def read_receipt(stdout, args, kind, container):
     receipt = read_document(stdout)
     require(receipt.get("type") == "gcx.irm.opmodel.mutation"
             and receipt.get("schema_version") == "2", "Unexpected mutation receipt schema")
-    require(receipt.get("container") == container and receipt.get("action") == args[1],
+    require(receipt.get("container") == container and receipt.get("action") == args[0],
             "Mutation receipt destination or action mismatch")
     target = receipt.get("target")
     require(isinstance(target, dict) and target.get("kind") == kind
             and nonempty(target.get("id")), "Missing or unexpected receipt target")
     require(nonempty(receipt.get("revision")), "Missing receipt revision")
     minted_id = target["id"]
-    if args[1] == "promote-to-action":
-        require(target["id"] == args[2], "Promotion source mismatch")
+    if args[0] == "promote-observation-to-action":
+        require(target["id"] == args[1], "Promotion source mismatch")
         result = receipt.get("result")
         require(isinstance(result, dict) and nonempty(result.get("action_id")),
                 "Promotion receipt missing result.action_id")
@@ -378,7 +378,7 @@ def save(draft, args, journal, report):
     summary = {"status": "saving", "context": args.context, "container": args.container, **report,
                "entities": ids, "evidence_links": {}, "revision": None,
                "journal": str(args.journal)}
-    base = ["--context", args.context, "--container", args.container,
+    base = ["--context", args.context,
             "--actor-kind", "agent", "--actor-id", args.actor_id,
             "--actor-name", args.actor_name, "--output", "json"]
     record(journal, {"event": "start", "context": args.context, "container": args.container,
@@ -386,7 +386,7 @@ def save(draft, args, journal, report):
                      "message_journal": str(args.message) if args.message else None,
                      "message_skipped": args.skip_message})
     for group, ref, command, kind in operations(draft, ids):
-        argv = ["gcx", "irm", "opmodel"] + command + base
+        argv = ["gcx", "irm", "opmodel", "containers", command[0], args.container] + command[1:] + base
         record(journal, {"event": "pending", "group": group, "ref": ref, "argv": argv})
         try:
             process = subprocess.run(argv, capture_output=True, text=True, timeout=60)

@@ -1,6 +1,7 @@
-// opmodel_evidence_links.go; `gcx irm opmodel evidence-links` leaves: attach (link a
-// source to a target claim with a stance), verify (inference-axis
-// verification), withdraw (terminal mark; nothing is deleted).
+// opmodel_evidence_links.go; `gcx irm opmodel containers attach-evidence-link`
+// (link a source to a target claim with a stance), `verify-evidence-link`
+// (inference-axis verification), and `withdraw-evidence-link` (terminal mark;
+// nothing is deleted).
 package irm
 
 import (
@@ -12,21 +13,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newOpModelEvidenceLinksCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "evidence-links",
-		Short: "Attach, verify, and withdraw evidence relationships.",
-	}
-	cmd.AddCommand(
-		newEvidenceLinksAttachCmd(loader, shared),
-		newEvidenceLinksVerifyCmd(loader, shared),
-		newEvidenceLinksWithdrawCmd(loader, shared),
-	)
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
-// evidence-links attach
+// containers attach-evidence-link
 // ---------------------------------------------------------------------------
 
 type evidenceLinksAttachOpts struct {
@@ -40,7 +28,6 @@ type evidenceLinksAttachOpts struct {
 }
 
 func (o *evidenceLinksAttachOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Source, "source", "", "Source observation ID (required; claims and actions cannot be sources)")
 	flags.StringVar(&o.Target, "target", "", "Target claim id; an impact or a hypothesis (required)")
 	flags.StringVar(&o.Stance, "stance", "", "What the source means for the target: supports, challenges, or context (required)")
@@ -50,7 +37,7 @@ func (o *evidenceLinksAttachOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *evidenceLinksAttachOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("source", o.Source); err != nil {
@@ -80,17 +67,18 @@ func (o *evidenceLinksAttachOpts) Validate() error {
 func newEvidenceLinksAttachCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &evidenceLinksAttachOpts{}
 	cmd := &cobra.Command{
-		Use:   "attach",
+		Use:   "attach-evidence-link <container>",
 		Short: "Attach an observation interpretation to a target claim.",
 		Long: `Attach an immutable evidence interpretation from an observation to an
 impact or hypothesis at their current content versions at write time. It starts unverified.
 Supporting evidence does not accept the claim. Replace an interpretation by
 withdrawing it and attaching a new identity.`,
-		Example: `  gcx irm opmodel evidence-links attach --container INC-123 \
+		Example: `  gcx irm opmodel containers attach-evidence-link INC-123 \
     --source obs-42 --target clm-7 --stance supports \
     --rationale "spike aligns with the deploy" --actor-kind agent --actor-id claude-code`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -117,7 +105,7 @@ func runEvidenceLinksAttach(cmd *cobra.Command, opts *evidenceLinksAttachOpts, l
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("attach", opts.Container,
+		return newOpModelMutation("attach-evidence-link", opts.Container,
 			opModelTarget{Kind: "evidence_link", ID: resp.EvidenceID},
 			map[string]string{"source_id": opts.Source, "target_id": opts.Target, "stance": opts.Stance},
 			resp.Revision), nil
@@ -125,7 +113,7 @@ func runEvidenceLinksAttach(cmd *cobra.Command, opts *evidenceLinksAttachOpts, l
 }
 
 // ---------------------------------------------------------------------------
-// evidence-links verify
+// containers verify-evidence-link
 // ---------------------------------------------------------------------------
 
 type evidenceLinksVerifyOpts struct {
@@ -137,7 +125,6 @@ type evidenceLinksVerifyOpts struct {
 }
 
 func (o *evidenceLinksVerifyOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Verification, "verification", "", "Inference-axis verification: unverified, human_verified, or disputed (required). The server requires a human actor. A evidence link cannot be agent_corroborated; only a fact can be")
 	flags.StringVar(&o.Reason, "reason", "", "Why the verification was set (optional)")
 	o.Actor.bind(flags)
@@ -145,7 +132,7 @@ func (o *evidenceLinksVerifyOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *evidenceLinksVerifyOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("verification", o.Verification); err != nil {
@@ -160,19 +147,20 @@ func (o *evidenceLinksVerifyOpts) Validate() error {
 func newEvidenceLinksVerifyCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &evidenceLinksVerifyOpts{}
 	cmd := &cobra.Command{
-		Use:   "verify <evidence-id>",
+		Use:   "verify-evidence-link <container> <evidence-id>",
 		Short: "Set the inference-axis verification on an evidence link (human only).",
 		Long: `Set the inference-axis verification on an evidence link: does the source mean
 what the attacher says it means? Human only; the server rejects agent
 actors. To detach an evidence link, use withdraw instead.`,
-		Example: `  gcx irm opmodel evidence-links verify brg-5 --container INC-123 \
+		Example: `  gcx irm opmodel containers verify-evidence-link INC-123 brg-5 \
     --verification human_verified --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runEvidenceLinksVerify(cmd, args[0], opts, loader, shared)
+			return runEvidenceLinksVerify(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -194,7 +182,7 @@ func runEvidenceLinksVerify(cmd *cobra.Command, evidenceID string, opts *evidenc
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("verify", opts.Container,
+		return newOpModelMutation("verify-evidence-link", opts.Container,
 			opModelTarget{Kind: "evidence_link", ID: evidenceID},
 			map[string]string{"verification": opts.Verification},
 			resp.Revision), nil
@@ -202,7 +190,7 @@ func runEvidenceLinksVerify(cmd *cobra.Command, evidenceID string, opts *evidenc
 }
 
 // ---------------------------------------------------------------------------
-// evidence-links withdraw
+// containers withdraw-evidence-link
 // ---------------------------------------------------------------------------
 
 type evidenceLinksWithdrawOpts struct {
@@ -213,14 +201,13 @@ type evidenceLinksWithdrawOpts struct {
 }
 
 func (o *evidenceLinksWithdrawOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Reason, "reason", "", "Why the evidence link was withdrawn (optional)")
 	o.Actor.bind(flags)
 	setupOpModelMutationIO(&o.IO, flags)
 }
 
 func (o *evidenceLinksWithdrawOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	return o.Actor.validate()
@@ -229,20 +216,21 @@ func (o *evidenceLinksWithdrawOpts) Validate() error {
 func newEvidenceLinksWithdrawCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &evidenceLinksWithdrawOpts{}
 	cmd := &cobra.Command{
-		Use:   "withdraw <evidence-id>",
+		Use:   "withdraw-evidence-link <container> <evidence-id>",
 		Short: "Withdraw an evidence link without erasing its verification.",
 		Long: `Withdraw an evidence interpretation without erasing its verification.
 Withdrawal records a separate judgment and prevents further verification.
 An agent may withdraw only its own evidence; a human may withdraw any evidence.
 No version precondition or confirmation gate is required.`,
-		Example: `  gcx irm opmodel evidence-links withdraw brg-5 --container INC-123 \
+		Example: `  gcx irm opmodel containers withdraw-evidence-link INC-123 brg-5 \
     --reason "misread the dashboard" --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runEvidenceLinksWithdraw(cmd, args[0], opts, loader, shared)
+			return runEvidenceLinksWithdraw(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -263,7 +251,7 @@ func runEvidenceLinksWithdraw(cmd *cobra.Command, evidenceID string, opts *evide
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("withdraw", opts.Container,
+		return newOpModelMutation("withdraw-evidence-link", opts.Container,
 			opModelTarget{Kind: "evidence_link", ID: evidenceID},
 			nil, resp.Revision), nil
 	})
