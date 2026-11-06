@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,8 +17,6 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 )
 
-// newTestOpModelClient serves handler over httptest and returns a client
-// pointed at it, using the same transport production uses.
 func newTestOpModelClient(t *testing.T, handler http.HandlerFunc) *irmResourceClient {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -54,7 +53,6 @@ func TestOpModelClientBuildsAppPlatformPathAndBody(t *testing.T) {
 	if gotMethod != http.MethodPost || gotContentType != "application/json" {
 		t.Errorf("method/content-type = %q/%q", gotMethod, gotContentType)
 	}
-	// The container is a path segment, so it must not also ride in the body.
 	if _, present := gotBody["container"]; present {
 		t.Errorf("container must not be sent in the body: %v", gotBody)
 	}
@@ -82,7 +80,6 @@ func TestOpModelClientEscapesPathSegments(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AssessClaim: %v", err)
 	}
-	// Caller-owned ids must not be able to climb the route.
 	for _, want := range []string{"INC%2F1", "clm%207"} {
 		if !strings.Contains(gotRawPath, want) {
 			t.Errorf("path %q missing escaped segment %q", gotRawPath, want)
@@ -106,8 +103,6 @@ func TestOpModelClientSendsListEventsQuery(t *testing.T) {
 		t.Errorf("query = %q", gotQuery)
 	}
 
-	// An unset cursor and page size must be omitted so the server applies its
-	// own defaults.
 	client2 := newTestOpModelClient(t, func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
 		_, _ = w.Write([]byte(`{"events":[],"revision":"9"}`))
@@ -163,8 +158,6 @@ func TestOpModelClientSurfacesStatusFieldViolations(t *testing.T) {
 	if !errors.As(err, &derr) {
 		t.Fatalf("expected DetailedError, got %T", err)
 	}
-	// The field the server named must reach the user; otherwise a 422 is
-	// unactionable.
 	if derr.Details != "validation failed; body.actor.kind must be human or agent" {
 		t.Errorf("status detail not surfaced: %q", derr.Details)
 	}
@@ -194,10 +187,8 @@ func TestOpModelStatusErrorFallbacks(t *testing.T) {
 }
 
 func TestOpModelClientUnreachableEndpointFailsFast(t *testing.T) {
-	// Port 0 on the loopback address refuses immediately: the agent
-	// conformance suite runs every leaf with no backend, so this path must
-	// produce one actionable error rather than hanging.
-	client := newIRMResourceClient(httputils.NewDefaultClient(context.Background()), "http://127.0.0.1:0")
+	const refusedEndpoint = "http://127.0.0.1:0"
+	client := newIRMResourceClient(httputils.NewDefaultClient(context.Background()), refusedEndpoint)
 
 	_, err := client.CreateObservation(context.Background(), createObservationRequest{Container: "c"})
 	if err == nil {
@@ -214,11 +205,7 @@ func TestOpModelClientUnreachableEndpointFailsFast(t *testing.T) {
 	}
 }
 
-func TestOpModelClientTimeoutIsPerRequest(t *testing.T) {
-	// --timeout is set as the client timeout, so a slow response must surface
-	// as the timeout error rather than the generic unreachable one. `shares
-	// publish` depends on this being per-request: one budget for its whole
-	// sequence would fail a legal package partway.
+func TestOpModelClientTimesOutSlowRequest(t *testing.T) {
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-time.After(2 * time.Second):
@@ -281,5 +268,22 @@ func TestOpModelClientGetContainerKeepsClaimAndActionProvenance(t *testing.T) {
 		if author["display_name"] != "Ada" || author["source_id"] != "U1" {
 			t.Errorf("%s original_author = %v", kind, entities[0]["original_author"])
 		}
+	}
+}
+
+func TestOpModelClientSendsFailedMutationOnce(t *testing.T) {
+	var hits atomic.Int32
+	client := newTestOpModelClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+
+	_, err := client.CreateClaim(context.Background(), createClaimRequest{Container: "INC-1", Type: "impact", Text: "t"})
+	if err == nil {
+		t.Fatal("CreateClaim succeeded against a 429")
+	}
+	if got := hits.Load(); got != 1 {
+		t.Errorf("mutation sent %d times, want 1", got)
 	}
 }

@@ -49,9 +49,6 @@ func NewTestListCommand(labels, statuses []string, severity, query, dateFrom, da
 	return cmd
 }
 
-// NewTestOpModelCmd and NewTestSharesCmd build the experimental
-// opmodel-family trees for structural conformance tests. The loaders are only
-// consulted at RunE time, so nil is safe for tree-shape assertions.
 func NewTestOpModelCmd() *cobra.Command { return newOpModelCmd(nil) }
 
 func NewTestSharesCmd() *cobra.Command { return newSharesCmd(nil) }

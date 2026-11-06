@@ -298,7 +298,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents severities list": {Cost: "small"},
 	"gcx irm incidents update":          {Cost: "small", Hint: "<id> --severity <label> --title <text>; the severity is the label, run `gcx irm incidents severities list` for the valid values"},
 
-	// irm opmodel / shares (experimental prototype over the dev-gated HTTP API)
 	"gcx irm opmodel containers update-observation":            {Cost: "small"},
 	"gcx irm opmodel containers update-action":                 {Cost: "small"},
 	"gcx irm opmodel containers update-claim-recovery":         {Cost: "small"},

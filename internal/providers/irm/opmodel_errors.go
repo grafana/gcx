@@ -1,10 +1,3 @@
-// opmodel_errors.go; HTTP failures → DetailedError for the op model client.
-//
-// The server maps its own domain errors onto status codes (see opModelError in
-// backend/irm/pkg/api/opmodel.go): 422 for invalid input, 404 for a missing
-// entity or container, 409 for a domain-rule refusal. The suggestions below
-// distinguish rejected input from domain conflicts. Neither permits automatic
-// mutation replay or changing an agent into a human actor.
 package irm
 
 import (
@@ -20,8 +13,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// mapIRMTransportError handles failures with no HTTP response: a refused
-// connection, DNS failure, or an expired --timeout deadline.
+const maxOpModelProblemBytes = 8 * 1024
+
 func mapIRMTransportError(err error, endpoint string) error {
 	exit1 := fail.ExitGeneralError
 
@@ -37,9 +30,6 @@ func mapIRMTransportError(err error, endpoint string) error {
 			},
 		}
 	}
-	// Cancellation is central policy: cmd/gcx/fail already maps
-	// context.Canceled to exit 5, and returning the error unwrapped keeps
-	// errors.Is working for every other consumer.
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
@@ -55,9 +45,6 @@ func mapIRMTransportError(err error, endpoint string) error {
 	}
 }
 
-// mapOpModelHTTPError converts a non-2xx response into a DetailedError with
-// the documented exit code. The response body is read here; the caller has
-// already deferred Close.
 func mapOpModelHTTPError(resp *http.Response, endpoint string) error {
 	detail := decodeOpModelProblem(resp)
 
@@ -127,11 +114,8 @@ func mapOpModelHTTPError(resp *http.Response, endpoint string) error {
 	}
 }
 
-// decodeOpModelProblem renders the error body, preferring Kubernetes Status
-// messages and field causes, falling back to raw text (bounded, so a stray HTML
-// error page cannot flood stderr).
 func decodeOpModelProblem(resp *http.Response) string {
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxOpModelProblemBytes))
 	if err != nil || len(raw) == 0 {
 		return http.StatusText(resp.StatusCode)
 	}

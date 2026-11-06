@@ -104,7 +104,7 @@ canonical portable skill bundle.
 - **retired:** no bundled content; existing local copies remain visible and
   removable with `gcx agent skills uninstall`, including `--all --yes`.
 
-An entry with `explicit_install: true` is skipped by `gcx agent skills install --all`
+An entry with `install_only_by_name: true` is skipped by `gcx agent skills install --all`
 and installs only by name. Pair it with `disable-model-invocation: true` in the
 skill's front matter so Claude runs it only as a slash command.
 

@@ -1,6 +1,3 @@
-// opmodel_containers.go; `gcx irm opmodel containers` read leaves: get (the
-// folded projection) and list-events (the raw event stream). Reads take no
-// actor flags.
 package irm
 
 import (
@@ -40,10 +37,6 @@ func newOpModelContainersCmd(loader OpModelClientLoader, shared *opModelSharedOp
 	return cmd
 }
 
-// ---------------------------------------------------------------------------
-// containers get
-// ---------------------------------------------------------------------------
-
 type containersGetOpts struct {
 	IO cmdio.Options
 }
@@ -76,7 +69,7 @@ with list-events --since-revision to fetch subsequent events.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runContainersGet(cmd *cobra.Command, container string, opts *containersGetOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -91,10 +84,6 @@ func runContainersGet(cmd *cobra.Command, container string, opts *containersGetO
 		return opts.IO.Encode(cmd.OutOrStdout(), newContainerEnvelope(resp))
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers list-events
-// ---------------------------------------------------------------------------
 
 type containersListEventsOpts struct {
 	IO            cmdio.Options
@@ -141,7 +130,7 @@ be sparse. Do not advance a partial page's cursor to the container head.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runContainersListEvents(cmd *cobra.Command, container string, opts *containersListEventsOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -161,9 +150,6 @@ func runContainersListEvents(cmd *cobra.Command, container string, opts *contain
 		if err := opts.IO.Encode(cmd.OutOrStdout(), env); err != nil {
 			return err
 		}
-		// Revision is opaque, so "caught up" is an equality test, not an
-		// ordering one: more events exist whenever the last event on this page
-		// is not the head.
 		if n := len(env.Events); n > 0 && env.Events[n-1].Revision != env.Revision {
 			cmdio.EmitHint(cmd.ErrOrStderr(), "More events after this page",
 				"gcx irm opmodel containers list-events "+container+" --since-revision "+env.Events[n-1].Revision)

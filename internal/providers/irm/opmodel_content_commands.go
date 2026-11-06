@@ -12,7 +12,8 @@ import (
 func newObservationsEditCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &obsCreateOpts{}
 	cmd := &cobra.Command{
-		Use: "update-observation <container> <observation-id>", Short: "Replace observation content, clearing omitted optional fields.",
+		Use:     "update-observation <container> <observation-id>",
+		Short:   "Replace observation content, clearing omitted optional fields.",
 		Long:    "Replace text, source, observed interval, scope, and original author. Omitted optional values are cleared. Use update-entity-text to preserve context while changing wording.",
 		Example: "  gcx irm opmodel containers update-observation INC-123 obs-1 --text 'corrected observation' --actor-kind human --actor-id responder",
 		Args:    cobra.ExactArgs(2),
@@ -34,7 +35,7 @@ func newObservationsEditCmd(loader OpModelClientLoader, shared *opModelSharedOpt
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 type actionsEditOpts struct {
@@ -63,7 +64,8 @@ func (o *actionsEditOpts) Validate() error {
 func newActionsEditCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &actionsEditOpts{}
 	cmd := &cobra.Command{
-		Use: "update-action <container> <action-id>", Short: "Replace action content, clearing an omitted expected result.",
+		Use:     "update-action <container> <action-id>",
+		Short:   "Replace action content, clearing an omitted expected result.",
 		Long:    "Replace action wording and expected result. Omitted expected result is cleared. Assignment and coordination are unchanged; use update-entity-text to preserve the expected result.",
 		Example: "  gcx irm opmodel containers update-action INC-123 act-1 --text 'restart checkout' --expected-result 'healthy pods' --actor-kind agent --actor-id codex",
 		Args:    cobra.ExactArgs(2),
@@ -85,7 +87,7 @@ func newActionsEditCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *c
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 type claimsRecoveryOpts struct {
@@ -117,7 +119,8 @@ func (o *claimsRecoveryOpts) Validate() error {
 func newClaimsRecoveryCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &claimsRecoveryOpts{}
 	cmd := &cobra.Command{
-		Use: "update-claim-recovery <container> <claim-id>", Short: "Judge impact recovery independently of assessment (human only).",
+		Use:     "update-claim-recovery <container> <claim-id>",
+		Short:   "Judge impact recovery independently of assessment (human only).",
 		Long:    "Record recovery against the impact's current content at write time. This does not confirm the impact; completing an action does not establish recovery.",
 		Example: "  gcx irm opmodel containers update-claim-recovery INC-123 clm-1 --recovery ended --reason 'harm no longer observed' --actor-kind human --actor-id responder",
 		Args:    cobra.ExactArgs(2),
@@ -139,5 +142,5 @@ func newClaimsRecoveryCmd(loader OpModelClientLoader, shared *opModelSharedOpts)
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }

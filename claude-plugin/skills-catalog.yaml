@@ -29,7 +29,7 @@ skills:
     status: active
   load-op-context:
     status: active
-    explicit_install: true
+    install_only_by_name: true
   manage-dashboards:
     status: active
   oncall-triage:
@@ -40,7 +40,7 @@ skills:
     status: active
   share-finding:
     status: active
-    explicit_install: true
+    install_only_by_name: true
   slo-check-status:
     status: active
   slo-investigate:

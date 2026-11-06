@@ -41,7 +41,7 @@ func (o *observationContextOpts) validate() error {
 	}{
 		{"observed-start", o.ObservedStart, &o.start}, {"observed-end", o.ObservedEnd, &o.end},
 	} {
-		if o.flags != nil && o.flags.Changed(field.name) {
+		if o.flags.Changed(field.name) {
 			parsed, err := time.Parse(time.RFC3339Nano, field.value)
 			if err != nil {
 				return opModelUsage(fmt.Sprintf("--%s must be RFC3339, got %q", field.name, field.value))
@@ -52,7 +52,7 @@ func (o *observationContextOpts) validate() error {
 	if o.end != nil && (o.start == nil || o.end.Before(*o.start)) {
 		return opModelUsage("--observed-end requires --observed-start and must not precede it")
 	}
-	if o.flags != nil && (o.flags.Changed("original-author-name") || o.flags.Changed("original-author-source-id")) {
+	if o.flags.Changed("original-author-name") || o.flags.Changed("original-author-source-id") {
 		if strings.TrimSpace(o.AuthorName) == "" && strings.TrimSpace(o.AuthorSourceID) == "" {
 			return opModelUsage("original author requires a nonblank name or source ID")
 		}
@@ -62,7 +62,7 @@ func (o *observationContextOpts) validate() error {
 
 func (o *observationContextOpts) content(text, sourceRef string) observationContent {
 	c := observationContent{Text: text, SourceRef: sourceRef, ObservedStart: o.start, ObservedEnd: o.end}
-	if o.flags != nil && o.flags.Changed("scope") {
+	if o.flags.Changed("scope") {
 		c.Scope = &o.Scope
 	}
 	if o.AuthorName != "" || o.AuthorSourceID != "" {
@@ -82,7 +82,7 @@ func (o *actionContentOpts) bind(flags *pflag.FlagSet) {
 }
 func (o *actionContentOpts) content(text string) actionContent {
 	c := actionContent{Text: text}
-	if o.flags != nil && o.flags.Changed("expected-result") {
+	if o.flags.Changed("expected-result") {
 		c.ExpectedResult = &o.ExpectedResult
 	}
 	return c
@@ -106,7 +106,7 @@ func (o *assigneeOpts) bind(flags *pflag.FlagSet, allowClear bool) {
 	}
 }
 func (o *assigneeOpts) supplied() bool {
-	return o.flags != nil && (o.flags.Changed("assignee-kind") || o.flags.Changed("assignee-id") || o.flags.Changed("assignee-name"))
+	return o.flags.Changed("assignee-kind") || o.flags.Changed("assignee-id") || o.flags.Changed("assignee-name")
 }
 func (o *assigneeOpts) validate() error {
 	if !o.supplied() {

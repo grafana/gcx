@@ -1,5 +1,3 @@
-// opmodel_claims.go; `gcx irm opmodel containers create-claim` (state an
-// impact or hypothesis outright) and `assess-claim` (a typed human judgment).
 package irm
 
 import (
@@ -9,10 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// ---------------------------------------------------------------------------
-// containers create-claim
-// ---------------------------------------------------------------------------
 
 type claimsCreateOpts struct {
 	IO        cmdio.Options
@@ -65,7 +59,7 @@ Assessment and recovery are independent human judgments.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runClaimsCreate(cmd *cobra.Command, opts *claimsCreateOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -88,10 +82,6 @@ func runClaimsCreate(cmd *cobra.Command, opts *claimsCreateOpts, loader OpModelC
 			resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers assess-claim
-// ---------------------------------------------------------------------------
 
 type claimsAssessOpts struct {
 	flags                *pflag.FlagSet
@@ -150,7 +140,7 @@ actor; agents must not impersonate a human after prose approval.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runClaimsAssess(cmd *cobra.Command, claimID string, opts *claimsAssessOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {

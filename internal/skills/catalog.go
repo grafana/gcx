@@ -25,11 +25,10 @@ const (
 
 // CatalogEntry survives removal of the corresponding bundled skill directory.
 type CatalogEntry struct {
-	Status      Status `yaml:"status" json:"status"`
-	Replacement string `yaml:"replacement,omitempty" json:"replacement,omitempty"`
-	Message     string `yaml:"message,omitempty" json:"message,omitempty"`
-	// ExplicitInstall keeps a skill out of install --all so it lands only by name.
-	ExplicitInstall bool `yaml:"explicit_install,omitempty" json:"explicit_install,omitempty"`
+	Status            Status `yaml:"status" json:"status"`
+	Replacement       string `yaml:"replacement,omitempty" json:"replacement,omitempty"`
+	Message           string `yaml:"message,omitempty" json:"message,omitempty"`
+	InstallOnlyByName bool   `yaml:"install_only_by_name,omitempty" json:"install_only_by_name,omitempty"`
 }
 
 // Catalog records all current and retired skills shipped by gcx.
