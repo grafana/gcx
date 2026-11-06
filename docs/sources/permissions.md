@@ -12,7 +12,7 @@ weight: 7
 
 # `gcx` roles and permissions
 
-Some `gcx` commands need additinal Grafana permissions beyond the ones required to sign in. Use this page to find out which permissions a command needs and how to fix authorization errors.
+Some `gcx` commands need additional Grafana permissions beyond the ones required to sign in. Use this page to find out which permissions a command needs and how to fix authorization errors.
 
 For the permissions you need to sign in with OAuth, refer to [Required role for OAuth sign-in](../authentication#required-role-for-oauth-sign-in).
 
@@ -102,7 +102,7 @@ These options remove the error object from the filtered output, so `gcx` also wr
 ## Permissions to use Assistant investigations
 
 {{< admonition type="note" >}}
-`gcx setup status` doesn't check Assistant access, so a passing status check doesn't mean Assistant commands will work.
+`gcx setup status` doesn't check Assistant access, so a passing status check doesn't mean Assistant commands work.
 {{< /admonition >}}
 
 The **Assistant Investigation User** role is included in the Editor and Admin basic roles. Viewers don't have it.
