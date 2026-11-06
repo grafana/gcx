@@ -328,6 +328,8 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 		name string
 		args []string
 		want url.Values
+		// hint, when set, is the filter summary the stderr hint must carry.
+		hint string
 	}{
 		{
 			name: "team and integration repeat",
@@ -351,6 +353,24 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 				"acknowledged_by": {"U1", "U2"},
 				"resolved_by":     {"U3"},
 			},
+		},
+		{
+			name: "silenced-by repeats",
+			args: []string{"--silenced-by", "U1,U2"},
+			want: url.Values{"silenced_by": {"U1", "U2"}},
+			hint: "default + silenced-by=U1,U2",
+		},
+		{
+			name: "involved-user sends involved_users_are",
+			args: []string{"--involved-user", "U1", "--involved-user", "U2"},
+			want: url.Values{"involved_users_are": {"U1", "U2"}},
+			hint: "default + involved-user=U1,U2",
+		},
+		{
+			name: "acted-by sends invitees_are",
+			args: []string{"--acted-by", "U3"},
+			want: url.Values{"invitees_are": {"U3"}},
+			hint: "default + acted-by=U3",
 		},
 		{
 			name: "started-at window from an absolute --from/--to pair",
@@ -382,7 +402,7 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
-			runAlertGroupList(t, onCallClientFor(srv), tc.args...)
+			_, stderr := runAlertGroupList(t, onCallClientFor(srv), tc.args...)
 
 			if state.firstQuery == nil {
 				t.Fatal("no alertgroups request observed")
@@ -391,6 +411,9 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 				if got := state.firstQuery[key]; !reflect.DeepEqual(got, want) {
 					t.Errorf("query[%q] = %v, want %v (full query: %v)", key, got, want, state.firstQuery)
 				}
+			}
+			if want := "with filter " + tc.hint + ":"; tc.hint != "" && !strings.Contains(stderr, want) {
+				t.Errorf("stderr missing %q:\n%s", want, stderr)
 			}
 		})
 	}

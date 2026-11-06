@@ -237,6 +237,9 @@ func TestAlertGroupList_LegacyPath_NotesUnsupportedFilters(t *testing.T) {
 		"--escalation-chain", "EC1",
 		"--acknowledged-by", "U1",
 		"--resolved-by", "U2",
+		"--silenced-by", "U3",
+		"--involved-user", "U4",
+		"--acted-by", "U5",
 		"--label", "service:api",
 		"--from", "2026-01-01T00:00:00Z",
 		"--to", "2026-01-31T00:00:00Z",
@@ -246,7 +249,7 @@ func TestAlertGroupList_LegacyPath_NotesUnsupportedFilters(t *testing.T) {
 
 	for _, want := range []string{
 		"--escalation-chain", "--acknowledged-by", "--resolved-by",
-		"--label", "--to", "--resolved-from", "--resolved-to",
+		"--silenced-by", "--involved-user", "--acted-by", "--label", "--to", "--resolved-from", "--resolved-to",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr missing %q in the unsupported-filter note:\n%s", want, stderr)

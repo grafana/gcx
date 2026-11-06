@@ -55,6 +55,9 @@ type alertGroupListOpts struct {
 	EscalationChains   []string
 	AcknowledgedBy     []string
 	ResolvedBy         []string
+	SilencedBy         []string
+	InvolvedUsers      []string
+	ActedBy            []string
 	Labels             []string
 	Mine               bool
 	WithResolutionNote bool
@@ -86,6 +89,9 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.EscalationChains, "escalation-chain", nil, "Filter by escalation chain ID (repeatable, comma-separated; see: gcx irm oncall escalation-chains list)")
 	flags.StringSliceVar(&o.AcknowledgedBy, "acknowledged-by", nil, "Filter by acknowledging user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringSliceVar(&o.ResolvedBy, "resolved-by", nil, "Filter by resolving user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.SilencedBy, "silenced-by", nil, "Filter by silencing user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.InvolvedUsers, "involved-user", nil, "Filter by user ID notified about, or acknowledging, resolving, or silencing the group (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.ActedBy, "acted-by", nil, "Filter by user ID with any recorded action in the group's log (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; matching ignores case and accents)")
 	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
 	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
@@ -152,6 +158,11 @@ func (o *alertGroupListOpts) repeatedFilters() []alertGroupListRepeatedFilter {
 		{flag: "escalation-chain", param: "escalation_chain", values: o.EscalationChains},
 		{flag: "acknowledged-by", param: "acknowledged_by", values: o.AcknowledgedBy},
 		{flag: "resolved-by", param: "resolved_by", values: o.ResolvedBy},
+		{flag: "silenced-by", param: "silenced_by", values: o.SilencedBy},
+		{flag: "involved-user", param: "involved_users_are", values: o.InvolvedUsers},
+		// Despite its name, invitees_are matches any log record the user
+		// authored, not just invitations.
+		{flag: "acted-by", param: "invitees_are", values: o.ActedBy},
 		{flag: "label", param: "label", values: o.Labels, quoted: true},
 	}
 }
@@ -378,6 +389,10 @@ happens on the server before pagination and ignores case and accents, so
 service:API and service:apí match the same groups. Commas are literal; colons
 cannot occur inside names.
 
+--involved-user matches groups the user was notified about or acknowledged,
+resolved, or silenced; notifications only count for the user's 1000 most recently
+notified groups. --acted-by matches groups with any log entry by the user.
+
 --max-age anchors to now; use --from/--to for a historical started-at window, and
 --resolved-from/--resolved-to for a resolved-at window. They accept RFC3339, a unix
 timestamp, or a relative expression like now-30d. --max-age and --from/--to cannot
@@ -400,7 +415,10 @@ const alertGroupListExample = `  # List firing, acknowledged, and silenced root 
   gcx irm oncall alert-groups list --from now-30d --to now-7d --all
 
   # Groups resolved last week by a given user
-  gcx irm oncall alert-groups list --resolved-by <user-id> --resolved-from now-7d --all`
+  gcx irm oncall alert-groups list --resolved-by <user-id> --resolved-from now-7d --all
+
+  # Groups a user was paged for or handled in the last week
+  gcx irm oncall alert-groups list --involved-user <user-id> --max-age 7d --all`
 
 func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &alertGroupListOpts{}

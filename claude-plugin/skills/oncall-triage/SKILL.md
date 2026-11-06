@@ -44,7 +44,7 @@ For alert-group labels, use `--label service:api --label env:prod`: names, not I
 
 Escape hatches: `--all` (drops both defaults — returns resolved + child groups), `--include-child-groups`, `--state resolved`.
 
-For a historical window use `--from` / `--to` (RFC3339, unix timestamp, or `now-30d`); `--max-age` only anchors to now, and the two cannot be combined. `--resolved-from` / `--resolved-to` bound resolved_at instead. `--acknowledged-by <user-id>` / `--resolved-by <user-id>` attribute handling to a person.
+For a historical window use `--from` / `--to` (RFC3339, unix timestamp, or `now-30d`); `--max-age` only anchors to now, and the two cannot be combined. `--resolved-from` / `--resolved-to` bound resolved_at instead. `--acknowledged-by <user-id>` / `--resolved-by <user-id>` / `--silenced-by <user-id>` attribute handling to a person. `--involved-user <user-id>` also matches groups the user was notified about, counting only their 1000 most recently notified groups; `--acted-by <user-id>` matches any log entry by the user.
 
 Default table: `ID TITLE SEVERITY STATE TEAM SUBJECT AGE`. `-o wide` adds `RULE` (Grafana rule URL) and `ALERTS` (group-wide count). Use `-o wide` when the user needs the rule pivot.
 
