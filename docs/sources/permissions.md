@@ -30,7 +30,7 @@ Send the output to your Grafana administrator along with any error message to mo
 
 ## Cloud Access Policy scopes
 
-Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana instance authentication. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana instance authentication. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
 
 If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), scope the access policy to the products you manage:
 
