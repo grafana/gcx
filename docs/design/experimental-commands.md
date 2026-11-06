@@ -18,6 +18,10 @@ The long description for an experimental command should begin with:
 
 Every experimental command carries the `agent.stability` annotation `agent.StabilityExperimental`, including each command inside an experimental subtree.
 
+## Internal-only commands
+
+An experimental command whose backend is not available outside Grafana Labs is also hidden. Set `Hidden: true` on the top command of its subtree. Help and `gcx commands` omit a hidden command, `gcx commands --include-hidden` lists it, and it still runs by name. Prefer hiding a group to hiding a leaf. Most root consistency tests skip a hidden leaf but still check the children of a hidden group. A hidden leaf keeps its agent output check while it stays listed in `cmd/gcx/root/testdata/output_classes.json`.
+
 ## Enforcement
 
 `cmd/gcx/root/experimental_test.go` checks that the short descriptions, long descriptions, and metadata for experimental commands conform to this design.

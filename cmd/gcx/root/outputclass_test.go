@@ -67,11 +67,14 @@ func TestConsistency_AllLeafCommandsHaveOutputClass(t *testing.T) {
 	seen := map[string]bool{}
 	var unclassified []string
 	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
-		if !isLeaf(cmd) || cmd.Hidden {
+		if !isLeaf(cmd) {
 			return
 		}
 		path := cmd.CommandPath()
 		seen[path] = true
+		if cmd.Hidden {
+			return
+		}
 		if _, ok := classes[path]; !ok {
 			unclassified = append(unclassified, path)
 		}

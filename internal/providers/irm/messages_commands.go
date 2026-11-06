@@ -44,8 +44,9 @@ func newIncidentShareCmd(loader SharingClientLoader) *cobra.Command {
 	opts := &messageShareOpts{}
 	shared := &opModelSharedOpts{}
 	cmd := &cobra.Command{
-		Use:   "share <incident-id>",
-		Short: "Share a message with an incident.",
+		Use:    "share <incident-id>",
+		Hidden: true,
+		Short:  "Share a message with an incident.",
 		Long: `Save a message as an Incident status update attributed to the authenticated
 Grafana user. No operational model or model entities are required.
 

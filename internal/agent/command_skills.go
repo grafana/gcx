@@ -24,18 +24,19 @@ var commandSkills = map[string][]string{
 	"gcx irm":         {"oncall-triage"},
 	// Empty overrides: the versioned opmodel/evidence-links and shares prototype trees are not
 	// what oncall-triage covers, so suppress the inherited footer there.
-	"gcx irm opmodel": {},
-	"gcx irm shares":  {},
-	"gcx logs":        {"debug-with-grafana"},
-	"gcx metrics":     {"debug-with-grafana"},
-	"gcx traces":      {"debug-with-grafana"},
-	"gcx profiles":    {"debug-with-grafana"},
-	"gcx datasources": {"debug-with-grafana"},
-	"gcx kg":          {"diagnose-entity-graph"},
-	"gcx agento11y":   {"agento11y", "agento11y-instrument"},
-	"gcx setup":       {"setup-gcx"},
-	"gcx login":       {"setup-gcx"},
-	"gcx signup":      {"setup-gcx"},
+	"gcx irm opmodel":         {},
+	"gcx irm shares":          {},
+	"gcx irm incidents share": {},
+	"gcx logs":                {"debug-with-grafana"},
+	"gcx metrics":             {"debug-with-grafana"},
+	"gcx traces":              {"debug-with-grafana"},
+	"gcx profiles":            {"debug-with-grafana"},
+	"gcx datasources":         {"debug-with-grafana"},
+	"gcx kg":                  {"diagnose-entity-graph"},
+	"gcx agento11y":           {"agento11y", "agento11y-instrument"},
+	"gcx setup":               {"setup-gcx"},
+	"gcx login":               {"setup-gcx"},
+	"gcx signup":              {"setup-gcx"},
 }
 
 // SkillsForCommand returns the bundled skill names mapped to the nearest mapped

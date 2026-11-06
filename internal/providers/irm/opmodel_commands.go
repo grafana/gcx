@@ -24,8 +24,9 @@ import (
 func newOpModelCmd(loader OpModelClientLoader) *cobra.Command {
 	shared := &opModelSharedOpts{}
 	cmd := &cobra.Command{
-		Use:   "opmodel",
-		Short: "Work the incident operational model (experimental prototype).",
+		Use:    "opmodel",
+		Hidden: true,
+		Short:  "Work the incident operational model (experimental prototype).",
 		Long: `Work the incident operational model: what a response team notices
 (observations), claims (impacts and hypotheses), does (actions), and how
 observations inform claims (evidence links).
