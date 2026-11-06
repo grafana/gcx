@@ -1,4 +1,3 @@
-// Authenticated IRM operational-model HTTP client. Mutations are not replayed.
 package irm
 
 import (
@@ -6,10 +5,6 @@ import (
 	"net/url"
 )
 
-// OpModelAPI is the op model command and read surface.
-// It mirrors the HTTP routes 1:1 so a reader can map a
-// method to an endpoint without indirection.
-//
 //nolint:interfacebloat // mirrors the HTTP API surface 1:1; full CRUD parity is the contract
 type OpModelAPI interface {
 	CreateObservation(ctx context.Context, req createObservationRequest) (*createObservationResponse, error)
@@ -33,7 +28,6 @@ type OpModelAPI interface {
 
 var _ OpModelAPI = (*irmResourceClient)(nil)
 
-// base returns the .../containers/{c} prefix for one container.
 func (c *irmResourceClient) base(container string) string {
 	return "/opmodel" + containerBasePath(container)
 }

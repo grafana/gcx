@@ -8,12 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestOpModelStructuralConformance asserts the structural shape of the
-// experimental opmodel/shares trees: every leaf declares an Args validator
-// and the experimental stability annotation; entity mutations carry the full
-// actor flag set and take <container> first, while authenticated updates and reads carry
-// no caller-supplied actor flags. Catches a new verb silently dropping the
-// pattern.
 func TestOpModelStructuralConformance(t *testing.T) {
 	t.Parallel()
 
@@ -113,9 +107,6 @@ func TestOpModelStructuralConformance(t *testing.T) {
 	}
 }
 
-// visitRootLeaves visits every leaf under root with its path relative to
-// root (noun + verb for nested groups, bare verb for direct children). The
-// root group's own name is not part of the path.
 func visitRootLeaves(root *cobra.Command, visit func(path string, leaf *cobra.Command)) {
 	for _, child := range root.Commands() {
 		walkLeaves(child, "", visit)

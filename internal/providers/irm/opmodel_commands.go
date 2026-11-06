@@ -1,9 +1,3 @@
-// opmodel_commands.go; the `gcx irm opmodel` command group: the shared
-// --timeout persistent flag, the actor flag set every mutation requires, and
-// the shared runners the per-noun leaf files drive.
-//
-// All commands are experimental: the backend is the op model prototype in
-// grafana/irm, whose HTTP API is dev-gated behind -api.opmodel-enabled.
 package irm
 
 import (
@@ -20,7 +14,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// newOpModelCmd mounts the opmodel noun groups under `gcx irm opmodel`.
 func newOpModelCmd(loader OpModelClientLoader) *cobra.Command {
 	shared := &opModelSharedOpts{}
 	cmd := &cobra.Command{
@@ -50,8 +43,6 @@ context.`,
 	return markExperimental(cmd)
 }
 
-// opModelSharedOpts carries the persistent flags shared by every opmodel and
-// shares leaf. The active Grafana context owns the target and tenancy.
 type opModelSharedOpts struct {
 	Timeout time.Duration
 }
@@ -73,8 +64,6 @@ func (o *opModelSharedOpts) validate() error {
 	return nil
 }
 
-// opModelActorOpts is the actor flag set every mutation requires. Reads take
-// no actor flags: reading judges nothing and mints nothing.
 type opModelActorOpts struct {
 	Kind string
 	ID   string
@@ -97,13 +86,10 @@ func (o *opModelActorOpts) validate() error {
 	return requireOpModelFlag("actor-id", o.ID)
 }
 
-// actor renders the flag set as the API's actor body.
 func (o *opModelActorOpts) actor() opModelActorInput {
 	return opModelActorInput{Kind: o.Kind, ID: o.ID, DisplayName: o.Name}
 }
 
-// requireOpModelFlag rejects a missing, explicitly-empty, or whitespace-only
-// required flag value with a structured usage error.
 func requireOpModelFlag(name, value string) error {
 	if strings.TrimSpace(value) != "" {
 		return nil
@@ -117,8 +103,6 @@ func requireOpModelFlag(name, value string) error {
 	}
 }
 
-// requireOpModelArg rejects a blank positional argument with a structured
-// usage error naming the argument.
 func requireOpModelArg(name, value string) error {
 	if strings.TrimSpace(value) != "" {
 		return nil
@@ -132,9 +116,6 @@ func requireOpModelArg(name, value string) error {
 	}
 }
 
-// setupOpModelMutationIO wires the codec system for mutation leaves: the
-// one-line text codec is the TTY default, agents codec takes over in agent
-// mode (inside BindFlags), json/yaml stay available for scripts.
 func setupOpModelMutationIO(io *cmdio.Options, flags *pflag.FlagSet) {
 	io.RegisterCustomCodec("text", &opModelMutationTextCodec{})
 	io.RegisterCustomCodec("yaml", format.NewOrderedYAMLCodec())
@@ -142,19 +123,11 @@ func setupOpModelMutationIO(io *cmdio.Options, flags *pflag.FlagSet) {
 	io.BindFlags(flags)
 }
 
-// setupOpModelReadIO wires the codec system for read leaves: JSON default
-// (the envelopes are typed documents), yaml available, agents codec in agent
-// mode.
 func setupOpModelReadIO(io *cmdio.Options, flags *pflag.FlagSet) {
 	io.RegisterCustomCodec("yaml", format.NewOrderedYAMLCodec())
 	io.BindFlags(flags)
 }
 
-// withOpModel loads the configured client and runs fn. Construction performs
-// no network I/O, so an unreachable backend fails on the first request, not
-// here. The --timeout deadline is applied per request by the client itself,
-// not wrapped around fn: a multi-request verb must not fail partway through
-// because the whole sequence shared one budget.
 func withOpModel(cmd *cobra.Command, loader OpModelClientLoader, shared *opModelSharedOpts, fn func(ctx context.Context, api OpModelAPI) error) error {
 	api, err := loader.LoadOpModel(cmd.Context(), shared.Timeout)
 	if err != nil {
@@ -163,12 +136,8 @@ func withOpModel(cmd *cobra.Command, loader OpModelClientLoader, shared *opModel
 	return fn(cmd.Context(), api)
 }
 
-// opModelValidatable is the static-validation surface every opmodel opts
-// struct exposes.
 type opModelValidatable interface{ Validate() error }
 
-// validateOpModelInputs runs the shared static-validation prelude for
-// flags-only mutation verbs: shared flags first, then the verb's own opts.
 func validateOpModelInputs(shared *opModelSharedOpts, opts opModelValidatable) error {
 	if err := shared.validate(); err != nil {
 		return err
@@ -176,8 +145,6 @@ func validateOpModelInputs(shared *opModelSharedOpts, opts opModelValidatable) e
 	return opts.Validate()
 }
 
-// validateOpModelIDInputs is the prelude for id-targeted verbs: shared
-// flags, then the positional id, then the verb's own opts.
 func validateOpModelIDInputs(shared *opModelSharedOpts, argName, id string, opts opModelValidatable) error {
 	if err := shared.validate(); err != nil {
 		return err
@@ -188,8 +155,6 @@ func validateOpModelIDInputs(shared *opModelSharedOpts, argName, id string, opts
 	return opts.Validate()
 }
 
-// runOpModelMutation is the shared mutation path: load clients, run the
-// verb-specific call, emit the shared mutation envelope on stdout.
 func runOpModelMutation(cmd *cobra.Command, loader OpModelClientLoader, shared *opModelSharedOpts, io *cmdio.Options, fn func(ctx context.Context, api OpModelAPI) (opModelMutation, error)) error {
 	return withOpModel(cmd, loader, shared, func(ctx context.Context, api OpModelAPI) error {
 		m, err := fn(ctx, api)
@@ -200,8 +165,6 @@ func runOpModelMutation(cmd *cobra.Command, loader OpModelClientLoader, shared *
 	})
 }
 
-// markExperimental marks a prototype command and its children in help and
-// agent metadata. Token cost lives in the central commandAnnotations registry.
 func markExperimental(cmd *cobra.Command) *cobra.Command {
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}

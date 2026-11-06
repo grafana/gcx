@@ -1,6 +1,3 @@
-// shares_commands.go; `gcx irm shares publish`: post a curated share package
-// (assembled by the share-finding skill) as op model entities, then record the
-// message through the independent Incident message API.
 package irm
 
 import (
@@ -43,8 +40,6 @@ func (o *sharesPublishOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.AllowUncurated, "allow-uncurated", false, "Testing only: publish a curated:false package. Without it, uncurated packages are refused")
 	flags.StringVar(&o.AgentID, "agent-id", "claude-code", "Agent actor id recorded on the minted entities and as the message's drafted_by")
 	flags.StringVar(&o.AgentName, "agent-name", "", "Agent display name recorded on the minted entities and as the message's drafted_by; defaults to --agent-id")
-	// The receipt is a machine document, so JSON is the default here too; the
-	// shared read helper also registers the ordered YAML codec.
 	setupOpModelReadIO(&o.IO, flags)
 }
 
@@ -84,7 +79,7 @@ incident first: the message may already have been saved.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runSharesPublish(cmd *cobra.Command, opts *sharesPublishOpts, loader ShareClientLoader, shared *opModelSharedOpts) error {

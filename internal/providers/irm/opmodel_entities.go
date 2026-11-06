@@ -1,6 +1,3 @@
-// opmodel_entities.go; `gcx irm opmodel containers update-entity-text`: reword an
-// observation, claim, or action. Only the text changes, and the event stream
-// preserves the previous wording.
 package irm
 
 import (
@@ -55,7 +52,7 @@ The previous wording stays in the event stream.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runEntitiesEditText(cmd *cobra.Command, entityID string, opts *entitiesEditTextOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {

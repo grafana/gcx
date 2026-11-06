@@ -1,6 +1,6 @@
 # Publish failure and recovery
 
-Use this when a message or model command fails or returns a warning. Treat
+Use this when a message or model command fails. Treat
 GCX receipts as authoritative and keep message delivery separate from model
 saving. Preserve the pinned `name` context, Incident id, agent identity, and
 approved message (if any) and requested model scope. Never bypass the proxy or

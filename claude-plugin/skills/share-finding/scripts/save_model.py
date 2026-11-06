@@ -11,6 +11,8 @@ import subprocess
 import sys
 from typing import NamedTuple
 
+STRUCTURED_ERRORS_ENV = {"GCX_AGENT_MODE": "1"}
+
 
 def require(condition, message):
     if not condition:
@@ -28,7 +30,6 @@ class DraftError(ValueError):
 
 
 def validation_errors(draft, context, container):
-    """Collect mechanical errors without choosing or rewriting evidence."""
     errors = []
 
     def check(ok, path, message):
@@ -104,7 +105,6 @@ def read_json(path):
 
 
 def apply_patch(draft, patch, digest):
-    """Apply edits addressed by entity ref or evidence endpoints, never array position."""
     require(isinstance(patch, dict) and set(patch) == {"draft_sha256", "edits"}, "Expected draft_sha256 and edits")
     require(patch["draft_sha256"] == digest, "Patch targets a different draft; review the current file")
     require(isinstance(patch["edits"], list), "edits must be an array")
@@ -187,7 +187,6 @@ def message_fields(message, context, container):
 
 
 def operations(draft, ids):
-    # Resolve dependency IDs lazily, after each preceding receipt is recorded.
     for kind in ("observation", "hypothesis", "impact"):
         for entity in draft["entities"]:
             if entity["type"] != kind or "existing_id" in entity:
@@ -236,10 +235,9 @@ MODEL_FIELDS = {
 
 
 def read_model(context, container):
-    # Outside agent mode GCX reports not-found only as box-drawn text on stderr.
     process = subprocess.run(["gcx", "irm", "opmodel", "containers", "get", container, "--context", context,
                               "--output", "json"], capture_output=True, text=True, timeout=60,
-                             env={**os.environ, "GCX_AGENT_MODE": "1"})
+                             env={**os.environ, **STRUCTURED_ERRORS_ENV})
     if process.returncode != 0:
         try:
             error = read_document(process.stdout)
@@ -342,7 +340,6 @@ def saved_message(path, context, container):
     require(events[0].get("event") == "start" and events[-1].get("event") == "complete",
             "Message delivery is unconfirmed; do not treat it as a skipped update")
     receipt = read_message_receipt(json.dumps(events[-1].get("receipt")), container)
-    require(not receipt.get("warnings"), "Message receipt has warnings")
     return message_fields(events[0].get("message"), context, container)
 
 
@@ -390,7 +387,6 @@ def save(draft, args, journal, report):
         record(journal, {"event": "pending", "group": group, "ref": ref, "argv": argv})
         try:
             process = subprocess.run(argv, capture_output=True, text=True, timeout=60)
-            # Keep raw output even when receipt validation fails after a successful write.
             record(journal, {"event": "response", "group": group, "ref": ref,
                              "returncode": process.returncode,
                              "stdout": process.stdout, "stderr": process.stderr})
@@ -400,7 +396,6 @@ def save(draft, args, journal, report):
             record(journal, {"event": "saved", "group": group, "ref": ref,
                              "id": minted_id, "receipt": receipt})
             require(process.returncode == 0, f"GCX exited {process.returncode}; inspect recorded receipt")
-            require(not receipt.get("warnings"), "GCX returned warnings; inspect recorded receipt")
         except (OSError, ValueError, subprocess.TimeoutExpired, KeyboardInterrupt) as error:
             summary.update(status="stopped", stopped_at={"group": group, "ref": ref},
                            error=str(error) or "Interrupted",

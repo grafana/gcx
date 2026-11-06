@@ -1,7 +1,3 @@
-// opmodel_evidence_links.go; `gcx irm opmodel containers attach-evidence-link`
-// (link a source to a target claim with a stance), `verify-evidence-link`
-// (inference-axis verification), and `withdraw-evidence-link` (terminal mark;
-// nothing is deleted).
 package irm
 
 import (
@@ -12,10 +8,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// ---------------------------------------------------------------------------
-// containers attach-evidence-link
-// ---------------------------------------------------------------------------
 
 type evidenceLinksAttachOpts struct {
 	IO        cmdio.Options
@@ -86,7 +78,7 @@ withdrawing it and attaching a new identity.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runEvidenceLinksAttach(cmd *cobra.Command, opts *evidenceLinksAttachOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -111,10 +103,6 @@ func runEvidenceLinksAttach(cmd *cobra.Command, opts *evidenceLinksAttachOpts, l
 			resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers verify-evidence-link
-// ---------------------------------------------------------------------------
 
 type evidenceLinksVerifyOpts struct {
 	IO           cmdio.Options
@@ -164,7 +152,7 @@ actors. To detach an evidence link, use withdraw instead.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runEvidenceLinksVerify(cmd *cobra.Command, evidenceID string, opts *evidenceLinksVerifyOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -188,10 +176,6 @@ func runEvidenceLinksVerify(cmd *cobra.Command, evidenceID string, opts *evidenc
 			resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers withdraw-evidence-link
-// ---------------------------------------------------------------------------
 
 type evidenceLinksWithdrawOpts struct {
 	IO        cmdio.Options
@@ -234,7 +218,7 @@ No version precondition or confirmation gate is required.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runEvidenceLinksWithdraw(cmd *cobra.Command, evidenceID string, opts *evidenceLinksWithdrawOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {

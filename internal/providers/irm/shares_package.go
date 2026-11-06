@@ -1,6 +1,3 @@
-// shares_package.go; the share package format and its validation. All
-// violations are aggregated into one usage error; nothing is published from an
-// invalid package.
 package irm
 
 import (
@@ -12,9 +9,6 @@ import (
 	fail "github.com/grafana/gcx/internal/gcxerrors"
 )
 
-// sharePackage is the on-disk share package a skill assembles. The container
-// travels in the package (not on a flag): the finding was gathered against a
-// specific alert group or incident, and the file records it.
 type sharePackage struct {
 	Version       int                 `json:"version"`
 	Container     string              `json:"container"`
@@ -22,12 +16,9 @@ type sharePackage struct {
 	Entities      []shareEntity       `json:"entities"`
 	EvidenceLinks []shareEvidenceLink `json:"evidence_links"`
 	MessageRefs   []string            `json:"message_refs"`
-	// Curated is a *bool so a package that omits the field is rejected: a
-	// missing curation verdict is not the same as an uncurated one.
-	Curated *bool `json:"curated"`
+	Curated       *bool               `json:"curated"`
 }
 
-// UnmarshalJSON rejects legacy relationships even if a caller changes only version.
 func (p *sharePackage) UnmarshalJSON(data []byte) error {
 	type plain sharePackage
 	var fields map[string]json.RawMessage
@@ -53,7 +44,7 @@ type shareMessage struct {
 
 type shareEntity struct {
 	Ref        string `json:"ref"`
-	Type       string `json:"type"` // observation | hypothesis | impact | action
+	Type       string `json:"type"`
 	Text       string `json:"text"`
 	SourceRef  string `json:"source_ref"`
 	PromptedBy string `json:"prompted_by,omitempty"`
@@ -62,21 +53,16 @@ type shareEntity struct {
 type shareEvidenceLink struct {
 	Source    string `json:"source"`
 	Target    string `json:"target"`
-	Stance    string `json:"stance"` // supports | challenges | context
+	Stance    string `json:"stance"`
 	Rationale string `json:"rationale"`
 }
 
-// Share-package vocabulary and caps for actions, impacts, and observations.
-// Hypotheses are uncapped so a finding can include alternative explanations.
-//
 //nolint:gochecknoglobals // static validation vocabulary
 var (
 	shareEntityTypes         = []string{"observation", "hypothesis", "impact", "action"}
 	shareEvidenceLinkSources = []string{"observation"}
 	shareEvidenceLinkTargets = []string{"hypothesis", "impact"}
-	// shareEntityCaps is ordered, not a map: it fixes the order violations are
-	// reported in without a sort at every call.
-	shareEntityCaps = []struct {
+	shareEntityCaps          = []struct {
 		Type string
 		Max  int
 	}{
@@ -84,8 +70,6 @@ var (
 	}
 )
 
-// validateSharePackage returns every violation in the package, in a stable
-// order. An empty slice means publishable (curation gating is separate).
 func validateSharePackage(pkg *sharePackage) []string {
 	var errs []string
 
@@ -99,14 +83,14 @@ func validateSharePackage(pkg *sharePackage) []string {
 		errs = append(errs, "message.text is required and must be non-empty")
 	}
 
-	refs := map[string]string{} // ref -> entity type
+	refTypes := map[string]string{}
 	counts := map[string]int{}
 	for i, ent := range pkg.Entities {
 		switch {
 		case ent.Ref == "":
 			errs = append(errs, fmt.Sprintf("entities[%d]: missing ref", i))
 			continue
-		case refs[ent.Ref] != "":
+		case refTypes[ent.Ref] != "":
 			errs = append(errs, fmt.Sprintf("entities[%d]: duplicate ref %q", i, ent.Ref))
 			continue
 		case !slices.Contains(shareEntityTypes, ent.Type):
@@ -116,7 +100,7 @@ func validateSharePackage(pkg *sharePackage) []string {
 		if strings.TrimSpace(ent.Text) == "" {
 			errs = append(errs, fmt.Sprintf("entities[%d] (%s): text is required", i, ent.Ref))
 		}
-		refs[ent.Ref] = ent.Type
+		refTypes[ent.Ref] = ent.Type
 		counts[ent.Type]++
 	}
 
@@ -127,8 +111,8 @@ func validateSharePackage(pkg *sharePackage) []string {
 	}
 
 	for i, b := range pkg.EvidenceLinks {
-		srcType, srcKnown := refs[b.Source]
-		tgtType, tgtKnown := refs[b.Target]
+		srcType, srcKnown := refTypes[b.Source]
+		tgtType, tgtKnown := refTypes[b.Target]
 		if !srcKnown {
 			errs = append(errs, fmt.Sprintf("evidence_links[%d]: unknown source ref %q", i, b.Source))
 		}
@@ -159,7 +143,7 @@ func validateSharePackage(pkg *sharePackage) []string {
 			errs = append(errs, fmt.Sprintf("entities[%d] (%s): prompted_by is only valid for actions", i, ent.Ref))
 			continue
 		}
-		promptType, known := refs[ent.PromptedBy]
+		promptType, known := refTypes[ent.PromptedBy]
 		if !known {
 			errs = append(errs, fmt.Sprintf("entities[%d] (%s): prompted_by references unknown ref %q", i, ent.Ref, ent.PromptedBy))
 			continue
@@ -170,7 +154,7 @@ func validateSharePackage(pkg *sharePackage) []string {
 	}
 
 	for _, ref := range pkg.MessageRefs {
-		if refs[ref] == "" {
+		if refTypes[ref] == "" {
 			errs = append(errs, fmt.Sprintf("message_refs: unknown ref %q", ref))
 		}
 	}
@@ -182,7 +166,6 @@ func validateSharePackage(pkg *sharePackage) []string {
 	return errs
 }
 
-// invalidSharePackageError aggregates every violation into one exit-2 error.
 func invalidSharePackageError(violations []string) error {
 	exit2 := fail.ExitUsageError
 	return &fail.DetailedError{
@@ -195,8 +178,6 @@ func invalidSharePackageError(violations []string) error {
 	}
 }
 
-// uncuratedSharePackageError is the curation gate: a curated:false package
-// comes from a non-interactive run a human has not approved.
 func uncuratedSharePackageError() error {
 	exit2 := fail.ExitUsageError
 	return &fail.DetailedError{

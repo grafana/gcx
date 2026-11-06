@@ -11,7 +11,6 @@ import (
 	fail "github.com/grafana/gcx/internal/gcxerrors"
 )
 
-// MessageAPI publishes messages independently of the operational model.
 type MessageAPI interface {
 	CreateMessage(ctx context.Context, req createMessageRequest) (*createMessageResponse, error)
 }
@@ -21,7 +20,6 @@ type SharingClientLoader interface {
 	RequireSharingOAuth(ctx context.Context) error
 }
 
-// ShareClientLoader supplies the two independent APIs used by shares publish.
 type ShareClientLoader interface {
 	OpModelClientLoader
 	SharingClientLoader
@@ -55,8 +53,6 @@ func (l *configLoader) LoadMessages(ctx context.Context, timeout time.Duration) 
 	return l.loadIRMResourceClient(ctx, timeout)
 }
 
-// RequireSharingOAuth rejects non-user credentials before a share creates any
-// entities. The backend independently verifies the signed human identity.
 func (l *configLoader) RequireSharingOAuth(ctx context.Context) error {
 	cfg, err := l.LoadConfigTolerant(ctx)
 	if err != nil {
@@ -78,7 +74,6 @@ func (l *configLoader) RequireSharingOAuth(ctx context.Context) error {
 	}
 }
 
-// Message failures must not suggest changing model entities or actor flags.
 func mapMessageHTTPError(resp *http.Response, _ string) error {
 	exitCode := fail.ExitGeneralError
 	switch resp.StatusCode {

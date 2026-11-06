@@ -10,9 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runOpModelTree builds a command tree via build and executes it through the
-// public cobra path with the given args (setAgentMode must be called BEFORE
-// this, since BindFlags resolves the default format at construction time).
 func runOpModelTree(t *testing.T, build func() *cobra.Command, args ...string) (string, string, error) {
 	t.Helper()
 	return runNounCmd(t, build, "", args...)
@@ -57,8 +54,6 @@ func TestOpModelUsageErrorEmitsNoResultDocument(t *testing.T) {
 		"containers", "create-claim", "INC-1", "--type", "conclusion", "--text", "t",
 		"--actor-kind", "agent", "--actor-id", "a")
 	requireUsageExit(t, err)
-	// The root error reporter owns the single error document; the command
-	// itself must leave stdout untouched.
 	if stdout != "" {
 		t.Errorf("stdout must stay empty on a usage error, got %q", stdout)
 	}
@@ -92,8 +87,6 @@ func TestSharesPublishAgentModeOutputContract(t *testing.T) {
 	stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newSharesCmd(loader) },
 		"publish", "-f", path)
 
-	// Partial failure: stdout still carries exactly one JSON value (the
-	// receipt), and the sentinel carries exit 4.
 	var emitted *fail.EmittedError
 	if !errors.As(err, &emitted) || emitted.Code != fail.ExitPartialFailure {
 		t.Fatalf("expected EmittedError with exit 4, got %v", err)

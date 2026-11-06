@@ -1,5 +1,3 @@
-// opmodel_actions.go; `gcx irm opmodel containers create-action` (record
-// operational work outright) and `coordinate-action` (report status or assignment).
 package irm
 
 import (
@@ -9,10 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// ---------------------------------------------------------------------------
-// containers create-action
-// ---------------------------------------------------------------------------
 
 type actionsCreateOpts struct {
 	Content   actionContentOpts
@@ -64,7 +58,7 @@ initial status is proposed.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runActionsCreate(cmd *cobra.Command, opts *actionsCreateOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -87,10 +81,6 @@ func runActionsCreate(cmd *cobra.Command, opts *actionsCreateOpts, loader OpMode
 			resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers coordinate-action
-// ---------------------------------------------------------------------------
 
 type actionsCoordinateOpts struct {
 	Assignee  assigneeOpts
@@ -148,7 +138,7 @@ This reports work, grants no execution permission, and does not judge recovery.`
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runActionsCoordinate(cmd *cobra.Command, actionID string, opts *actionsCoordinateOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -157,7 +147,7 @@ func runActionsCoordinate(cmd *cobra.Command, actionID string, opts *actionsCoor
 	}
 	return runOpModelMutation(cmd, loader, shared, &opts.IO, func(ctx context.Context, api OpModelAPI) (opModelMutation, error) {
 		var status *string
-		if cmd.Flags().Changed("status") {
+		if opts.flags.Changed("status") {
 			status = &opts.Status
 		}
 		resp, err := api.CoordinateAction(ctx, coordinateActionRequest{

@@ -1,15 +1,3 @@
-// opmodel_wire.go; the request and response shapes of the op model HTTP
-// API, mirroring backend/irm/pkg/api/opmodel.go on grafana/irm main
-// at b0f40e543538.
-//
-// Routes expose the container as a path segment, and the entity id is a path
-// segment for the id-targeted verbs. Tenancy is implicit in the authenticated
-// Grafana request and never appears in the op model resource path. Fields
-// tagged `json:"-"` are exactly those: the request structs carry them so call
-// sites read as one intent, and the client lifts them into the URL.
-//
-// revision is an opaque string on this API, not a number. Nothing here
-// parses it; it is carried and printed verbatim.
 package irm
 
 import (
@@ -18,29 +6,18 @@ import (
 	"time"
 )
 
-// opModelAPIPrefix is the app-platform group/version prefix the op model
-// routes hang off.
 const opModelAPIPrefix = "/apis/irm.grafana.app/v1alpha1"
 
-// containerBasePath builds the .../containers/{c} prefix every route shares.
-// The container is a caller-owned opaque string, so it is escaped.
 func containerBasePath(container string) string {
 	return opModelAPIPrefix + "/containers/" + url.PathEscape(container)
 }
 
-// opModelActorInput is the actor every command body carries.
 type opModelActorInput struct {
 	Kind        string `json:"kind"`
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name,omitempty"`
 }
 
-// ---------------------------------------------------------------------------
-// Command requests. Container (and, where present, the entity id) travel in
-// the path; hence json:"-".
-// ---------------------------------------------------------------------------
-
-// Writes apply to server-current state without client revision gates.
 type createObservationRequest struct {
 	Container      string            `json:"-"`
 	Actor          opModelActorInput `json:"actor"`
@@ -160,11 +137,6 @@ type withdrawEvidenceRequest struct {
 	Reason     string            `json:"reason,omitempty"`
 }
 
-// ---------------------------------------------------------------------------
-// Command responses. Five endpoints return the bare revision; the rest add
-// the minted ids and the resulting status.
-// ---------------------------------------------------------------------------
-
 type revisionResponse struct {
 	Revision string `json:"revision"`
 }
@@ -201,10 +173,6 @@ type attachEvidenceResponse struct {
 	Revision   string `json:"revision"`
 }
 
-// ---------------------------------------------------------------------------
-// Read requests and responses.
-// ---------------------------------------------------------------------------
-
 type getContainerRequest struct {
 	Container string
 }
@@ -215,8 +183,6 @@ type listEventsRequest struct {
 	PageSize      int32
 }
 
-// query renders the list-events query string, omitting unset values so the
-// server applies its own defaults.
 func (r listEventsRequest) query() url.Values {
 	params := url.Values{}
 	if r.SinceRevision != "" {

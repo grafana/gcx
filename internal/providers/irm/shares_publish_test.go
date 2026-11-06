@@ -19,12 +19,11 @@ func TestPublishShareHappyPath(t *testing.T) {
 
 	receipt := publishShare(context.Background(), op, op, &pkg, "claude-code", "Claude Code")
 
-	// 4 entities + 2 evidence-links + the update.
 	if receipt.Summary.Succeeded != 7 || receipt.Summary.Failed != 0 || receipt.Summary.Skipped != 0 {
 		t.Errorf("summary wrong: %+v", receipt.Summary)
 	}
-	if len(receipt.EntityIDs) != 4 || receipt.EntityIDs["obs1"] != "obs-1" {
-		t.Errorf("entity ids wrong: %v", receipt.EntityIDs)
+	if len(receipt.EntityIDsByRef) != 4 || receipt.EntityIDsByRef["obs1"] != "obs-1" {
+		t.Errorf("entity ids wrong: %v", receipt.EntityIDsByRef)
 	}
 	if len(receipt.EvidenceLinkIDs) != 2 {
 		t.Errorf("bearing ids wrong: %v", receipt.EvidenceLinkIDs)
@@ -35,14 +34,12 @@ func TestPublishShareHappyPath(t *testing.T) {
 	if receipt.MessageID == "" {
 		t.Error("the message must be recorded as an update")
 	}
-	// Citations are the minted ids the message refers to.
-	if len(receipt.Citations) != 1 || receipt.Citations[0] != receipt.EntityIDs["hyp1"] {
+	if len(receipt.Citations) != 1 || receipt.Citations[0] != receipt.EntityIDsByRef["hyp1"] {
 		t.Errorf("citations must be minted ids for message_refs: %v", receipt.Citations)
 	}
 
-	// The evidence-links must reference the MINTED ids, not the package refs.
 	attach := reqAs[attachEvidenceRequest](t, op.reqs, 4)
-	if attach.SourceID != "obs-1" || attach.TargetID != receipt.EntityIDs["hyp1"] {
+	if attach.SourceID != "obs-1" || attach.TargetID != receipt.EntityIDsByRef["hyp1"] {
 		t.Errorf("bearing endpoints not remapped to minted ids: %+v", attach)
 	}
 	if attach.Stance != "supports" || attach.Rationale != "timing aligns" {
@@ -54,7 +51,6 @@ func TestPublishShareHappyPath(t *testing.T) {
 		t.Errorf("linked action not promoted from its minted observation: %+v", promote)
 	}
 
-	// Entity actors carry the agent's own display name, not the human's.
 	create := reqAs[createObservationRequest](t, op.reqs, 0)
 	if create.Actor.Kind != "agent" || create.Actor.ID != "claude-code" || create.Actor.DisplayName != "Claude Code" {
 		t.Errorf("entity actor wrong: %+v", create.Actor)
@@ -68,7 +64,6 @@ func TestPublishSharePostsUpdateWithAgentAttribution(t *testing.T) {
 
 	receipt := publishShare(context.Background(), op, op, &pkg, "claude-code", "Claude Code")
 
-	// The update is the last call: 4 entities, 2 evidence-links, then it.
 	upd := reqAs[createMessageRequest](t, op.reqs, 6)
 	if upd.IncidentID != "INC-1" {
 		t.Errorf("update misrouted: %+v", upd)
@@ -76,7 +71,6 @@ func TestPublishSharePostsUpdateWithAgentAttribution(t *testing.T) {
 	if upd.DraftedBy == nil || upd.DraftedBy.ID != "claude-code" || upd.DraftedBy.DisplayName != "Claude Code" {
 		t.Errorf("the composing agent must be recorded as drafted_by: %+v", upd.DraftedBy)
 	}
-	// Body and See are separate fields: no prose format is invented here.
 	if upd.Body != pkg.Message.Text || upd.See != "payments/db/pool.go:112" {
 		t.Errorf("message not mapped onto the update: %+v", upd)
 	}
@@ -121,7 +115,7 @@ func TestPublishShareResolvesPromptingObservationRegardlessOfEntityOrder(t *test
 	receipt := publishShare(context.Background(), op, op, &pkg, "codex", "Codex")
 
 	promote := reqAs[promoteToActionRequest](t, op.reqs, 3)
-	if promote.ObservationID != receipt.EntityIDs["obs1"] {
+	if promote.ObservationID != receipt.EntityIDsByRef["obs1"] {
 		t.Errorf("prompting observation id = %q, want minted observation", promote.ObservationID)
 	}
 }
@@ -132,7 +126,7 @@ func TestPublishShareSkipsLinkedActionWhenPromptingObservationFails(t *testing.T
 
 	receipt := publishShare(context.Background(), op, op, &pkg, "codex", "Codex")
 
-	if _, minted := receipt.EntityIDs["act1"]; minted {
+	if _, minted := receipt.EntityIDsByRef["act1"]; minted {
 		t.Error("action whose prompting observation failed must not be minted")
 	}
 	if receipt.Summary.Skipped != 3 {
@@ -146,13 +140,11 @@ func TestPublishShareSkipsLinkedActionWhenPromptingObservationFails(t *testing.T
 }
 
 func TestPublishShareUpdateFailureIsAFailedStep(t *testing.T) {
-	// Call 7 is the update: every entity and bearing lands first.
 	op := &fakeOpModel{failAt: 7}
 	pkg := validBasePackage()
 
 	receipt := publishShare(context.Background(), op, op, &pkg, "claude-code", "Claude Code")
 
-	// The entities landed; the finding was never said. That is a partial failure.
 	if receipt.Summary.Succeeded != 6 || receipt.Summary.Failed != 1 {
 		t.Errorf("summary wrong: %+v", receipt.Summary)
 	}
@@ -172,7 +164,6 @@ func TestShareStepErrorTextStripsTerminalRendering(t *testing.T) {
 		Suggestions: []string{"List the container's current entities"},
 		ExitCode:    &exit2,
 	})
-	// A receipt is a machine document: no box-drawing rules, no suggestions.
 	if got != "op model entity or container not found: route not found" {
 		t.Errorf("step error text = %q", got)
 	}
@@ -185,37 +176,27 @@ func TestShareStepErrorTextStripsTerminalRendering(t *testing.T) {
 }
 
 func TestPublishShareEntityFailureSkipsDependentEvidenceLinks(t *testing.T) {
-	// Call 2 is the hypothesis create; both evidence-links target hyp1, so both
-	// are skipped, and everything else still runs.
 	op := &fakeOpModel{failAt: 2}
 	pkg := validBasePackage()
 
 	receipt := publishShare(context.Background(), op, op, &pkg, "claude-code", "Claude Code")
 
-	// 3 entities plus the update, which is still posted: the prose is what the
-	// user chose to say, and the receipt carries the failure.
 	if receipt.Summary.Succeeded != 4 || receipt.Summary.Failed != 1 || receipt.Summary.Skipped != 2 {
 		t.Errorf("summary wrong: %+v", receipt.Summary)
 	}
-	if _, minted := receipt.EntityIDs["hyp1"]; minted {
+	if _, minted := receipt.EntityIDsByRef["hyp1"]; minted {
 		t.Error("failed entity must not report a minted id")
 	}
-	if len(receipt.EntityIDs) != 3 {
-		t.Errorf("survivors must be reported honestly: %v", receipt.EntityIDs)
+	if len(receipt.EntityIDsByRef) != 3 {
+		t.Errorf("survivors must be reported honestly: %v", receipt.EntityIDsByRef)
 	}
 	if len(receipt.Failures) != 1 || receipt.Failures[0].Step != `create hypothesis "hyp1"` {
 		t.Errorf("failures wrong: %+v", receipt.Failures)
 	}
-	// hyp1 was never minted, so it cannot be cited; and the update says so
-	// by citing nothing rather than citing a ref that names no entity.
 	if len(receipt.Citations) != 0 {
 		t.Errorf("unminted message_refs must not be cited: %v", receipt.Citations)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// The command wrapper: curation gate, aggregated validation, exit 4.
-// ---------------------------------------------------------------------------
 
 func writeSharePackage(t *testing.T, pkg sharePackage) string {
 	t.Helper()
@@ -280,7 +261,6 @@ func TestSharesPublishRefusesUncurated(t *testing.T) {
 		t.Error("uncurated package must be refused before any client load")
 	}
 
-	// --allow-uncurated lifts the gate.
 	cmd2, stdout, _ := newOpModelTestCmd()
 	opts2 := &sharesPublishOpts{Filename: writeSharePackage(t, pkg), AgentID: "claude-code", AllowUncurated: true}
 	opts2.IO.OutputFormat = "json"

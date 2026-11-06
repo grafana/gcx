@@ -16,9 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fakeOpModel is a recording OpModelAPI fake: it captures every request in
-// order, mints deterministic ids, and can be scripted to fail at an exact
-// 1-based call index (failAt) or on every call (err).
 type fakeOpModel struct {
 	reqs            []any
 	calls           int
@@ -39,10 +36,8 @@ func (f *fakeOpModel) step(req any) error {
 	return nil
 }
 
-// rev mints an opaque revision string, as the API does.
 func (f *fakeOpModel) rev() string { return strconv.Itoa(100 + f.calls) }
 
-// reqAs asserts the i-th recorded request has type T and returns it.
 func reqAs[T any](t *testing.T, reqs []any, i int) T {
 	t.Helper()
 	v, ok := reqs[i].(T)
@@ -163,9 +158,6 @@ func (f *fakeOpModel) ListEvents(_ context.Context, req listEventsRequest) (*eve
 	}, nil
 }
 
-// fakeOpModelLoader implements OpModelClientLoader over the fake and records
-// whether/with what it was invoked, so validation-before-I/O assertions can
-// prove no client was ever loaded.
 type fakeOpModelLoader struct {
 	op             *fakeOpModel
 	err            error
@@ -197,8 +189,6 @@ func (l *fakeOpModelLoader) LoadMessages(_ context.Context, timeout time.Duratio
 	return l.op, nil
 }
 
-// newOpModelTestCmd builds a bare command with captured streams for driving
-// run functions directly (bypassing cobra parsing, mirroring runAck).
 func newOpModelTestCmd() (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -218,7 +208,6 @@ func testActor() opModelActorOpts {
 	return opModelActorOpts{Kind: "agent", ID: "claude-code"}
 }
 
-// assertDetailedExit asserts err is a DetailedError carrying the exit code.
 func assertDetailedExit(t *testing.T, err error, want int) {
 	t.Helper()
 	var derr *fail.DetailedError
@@ -234,8 +223,6 @@ func assertDetailedExit(t *testing.T, err error, want int) {
 	}
 }
 
-// requireUsageExit asserts err is a DetailedError carrying the usage exit
-// code (2); the contract for every statically-decidable rejection.
 func requireUsageExit(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
@@ -243,10 +230,6 @@ func requireUsageExit(t *testing.T, err error) {
 	}
 	assertDetailedExit(t, err, fail.ExitUsageError)
 }
-
-// ---------------------------------------------------------------------------
-// Reads: envelope shape, empty arrays, pagination hints.
-// ---------------------------------------------------------------------------
 
 func TestContainersGetEmitsEnvelopeWithEmptyArrays(t *testing.T) {
 	loader := &fakeOpModelLoader{op: &fakeOpModel{}}
@@ -296,7 +279,6 @@ func TestContainersListEventsMapsRequestAndHints(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
 		t.Fatalf("stdout not JSON: %v", err)
 	}
-	// The fake's last event revision (5) sits below head (9): a hint fires.
 	if doc.Revision != "9" || len(doc.Events) != 1 {
 		t.Errorf("envelope wrong: %+v", doc)
 	}
@@ -305,16 +287,13 @@ func TestContainersListEventsMapsRequestAndHints(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Backend errors surface unchanged (already DetailedError-mapped by the
-// client layer; the command must not double-wrap or swallow them).
-// ---------------------------------------------------------------------------
-
 func TestMutationPropagatesClientError(t *testing.T) {
 	wantErr := errors.New("boom")
 	loader := &fakeOpModelLoader{op: &fakeOpModel{err: wantErr}}
 	cmd, stdout, _ := newOpModelTestCmd()
-	opts := &actionsCreateOpts{Container: "INC-1", Text: "t", Actor: testActor()}
+	opts := &actionsCreateOpts{}
+	opts.setup(cmd.Flags())
+	opts.Container, opts.Text, opts.Actor = "INC-1", "t", testActor()
 	opts.IO.OutputFormat = "json"
 
 	err := runActionsCreate(cmd, opts, loader, testSharedOpts())

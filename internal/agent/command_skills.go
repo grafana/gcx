@@ -20,10 +20,8 @@ var commandSkills = map[string][]string{
 	"gcx alert":                {"investigate-alert"},
 	// Empty override: ruler config management is not what investigate-alert
 	// covers, so suppress the inherited footer on the ruler subtree.
-	"gcx alert ruler": {},
-	"gcx irm":         {"oncall-triage"},
-	// Empty overrides: the versioned opmodel/evidence-links and shares prototype trees are not
-	// what oncall-triage covers, so suppress the inherited footer there.
+	"gcx alert ruler":         {},
+	"gcx irm":                 {"oncall-triage"},
 	"gcx irm opmodel":         {},
 	"gcx irm shares":          {},
 	"gcx irm incidents share": {},

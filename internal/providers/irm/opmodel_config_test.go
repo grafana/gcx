@@ -65,14 +65,14 @@ func TestRequireSharingOAuthUsesEffectiveCredentials(t *testing.T) {
 		envToken string
 		allowed  bool
 	}{
-		"oauth":                                 {fields: "auth-method: oauth\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091", allowed: true},                   // trufflehog:ignore
-		"legacy oauth":                          {fields: "oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091", allowed: true},                                             // trufflehog:ignore
-		"refresh only oauth":                    {fields: "auth-method: oauth\n      oauth-refresh-token: test-refresh-token\n      proxy-endpoint: http://localhost:9091", allowed: true},         // trufflehog:ignore
-		"service account":                       {fields: "auth-method: token\n      token: test-service-token"},                                                                                   // trufflehog:ignore
-		"legacy service account":                {fields: "token: test-service-token"},                                                                                                             // trufflehog:ignore
-		"basic":                                 {fields: "auth-method: basic\n      user: deric\n      password: test-password"},                                                                  // trufflehog:ignore
-		"service account overrides stale oauth": {fields: "auth-method: token\n      token: test-service-token\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091"}, // trufflehog:ignore
-		"environment token overrides oauth":     {fields: "auth-method: oauth\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091", envToken: "test-service-token"},  // trufflehog:ignore
+		"oauth":                                 {fields: "auth-method: oauth\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091", allowed: true},
+		"legacy oauth":                          {fields: "oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091", allowed: true},
+		"refresh only oauth":                    {fields: "auth-method: oauth\n      oauth-refresh-token: test-refresh-token\n      proxy-endpoint: http://localhost:9091", allowed: true},
+		"service account":                       {fields: "auth-method: token\n      token: test-service-token"},
+		"legacy service account":                {fields: "token: test-service-token"},
+		"basic":                                 {fields: "auth-method: basic\n      user: deric\n      password: test-password"},
+		"service account overrides stale oauth": {fields: "auth-method: token\n      token: test-service-token\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091"},
+		"environment token overrides oauth":     {fields: "auth-method: oauth\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091", envToken: "test-service-token"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

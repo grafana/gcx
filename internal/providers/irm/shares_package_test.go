@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// validBasePackage returns a fully valid package the cases below mutate.
 func validBasePackage() sharePackage {
 	return sharePackage{
 		Version:   2,
@@ -31,7 +30,7 @@ func TestValidateSharePackage(t *testing.T) {
 	tests := []struct {
 		name    string
 		mutate  func(p *sharePackage)
-		wantErr string // substring of one violation; empty = valid
+		wantErr string
 	}{
 		{"valid package", func(_ *sharePackage) {}, ""},
 		{"wrong version", func(p *sharePackage) { p.Version = 1 }, "version must be 2"},

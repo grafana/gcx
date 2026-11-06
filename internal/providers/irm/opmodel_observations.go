@@ -1,7 +1,3 @@
-// opmodel_observations.go; `gcx irm opmodel containers create-observation`,
-// `promote-observation` (versioned observation origin),
-// `promote-observation-to-action` (versioned action origin), and
-// `verify-observation` (fact-axis verification).
 package irm
 
 import (
@@ -11,10 +7,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// ---------------------------------------------------------------------------
-// containers create-observation
-// ---------------------------------------------------------------------------
 
 type obsCreateOpts struct {
 	Context   observationContextOpts
@@ -66,7 +58,7 @@ fact-axis verification ("is this true"), starting unverified.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runObservationsCreate(cmd *cobra.Command, opts *obsCreateOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -90,10 +82,6 @@ func runObservationsCreate(cmd *cobra.Command, opts *obsCreateOpts, loader OpMod
 			nil, resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers promote-observation
-// ---------------------------------------------------------------------------
 
 type obsPromoteOpts struct {
 	IO        cmdio.Options
@@ -144,7 +132,7 @@ create evidence, or transfer verification. Attach evidence separately if intende
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runObservationsPromote(cmd *cobra.Command, observationID string, opts *obsPromoteOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -169,10 +157,6 @@ func runObservationsPromote(cmd *cobra.Command, observationID string, opts *obsP
 			}, resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers promote-observation-to-action
-// ---------------------------------------------------------------------------
 
 type obsPromoteToActionOpts struct {
 	IO        cmdio.Options
@@ -213,7 +197,7 @@ No evidence or verification is transferred and the observation remains unchanged
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runObservationsPromoteToAction(cmd *cobra.Command, observationID string, opts *obsPromoteToActionOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {
@@ -238,10 +222,6 @@ func runObservationsPromoteToAction(cmd *cobra.Command, observationID string, op
 			}, resp.Revision), nil
 	})
 }
-
-// ---------------------------------------------------------------------------
-// containers verify-observation
-// ---------------------------------------------------------------------------
 
 type obsVerifyOpts struct {
 	Reason       string
@@ -291,7 +271,7 @@ weaker, agent-producible signal.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	return markExperimental(cmd)
+	return cmd
 }
 
 func runObservationsVerify(cmd *cobra.Command, observationID string, opts *obsVerifyOpts, loader OpModelClientLoader, shared *opModelSharedOpts) error {

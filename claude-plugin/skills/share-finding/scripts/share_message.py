@@ -50,7 +50,6 @@ def main(argv=None):
                 result["message_id"] = receipt["message_id"]
                 record(journal, {"event": "saved", "receipt": receipt})
                 require(process.returncode == 0, f"GCX exited {process.returncode}; inspect recorded receipt")
-                require(not receipt.get("warnings"), "GCX returned warnings; inspect recorded receipt")
                 result["status"] = "saved"
                 record(journal, {"event": "complete", "receipt": receipt})
             except (OSError, ValueError, subprocess.TimeoutExpired, KeyboardInterrupt) as error:

@@ -1,15 +1,3 @@
-// opmodel_types.go; output documents and flag vocabularies for the IRM
-// operational-model commands (gcx irm opmodel / shares).
-//
-// The read bodies below mirror the HTTP API's own JSON exactly (see
-// opmodel_wire.go), so what gcx prints is what the API documents; one
-// vocabulary, no translation layer to drift. gcx adds only the envelope
-// discriminators (`type`, `schema_version`) and the guarantee that the entity
-// arrays are never null.
-//
-// The enum vocabularies are the single source of truth for flag validation and
-// for help text. The server validates too; validating here means a typo costs
-// no round trip and the error names the whole vocabulary.
 package irm
 
 import (
@@ -25,29 +13,19 @@ import (
 	fail "github.com/grafana/gcx/internal/gcxerrors"
 )
 
-// ---------------------------------------------------------------------------
-// Flag vocabularies, mirrored from the API's own enum tags.
-// ---------------------------------------------------------------------------
-
 //nolint:gochecknoglobals // static enum vocabularies, mirrored from the op model API
 var (
-	actorKindVocab            = []string{"agent", "human"}
-	claimTypeVocab            = []string{"hypothesis", "impact"}
-	impactAssessmentVocab     = []string{"unassessed", "confirmed", "ruled_out"}
-	hypothesisAssessmentVocab = []string{"unassessed", "accepted", "ruled_out"}
-	recoveryVocab             = []string{"unknown", "ongoing", "mitigated", "ended"}
-	actionStatusVocab         = []string{"proposed", "accepted", "in_progress", "blocked", "done", "failed", "abandoned"}
-	stanceVocab               = []string{"context", "challenges", "supports"}
-	// observationVerificationVocab and evidenceVerificationVocab differ: an
-	// observation can be corroborated by an agent, an evidence link cannot. Neither
-	// includes "withdrawn": withdrawal is a separate judgment, reachable
-	// exclusively through `evidence-links withdraw`.
+	actorKindVocab               = []string{"agent", "human"}
+	claimTypeVocab               = []string{"hypothesis", "impact"}
+	impactAssessmentVocab        = []string{"unassessed", "confirmed", "ruled_out"}
+	hypothesisAssessmentVocab    = []string{"unassessed", "accepted", "ruled_out"}
+	recoveryVocab                = []string{"unknown", "ongoing", "mitigated", "ended"}
+	actionStatusVocab            = []string{"proposed", "accepted", "in_progress", "blocked", "done", "failed", "abandoned"}
+	stanceVocab                  = []string{"context", "challenges", "supports"}
 	observationVerificationVocab = []string{"agent_corroborated", "disputed", "human_verified", "unverified"}
 	evidenceVerificationVocab    = []string{"disputed", "human_verified", "unverified"}
 )
 
-// validateEnumFlag checks a closed-vocabulary flag value, returning an exit-2
-// DetailedError that names the rejected value and the whole vocabulary.
 func validateEnumFlag(flagName, value string, vocab []string) error {
 	if slices.Contains(vocab, value) {
 		return nil
@@ -62,10 +40,6 @@ func validateEnumFlag(flagName, value string, vocab []string) error {
 		},
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Read bodies; decoded straight from the API, then wrapped in an envelope.
-// ---------------------------------------------------------------------------
 
 type opModelActor struct {
 	Kind        string `json:"kind"`
@@ -172,17 +146,13 @@ type containerBody struct {
 	EvidenceLinks []evidenceDTO    `json:"evidence_links"`
 }
 
-// containerEnvelope is the output document of `containers get`. The four
-// entity arrays are always present and never null.
 type containerEnvelope struct {
 	containerBody
 
-	Type          string `json:"type"` // "gcx.irm.opmodel.container"
+	Type          string `json:"type"`
 	SchemaVersion string `json:"schema_version"`
 }
 
-// orEmpty guarantees a slice serializes as [] rather than null; the output
-// contract every read envelope in this tree promises.
 func orEmpty[T any](s []T) []T {
 	if s == nil {
 		return []T{}
@@ -203,8 +173,6 @@ func newContainerEnvelope(body *containerBody) containerEnvelope {
 	return env
 }
 
-// opModelEventDTO is one appended event read back from the stream. payload is
-// carried through verbatim; the API already emits it as JSON.
 type opModelEventDTO struct {
 	Revision   string          `json:"revision"`
 	ID         string          `json:"id"`
@@ -214,17 +182,13 @@ type opModelEventDTO struct {
 	Payload    json.RawMessage `json:"payload,omitempty"`
 }
 
-// eventsBody is one page of the event stream as the API returns it. Revision
-// is the container's head, independent of the page, so a caller can tell
-// whether it has caught up.
 type eventsBody struct {
 	Events   []opModelEventDTO `json:"events"`
 	Revision string            `json:"revision"`
 }
 
-// opModelEventsEnvelope is the output document of `containers list-events`.
 type opModelEventsEnvelope struct {
-	Type          string            `json:"type"` // "gcx.irm.opmodel.events"
+	Type          string            `json:"type"`
 	SchemaVersion string            `json:"schema_version"`
 	Container     string            `json:"container"`
 	Revision      string            `json:"revision"`
@@ -241,30 +205,18 @@ func newOpModelEventsEnvelope(container string, body *eventsBody) opModelEventsE
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Mutation envelope; shared by every op model write verb.
-// ---------------------------------------------------------------------------
-
-// opModelTarget names the entity a mutation acted on (or minted).
 type opModelTarget struct {
-	Kind string `json:"kind"` // observation | claim | action | evidence_link | entity
+	Kind string `json:"kind"`
 	ID   string `json:"id"`
 }
 
-// opModelMutation is the single result document every op model write verb
-// emits on stdout. It does not reuse cmdio.NewSingleMutation: that envelope
-// has no extension point for the container revision or the minted-id results,
-// and its own header says not to force-fit new shapes into it. The
-// instrumentation provider's MutationResult is the precedent for a
-// domain-shaped mutation document.
 type opModelMutation struct {
-	Type          string            `json:"type"` // "gcx.irm.opmodel.mutation"
+	Type          string            `json:"type"`
 	SchemaVersion string            `json:"schema_version"`
 	Action        string            `json:"action"`
 	Container     string            `json:"container"`
 	Target        opModelTarget     `json:"target"`
 	Result        map[string]string `json:"result,omitempty"`
-	Warnings      []string          `json:"warnings,omitempty"`
 	Revision      string            `json:"revision"`
 }
 
@@ -280,9 +232,6 @@ func newOpModelMutation(action, container string, target opModelTarget, result m
 	}
 }
 
-// opModelMutationTextCodec renders the mutation envelope as one
-// human-readable line. Registered as `-o text` (the TTY default); JSON /
-// YAML / agents codecs carry the structured shape. Output-only.
 type opModelMutationTextCodec struct{}
 
 func (c *opModelMutationTextCodec) Format() format.Format { return format.Format("text") }
@@ -300,11 +249,7 @@ func (c *opModelMutationTextCodec) Encode(w io.Writer, v any) error {
 		}
 		extra = "; " + strings.Join(pairs, " ")
 	}
-	warning := ""
-	if len(m.Warnings) > 0 {
-		warning = "; warning: " + strings.Join(m.Warnings, "; ")
-	}
-	_, err := fmt.Fprintf(w, "%s %s %s: ok%s (revision %s)%s\n", m.Action, m.Target.Kind, m.Target.ID, extra, m.Revision, warning)
+	_, err := fmt.Fprintf(w, "%s %s %s: ok%s (revision %s)\n", m.Action, m.Target.Kind, m.Target.ID, extra, m.Revision)
 	return err
 }
 

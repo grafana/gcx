@@ -280,8 +280,6 @@ func TestOpModelEventCursorsRemainOpaqueAndIndependentOfHead(t *testing.T) {
 
 func TestOpModelNoEventWritePreservesReturnedHead(t *testing.T) {
 	setAgentMode(t, true)
-	// The client cannot infer whether a write appended an event. Even repeated
-	// successful writes must return the server's head without incrementing it.
 	calls := 0
 	client := newTestOpModelClient(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -307,8 +305,6 @@ func TestOpModelNoEventWritePreservesReturnedHead(t *testing.T) {
 
 func TestOpModelContainerRetainsCompleteProjection(t *testing.T) {
 	setAgentMode(t, true)
-	// HTTP projection fields at IRM b0f40e543538. Exact round-trip comparison
-	// catches dropped judgments, versions, provenance, and zero revisions.
 	const projection = `{
  "container":"INC-1","revision":"42",
  "observations":[{"id":"o","text":"observed","source_ref":"slack:1","observed_start":"2026-08-21T14:00:00Z","observed_end":"2026-08-21T14:01:00Z","scope":"","original_author":{"source_id":"U1"},"content_version":2,"created_by":{"kind":"agent","id":"recorder"},"created_at":"2026-08-21T15:00:00Z","verification":"human_verified","verification_revision":1,"verification_judgment":{"by":{"kind":"human","id":"reviewer"},"at":"2026-08-21T15:01:00Z","reason":"checked","subject_version":1,"subject_freshness":{"subject_needs_reassessment":true,"reason":"subject_content_changed","judged_version":1,"current_version":2}}},
@@ -337,7 +333,6 @@ func TestOpModelContainerRetainsCompleteProjection(t *testing.T) {
 
 func TestSharesVersion2StdinAndLegacyRejection(t *testing.T) {
 	setAgentMode(t, true)
-	// Exact JSON example from the companion share-finding skill migration.
 	raw, err := os.ReadFile("testdata/share-finding-v2.json")
 	if err != nil {
 		t.Fatal(err)
@@ -402,7 +397,7 @@ func TestPublishShareEvidenceFailureRetainsPartialIdentities(t *testing.T) {
 	pkg := validBasePackage()
 	op := &fakeOpModel{failAt: 5}
 	receipt := publishShare(context.Background(), op, op, &pkg, "codex", "Codex")
-	if op.calls != 7 || len(receipt.EntityIDs) != 4 || len(receipt.EvidenceLinkIDs) != 1 || receipt.MessageID == "" || receipt.Summary.Failed != 1 || receipt.Summary.Succeeded != 6 {
+	if op.calls != 7 || len(receipt.EntityIDsByRef) != 4 || len(receipt.EvidenceLinkIDs) != 1 || receipt.MessageID == "" || receipt.Summary.Failed != 1 || receipt.Summary.Succeeded != 6 {
 		t.Fatalf("calls=%d receipt=%+v", op.calls, receipt)
 	}
 }

@@ -121,13 +121,13 @@ func TestUninstallSymlink(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestInstallAllSkipsExplicitInstallSkills(t *testing.T) {
+func TestInstallAllSkipsInstallOnlyByNameSkills(t *testing.T) {
 	t.Parallel()
 	source := fstest.MapFS{
 		"alpha/SKILL.md":    {Data: []byte("alpha")},
 		"internal/SKILL.md": {Data: []byte("internal")},
 	}
-	catalog := []byte("skills: {alpha: {status: active}, internal: {status: active, explicit_install: true}}")
+	catalog := []byte("skills: {alpha: {status: active}, internal: {status: active, install_only_by_name: true}}")
 	internalSkill := func(root string) string { return filepath.Join(root, "skills", "internal", "SKILL.md") }
 
 	root := filepath.Join(t.TempDir(), ".agents")
