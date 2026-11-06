@@ -31,7 +31,7 @@ func TestOpModelMutationOutputContract(t *testing.T) {
 			setAgentMode(t, tt.agentMode)
 			loader := &fakeOpModelLoader{op: &fakeOpModel{}}
 			stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newOpModelCmd(loader) },
-				"claims", "create", "--container", "INC-1", "--type", "impact", "--text", "t",
+				"containers", "create-claim", "INC-1", "--type", "impact", "--text", "t",
 				"--actor-kind", "agent", "--actor-id", "a")
 			if err != nil {
 				t.Fatalf("execute: %v", err)
@@ -43,7 +43,7 @@ func TestOpModelMutationOutputContract(t *testing.T) {
 				}
 				return
 			}
-			if stdout != "create claim clm-1: ok (revision 101)\n" {
+			if stdout != "create-claim claim clm-1: ok (revision 101)\n" {
 				t.Errorf("tty text line wrong: %q", stdout)
 			}
 		})
@@ -54,7 +54,7 @@ func TestOpModelUsageErrorEmitsNoResultDocument(t *testing.T) {
 	setAgentMode(t, true)
 	loader := &fakeOpModelLoader{op: &fakeOpModel{}}
 	stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newOpModelCmd(loader) },
-		"claims", "create", "--container", "INC-1", "--type", "conclusion", "--text", "t",
+		"containers", "create-claim", "INC-1", "--type", "conclusion", "--text", "t",
 		"--actor-kind", "agent", "--actor-id", "a")
 	requireUsageExit(t, err)
 	// The root error reporter owns the single error document; the command

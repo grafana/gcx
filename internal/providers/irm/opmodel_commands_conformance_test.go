@@ -11,28 +11,28 @@ import (
 // TestOpModelStructuralConformance asserts the structural shape of the
 // experimental opmodel/shares trees: every leaf declares an Args validator
 // and the experimental stability annotation; entity mutations carry the full
-// actor flag set plus --container, while authenticated updates and reads carry
+// actor flag set and take <container> first, while authenticated updates and reads carry
 // no caller-supplied actor flags. Catches a new verb silently dropping the
 // pattern.
 func TestOpModelStructuralConformance(t *testing.T) {
 	t.Parallel()
 
 	mutationLeaves := map[string]bool{
-		"observations edit":              true,
-		"actions edit":                   true,
-		"claims recovery":                true,
-		"observations create":            true,
-		"observations promote":           true,
-		"observations promote-to-action": true,
-		"observations verify":            true,
-		"claims create":                  true,
-		"claims assess":                  true,
-		"actions create":                 true,
-		"actions coordinate":             true,
-		"evidence-links attach":          true,
-		"evidence-links verify":          true,
-		"evidence-links withdraw":        true,
-		"entities edit-text":             true,
+		"containers update-observation":            true,
+		"containers update-action":                 true,
+		"containers update-claim-recovery":         true,
+		"containers create-observation":            true,
+		"containers promote-observation":           true,
+		"containers promote-observation-to-action": true,
+		"containers verify-observation":            true,
+		"containers create-claim":                  true,
+		"containers assess-claim":                  true,
+		"containers create-action":                 true,
+		"containers coordinate-action":             true,
+		"containers attach-evidence-link":          true,
+		"containers verify-evidence-link":          true,
+		"containers withdraw-evidence-link":        true,
+		"containers update-entity-text":            true,
 	}
 	readLeaves := map[string]bool{
 		"containers get":         true,
@@ -60,7 +60,10 @@ func TestOpModelStructuralConformance(t *testing.T) {
 
 				switch {
 				case mutationLeaves[path]:
-					for _, flag := range []string{"container", "actor-kind", "actor-id", "actor-name"} {
+					if args := strings.Fields(leaf.Use); len(args) < 2 || args[1] != "<container>" {
+						t.Errorf("mutation leaf must take <container> as its first argument, got %q", leaf.Use)
+					}
+					for _, flag := range []string{"actor-kind", "actor-id", "actor-name"} {
 						if leaf.Flags().Lookup(flag) == nil {
 							t.Errorf("mutation leaf missing --%s", flag)
 						}

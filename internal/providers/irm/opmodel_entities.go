@@ -1,6 +1,6 @@
-// opmodel_entities.go; `gcx irm opmodel entities edit-text`: reword an
-// observation, claim, or action. The verb is edit-text, not update: only the
-// text is writable, and the event stream preserves the previous wording.
+// opmodel_entities.go; `gcx irm opmodel containers update-entity-text`: reword an
+// observation, claim, or action. Only the text changes, and the event stream
+// preserves the previous wording.
 package irm
 
 import (
@@ -11,15 +11,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newOpModelEntitiesCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "entities",
-		Short: "Operations addressing any entity kind by id.",
-	}
-	cmd.AddCommand(newEntitiesEditTextCmd(loader, shared))
-	return cmd
-}
-
 type entitiesEditTextOpts struct {
 	IO        cmdio.Options
 	Container string
@@ -28,14 +19,13 @@ type entitiesEditTextOpts struct {
 }
 
 func (o *entitiesEditTextOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Text, "text", "", "The new wording (required)")
 	o.Actor.bind(flags)
 	setupOpModelMutationIO(&o.IO, flags)
 }
 
 func (o *entitiesEditTextOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("text", o.Text); err != nil {
@@ -47,20 +37,21 @@ func (o *entitiesEditTextOpts) Validate() error {
 func newEntitiesEditTextCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &entitiesEditTextOpts{}
 	cmd := &cobra.Command{
-		Use:   "edit-text <entity-id>",
+		Use:   "update-entity-text <container> <entity-id>",
 		Short: "Reword an observation, claim, or action (history stays in the stream).",
 		Long: `Reword an entity: an observation, a claim, or an action, addressed by
 id. This changes only wording and preserves optional content fields.
 The previous wording stays in the event stream.`,
-		Example: `  gcx irm opmodel entities edit-text obs-42 --container INC-123 \
+		Example: `  gcx irm opmodel containers update-entity-text INC-123 obs-42 \
     --text "p99 latency doubled at 14:02 UTC (was: 14:02 local)" \
     --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runEntitiesEditText(cmd, args[0], opts, loader, shared)
+			return runEntitiesEditText(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -81,7 +72,7 @@ func runEntitiesEditText(cmd *cobra.Command, entityID string, opts *entitiesEdit
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("edit-text", opts.Container,
+		return newOpModelMutation("update-entity-text", opts.Container,
 			opModelTarget{Kind: "entity", ID: entityID},
 			nil, resp.Revision), nil
 	})

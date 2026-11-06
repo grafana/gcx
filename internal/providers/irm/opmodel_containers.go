@@ -16,11 +16,26 @@ import (
 func newOpModelContainersCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "containers",
-		Short: "Read a container's folded state and event stream.",
+		Short: "Read and change a container's operational model.",
 	}
 	cmd.AddCommand(
 		newContainersGetCmd(loader, shared),
 		newContainersListEventsCmd(loader, shared),
+		newObservationsCreateCmd(loader, shared),
+		newObservationsPromoteCmd(loader, shared),
+		newObservationsPromoteToActionCmd(loader, shared),
+		newObservationsVerifyCmd(loader, shared),
+		newObservationsEditCmd(loader, shared),
+		newClaimsCreateCmd(loader, shared),
+		newClaimsAssessCmd(loader, shared),
+		newClaimsRecoveryCmd(loader, shared),
+		newActionsCreateCmd(loader, shared),
+		newActionsCoordinateCmd(loader, shared),
+		newActionsEditCmd(loader, shared),
+		newEntitiesEditTextCmd(loader, shared),
+		newEvidenceLinksAttachCmd(loader, shared),
+		newEvidenceLinksVerifyCmd(loader, shared),
+		newEvidenceLinksWithdrawCmd(loader, shared),
 	)
 	return cmd
 }

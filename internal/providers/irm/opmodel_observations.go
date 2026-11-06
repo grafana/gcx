@@ -1,6 +1,7 @@
-// opmodel_observations.go; `gcx irm opmodel observations` leaves: create,
-// promote (versioned observation origin), promote-to-action (versioned
-// action origin), verify (fact-axis verification).
+// opmodel_observations.go; `gcx irm opmodel containers create-observation`,
+// `promote-observation` (versioned observation origin),
+// `promote-observation-to-action` (versioned action origin), and
+// `verify-observation` (fact-axis verification).
 package irm
 
 import (
@@ -11,23 +12,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newOpModelObservationsCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "observations",
-		Short: "Record and qualify things someone noticed.",
-	}
-	cmd.AddCommand(
-		newObservationsCreateCmd(loader, shared),
-		newObservationsEditCmd(loader, shared),
-		newObservationsPromoteCmd(loader, shared),
-		newObservationsPromoteToActionCmd(loader, shared),
-		newObservationsVerifyCmd(loader, shared),
-	)
-	return cmd
-}
-
 // ---------------------------------------------------------------------------
-// observations create
+// containers create-observation
 // ---------------------------------------------------------------------------
 
 type obsCreateOpts struct {
@@ -41,7 +27,6 @@ type obsCreateOpts struct {
 
 func (o *obsCreateOpts) setup(flags *pflag.FlagSet) {
 	o.Context.bind(flags)
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Text, "text", "", "What was noticed (required)")
 	flags.StringVar(&o.SourceRef, "source-ref", "", "Where it came from; a Slack link, alert, dashboard URL (optional; empty means no source recorded)")
 	o.Actor.bind(flags)
@@ -52,7 +37,7 @@ func (o *obsCreateOpts) Validate() error {
 	if err := o.Context.validate(); err != nil {
 		return err
 	}
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("text", o.Text); err != nil {
@@ -64,15 +49,16 @@ func (o *obsCreateOpts) Validate() error {
 func newObservationsCreateCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &obsCreateOpts{}
 	cmd := &cobra.Command{
-		Use:   "create",
+		Use:   "create-observation <container>",
 		Short: "Record something noticed (no lifecycle; starts unverified).",
 		Long: `Record an observation: raw material with no lifecycle. It carries a
 fact-axis verification ("is this true"), starting unverified.`,
-		Example: `  gcx irm opmodel observations create --container INC-123 \
+		Example: `  gcx irm opmodel containers create-observation INC-123 \
     --text "p99 latency doubled at 14:02" --source-ref "https://…/panel" \
     --actor-kind agent --actor-id claude-code`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -99,14 +85,14 @@ func runObservationsCreate(cmd *cobra.Command, opts *obsCreateOpts, loader OpMod
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("create", opts.Container,
+		return newOpModelMutation("create-observation", opts.Container,
 			opModelTarget{Kind: "observation", ID: resp.ObservationID},
 			nil, resp.Revision), nil
 	})
 }
 
 // ---------------------------------------------------------------------------
-// observations promote
+// containers promote-observation
 // ---------------------------------------------------------------------------
 
 type obsPromoteOpts struct {
@@ -118,7 +104,6 @@ type obsPromoteOpts struct {
 }
 
 func (o *obsPromoteOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.To, "to", "", "Claim type to promote into: impact or hypothesis (required)")
 	flags.StringVar(&o.Text, "text", "", "Claim wording (optional; empty reuses the observation's text)")
 	o.Actor.bind(flags)
@@ -126,7 +111,7 @@ func (o *obsPromoteOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *obsPromoteOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("to", o.To); err != nil {
@@ -141,20 +126,21 @@ func (o *obsPromoteOpts) Validate() error {
 func newObservationsPromoteCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &obsPromoteOpts{}
 	cmd := &cobra.Command{
-		Use:   "promote <observation-id>",
+		Use:   "promote-observation <container> <observation-id>",
 		Short: "Derive a claim with a versioned observation origin.",
 		Long: `Derive a claim from the observation's current content version at write time.
 Promotion records historical origin only. It does not consume the observation,
 create evidence, or transfer verification. Attach evidence separately if intended.`,
-		Example: `  gcx irm opmodel observations promote obs-42 --container INC-123 \
+		Example: `  gcx irm opmodel containers promote-observation INC-123 obs-42 \
     --to hypothesis \
     --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runObservationsPromote(cmd, args[0], opts, loader, shared)
+			return runObservationsPromote(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -176,7 +162,7 @@ func runObservationsPromote(cmd *cobra.Command, observationID string, opts *obsP
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("promote", opts.Container,
+		return newOpModelMutation("promote-observation", opts.Container,
 			opModelTarget{Kind: "observation", ID: observationID},
 			map[string]string{
 				"claim_id": resp.ClaimID,
@@ -185,7 +171,7 @@ func runObservationsPromote(cmd *cobra.Command, observationID string, opts *obsP
 }
 
 // ---------------------------------------------------------------------------
-// observations promote-to-action
+// containers promote-observation-to-action
 // ---------------------------------------------------------------------------
 
 type obsPromoteToActionOpts struct {
@@ -196,14 +182,13 @@ type obsPromoteToActionOpts struct {
 }
 
 func (o *obsPromoteToActionOpts) setup(flags *pflag.FlagSet) {
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Text, "text", "", "Action wording (optional; empty reuses the observation's text)")
 	o.Actor.bind(flags)
 	setupOpModelMutationIO(&o.IO, flags)
 }
 
 func (o *obsPromoteToActionOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	return o.Actor.validate()
@@ -212,18 +197,19 @@ func (o *obsPromoteToActionOpts) Validate() error {
 func newObservationsPromoteToActionCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &obsPromoteToActionOpts{}
 	cmd := &cobra.Command{
-		Use:   "promote-to-action <observation-id>",
+		Use:   "promote-observation-to-action <container> <observation-id>",
 		Short: "Derive an action with a versioned observation origin.",
 		Long: `Derive an action from the observation's current content version at write time.
 No evidence or verification is transferred and the observation remains unchanged.`,
-		Example: `  gcx irm opmodel observations promote-to-action obs-42 --container INC-123 \
+		Example: `  gcx irm opmodel containers promote-observation-to-action INC-123 obs-42 \
     --text "roll back the 14:00 deploy" --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runObservationsPromoteToAction(cmd, args[0], opts, loader, shared)
+			return runObservationsPromoteToAction(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -244,7 +230,7 @@ func runObservationsPromoteToAction(cmd *cobra.Command, observationID string, op
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("promote-to-action", opts.Container,
+		return newOpModelMutation("promote-observation-to-action", opts.Container,
 			opModelTarget{Kind: "observation", ID: observationID},
 			map[string]string{
 				"action_id": resp.ActionID,
@@ -254,7 +240,7 @@ func runObservationsPromoteToAction(cmd *cobra.Command, observationID string, op
 }
 
 // ---------------------------------------------------------------------------
-// observations verify
+// containers verify-observation
 // ---------------------------------------------------------------------------
 
 type obsVerifyOpts struct {
@@ -267,14 +253,13 @@ type obsVerifyOpts struct {
 
 func (o *obsVerifyOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Reason, "reason", "", "Reason for this judgment (optional)")
-	bindOpModelContainerFlag(flags, &o.Container)
 	flags.StringVar(&o.Verification, "verification", "", "Fact-axis verification: unverified, human_verified, agent_corroborated, or disputed (required). Only agent_corroborated may be set by an agent")
 	o.Actor.bind(flags)
 	setupOpModelMutationIO(&o.IO, flags)
 }
 
 func (o *obsVerifyOpts) Validate() error {
-	if err := requireOpModelFlag("container", o.Container); err != nil {
+	if err := requireOpModelArg("container", o.Container); err != nil {
 		return err
 	}
 	if err := requireOpModelFlag("verification", o.Verification); err != nil {
@@ -289,19 +274,20 @@ func (o *obsVerifyOpts) Validate() error {
 func newObservationsVerifyCmd(loader OpModelClientLoader, shared *opModelSharedOpts) *cobra.Command {
 	opts := &obsVerifyOpts{}
 	cmd := &cobra.Command{
-		Use:   "verify <observation-id>",
+		Use:   "verify-observation <container> <observation-id>",
 		Short: "Set the fact-axis verification on an observation.",
 		Long: `Set the fact-axis verification ("is this true") on an observation.
 human_verified and disputed require a human actor; agent_corroborated is the
 weaker, agent-producible signal.`,
-		Example: `  gcx irm opmodel observations verify obs-42 --container INC-123 \
+		Example: `  gcx irm opmodel containers verify-observation INC-123 obs-42 \
     --verification human_verified --actor-kind human --actor-id deric`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Container = args[0]
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			return runObservationsVerify(cmd, args[0], opts, loader, shared)
+			return runObservationsVerify(cmd, args[1], opts, loader, shared)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -323,7 +309,7 @@ func runObservationsVerify(cmd *cobra.Command, observationID string, opts *obsVe
 		if err != nil {
 			return opModelMutation{}, err
 		}
-		return newOpModelMutation("verify", opts.Container,
+		return newOpModelMutation("verify-observation", opts.Container,
 			opModelTarget{Kind: "observation", ID: observationID},
 			map[string]string{"verification": opts.Verification},
 			resp.Revision), nil

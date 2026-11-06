@@ -82,7 +82,7 @@ func mapOpModelHTTPError(resp *http.Response, endpoint string) error {
 			ExitCode: &exit1,
 			Suggestions: []string{
 				"List the container's current entities and ids: gcx irm opmodel containers get <container>",
-				"Ids are container-scoped: confirm --container matches where the entity was created",
+				"Ids are container-scoped: confirm <container> matches where the entity was created",
 				"A container with no entities yet does not exist to read",
 			},
 		}

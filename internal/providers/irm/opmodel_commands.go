@@ -46,14 +46,7 @@ context.`,
 	}
 	shared.bind(cmd.PersistentFlags())
 
-	cmd.AddCommand(
-		newOpModelObservationsCmd(loader, shared),
-		newOpModelClaimsCmd(loader, shared),
-		newOpModelActionsCmd(loader, shared),
-		newOpModelEvidenceLinksCmd(loader, shared),
-		newOpModelEntitiesCmd(loader, shared),
-		newOpModelContainersCmd(loader, shared),
-	)
+	cmd.AddCommand(newOpModelContainersCmd(loader, shared))
 	return markExperimental(cmd)
 }
 
@@ -107,12 +100,6 @@ func (o *opModelActorOpts) validate() error {
 // actor renders the flag set as the API's actor body.
 func (o *opModelActorOpts) actor() opModelActorInput {
 	return opModelActorInput{Kind: o.Kind, ID: o.ID, DisplayName: o.Name}
-}
-
-// bindOpModelContainerFlag declares --container. Every mutation leaf takes it,
-// so the flag and its help live here once rather than in twelve copies.
-func bindOpModelContainerFlag(flags *pflag.FlagSet, target *string) {
-	flags.StringVar(target, "container", "", "Container ref; an alert-group id or incident id (required)")
 }
 
 // requireOpModelFlag rejects a missing, explicitly-empty, or whitespace-only
