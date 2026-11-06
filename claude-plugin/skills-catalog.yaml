@@ -27,7 +27,7 @@ skills:
     status: active
   investigate-alert:
     status: active
-  load-opmodel-context:
+  load-op-context:
     status: active
     explicit_install: true
   manage-dashboards:

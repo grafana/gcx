@@ -22,7 +22,7 @@ main-agent validation call is needed.
 
 Read the current model after the message is sent or explicitly skipped. The
 session may never have loaded it; sharing can come first. If this session holds
-a complete model from an earlier `load-opmodel-context` pull or share for the
+a complete model from an earlier `load-op-context` pull or share for the
 same context, stack and Incident, refresh it from its consumed revision with
 that skill's `list-events` procedure. Otherwise, or if that procedure is not
 available, read one full snapshot:

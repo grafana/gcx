@@ -1,5 +1,5 @@
 ---
-name: load-opmodel-context
+name: load-op-context
 description: >-
   Internal to Grafana Labs; run only when the user invokes it by name.
   Catch up on investigation work others have shared about an incident by loading
