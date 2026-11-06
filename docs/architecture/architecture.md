@@ -82,3 +82,9 @@ See [configuration](config-system.md), [authentication](auth-system.md), and [lo
 Using Kubernetes client libraries avoids duplicating discovery, pagination, and API error machinery at the cost of a substantial dependency graph. Direct query clients bypass that machinery while reusing authentication. Unified datasource-query requests share transport and data-frame types instead of duplicating fallback and response-limit logic.
 
 See [client/API layer](client-api-layer.md) for transport construction and error translation, [CLI layer](cli-layer.md) for command lifecycle and output, and [project structure](project-structure.md) for module and build boundaries.
+
+## IRM ordering
+
+OnCall routes and escalation steps use dedicated `update-position` commands.
+Their resource manifests do not carry a position. The backend does not return the current order.
+The mutation result records the requested index. The backend applies that index or rejects it.
