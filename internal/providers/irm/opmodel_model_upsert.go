@@ -160,6 +160,7 @@ func reconcileModel(draft modelDraft, index modelIndex) (upsertPlan, error) {
 		}
 	}
 	seen := map[entityKey]string{}
+	owners := map[string]string{}
 	for _, e := range slices.Concat(promptable, actions) {
 		key, resolved := draftKey(e, plan.known)
 		if other, dup := seen[key]; dup {
@@ -175,6 +176,12 @@ func reconcileModel(draft modelDraft, index modelIndex) (upsertPlan, error) {
 		case resolved && match:
 			plan.known[e.Ref] = id
 			plan.reused[e.Ref] = id
+		}
+		if id, ok := plan.known[e.Ref]; ok {
+			if other, taken := owners[id]; taken {
+				return upsertPlan{}, invalidModelDraft(fmt.Sprintf("%s and %s both resolve to %s; merge them", other, e.Ref, id))
+			}
+			owners[id] = e.Ref
 		}
 	}
 
@@ -274,6 +281,12 @@ func (p upsertPlan) execute(ctx context.Context, api OpModelAPI, container strin
 	ids := r.Entities
 	for _, s := range p.steps {
 		id, revision, err := runUpsertStep(ctx, api, container, actor, s, ids)
+		if err == nil && id == "" {
+			err = errors.New("the server returned no id")
+		}
+		if err == nil && s.action == stepPromoteToAction && id == ids[s.entity.PromptedBy] {
+			err = errors.New("the server returned the observation id as the promoted action id")
+		}
 		if err != nil {
 			stoppedAt := s.describe()
 			r.Status, r.StoppedAt, r.Error = "stopped", &stoppedAt, stepErrorText(err)
@@ -436,7 +449,9 @@ func runContainersUpsertModel(cmd *cobra.Command, opts *containersUpsertModelOpt
 		if writeErr != nil {
 			return fail.NewEmittedError(fail.ExitPartialFailure, writeErr)
 		}
-		cmdio.EmitHint(cmd.ErrOrStderr(), "Inspect the saved model", "gcx irm opmodel containers get "+opts.Container)
+		if receipt.Revision != nil {
+			cmdio.EmitHint(cmd.ErrOrStderr(), "Inspect the saved model", "gcx irm opmodel containers get "+opts.Container)
+		}
 		return nil
 	})
 }

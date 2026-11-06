@@ -62,7 +62,8 @@ entities repeat it exactly, it reuses one of them. It skips a link already
 active between the same entities with the same stance; links already recorded
 need no edit. It rejects the draft before any write if an `existing_id` is not
 in the current model or has the wrong type, if two draft entities repeat each
-other, or if a draft link repeats a withdrawn link. Remove a link that repeats a
+other or resolve to the same existing entity, or if a draft link repeats a
+withdrawn link. Remove a link that repeats a
 withdrawn one; restoring a withdrawn interpretation is the user's call, not part
 of sharing. Keep new links to reused entities. If every item already exists, the
 save is complete with no model mutations; report that outcome.
@@ -78,7 +79,7 @@ Edit the draft file in place. Find an entity by its `ref` and a link by its
 its `existing_id`. When you remove or merge a ref, update or remove the links and
 `prompted_by` values that name it. Then rerun the save command below with
 `--dry-run`, which checks the edited draft against the current model and writes
-nothing. A usage error (exit 2) lists every violation with its JSON path.
+nothing. A usage error (exit 2) lists the violations, with JSON paths where it can.
 
 ## Save once
 
