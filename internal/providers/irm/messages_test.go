@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -59,6 +60,10 @@ func TestIncidentShareCommand(t *testing.T) {
 		{name: "missing body", args: []string{"INC-1"}, invalid: true},
 		{name: "agent name only", args: []string{"INC-1", "--body", "finding", "--drafted-by-agent-name", "Codex"}, invalid: true},
 		{name: "invalid timeout", args: []string{"INC-1", "--body", "finding", "--timeout", "0s"}, invalid: true},
+		{name: "blank see", args: []string{"INC-1", "--body", "finding", "--see", " "}, invalid: true},
+		{name: "see prefix", args: []string{"INC-1", "--body", "finding", "--see", "See: dashboard:db"}, invalid: true},
+		{name: "indented lowercase see prefix", args: []string{"INC-1", "--body", "finding", "--see", "  see:dashboard:db"}, invalid: true},
+		{name: "see prefix on dry run", args: []string{"INC-1", "--body", "finding", "--see", "SEE: dashboard:db", "--dry-run"}, invalid: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setAgentMode(t, true)
@@ -101,11 +106,48 @@ func TestIncidentShareCommand(t *testing.T) {
 }
 
 func TestIncidentShareRejectsCredentialsBeforeLoadingClient(t *testing.T) {
-	authErr := errors.New("sharing requires an OAuth user login")
-	loader := &fakeOpModelLoader{op: &fakeOpModel{}, sharingAuthErr: authErr}
-	cmd, stdout, _ := newOpModelTestCmd()
-	err := runIncidentShare(cmd, "INC-1", &messageShareOpts{Body: "finding"}, loader, testSharedOpts())
-	if !errors.Is(err, authErr) || loader.loads != 0 || stdout.Len() != 0 {
-		t.Fatalf("expected rejection before client loading, got err=%v loads=%d stdout=%s", err, loader.loads, stdout)
+	for _, dryRun := range []bool{false, true} {
+		authErr := errors.New("sharing requires an OAuth user login")
+		loader := &fakeOpModelLoader{op: &fakeOpModel{}, sharingAuthErr: authErr}
+		cmd, stdout, _ := newOpModelTestCmd()
+		err := runIncidentShare(cmd, "INC-1", &messageShareOpts{Body: "finding", DryRun: dryRun}, loader, testSharedOpts())
+		if !errors.Is(err, authErr) || loader.loads != 0 || stdout.Len() != 0 {
+			t.Fatalf("dry-run=%v: expected rejection before client loading, got err=%v loads=%d stdout=%s", dryRun, err, loader.loads, stdout)
+		}
+	}
+}
+
+func TestIncidentShareDryRunPreviewsWithoutSending(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want map[string]any
+	}{
+		{
+			name: "with see",
+			args: []string{"INC-1", "--body", "Database connections are exhausted", "--see", "dashboard:db", "--dry-run"},
+			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "incident_id": "INC-1", "body": "Database connections are exhausted", "see": "dashboard:db", "preview": "Database connections are exhausted\nSee: dashboard:db"},
+		},
+		{
+			name: "without see",
+			args: []string{"INC-1", "--body", "The service has recovered", "--dry-run"},
+			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "incident_id": "INC-1", "body": "The service has recovered", "preview": "The service has recovered"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setAgentMode(t, true)
+			api := &fakeOpModel{}
+			loader := &fakeOpModelLoader{op: api}
+			stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newIncidentShareCmd(loader) }, tc.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if api.calls != 0 || loader.loads != 0 {
+				t.Fatalf("dry run reached the message API: loads=%d calls=%d", loader.loads, api.calls)
+			}
+			if got := decodeSingleJSONValue(t, stdout); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("preview = %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
