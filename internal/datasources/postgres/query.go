@@ -19,7 +19,7 @@ const (
 )
 
 type queryOpts struct {
-	dsquery.SharedOpts
+	dsquery.SQLQueryOpts
 
 	Datasource string
 	Limit      int
@@ -36,7 +36,7 @@ func (opts *queryOpts) Validate() error {
 	if opts.Limit < 0 {
 		return fmt.Errorf("--limit must be >= 0, got %d", opts.Limit)
 	}
-	return opts.SharedOpts.Validate()
+	return opts.SQLQueryOpts.Validate()
 }
 
 // QueryCmd returns the `query` subcommand for a PostgreSQL datasource parent.
@@ -48,7 +48,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a SQL query against a PostgreSQL datasource",
 		Long: `Execute a SQL query against a PostgreSQL datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --filename. Use --filename - to read SQL from stdin.
+File input executes verbatim without the default row limit and cannot be combined
+with --limit. Put any row limit in the SQL file itself.
 Datasource is resolved from -d flag or datasources.postgres in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 		Example: `
@@ -61,18 +64,25 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
   # Output as JSON
   gcx datasources postgres query -d UID 'SELECT 1' -o json
 
+  # Read a long query from a file
+  gcx datasources postgres query -d UID --filename ./query.sql -o json
+
   # Disable limit enforcement
   gcx datasources postgres query 'SELECT * FROM big_table' --limit 0`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.ValidateInputFlags(cmd); err != nil {
+				return err
+			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}
 
-			expr, err := opts.ResolveExpr(args, 0)
+			expr, err := opts.ResolveExpr(cmd, args, 0)
 			if err != nil {
 				return err
 			}
+			opts.Limit = opts.RowLimit(opts.Limit)
 
 			ctx := cmd.Context()
 

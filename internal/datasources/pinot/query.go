@@ -15,7 +15,7 @@ import (
 )
 
 type queryOpts struct {
-	dsquery.SharedOpts
+	dsquery.SQLQueryOpts
 
 	Datasource string
 	Table      string
@@ -34,7 +34,7 @@ func (opts *queryOpts) Validate() error {
 	if opts.Limit < 0 {
 		return fmt.Errorf("--limit must be >= 0, got %d", opts.Limit)
 	}
-	return opts.SharedOpts.Validate()
+	return opts.SQLQueryOpts.Validate()
 }
 
 // QueryCmd returns the `query` subcommand for a Pinot datasource parent.
@@ -47,7 +47,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a PinotQL query against a StarTree Pinot datasource",
 		Long: `Execute a PinotQL query against a StarTree Pinot datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --filename. Use --filename - to read SQL from stdin.
+File input executes verbatim without the default row limit and cannot be combined
+with --limit. Put any row limit in the SQL file itself.
 Datasource is resolved from -d flag or datasources.pinot in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
 
@@ -119,17 +122,24 @@ open it in your browser after the query succeeds.`,
   gcx datasources pinot query -d UID 'SELECT * FROM events' --limit 0
 
   # SQL with no extractable table
-  gcx datasources pinot query -d UID --table events 'SELECT 1'`,
+  gcx datasources pinot query -d UID --table events 'SELECT 1'
+
+  # Execute SQL from a file without rewriting it
+  gcx datasources pinot query -d UID -f ./query.sql -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.ValidateInputFlags(cmd); err != nil {
+				return err
+			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}
 
-			expr, err := opts.ResolveExpr(args, 0)
+			expr, err := opts.ResolveExpr(cmd, args, 0)
 			if err != nil {
 				return err
 			}
+			opts.Limit = opts.RowLimit(opts.Limit)
 
 			sql, capped := pinot.EnforceLimit(expr, opts.Limit, pinot.MaxLimit)
 			warnLimitEnforcement(cmd.ErrOrStderr(), expr, sql, capped, opts.Limit, cmd.Flags().Changed("limit"))
