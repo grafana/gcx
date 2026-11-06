@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -282,6 +283,21 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			inv, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
+				var statusErr *gcxerrors.HTTPStatusError
+				if mode.SupportsV2() && errors.As(err, &statusErr) &&
+					(statusErr.Status == http.StatusNotFound || statusErr.Status == http.StatusInternalServerError) {
+					// Neither a v2 nor a legacy investigation. The legacy
+					// endpoint answers an unknown ID with a bare 500, so say
+					// what was probably passed.
+					return gcxerrors.DetailedError{
+						Summary: gcxerrors.SummaryResourceNotFound,
+						Details: fmt.Sprintf("No investigation %q: %s.", args[0], idKindsHint),
+						Parent:  err,
+						Suggestions: []string{
+							"List investigations and use the `id` field: gcx assistant investigations list -o json",
+						},
+					}
+				}
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), inv)

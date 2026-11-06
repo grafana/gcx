@@ -361,3 +361,43 @@ func TestGetCommand_V2NilSnapshotDoesNotPanic(t *testing.T) {
 	got := runGetJSON(t, newGetLoader(t, handler), "inv-1")
 	assert.Equal(t, map[string]any{"chatId": "chat-1"}, got)
 }
+
+// TestGetCommand_UnknownIDHint verifies that an ID matching neither a v2 nor
+// a legacy investigation (typically the chat ID from an Assistant URL) fails
+// with an error naming both ID kinds instead of the bare legacy 500.
+func TestGetCommand_UnknownIDHint(t *testing.T) {
+	t.Setenv("GCX_ASSISTANT_API_VERSION", "v2")
+	t.Setenv("GCX_AGENT_MODE", "false")
+
+	tests := []struct {
+		name   string
+		args   []string
+		legacy int
+	}{
+		{name: "get: legacy 500 for chat id", args: []string{"get", "chat-1"}, legacy: http.StatusInternalServerError},
+		{name: "get: legacy 404 for chat id", args: []string{"get", "chat-1"}, legacy: http.StatusNotFound},
+		{name: "get-narrative: resolve 404", args: []string{"get-narrative", "chat-1"}},
+		{name: "list-evidence: resolve 404", args: []string{"list-evidence", "chat-1"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case v1InvestigationsPath + "/chat-1":
+					w.WriteHeader(tc.legacy)
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+			cmd := investigations.Commands(newGetLoader(t, handler))
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs(tc.args)
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "investigation ID")
+			assert.Contains(t, err.Error(), "chat ID")
+			assert.Contains(t, err.Error(), "chatId")
+		})
+	}
+}

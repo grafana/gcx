@@ -160,7 +160,10 @@ type ContentBlock struct {
 	Thinking     string          `json:"thinking,omitempty"`
 	ArtifactType string          `json:"artifactType,omitempty"`
 	Panel        json.RawMessage `json:"panel,omitempty"`
-	raw          json.RawMessage
+	// Raw carries an aisdk message part gcx has no mapping for, unchanged.
+	// Legacy blocks never set it.
+	Raw json.RawMessage `json:"raw,omitempty"`
+	raw json.RawMessage
 }
 
 // UnmarshalJSON keeps the received block for lossless transcript output.
@@ -170,10 +173,15 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
+	decoded.Raw = nil // Raw marks a converted aisdk part, never a received block.
 	*b = ContentBlock(decoded)
 	b.raw = append(json.RawMessage(nil), data...)
 	return nil
 }
+
+// Received reports whether the block was decoded from a server response
+// rather than built by gcx.
+func (b ContentBlock) Received() bool { return b.raw != nil }
 
 // MarshalJSON preserves received fields, including unknown and explicit empty values.
 // Blocks constructed locally use the typed fields.
