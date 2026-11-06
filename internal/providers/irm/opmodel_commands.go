@@ -48,7 +48,7 @@ type opModelSharedOpts struct {
 }
 
 func (o *opModelSharedOpts) bind(flags *pflag.FlagSet) {
-	flags.DurationVar(&o.Timeout, "timeout", defaultOpModelTimeout, "Deadline for each individual request (e.g. 5s, 30s). shares publish issues one request per entity, each with its own deadline")
+	flags.DurationVar(&o.Timeout, "timeout", defaultOpModelTimeout, "Deadline for each individual request (e.g. 5s, 30s)")
 }
 
 func (o *opModelSharedOpts) validate() error {

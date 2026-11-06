@@ -84,7 +84,6 @@
   "gcx irm opmodel containers verify-evidence-link",
   "gcx irm opmodel containers verify-observation",
   "gcx irm opmodel containers withdraw-evidence-link",
-  "gcx irm shares publish",
   "gcx k6 auth token",
   "gcx k6 test-run emit",
   "gcx k6 test-run status",

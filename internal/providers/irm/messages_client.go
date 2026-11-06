@@ -20,11 +20,6 @@ type SharingClientLoader interface {
 	RequireSharingOAuth(ctx context.Context) error
 }
 
-type ShareClientLoader interface {
-	OpModelClientLoader
-	SharingClientLoader
-}
-
 type messageAgent struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name,omitempty"`

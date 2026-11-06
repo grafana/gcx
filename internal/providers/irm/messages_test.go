@@ -4,6 +4,7 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -96,5 +97,15 @@ func TestIncidentShareCommand(t *testing.T) {
 				t.Error("message has model revision")
 			}
 		})
+	}
+}
+
+func TestIncidentShareRejectsCredentialsBeforeLoadingClient(t *testing.T) {
+	authErr := errors.New("sharing requires an OAuth user login")
+	loader := &fakeOpModelLoader{op: &fakeOpModel{}, sharingAuthErr: authErr}
+	cmd, stdout, _ := newOpModelTestCmd()
+	err := runIncidentShare(cmd, "INC-1", &messageShareOpts{Body: "finding"}, loader, testSharedOpts())
+	if !errors.Is(err, authErr) || loader.loads != 0 || stdout.Len() != 0 {
+		t.Fatalf("expected rejection before client loading, got err=%v loads=%d stdout=%s", err, loader.loads, stdout)
 	}
 }

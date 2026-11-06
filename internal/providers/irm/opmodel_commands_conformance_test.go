@@ -32,63 +32,43 @@ func TestOpModelStructuralConformance(t *testing.T) {
 		"containers get":         true,
 		"containers list-events": true,
 	}
-	compositeLeaves := map[string]bool{
-		"publish": true,
-	}
 
 	seen := map[string]bool{}
-	for _, root := range []*cobra.Command{irm.NewTestOpModelCmd(), irm.NewTestSharesCmd()} {
-		visitRootLeaves(root, func(path string, leaf *cobra.Command) {
-			seen[path] = true
-			t.Run(root.Name()+"/"+path, func(t *testing.T) {
-				t.Parallel()
-				if leaf.Args == nil {
-					t.Error("every leaf must declare an Args validator")
-				}
-				if leaf.Annotations["agent.stability"] != "experimental" {
-					t.Error("every opmodel-family leaf must be marked experimental")
-				}
-				if leaf.Flags().Lookup("output") == nil {
-					t.Error("every leaf must route output through the codec system")
-				}
+	visitRootLeaves(irm.NewTestOpModelCmd(), func(path string, leaf *cobra.Command) {
+		seen[path] = true
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			if leaf.Args == nil {
+				t.Error("every leaf must declare an Args validator")
+			}
+			if leaf.Annotations["agent.stability"] != "experimental" {
+				t.Error("every opmodel-family leaf must be marked experimental")
+			}
+			if leaf.Flags().Lookup("output") == nil {
+				t.Error("every leaf must route output through the codec system")
+			}
 
-				switch {
-				case mutationLeaves[path]:
-					if args := strings.Fields(leaf.Use); len(args) < 2 || args[1] != "<container>" {
-						t.Errorf("mutation leaf must take <container> as its first argument, got %q", leaf.Use)
-					}
-					for _, flag := range []string{"actor-kind", "actor-id", "actor-name"} {
-						if leaf.Flags().Lookup(flag) == nil {
-							t.Errorf("mutation leaf missing --%s", flag)
-						}
-					}
-				case readLeaves[path]:
-					for _, flag := range []string{"actor-kind", "actor-id", "actor-name"} {
-						if leaf.Flags().Lookup(flag) != nil {
-							t.Errorf("read leaf must not expose --%s", flag)
-						}
-					}
-				case compositeLeaves[path]:
-					flags := []string{"drafted-by-agent", "drafted-by-agent-name"}
-					if path == "publish" {
-						flags = []string{"filename", "allow-uncurated", "agent-id", "agent-name"}
-					}
-					for _, flag := range flags {
-						if leaf.Flags().Lookup(flag) == nil {
-							t.Errorf("%s leaf missing --%s", path, flag)
-						}
-					}
-					for _, flag := range []string{"actor-kind", "actor-id", "actor-name", "human"} {
-						if leaf.Flags().Lookup(flag) != nil {
-							t.Errorf("%s leaf must not expose --%s", path, flag)
-						}
-					}
-				default:
-					t.Errorf("leaf %q is not classified as mutation, read, or composite; classify it", path)
+			switch {
+			case mutationLeaves[path]:
+				if args := strings.Fields(leaf.Use); len(args) < 2 || args[1] != "<container>" {
+					t.Errorf("mutation leaf must take <container> as its first argument, got %q", leaf.Use)
 				}
-			})
+				for _, flag := range []string{"actor-kind", "actor-id", "actor-name"} {
+					if leaf.Flags().Lookup(flag) == nil {
+						t.Errorf("mutation leaf missing --%s", flag)
+					}
+				}
+			case readLeaves[path]:
+				for _, flag := range []string{"actor-kind", "actor-id", "actor-name"} {
+					if leaf.Flags().Lookup(flag) != nil {
+						t.Errorf("read leaf must not expose --%s", flag)
+					}
+				}
+			default:
+				t.Errorf("leaf %q is not classified as mutation or read; classify it", path)
+			}
 		})
-	}
+	})
 
 	for path := range mutationLeaves {
 		if !seen[path] {
@@ -98,11 +78,6 @@ func TestOpModelStructuralConformance(t *testing.T) {
 	for path := range readLeaves {
 		if !seen[path] {
 			t.Errorf("read leaf %q missing from the tree", path)
-		}
-	}
-	for path := range compositeLeaves {
-		if !seen[path] {
-			t.Errorf("composite leaf %q missing from the tree", path)
 		}
 	}
 }

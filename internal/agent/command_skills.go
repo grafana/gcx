@@ -23,7 +23,6 @@ var commandSkills = map[string][]string{
 	"gcx alert ruler":         {},
 	"gcx irm":                 {"oncall-triage"},
 	"gcx irm opmodel":         {},
-	"gcx irm shares":          {},
 	"gcx irm incidents share": {},
 	"gcx logs":                {"debug-with-grafana"},
 	"gcx metrics":             {"debug-with-grafana"},

@@ -2,11 +2,8 @@
 package irm
 
 import (
-	"encoding/json"
-	"errors"
 	"testing"
 
-	fail "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 )
 
@@ -76,30 +73,5 @@ func TestContainersGetAgentModeOutputContract(t *testing.T) {
 	}
 	if _, ok := doc["observations"].([]any); !ok {
 		t.Errorf("observations must serialize as [], got %T", doc["observations"])
-	}
-}
-
-func TestSharesPublishAgentModeOutputContract(t *testing.T) {
-	setAgentMode(t, true)
-	pkg := validBasePackage()
-	path := writeSharePackage(t, pkg)
-	loader := &fakeOpModelLoader{op: &fakeOpModel{failAt: 2}}
-	stdout, _, err := runOpModelTree(t, func() *cobra.Command { return newSharesCmd(loader) },
-		"publish", "-f", path)
-
-	var emitted *fail.EmittedError
-	if !errors.As(err, &emitted) || emitted.Code != fail.ExitPartialFailure {
-		t.Fatalf("expected EmittedError with exit 4, got %v", err)
-	}
-	doc := decodeSingleJSONValue(t, stdout)
-	if doc["type"] != "gcx.irm.share_receipt" {
-		t.Errorf("wrong document type: %v", doc["type"])
-	}
-	var receipt shareReceipt
-	if err := json.Unmarshal([]byte(stdout), &receipt); err != nil {
-		t.Fatalf("receipt decode: %v", err)
-	}
-	if receipt.Summary.Failed != 1 {
-		t.Errorf("receipt summary wrong: %+v", receipt.Summary)
 	}
 }

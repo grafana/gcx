@@ -64,7 +64,6 @@ See ` + docs.IRMInvoice + `.`,
 	irmCmd.AddCommand(oncallCmd)
 	irmCmd.AddCommand(newIncidentsCmd(loader, loader))
 	irmCmd.AddCommand(newOpModelCmd(loader))
-	irmCmd.AddCommand(newSharesCmd(loader))
 
 	return []*cobra.Command{irmCmd}
 }
