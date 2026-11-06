@@ -60,6 +60,7 @@ type alertGroupListOpts struct {
 	ActedBy            []string
 	Labels             []string
 	LabelExcludes      []string
+	Search             string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -95,6 +96,7 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.ActedBy, "acted-by", nil, "Filter by user ID with any recorded action in the group's log (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; matching ignores case and accents)")
 	flags.StringArrayVar(&o.LabelExcludes, "label-exclude", nil, "Exclude groups carrying any of these label key:value names (repeatable; matching ignores case and accents)")
+	flags.StringVar(&o.Search, "search", "", "Match an exact alert-group ID or number, or text in the title OnCall renders (searches only the 30 days before the date window ends)")
 	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
 	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
 	flags.StringVar(&o.ResolvedFrom, "resolved-from", "", "Start of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-30d)")
@@ -106,7 +108,8 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.IncludeChildGroups, "include-child-groups", false, "Include child groups (drops the is_root filter while keeping the status default)")
 }
 
-// Validate checks label and time-window flags before any config or network work.
+// Validate checks label, search, and time-window flags before any config or
+// network work.
 // Negative --limit values are rejected by the shared binder's validation
 // (Options.Validate, internal/output/format.go), which RunE calls immediately
 // after this method — the fetch is no longer bounded by a client-side safety
@@ -126,6 +129,9 @@ func (o *alertGroupListOpts) Validate() error {
 				return fmt.Errorf("invalid --%s %q: expected key:value with non-empty names and no extra colons (e.g. --%s service:api)", f.flag, pair, f.flag)
 			}
 		}
+	}
+	if o.Search != "" && strings.TrimSpace(o.Search) == "" {
+		return errors.New("invalid --search value: must not be blank")
 	}
 	// --max-age and --from/--to both compile into the same started_at range
 	// param, so combining them would be ambiguous.
@@ -284,6 +290,7 @@ type alertGroupListFilters struct {
 	// Repeated holds the repeatable filters keyed by wire param, one value
 	// per query occurrence.
 	Repeated           url.Values
+	Search             string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -312,6 +319,7 @@ type alertGroupListFilters struct {
 func resolveAlertGroupListFilters(cmd *cobra.Command, opts *alertGroupListOpts) (alertGroupListFilters, error) {
 	out := alertGroupListFilters{
 		Repeated:           url.Values{},
+		Search:             opts.Search,
 		Mine:               opts.Mine,
 		WithResolutionNote: opts.WithResolutionNote,
 		HasRelatedIncident: opts.HasRelatedIncident,
@@ -398,6 +406,11 @@ server before pagination and ignores case and accents, so service:API and
 service:apí match the same groups. Commas are literal; colons cannot occur inside
 names.
 
+--search matches an exact alert-group ID or number, or text in the title OnCall
+renders, which can be longer than status.title. By default the server only
+searches the 30 days before the filtered date window ends, or before now when no
+window is set.
+
 --involved-user matches groups the user was notified about or acknowledged,
 resolved, or silenced; notifications only count for the user's 1000 most recently
 notified groups. --acted-by matches groups with any log entry by the user.
@@ -425,6 +438,9 @@ const alertGroupListExample = `  # List firing, acknowledged, and silenced root 
 
   # Groups resolved last week by a given user
   gcx irm oncall alert-groups list --resolved-by <user-id> --resolved-from now-7d --all
+
+  # Search titles, skipping groups from the dev environment
+  gcx irm oncall alert-groups list --search "disk full" --label-exclude env:dev
 
   # Groups a user was paged for or handled in the last week
   gcx irm oncall alert-groups list --involved-user <user-id> --max-age 7d --all`
@@ -583,6 +599,9 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 			parts = append(parts, f.flag+"="+strconv.Quote(v))
 		}
 	}
+	if opts.Search != "" {
+		parts = append(parts, "search="+strconv.Quote(opts.Search))
+	}
 	if opts.MaxAge != "" {
 		parts = append(parts, "max-age="+opts.MaxAge)
 	}
@@ -640,7 +659,8 @@ func alertGroupListHasExplicitFilter(opts *alertGroupListOpts) bool {
 			return true
 		}
 	}
-	return opts.MaxAge != "" ||
+	return opts.Search != "" ||
+		opts.MaxAge != "" ||
 		opts.From != "" ||
 		opts.To != "" ||
 		opts.ResolvedFrom != "" ||
@@ -764,7 +784,7 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 
 	// Surface unsupported-filter warnings once at the command edge — the
 	// public API doesn't speak is_root, mine, with_resolution_note,
-	// has_related_incident, any repeatable filter besides team and
+	// has_related_incident, search, any repeatable filter besides team and
 	// integration, or either daterange's upper bound. Honor what we can and
 	// tell the user about the rest.
 	var unsupported []string
@@ -784,6 +804,9 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 		if len(f.values) > 0 && f.param != "team" && f.param != "integration" {
 			unsupported = append(unsupported, "--"+f.flag)
 		}
+	}
+	if filters.Search != "" {
+		unsupported = append(unsupported, "--search")
 	}
 	// --from's lower bound survives as started_after above; the upper bound
 	// and the whole resolved_at window have no public-API equivalent.
@@ -911,6 +934,9 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 		for _, v := range values {
 			params.Add(param, v)
 		}
+	}
+	if filters.Search != "" {
+		params.Set("search", filters.Search)
 	}
 	if filters.Mine {
 		params.Set("mine", "true")

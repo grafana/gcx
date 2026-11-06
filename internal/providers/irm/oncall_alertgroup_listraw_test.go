@@ -385,6 +385,23 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 			hint: `default + label="service:api", label-exclude="env:dev"`,
 		},
 		{
+			name: "search is sent once and quoted in the hint",
+			args: []string{"--search", "disk full, node-1"},
+			want: url.Values{"search": {"disk full, node-1"}},
+			hint: `default + search="disk full, node-1"`,
+		},
+		{
+			name: "search alone still reports the filter under --all",
+			args: []string{"--all", "--search", "42"},
+			want: url.Values{"search": {"42"}, "status": nil, "is_root": nil},
+			hint: `search="42", all`,
+		},
+		{
+			name: "no search flag means no search param",
+			args: []string{"--escalation-chain", "EC1"},
+			want: url.Values{"search": nil},
+		},
+		{
 			name: "started-at window from an absolute --from/--to pair",
 			args: []string{"--from", "2026-01-01T00:00:00Z", "--to", "2026-01-31T12:00:00Z"},
 			want: url.Values{"started_at": {"2026-01-01T00:00:00_2026-01-31T12:00:00"}},
