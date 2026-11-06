@@ -1,6 +1,6 @@
 # Confirmation and Safety
 
-> Covers when to prompt users before destructive operations, the --force/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
+> Covers when to prompt users before destructive operations, the --force/GCX_AUTO_APPROVE pattern, dry-run support, push idempotency, and query cost guardrails.
 
 ---
 
@@ -128,3 +128,34 @@ gcx resources push ./dashboards/
 ```
 
 Reference: `data-flows.md` Section 2 (PUSH Pipeline)
+
+### 3.6 Query Cost Guardrails `[IMPLEMENTED]`
+
+Some read commands refuse work that is too expensive to run, before it runs.
+Today that is the Loki guardrail on Grafana Cloud targets (`logs query`,
+`logs metrics` and the `datasources loki` equivalents, in
+`internal/datasources/loki/guard.go`). It is **not** a destructive-operation
+confirmation, so the bypass chain in § 3.2–3.3 does not apply to it:
+
+- **A refusal, not an approval.** In `enforce` mode an over-budget query fails
+  with `Query blocked`; there is no `[y/N]` prompt, in a terminal or in agent
+  mode. The error carries what to narrow, so the caller (usually an agent) can
+  correct the query and retry. In `shadow` mode it only logs, and `off` skips it.
+- **`--force` is the only override.** It skips the policy fetch and the stats
+  probe. `GCX_AUTO_APPROVE` does **not** bypass it: that variable approves
+  destructive operations, and it is commonly set for agents and CI, so honouring
+  it would silently turn the guard off for them.
+- **`--force` is not proof of a human.** gcx cannot tell who typed the flag, and
+  an agent can add it to any command. Treat the guard as a strong default, not a
+  hard limit. To keep agents from reaching for it, agent-mode `Query blocked`
+  errors from a budget or range refusal do not name `--force`; the can't-estimate
+  error does, because there it is the only way through. Terminal users are told
+  about `--force` in both. `--help` documents it for everyone.
+- **Failures never block on their own.** An unparseable query runs, so Loki
+  reports its own syntax error. A failed cost estimate blocks only in agent mode.
+  When no policy is served the guard runs in `shadow` mode with a 50 GiB / 24h
+  default.
+
+New guardrails of this kind should follow the same shape: refuse with actionable
+guidance, offer one explicit per-invocation override, and keep it separate from
+`GCX_AUTO_APPROVE`.
