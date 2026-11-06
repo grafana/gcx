@@ -18,7 +18,7 @@ disable-model-invocation: true
 Ask whether to send the status update, skip it, or correct it. Send an approved
 update immediately. Whether sent or intentionally skipped, complete the
 supporting model automatically without asking the user to review evidence or
-approve the package.
+approve the model.
 Do not wait for model assembly before asking or sending the approved message.
 
 The main agent owns user interaction, full model content review, and publication.
@@ -156,15 +156,20 @@ share's metadata, not its prose.
 
 ## Step 3 — offer the update and prepare the model concurrently
 
-Write `message.json` in a fresh temporary directory with `context`, `container`,
-`body`, and optional `see` (the pointer without `See:`). Get its preview and hash:
+Preview the update without sending it:
 
 ```bash
-python3 <skill-dir>/scripts/share_message.py <message.json> \
-  --context "$name" --container <incident-id> --preview
+gcx --agent --context "$name" irm incidents share <incident-id> \
+  --body '<body>' --see '<pointer>' \
+  --drafted-by-agent <agent-id> --drafted-by-agent-name '<agent-name>' --dry-run
 ```
 
-Put this question before the helper's rendered preview:
+Pass the pointer without `See:`, or omit `--see` when there is none. Quote both
+values safely for the shell; bodies often contain apostrophes. Use the invoking
+product's identity (`codex` / `Codex` or `claude-code` / `Claude Code`). The
+output's `preview` field is exactly what will be posted.
+
+Put this question before that preview:
 
 > Would you like to send this status update to the incident, skip it, or make a correction?
 >
@@ -177,14 +182,15 @@ available. Edits or silence alone do not authorize sending or mean skip.
 
 Start one background worker using [model-draft.md](references/model-draft.md).
 With inherited conversation context, pass only the finding/scope/exclusions,
-resolved destination, message as context, reference path, and assigned
-`draft.json` path. Otherwise include the relevant investigation excerpts,
-including counterevidence and known sources. The worker returns a validated
-artifact, its hash and gaps; it handles content quality while the user reviews.
+resolved destination, agent identity, message as context, reference path, and
+an assigned `draft.json` path in a fresh temporary directory. Otherwise include
+the relevant investigation excerpts, including counterevidence and known
+sources. The worker returns the checked draft path and its gaps; it handles
+content quality while the user reviews.
 If this session has already pulled the operational model for the same context,
 stack and Incident, give the worker relevant existing entities and links with
-their IDs so it can reuse them in the draft. Do not make the worker fetch the
-model or delay the status-update question for a model refresh.
+their IDs so it can reuse them in the draft. Do not delay the status-update
+question for a model refresh.
 
 With nonblocking input, show the question first and dispatch the worker while
 waiting. If the input tool blocks, launch the background worker first, then ask
@@ -197,7 +203,7 @@ While waiting, resolve specific worker gaps or conflicts with the offered
 message when possible. Complete the full content review in Step 5 before saving
 the model; do not delay sending an approved message for that review.
 
-For a correction, update the message file and preview. Reconfirm unless the
+For a correction, rerun the preview with the corrected text. Reconfirm unless the
 user explicitly asks to send their exact replacement. Send substantive scope
 or finding changes to the worker and reconcile affected entities; a wording-only
 edit does not require rebuilding the model. If the worker has finished, use
@@ -208,38 +214,35 @@ worker and publish nothing.
 
 ## Step 4 — send or skip
 
-For **Send update**, publish immediately using the approved preview hash:
-
-```bash
-python3 <skill-dir>/scripts/share_message.py <message.json> \
-  --context "$name" --container <incident-id> --approved-sha256 <preview-hash> \
-  --actor-id <agent-id> --actor-name '<agent-name>' --journal <message-receipts.jsonl>
-```
-
-Use safely quoted concrete paths and the invoking product's identity (`codex` /
-`Codex` or `claude-code` / `Claude Code`). Effective OAuth user authentication is
+For **Send update**, send immediately: run the Step 3 command without
+`--dry-run`, with exactly the body and pointer the user approved. Any other
+text needs a new preview and approval. Effective OAuth user authentication is
 required; never bypass the OAuth or proxy gates.
 
-On `saved`, tell the user immediately. For **Skip update**, leave the message unposted and continue. On
-`stopped`, preserve the journal and follow
-[publish-recovery.md](references/publish-recovery.md). An ambiguous send is not
-an intentional skip.
+A `gcx.irm.message_receipt` with a `message_id` confirms the update; tell the
+user immediately. For **Skip update**, leave the message unposted and continue.
+On any other outcome, never retry automatically, because delivery has no
+idempotency key; follow [publish-recovery.md](references/publish-recovery.md).
+An ambiguous send is not an intentional skip.
 
 ## Step 5 — review the full model and save once
 
-After confirmed delivery or explicit skip, read the worker's full validated
-artifact and review its content using [model-save.md](references/model-save.md).
-Review even when the message is unchanged and the worker reports no gaps.
-Before writing, reconcile the draft against the current operational model using
-the duplicate checks in that reference, apply any small edits, and save.
+Save the model only after a message receipt confirms delivery or the user
+explicitly chose **Skip update**. An unconfirmed or failed send blocks the save
+until [publish-recovery.md](references/publish-recovery.md) settles it.
+
+Wait for the worker to return; never read, edit or save a draft it may still be
+writing. Then read the full draft and review its content using
+[model-save.md](references/model-save.md). Review even when the message is
+unchanged and the worker reports no gaps. Before writing, reconcile the draft
+against the current operational model using the duplicate checks in that
+reference, apply any small edits, and save.
 Keep the model check after the message choice so it cannot delay a requested
 status update.
-The helper checks the artifact hash, format, destination and references,
-rereads the model to skip exact repeats before writing, and handles receipts.
-Address errors it reports.
+`upsert-model` validates the draft, rereads the model to reuse exact repeats,
+and writes only what is missing. Address errors it reports.
 
 Keep working until the model is saved or a concrete failure prevents completion,
 respecting later cancellation or scope restrictions. Briefly report the outcome
-and meaningful gaps. No package approval is needed. On failure, retain successful
-writes and the journal; a sent update stays sent and a skipped update stays
-unposted.
+and meaningful gaps. On failure, keep what was
+saved; a sent update stays sent and a skipped update stays unposted.

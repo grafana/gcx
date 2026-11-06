@@ -12,12 +12,12 @@ or ambiguous message attempt as an intentional skip.
 
 ## Message delivery
 
-Use the message helper's result and journal: `saved` confirms Incident storage,
-not Slack delivery. A stopped attempt may still have recorded a receipt or made
-a request. Do not resend a delivered update to recover a model failure.
-Missing confirmation is not proof that no message exists.
+A `gcx.irm.message_receipt` with a `message_id` confirms Incident storage, not
+Slack delivery. A failed attempt may still have made a request. Do not resend a
+delivered update to recover a model failure. Missing confirmation is not proof
+that no message exists.
 
-If the command failed during local validation, before any request, correct the
+If the command failed with a usage error (exit 2), nothing was sent: correct the
 invocation and retry once without changing the confirmed wording or destination.
 For a definite HTTP rejection, stop and report the failure. Retry only once
 the cause is addressed, keeping the confirmed wording and destination. An
@@ -27,30 +27,29 @@ container, or backend path to get around it.
 After a timeout, connection reset, or other ambiguous transport failure, do not
 automatically retry. The message may already have been saved, and delivery has
 no idempotency key. Inspect the incident first. If delivery remains uncertain,
-stop and report the unresolved outcome; do not claim success or absence. A
-prepared evidence draft can be retained, but do not save it while message
-delivery is unconfirmed in this flow.
+stop and report the unresolved outcome; do not claim success or absence. Keep
+the evidence draft, but do not save it while message delivery is unconfirmed in
+this flow.
 
-When delivery has been established as absent and the cause is addressed, use
-`gcx irm incidents share` with the original confirmed body, optional `--see`,
-agent identity, context, and Incident id. Never use `shares publish` for a
-message-only retry. There is no citation flag or automatic Slack details reply.
+When delivery has been established as absent and the cause is addressed, rerun
+the send command from Step 4 with the original confirmed body and pointer, agent
+identity, context, and Incident id. There is no citation flag or automatic Slack
+details reply.
 
 ## Model writes
 
-Use the save helper's ID mapping and journal to identify completed operations
-and pending writes without a confirmed outcome; it parses mutation receipts and
-promotion IDs.
-Retain the local-ref-to-id mapping and report which entities and relationships
-were saved before the failure. Stop the remaining writes; do not replay the
-whole draft or resend the Incident message.
+A `stopped` receipt (exit 4) names the failed write in `stopped_at` and its
+cause in `error`; earlier writes stay saved and are listed with their IDs.
+Report which entities and relationships were saved before the failure. Do not
+resend the Incident message.
 
-Do not automatically retry a failed mutation after an ambiguous response: it
-may have created an entity despite the missing receipt. Inspect the model for
-that Incident in the pinned context before proposing recovery. On a conflict,
-review the reported domain rule and reconsider the intended write. Do not
-impersonate a human or replay mutations to bypass rejection. Never infer a
-minted id from a local ref or reuse an id from another container. Resume only
-the remaining in-scope writes once their prerequisites and the outcome of the
-failed write are known. If an outcome remains uncertain, stop and report it
-rather than risk a duplicate or ask for routine package approval.
+Fix the cause, then rerun the same `upsert-model` command on the same draft.
+It rereads the model, reuses what already landed, and creates only what is
+missing, including a write whose response was lost. Keep the draft unchanged
+apart from edits that fix the cause, so the rerun matches what landed. The same
+applies when the command was interrupted without a receipt.
+
+On a conflict, review the reported domain rule and reconsider the intended
+write. Do not impersonate a human or rerun to bypass rejection. Never infer a
+minted id from a local ref or reuse an id from another container. If the cause
+cannot be fixed, stop and report the saved and unsaved parts.
