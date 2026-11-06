@@ -427,17 +427,11 @@ requests, so narrow the window or the filters when a partial answer will do.`
 const alertGroupListExample = `  # List firing, acknowledged, and silenced root groups
   gcx irm oncall alert-groups list
 
-  # Narrow to one team, most recent day
-  gcx irm oncall alert-groups list --team <team-id> --max-age 24h
-
   # Attribute one service's load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
   gcx irm oncall alert-groups list --escalation-chain <chain-id> --label service:api --all
 
   # Historical window, including resolved groups
   gcx irm oncall alert-groups list --from now-30d --to now-7d --all
-
-  # Groups resolved last week by a given user
-  gcx irm oncall alert-groups list --resolved-by <user-id> --resolved-from now-7d --all
 
   # Search titles, skipping groups from the dev environment
   gcx irm oncall alert-groups list --search "disk full" --label-exclude env:dev
