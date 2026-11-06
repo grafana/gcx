@@ -1,11 +1,12 @@
 # Draft supporting evidence
 
 This is a drafting-only assignment. Use the supplied investigation excerpts,
-message, scope, Incident id, and context. Do not execute GCX, publish anything,
-contact the user, change the message, or delegate further. Do not re-investigate
-or retrieve missing evidence. Return a specific gap if the supplied material
-cannot support the message. If the update is skipped, use the requested finding
-and scope; the draft message is context, not a published message.
+message, scope, Incident id, GCX context, and agent identity. Do not publish
+anything, contact the user, change the message, or delegate further. Run no GCX
+command other than the dry run below. Do not re-investigate or retrieve missing
+evidence. Return a specific gap if the supplied material cannot support the
+message. If the update is skipped, use the requested finding and scope; the
+draft message is context, not a published message.
 
 You own content quality: select grounded facts, preserve uncertainty, scope,
 counterevidence and established next steps. Check evidence meaning against the
@@ -42,8 +43,6 @@ Write a compact draft to the assigned JSON file, using local refs:
 
 ```json
 {
-  "container": "IABC123DEF456",
-  "context": "the-resolved-context",
   "entities": [
     {
       "ref": "h1",
@@ -70,8 +69,7 @@ Write a compact draft to the assigned JSON file, using local refs:
       "stance": "supports",
       "rationale": "Saturation began with the change"
     }
-  ],
-  "gaps": []
+  ]
 }
 ```
 
@@ -79,19 +77,25 @@ Use `evidence_links: []` when none are needed. Reuse an `existing_id` only when
 its identity, type and destination were established in the investigation or in
 the supplied pulled model. Represent a reused entity with one local ref and
 `existing_id` so new links can target it; omit links already present. The main
-agent will refresh the model before saving; do not fetch it yourself or assume
+agent will refresh the model before saving; do not read it separately or assume
 the supplied view is still current.
 
-Before handing off, validate the file without publishing:
+Before handing off, check the draft against the current model without writing:
 
 ```bash
-python3 <skill-dir>/scripts/save_model.py <draft.json> \
-  --context <resolved-context> --container <incident-id> --validate-only
+gcx --agent --context <resolved-context> irm opmodel containers upsert-model <incident-id> \
+  -f <draft.json> --dry-run \
+  --actor-kind agent --actor-id <agent-id> --actor-name '<agent-name>'
 ```
 
-Correct reported mechanical errors in your draft and repeat only if needed.
-Return the validated `draft_path`, `draft_sha256`, and specific `gaps` from the
-result, without repeating the JSON. The message is context, not a field to copy
+A usage error (exit 2) lists every violation with its JSON path. Correct them in
+your draft and repeat only if needed. If it rejects a link that repeats a
+withdrawn one, remove the link; restoring a withdrawn interpretation is not part
+of sharing. A `planned` receipt means the draft is ready. If the model cannot be
+read, report the error with the draft path.
+
+Return the draft path and specific gaps in your report, without repeating the
+JSON. Gaps never go in the file. The message is context, not a field to copy
 into the model. Do not wait for message approval to finish drafting or checking.
 If files cannot be shared, return the JSON once for the caller to store and
-validate. You may run this local validation command; no GCX or publication.
+check.
