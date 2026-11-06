@@ -233,7 +233,7 @@ func splitGuidance(guidance string) []string {
 // force is the --force flag: a forced query runs without a policy fetch or a
 // stats probe. GCX_AUTO_APPROVE deliberately does not bypass the guard: it
 // approves destructive operations, and an agent should correct the query from
-// the guidance instead.
+// the guidance instead. See docs/design/safety.md § 3.6.
 func guardQuery(ctx context.Context, cfgCtx *config.Context, cfg config.NamespacedRESTConfig, client *loki.Client, stderr io.Writer, force bool, datasourceUID, expr string, isRange bool, start, end, now time.Time) error {
 	g := newQueryGuard(cfgCtx, cfg, client, stderr)
 	if g == nil {
