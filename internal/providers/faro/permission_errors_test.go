@@ -23,6 +23,9 @@ func TestMutationErrors(t *testing.T) {
 		writeRole   = "Frontend Observability Editor"
 		delAction   = "grafana-kowalski-app.apps:delete"
 		delRole     = "Frontend Observability Admin"
+		replayBase  = "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions"
+		readAction  = "grafana-sessionreplay-app.recordings:read"
+		readRole    = "Recordings Viewer"
 	)
 	app := &faro.FaroApp{Name: "my-app"}
 	ops := []struct {
@@ -37,6 +40,21 @@ func TestMutationErrors(t *testing.T) {
 			func(ctx context.Context, c *faro.Client) error { return c.Delete(ctx, "42") }},
 		{"sourcemap delete", http.MethodDelete, appPath + "/42/sourcemaps/batch/b1", "faro: delete sourcemaps for app 42: status %d, body: %s", delAction, delRole,
 			func(ctx context.Context, c *faro.Client) error { return c.DeleteSourcemaps(ctx, "42", []string{"b1"}) }},
+		{"recordings list", http.MethodGet, replayBase + "/sess-abc/recordings", "faro: list recordings for session sess-abc: status %d, body: %s", readAction, readRole,
+			func(ctx context.Context, c *faro.Client) error {
+				_, err := c.ListRecordings(ctx, "42", "sess-abc")
+				return err
+			}},
+		{"recording manifest", http.MethodGet, replayBase + "/sess-abc/recordings/rec-1/manifest", "faro: get manifest for recording rec-1: status %d, body: %s", readAction, readRole,
+			func(ctx context.Context, c *faro.Client) error {
+				_, err := c.GetManifest(ctx, "42", "sess-abc", "rec-1")
+				return err
+			}},
+		{"recording segment", http.MethodGet, replayBase + "/sess-abc/recordings/rec-1/segments/seg-1", "faro: get segment seg-1 for recording rec-1: status %d, body: %s", readAction, readRole,
+			func(ctx context.Context, c *faro.Client) error {
+				_, err := c.GetSegment(ctx, "42", "sess-abc", "rec-1", "seg-1")
+				return err
+			}},
 	}
 	responses := []struct {
 		name   string

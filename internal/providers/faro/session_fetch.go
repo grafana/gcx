@@ -2,6 +2,7 @@ package faro
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -322,7 +323,7 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 	results := make([]*loki.QueryResponse, len(kinds))
 	for i, kind := range kinds {
 		g.Go(func() error {
-			resp, err := fetchLokiEventPages(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end, timeout)
+			resp, _, err := fetchLokiEventPagesUntil(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end, timeout, lokiEventsPageSize, nil, nil)
 			if err != nil {
 				return fmt.Errorf("loki %s query failed: %w", kind, err)
 			}
@@ -340,29 +341,42 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 	return merged, nil
 }
 
-func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration) (*loki.QueryResponse, error) {
-	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
-	seen := make(map[string]struct{})
+// fetchLokiEventPagesUntil scans backward through the requested time range,
+// optionally stopping when stop reports that the caller has enough results.
+// stop is checked only for full pages; a short page proves the range is drained.
+func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration, pageSize int, stop func() bool, reduce func(*loki.QueryResponse)) (*loki.QueryResponse, bool, error) {
+	// Discovery supplies reduce and retains only its summary. Event exports
+	// omit reduce and keep the merged stream.
+	var merged *loki.QueryResponse
+	if reduce == nil {
+		merged = &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
+	}
 	cursor := end
 	for cursor.After(start) {
 		resp, err := queryLoki(ctx, client, uid, loki.QueryRequest{
 			Query: query,
 			Start: start,
 			End:   cursor,
-			Limit: lokiEventsPageSize,
+			Limit: pageSize,
 		}, timeout)
 		if err != nil {
-			return nil, fmt.Errorf("loki events query failed: %w", err)
+			return nil, false, fmt.Errorf("loki events query failed: %w", err)
 		}
 		n := lokiEntryCount(resp)
-		appendLokiEvents(merged, resp)
-		recordLokiFingerprints(resp, seen)
-		if n < lokiEventsPageSize {
+		page := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
+		appendLokiEvents(page, resp)
+		if n < pageSize {
+			consumeLokiPage(merged, page, reduce)
 			break
 		}
+		// Fingerprints avoid allocating a concatenated timestamp/line key for each
+		// event. Only this page and its timestamp bucket can overlap, so older
+		// fingerprints would grow with the entire scan without improving de-duplication.
+		seen := make(map[[sha256.Size]byte]struct{}, n)
+		recordLokiFingerprints(resp, seen)
 		earliest, ok := minLokiTime(resp)
 		if !ok {
-			break
+			return nil, false, errors.New("loki events: full page has no valid timestamp; result may be truncated")
 		}
 		// Refetch the earliest instant so leftover rows that share that
 		// timestamp are kept. Stepping End back 1ms would drop them.
@@ -373,18 +387,30 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 			Limit: lokiEventsPageSize,
 		}, timeout)
 		if err != nil {
-			return nil, fmt.Errorf("loki events query failed: %w", err)
+			return nil, false, fmt.Errorf("loki events query failed: %w", err)
 		}
-		appendLokiEventsUnseen(merged, bucket, seen)
+		appendLokiEventsUnseen(page, bucket, seen)
 		if lokiEntryCount(bucket) >= lokiEventsPageSize {
-			return nil, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
+			return nil, false, fmt.Errorf("loki events: at least %d rows share timestamp %s; result may be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
+		}
+		consumeLokiPage(merged, page, reduce)
+		if stop != nil && stop() {
+			return merged, true, nil
 		}
 		if !earliest.Before(cursor) {
 			break
 		}
 		cursor = earliest
 	}
-	return merged, nil
+	return merged, false, nil
+}
+
+func consumeLokiPage(merged, page *loki.QueryResponse, reduce func(*loki.QueryResponse)) {
+	if reduce != nil {
+		reduce(page)
+		return
+	}
+	appendLokiEvents(merged, page)
 }
 
 func appendLokiEvents(dst, src *loki.QueryResponse) {
@@ -394,11 +420,17 @@ func appendLokiEvents(dst, src *loki.QueryResponse) {
 	dst.Data.Result = append(dst.Data.Result, src.Data.Result...)
 }
 
-func lokiEntryFingerprint(e loki.LogEntry) string {
-	return e.Timestamp + "\x1e" + e.Line
+func lokiEntryFingerprint(e loki.LogEntry) [sha256.Size]byte {
+	h := sha256.New()
+	_, _ = h.Write([]byte(e.Timestamp))
+	_, _ = h.Write([]byte{0x1e})
+	_, _ = h.Write([]byte(e.Line))
+	var fingerprint [sha256.Size]byte
+	copy(fingerprint[:], h.Sum(nil))
+	return fingerprint
 }
 
-func recordLokiFingerprints(resp *loki.QueryResponse, seen map[string]struct{}) {
+func recordLokiFingerprints(resp *loki.QueryResponse, seen map[[sha256.Size]byte]struct{}) {
 	if resp == nil {
 		return
 	}
@@ -409,7 +441,7 @@ func recordLokiFingerprints(resp *loki.QueryResponse, seen map[string]struct{}) 
 	}
 }
 
-func appendLokiEventsUnseen(dst, src *loki.QueryResponse, seen map[string]struct{}) {
+func appendLokiEventsUnseen(dst, src *loki.QueryResponse, seen map[[sha256.Size]byte]struct{}) {
 	if src == nil {
 		return
 	}
