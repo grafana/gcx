@@ -177,6 +177,8 @@ var commandAnnotations = map[string]annotation{
 	// skills
 	"gcx agent skills install":   {Cost: "small"},
 	"gcx agent skills list":      {Cost: "small"},
+	"gcx agent skills search":    {Cost: "small (medium for unlimited results)", Hint: "<query> --limit 5; inspect returned/total/truncated, then get a returned identity"},
+	"gcx agent skills export":    {Cost: "small", Hint: "custom/<name> <new-directory>; export the whole snapshot before editing"},
 	"gcx agent skills get":       {Cost: "small (medium for large skills)", Hint: "<name> [references/<file>]"},
 	"gcx agent skills update":    {Cost: "small"},
 	"gcx agent skills uninstall": {Cost: "small"},

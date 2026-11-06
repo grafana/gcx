@@ -12,6 +12,17 @@ description: >-
 Answer the user's question with the least expensive reliable evidence. No signal
 is a prerequisite: a known trace or targeted log can be the first check.
 
+## Check saved user workflows
+
+Before planning this task, search locally with
+`gcx agent skills search "<service or task keyword>" --source custom --limit 5 -o json`.
+Read a relevant `custom/<name>` with `gcx agent skills get custom/<name> -o text`
+and needed references with
+`gcx agent skills get custom/<name> references/<file> -o text`.
+Check applicability and current permissions;
+use the saved procedure where it fits. If none matches, continue below. Refine
+literal search terms once if needed; do not load every workflow body.
+
 ## Scope and safety
 
 Reuse supplied scope, alert/panel queries, links, IDs, incident times, and known
