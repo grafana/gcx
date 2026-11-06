@@ -33,6 +33,7 @@ func newOpModelContainersCmd(loader OpModelClientLoader, shared *opModelSharedOp
 		newEvidenceLinksAttachCmd(loader, shared),
 		newEvidenceLinksVerifyCmd(loader, shared),
 		newEvidenceLinksWithdrawCmd(loader, shared),
+		newContainersUpsertModelCmd(loader, shared),
 	)
 	return cmd
 }

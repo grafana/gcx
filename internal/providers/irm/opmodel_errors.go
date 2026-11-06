@@ -13,7 +13,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const maxOpModelProblemBytes = 8 * 1024
+const (
+	maxOpModelProblemBytes = 8 * 1024
+	opModelNotFoundSummary = "op model entity or container not found"
+)
+
+// isContainerNotFound matches only the backend's missing-container answer; any
+// other 404, such as a wrong proxy route, must not read as an empty model.
+func isContainerNotFound(err error, container string) bool {
+	var detailed *fail.DetailedError
+	return errors.As(err, &detailed) && detailed.Summary == opModelNotFoundSummary &&
+		detailed.Details == "container "+container+" not found"
+}
 
 func mapIRMTransportError(err error, endpoint string) error {
 	exit1 := fail.ExitGeneralError
@@ -64,7 +75,7 @@ func mapOpModelHTTPError(resp *http.Response, endpoint string) error {
 		}
 	case http.StatusNotFound:
 		return &fail.DetailedError{
-			Summary:  "op model entity or container not found",
+			Summary:  opModelNotFoundSummary,
 			Details:  detail,
 			ExitCode: &exit1,
 			Suggestions: []string{

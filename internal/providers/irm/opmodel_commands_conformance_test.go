@@ -27,6 +27,7 @@ func TestOpModelStructuralConformance(t *testing.T) {
 		"containers verify-evidence-link":          true,
 		"containers withdraw-evidence-link":        true,
 		"containers update-entity-text":            true,
+		"containers upsert-model":                  true,
 	}
 	readLeaves := map[string]bool{
 		"containers get":         true,

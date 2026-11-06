@@ -17,6 +17,7 @@ import (
 var (
 	actorKindVocab               = []string{"agent", "human"}
 	claimTypeVocab               = []string{"hypothesis", "impact"}
+	entityTypeVocab              = []string{"observation", "hypothesis", "impact", "action"}
 	impactAssessmentVocab        = []string{"unassessed", "confirmed", "ruled_out"}
 	hypothesisAssessmentVocab    = []string{"unassessed", "accepted", "ruled_out"}
 	recoveryVocab                = []string{"unknown", "ongoing", "mitigated", "ended"}
