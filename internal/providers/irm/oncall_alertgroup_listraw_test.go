@@ -4,6 +4,7 @@ package irm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	cmdfail "github.com/grafana/gcx/cmd/gcx/fail"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 )
 
 // alertGroupPage is one page served by newPagedAlertGroupsServer: a batch of
@@ -85,6 +89,90 @@ func newPagedAlertGroupsServer(t *testing.T, pages []alertGroupPage) (*httptest.
 
 func onCallClientFor(srv *httptest.Server) *OnCallClient {
 	return &OnCallClient{HTTPClient: srv.Client(), Host: srv.URL}
+}
+
+func TestAlertGroupListLabels(t *testing.T) {
+	cases := []struct {
+		name     string
+		labels   []string
+		wantHint string
+		invalid  bool
+	}{
+		{name: "single label", labels: []string{"service:api"}, wantHint: `label="service:api", all`},
+		{name: "repeated labels", labels: []string{"service:api", "env:prod"}, wantHint: `label="service:api", label="env:prod", all`},
+		// Both render as label=env:prod,eu,team:sre when joined unquoted.
+		{name: "comma in first value", labels: []string{"env:prod,eu", "team:sre"}, wantHint: `label="env:prod,eu", label="team:sre", all`},
+		{name: "comma in second key", labels: []string{"env:prod", "eu,team:sre"}, wantHint: `label="env:prod", label="eu,team:sre", all`},
+		{name: "literal case commas and URL characters", labels: []string{"service:API,worker & jobs+batch"}, wantHint: `label="service:API,worker & jobs+batch", all`},
+		{name: "empty", labels: []string{""}, invalid: true},
+		{name: "whitespace", labels: []string{" "}, invalid: true},
+		{name: "missing separator", labels: []string{"service"}, invalid: true},
+		{name: "wrong separator", labels: []string{"service=api"}, invalid: true},
+		{name: "empty key", labels: []string{":api"}, invalid: true},
+		{name: "empty value", labels: []string{"service:"}, invalid: true},
+		{name: "blank key", labels: []string{" :api"}, invalid: true},
+		{name: "blank value", labels: []string{"service: "}, invalid: true},
+		{name: "extra separator", labels: []string{"service:api:worker"}, invalid: true},
+		{name: "invalid second label", labels: []string{"service:api", "env"}, invalid: true},
+	}
+	for _, flag := range []struct{ name, param string }{
+		{name: "label", param: "label"},
+		{name: "label-exclude", param: "label_exclude"},
+	} {
+		for _, tc := range cases {
+			t.Run(flag.name+"/"+tc.name, func(t *testing.T) {
+				resetAgentMode(t)
+				srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+				cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
+				var stdout, stderr strings.Builder
+				cmd.SetOut(&stdout)
+				cmd.SetErr(&stderr)
+				args := []string{"-o", "json", "--all"}
+				for _, label := range tc.labels {
+					args = append(args, "--"+flag.name, label)
+				}
+				cmd.SetArgs(args)
+				err := cmd.Execute()
+				if tc.invalid {
+					if _, ok := errors.AsType[*fail.UsageError](err); !ok {
+						t.Fatalf("Execute() = %v (%T), want a usage error", err, err)
+					}
+					if got := exitCodeOf(err); got != fail.ExitUsageError {
+						t.Errorf("exit code = %d, want %d", got, fail.ExitUsageError)
+					}
+					if !strings.Contains(err.Error(), "invalid --"+flag.name+` "`) || !strings.Contains(err.Error(), "expected key:value") {
+						t.Errorf("Execute() = %v, want a --%s format error", err, flag.name)
+					}
+					if state.requests != 0 {
+						t.Errorf("requests = %d, want 0 for invalid labels", state.requests)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("Execute() = %v", err)
+				}
+				if got := state.firstQuery[flag.param]; !reflect.DeepEqual(got, tc.labels) {
+					t.Errorf("wire %s = %q, want %q", flag.param, got, tc.labels)
+				}
+				hint := strings.ReplaceAll(tc.wantHint, "label=", flag.name+"=")
+				if want := "with filter " + hint + ":"; !strings.Contains(stderr.String(), want) {
+					t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+				}
+			})
+		}
+	}
+}
+
+// exitCodeOf maps an error to the exit code the CLI would use.
+func exitCodeOf(err error) int {
+	if err == nil {
+		return fail.ExitSuccess
+	}
+	d := cmdfail.ErrorToDetailedError(err)
+	if d == nil || d.ExitCode == nil {
+		return fail.ExitGeneralError
+	}
+	return *d.ExitCode
 }
 
 // TestListAlertGroupsRaw_MultiPageDrain drives the real pagination loop
@@ -246,7 +334,14 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 		name string
 		args []string
 		want url.Values
+		// hint, when set, is the filter summary the stderr hint must carry.
+		hint string
 	}{
+		{
+			name: "team and integration repeat",
+			args: []string{"--team", "T1,T2", "--integration", "I1"},
+			want: url.Values{"team": {"T1", "T2"}, "integration": {"I1"}},
+		},
 		{
 			name: "escalation chains repeat, never comma-joined",
 			args: []string{"--escalation-chain", "EC1,EC2"},
@@ -264,6 +359,47 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 				"acknowledged_by": {"U1", "U2"},
 				"resolved_by":     {"U3"},
 			},
+		},
+		{
+			name: "silenced-by repeats",
+			args: []string{"--silenced-by", "U1,U2"},
+			want: url.Values{"silenced_by": {"U1", "U2"}},
+			hint: "default + silenced-by=U1,U2",
+		},
+		{
+			name: "involved-user sends involved_users_are",
+			args: []string{"--involved-user", "U1", "--involved-user", "U2"},
+			want: url.Values{"involved_users_are": {"U1", "U2"}},
+			hint: "default + involved-user=U1,U2",
+		},
+		{
+			name: "acted-by sends invitees_are",
+			args: []string{"--acted-by", "U3"},
+			want: url.Values{"invitees_are": {"U3"}},
+			hint: "default + acted-by=U3",
+		},
+		{
+			name: "label and label-exclude are separate params",
+			args: []string{"--label", "service:api", "--label-exclude", "env:dev"},
+			want: url.Values{"label": {"service:api"}, "label_exclude": {"env:dev"}},
+			hint: `default + label="service:api", label-exclude="env:dev"`,
+		},
+		{
+			name: "search is sent once and quoted in the hint",
+			args: []string{"--search", "disk full, node-1"},
+			want: url.Values{"search": {"disk full, node-1"}},
+			hint: `default + search="disk full, node-1"`,
+		},
+		{
+			name: "search alone still reports the filter under --all",
+			args: []string{"--all", "--search", "42"},
+			want: url.Values{"search": {"42"}, "status": nil, "is_root": nil},
+			hint: `search="42", all`,
+		},
+		{
+			name: "no search flag means no search param",
+			args: []string{"--escalation-chain", "EC1"},
+			want: url.Values{"search": nil},
 		},
 		{
 			name: "started-at window from an absolute --from/--to pair",
@@ -295,7 +431,7 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
-			runAlertGroupList(t, onCallClientFor(srv), tc.args...)
+			_, stderr := runAlertGroupList(t, onCallClientFor(srv), tc.args...)
 
 			if state.firstQuery == nil {
 				t.Fatal("no alertgroups request observed")
@@ -304,6 +440,9 @@ func TestAlertGroupList_FilterQueryParams(t *testing.T) {
 				if got := state.firstQuery[key]; !reflect.DeepEqual(got, want) {
 					t.Errorf("query[%q] = %v, want %v (full query: %v)", key, got, want, state.firstQuery)
 				}
+			}
+			if want := "with filter " + tc.hint + ":"; tc.hint != "" && !strings.Contains(stderr, want) {
+				t.Errorf("stderr missing %q:\n%s", want, stderr)
 			}
 		})
 	}

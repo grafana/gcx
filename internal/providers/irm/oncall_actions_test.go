@@ -597,8 +597,8 @@ func TestToListFilters_Defaults(t *testing.T) {
 	if f.IsRoot == nil || !*f.IsRoot {
 		t.Errorf("expected is_root=true by default; got %v", f.IsRoot)
 	}
-	if len(f.Teams) != 1 || f.Teams[0] != "prod-sre" {
-		t.Errorf("teams: got %v", f.Teams)
+	if teams := f.Repeated["team"]; len(teams) != 1 || teams[0] != "prod-sre" {
+		t.Errorf("teams: got %v", teams)
 	}
 }
 
