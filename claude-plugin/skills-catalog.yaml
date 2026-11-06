@@ -27,6 +27,8 @@ skills:
     status: active
   investigate-alert:
     status: active
+  kg-agent-test:
+    status: active
   manage-dashboards:
     status: active
   oncall-triage:

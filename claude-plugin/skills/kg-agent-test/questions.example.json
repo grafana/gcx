@@ -1,0 +1,281 @@
+{
+  "stack": "<a name for your stack>",
+  "gcx_context": "<your gcx context, or delete this line to use the current one>",
+  "window": {
+    "from": "<a finished hour, e.g. 2026-11-03T09:00:00Z>",
+    "to": "<an hour later, e.g. 2026-11-03T10:00:00Z>"
+  },
+  "stack_notes": "<optional: anything a colleague would tell a new joiner, e.g. which Prometheus datasource to use. Both configurations see it.>",
+  "answer_key_written": "<date, and where the answers came from: your own knowledge, code, config or raw traces. Never from the agent or the graph.>",
+  "questions": [
+    {
+      "id": "Q6",
+      "type": "hidden-dependencies",
+      "question": "What does <service> in <cluster / environment> connect to over the network? Include databases, caches and where it sends its own telemetry, and include connections that do not appear in its traces.",
+      "answer_type": "set",
+      "must_include": [
+        [
+          "<a dependency only network flows show>"
+        ],
+        [
+          "<a traced dependency>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<one of its callers>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ]
+    },
+    {
+      "id": "Q7",
+      "type": "deep-blast-radius",
+      "question": "If the database behind <service> in <cluster / environment> went down, which services would be affected, directly or transitively, up to the entry points that receive its traffic?",
+      "answer_type": "set",
+      "must_include": [
+        [
+          "<service>"
+        ],
+        [
+          "<the entry point, e.g. an ingress or user-facing app>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<a service that shares callers but not the database>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ]
+    },
+    {
+      "id": "Q10",
+      "type": "finding-the-right-system-unlabelled",
+      "question": "Which <namespace / cluster> does <service> run in, in our <region described in words, not its label> production cluster?",
+      "answer_type": "set",
+      "exact": true,
+      "must_include": [
+        [
+          "<the right one>"
+        ]
+      ],
+      "must_not_include": [],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ]
+    },
+    {
+      "id": "I1",
+      "type": "incident-root-cause",
+      "_note": "Optional and advanced. Use a past incident with a written root cause (a post-incident review), pin the window to the incident, and take the answer from the review, never from the agent or the graph. Run it 5 times per configuration: it varies more than the other questions.",
+      "question": "An alert fired at <time> UTC on <date>: <alert name> for <service> in <cluster / environment>. What caused it? Find where the problem started and how it led to the alert.",
+      "answer_type": "set",
+      "answer_format": "End your answer with the root cause on the first line, then each step from it to the alert, one per line, between a line that says ANSWER and a line that says END.",
+      "block_commands": [
+        "irm",
+        "oncall"
+      ],
+      "must_include": [
+        [
+          "<the root cause component or change>",
+          "<another name for it>"
+        ],
+        [
+          "<the mechanism that connected it to the symptom>"
+        ],
+        [
+          "<how it reached the alert>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<the alerting service, if the cause was elsewhere>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ],
+      "reps": 5
+    },
+    {
+      "id": "Q5",
+      "type": "control",
+      "question": "How many <service> replicas were available in <cluster / environment> at the end of the time window?",
+      "answer_type": "number",
+      "value": 0,
+      "tolerance": 0,
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ]
+    },
+    {
+      "id": "Q1",
+      "type": "callers",
+      "question": "Which services call <service> in <cluster / environment>?",
+      "answer_type": "set",
+      "must_include": [
+        [
+          "<a caller>"
+        ],
+        [
+          "<another caller>",
+          "<another name it goes by>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<something it calls, rather than something that calls it>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ],
+      "optional": true
+    },
+    {
+      "id": "Q2",
+      "type": "dependencies",
+      "question": "What does <service> in <cluster / environment> depend on? List the services, databases and caches it calls.",
+      "answer_type": "set",
+      "must_include": [
+        [
+          "<a dependency>"
+        ],
+        [
+          "<a database>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<one of its callers>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ],
+      "optional": true
+    },
+    {
+      "id": "Q3",
+      "type": "blast-radius",
+      "question": "If <database or cache> in <cluster / environment> went down, which services would be affected, directly or through one other service?",
+      "answer_type": "set",
+      "must_include": [
+        [
+          "<a service that uses it>"
+        ],
+        [
+          "<a service that calls that service>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<something downstream that would keep working>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service that uses it>",
+          "env": "<environment>"
+        }
+      ],
+      "optional": true
+    },
+    {
+      "id": "Q4",
+      "type": "finding-the-right-system",
+      "question": "<service> runs in several places. Which <namespace / region / cluster> is the one in <environment>?",
+      "answer_type": "set",
+      "exact": true,
+      "must_include": [
+        [
+          "<the right one>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<a same-named one somewhere else>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ],
+      "optional": true
+    },
+    {
+      "id": "Q8",
+      "type": "cross-layer",
+      "question": "Which Kubernetes nodes (or cloud resources) were running <service> in <cluster / environment> at the end of the time window?",
+      "answer_type": "set",
+      "exact": true,
+      "must_include": [
+        [
+          "<node 1>"
+        ],
+        [
+          "<node 2>"
+        ]
+      ],
+      "must_not_include": [],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ],
+      "optional": true
+    },
+    {
+      "id": "Q9",
+      "type": "neighbour-health",
+      "question": "Which of the services, databases and caches that <service> calls in <cluster / environment> returned failed calls during the time window?",
+      "answer_type": "set",
+      "must_include": [
+        [
+          "<a dependency with failed calls>"
+        ]
+      ],
+      "must_not_include": [
+        [
+          "<a dependency with none>"
+        ]
+      ],
+      "services": [
+        {
+          "name": "<service>",
+          "env": "<environment>"
+        }
+      ],
+      "optional": true
+    }
+  ],
+  "_note": "Five core questions run by default: hidden dependencies, deep blast radius, finding the right system without its label, an incident root cause and a control. The rest are optional extras (\"optional\": true); run them with --all. Delete I1 if you don't have a past incident with a written root cause."
+}
