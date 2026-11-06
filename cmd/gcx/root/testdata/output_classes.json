@@ -477,7 +477,6 @@
  "gcx irm opmodel containers verify-evidence-link": "finite",
  "gcx irm opmodel containers verify-observation": "finite",
  "gcx irm opmodel containers withdraw-evidence-link": "finite",
- "gcx irm shares publish": "finite",
  "gcx k6 auth token": "raw",
  "gcx k6 env-vars create": "finite",
  "gcx k6 env-vars delete": "finite",

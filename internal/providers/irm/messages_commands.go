@@ -51,12 +51,10 @@ func newIncidentShareCmd(loader SharingClientLoader) *cobra.Command {
 Grafana user. No operational model or model entities are required.
 
 Requires an OAuth user login through gcx login and the experimental IRM sharing
-API. Service accounts cannot share messages. Use irm shares publish to create
-model entities and share a message together.
+API. Service accounts cannot share messages.
 
-After partial shares publish failure, this command can share the message without
-creating the entities again. Do not retry after an ambiguous timeout: the message
-may already have been saved, and delivery has no idempotency key.`,
+Do not retry after an ambiguous timeout: the message may already have been
+saved, and delivery has no idempotency key.`,
 		Example: `  gcx irm incidents share INC-1 --body "The service has recovered"
   gcx irm incidents share INC-1 --body "Database connections are exhausted" --see "dashboard:db"
   gcx irm incidents share INC-1 --body "The deploy introduced the regression" --drafted-by-agent codex --drafted-by-agent-name Codex`,

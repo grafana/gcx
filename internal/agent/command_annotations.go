@@ -316,7 +316,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm opmodel containers get":                           {Cost: "medium", Hint: "<container> -o json returns the full projection with observations, claims, evidence links, and actions; use --json for field selection"},
 	"gcx irm opmodel containers list-events":                   {Cost: "medium", Hint: "<container> --since-revision <rev> fetches only the diff since a known revision; --page-size bounds one call"},
 	"gcx irm incidents share":                                  {Cost: "small"},
-	"gcx irm shares publish":                                   {Cost: "small"},
 
 	// -----------------------------------------------------------------------
 	// k6 provider

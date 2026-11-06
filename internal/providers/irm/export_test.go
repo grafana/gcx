@@ -50,5 +50,3 @@ func NewTestListCommand(labels, statuses []string, severity, query, dateFrom, da
 }
 
 func NewTestOpModelCmd() *cobra.Command { return newOpModelCmd(nil) }
-
-func NewTestSharesCmd() *cobra.Command { return newSharesCmd(nil) }
