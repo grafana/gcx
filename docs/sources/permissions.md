@@ -10,13 +10,15 @@ labels:
 weight: 7
 ---
 
-# `gcx` permissions
+# `gcx` roles and permissions
 
 Some `gcx` commands need additinal Grafana permissions beyond the ones required to sign in. Use this page to find out which permissions a command needs and how to fix authorization errors.
 
 For the permissions you need to sign in with OAuth, refer to [Required role for OAuth sign-in](../authentication#required-role-for-oauth-sign-in).
 
-## Check which permissions you have
+If you're signing in using a service account token and your user role needs permissions for querying, managing dashboards and folders, or managing data sources, refer to [Service account token](../authentication#service-account-token).
+
+## Check which permissions your role has
 
 To list the actions your user is allowed to perform, run:
 

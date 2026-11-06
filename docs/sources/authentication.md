@@ -102,7 +102,7 @@ If `GRAFANA_CLOUD_TOKEN` or `cloud.<entry>.token` is set, unset it when using br
 The command uses the selected context's Cloud API endpoint, including dev and ops environments. Membership is not a guarantee of
 stack-creation permission. This differs from `gcx api /api/orgs`, which targets organisations inside a Grafana instance.
 
-### Specify your org 
+#### Specify your org 
 
 To specify the organisation slug when creating a stack:
 
