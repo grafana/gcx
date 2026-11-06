@@ -88,7 +88,7 @@ gcx --agent --context <resolved-context> irm opmodel containers upsert-model <in
   --actor-kind agent --actor-id <agent-id> --actor-name '<agent-name>'
 ```
 
-A usage error (exit 2) lists every violation with its JSON path. Correct them in
+A usage error (exit 2) lists the violations, with JSON paths where it can. Correct them in
 your draft and repeat only if needed. If it rejects a link that repeats a
 withdrawn one, remove the link; restoring a withdrawn interpretation is not part
 of sharing. A `planned` receipt means the draft is ready. If the model cannot be

@@ -156,16 +156,18 @@ share's metadata, not its prose.
 
 ## Step 3 — offer the update and prepare the model concurrently
 
-Preview the update without sending it:
+Write the body to `body.txt` in a fresh temporary directory, then preview the
+update without sending it:
 
 ```bash
 gcx --agent --context "$name" irm incidents share <incident-id> \
-  --body '<body>' --see '<pointer>' \
+  --body "$(cat <body.txt>)" --see '<pointer>' \
   --drafted-by-agent <agent-id> --drafted-by-agent-name '<agent-name>' --dry-run
 ```
 
-Pass the pointer without `See:`, or omit `--see` when there is none. Quote both
-values safely for the shell; bodies often contain apostrophes. Use the invoking
+Pass the pointer without `See:`, or omit `--see` when there is none. Reading the
+body from the file keeps apostrophes intact and lets the send reuse the exact
+previewed text. Use the invoking
 product's identity (`codex` / `Codex` or `claude-code` / `Claude Code`). The
 output's `preview` field is exactly what will be posted.
 
@@ -203,7 +205,7 @@ While waiting, resolve specific worker gaps or conflicts with the offered
 message when possible. Complete the full content review in Step 5 before saving
 the model; do not delay sending an approved message for that review.
 
-For a correction, rerun the preview with the corrected text. Reconfirm unless the
+For a correction, rewrite `body.txt` and rerun the preview. Reconfirm unless the
 user explicitly asks to send their exact replacement. Send substantive scope
 or finding changes to the worker and reconcile affected entities; a wording-only
 edit does not require rebuilding the model. If the worker has finished, use
@@ -215,8 +217,8 @@ worker and publish nothing.
 ## Step 4 — send or skip
 
 For **Send update**, send immediately: run the Step 3 command without
-`--dry-run`, with exactly the body and pointer the user approved. Any other
-text needs a new preview and approval. Effective OAuth user authentication is
+`--dry-run`, reading the same unchanged `body.txt` and passing the same pointer.
+Any other text needs a new preview and approval. Effective OAuth user authentication is
 required; never bypass the OAuth or proxy gates.
 
 A `gcx.irm.message_receipt` with a `message_id` confirms the update; tell the

@@ -276,6 +276,7 @@ func TestUpsertModelRejectsBeforeAnyWrite(t *testing.T) {
 		{"withdrawn link", `{"entities": [` + linkedEntities + `], "evidence_links": [{"source": "o1", "target": "h1", "stance": "challenges"}]}`, "e-withdrawn"},
 		{"repeated entities", `{"entities": [` + linkedEntities + `, {"ref": "h2", "type": "hypothesis", "text": "The  pool is exhausted."}], "evidence_links": []}`, "h1 and h2 repeat each other"},
 		{"existing id of another kind", `{"entities": [{"ref": "o9", "type": "observation", "text": "new", "existing_id": "clm-h"}], "evidence_links": []}`, "o9: no observation clm-h"},
+		{"two refs for one entity", `{"entities": [{"ref": "o1", "type": "observation", "text": "Reworded", "existing_id": "obs-a"}, {"ref": "o2", "type": "observation", "text": "Connection errors rose"}], "evidence_links": []}`, "o1 and o2 both resolve to obs-a"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &modelStore{body: linkedContainer()}
@@ -456,5 +457,29 @@ func TestUpsertModelTreatsOnlyMissingContainerAsEmpty(t *testing.T) {
 				t.Errorf("posts=%d receipt=%v", posts, receipt)
 			}
 		})
+	}
+}
+
+func TestUpsertModelStopsWhenTheServerReturnsNoID(t *testing.T) {
+	posts := 0
+	client := newTestOpModelClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"container":"INC-1","revision":"7"}`)
+			return
+		}
+		posts++
+		_, _ = io.WriteString(w, `{"observation_id":"","revision":"8"}`)
+	})
+	draft := `{"entities": [{"ref": "o1", "type": "observation", "text": "x"}, {"ref": "h1", "type": "hypothesis", "text": "y"}], "evidence_links": []}`
+	receipt, _, err := runUpsert(t, &storeLoader{api: client}, draft)
+	var emitted *fail.EmittedError
+	if !errors.As(err, &emitted) || emitted.Code != fail.ExitPartialFailure {
+		t.Fatalf("expected exit %d, got %v", fail.ExitPartialFailure, err)
+	}
+	if posts != 1 || receipt["status"] != "stopped" || receipt["error"] != "the server returned no id" {
+		t.Errorf("posts=%d receipt=%v", posts, receipt)
+	}
+	if entities, _ := receipt["entities"].(map[string]any); len(entities) != 0 {
+		t.Errorf("an empty id must not be recorded: %v", entities)
 	}
 }
