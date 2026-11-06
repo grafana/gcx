@@ -75,7 +75,9 @@ flowchart TD
     Start([Run entry]) --> Server{Server set?}
     Server -->|no| SrvSentinel[Return ErrNeedInput&#123;server&#125;]
     Server -->|yes| Scheme[Normalize scheme:<br/>default https]
-    Scheme --> Detect[Detect target]
+    Scheme --> Portal{Cloud portal root?}
+    Portal -->|yes| PortalError[Return PortalServerURLError]
+    Portal -->|no| Detect[Detect target]
     Detect --> TgtKnown{Target resolved?}
     TgtKnown -->|no, interactive| TgtSentinel[Return ErrNeedClarification&#123;target&#125;]
     TgtKnown -->|no, --yes or agent| TgtOnPrem[Force TargetOnPrem]
