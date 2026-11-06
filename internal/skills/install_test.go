@@ -120,3 +120,23 @@ func TestUninstallSymlink(t *testing.T) {
 	_, err = os.Lstat(filepath.Join(root, "skills", "old"))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
+
+func TestInstallAllSkipsExplicitInstallSkills(t *testing.T) {
+	t.Parallel()
+	source := fstest.MapFS{
+		"alpha/SKILL.md":    {Data: []byte("alpha")},
+		"internal/SKILL.md": {Data: []byte("internal")},
+	}
+	catalog := []byte("skills: {alpha: {status: active}, internal: {status: active, explicit_install: true}}")
+	internalSkill := func(root string) string { return filepath.Join(root, "skills", "internal", "SKILL.md") }
+
+	root := filepath.Join(t.TempDir(), ".agents")
+	_, err := skills.Install(source, catalog, root, nil, false, false)
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(root, "skills", "alpha", "SKILL.md"))
+	require.NoFileExists(t, internalSkill(root))
+
+	_, err = skills.Install(source, catalog, root, map[string]struct{}{"internal": {}}, false, false)
+	require.NoError(t, err)
+	require.FileExists(t, internalSkill(root))
+}
