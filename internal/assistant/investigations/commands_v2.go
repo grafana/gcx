@@ -40,6 +40,19 @@ func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	return NewClient(base), nil
 }
 
+// investigationNotFoundError is returned when an ID matches no v2
+// investigation. The Assistant UI URL carries a chat ID
+// (assistantConversationId), which is a different identifier from the
+// investigation ID and is not accepted here; the server has no chat-to-
+// investigation lookup, so name both kinds and point at where to find the
+// right one.
+func investigationNotFoundError(id string) error {
+	return fmt.Errorf("investigation %q not found: %s", id, idKindsHint)
+}
+
+const idKindsHint = "expected an investigation ID (the `id` field of `gcx assistant investigations list`), " +
+	"not a chat ID such as the assistantConversationId in an Assistant URL (the `chatId` field)"
+
 // resolveID maps a user-supplied investigation identifier to the canonical
 // investigationId expected by /api/v2 endpoints.
 func resolveID(ctx context.Context, client *Client, id string) (string, error) {
@@ -48,7 +61,7 @@ func resolveID(ctx context.Context, client *Client, id string) (string, error) {
 		return "", err
 	}
 	if status == http.StatusNotFound {
-		return "", fmt.Errorf("investigation %q not found", id)
+		return "", investigationNotFoundError(id)
 	}
 	return resp.InvestigationID, nil
 }
@@ -63,7 +76,7 @@ func resolveChatID(ctx context.Context, client *Client, id string) (string, erro
 		return "", err
 	}
 	if status == http.StatusNotFound {
-		return "", fmt.Errorf("investigation %q not found", id)
+		return "", investigationNotFoundError(id)
 	}
 	return resp.ChatID, nil
 }
