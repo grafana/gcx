@@ -509,7 +509,7 @@ func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	if err := dec.Decode(&app); err != nil {
 		exitCode := gcxerrors.ExitUsageError
 		return nil, &gcxerrors.DetailedError{
-			Summary: "Invalid Frontend Observability app manifest: " + err.Error(),
+			Summary: "Invalid Frontend Observability app manifest",
 			Details: "spec could not be parsed into an app. Unknown fields are rejected; only the first problem is reported.",
 			Parent:  err,
 			Suggestions: []string{

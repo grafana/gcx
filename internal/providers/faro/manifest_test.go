@@ -78,7 +78,9 @@ spec:
 				require.Error(t, detailed.Parent)
 				assert.Contains(t, strings.Join(detailed.Suggestions, "\n"), "gcx frontend apps get <app> -o yaml")
 				for _, s := range tc.wantErr {
-					assert.Contains(t, err.Error(), s)
+					// The decoder message must render once, not in both the
+					// summary and the details.
+					assert.Equal(t, 1, strings.Count(err.Error(), s), "rendered error: %s", err.Error())
 				}
 				return
 			}
@@ -132,25 +134,47 @@ func fullApp() FaroApp {
 }
 
 // TestFaroAppSchema_MatchesSpecFields checks the schema allows every field the
-// manifest reader accepts and rejects the rest.
+// manifest reader accepts, at every depth, and rejects the rest.
 func TestFaroAppSchema_MatchesSpecFields(t *testing.T) {
-	var schema struct {
-		Properties struct {
-			Spec struct {
-				AdditionalProperties *bool          `json:"additionalProperties"`
-				Properties           map[string]any `json:"properties"`
-			} `json:"spec"`
-		} `json:"properties"`
-	}
+	var schema map[string]any
 	require.NoError(t, json.Unmarshal(FaroAppSchema(), &schema))
-	require.NotNil(t, schema.Properties.Spec.AdditionalProperties)
-	assert.False(t, *schema.Properties.Spec.AdditionalProperties)
+	spec := schema["properties"].(map[string]any)["spec"].(map[string]any)
 
 	raw, err := json.Marshal(fullApp())
 	require.NoError(t, err)
 	var fields map[string]any
 	require.NoError(t, json.Unmarshal(raw, &fields))
-	for name := range fields {
-		assert.Contains(t, schema.Properties.Spec.Properties, name)
+
+	assertSchemaCovers(t, "spec", spec, fields)
+}
+
+// assertSchemaCovers walks a decoded manifest value alongside its schema node.
+// Every object node must forbid extra properties and declare each field present.
+func assertSchemaCovers(t *testing.T, path string, node map[string]any, value any) {
+	t.Helper()
+	switch v := value.(type) {
+	case map[string]any:
+		props, hasProps := node["properties"].(map[string]any)
+		if !hasProps {
+			return // free-form map, such as extraLogLabels
+		}
+		extra, ok := node["additionalProperties"].(bool)
+		assert.True(t, ok, "%s must set additionalProperties", path)
+		assert.False(t, extra, "%s must set additionalProperties: false", path)
+		for name, child := range v {
+			childNode, ok := props[name].(map[string]any)
+			if !assert.True(t, ok, "%s.%s is missing from the schema", path, name) {
+				continue
+			}
+			assertSchemaCovers(t, path+"."+name, childNode, child)
+		}
+	case []any:
+		items, ok := node["items"].(map[string]any)
+		if !ok {
+			return
+		}
+		for _, child := range v {
+			assertSchemaCovers(t, path+"[]", items, child)
+		}
 	}
 }

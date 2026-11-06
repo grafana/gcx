@@ -63,13 +63,14 @@ func FaroAppSchema() json.RawMessage {
 					"name":                  map[string]any{"type": "string", "description": "Display name, set at creation. The API cannot rename an app, so on update it must match the stored name exactly."},
 					"appType":               map[string]any{"type": "string", "enum": []string{appTypeWeb, appTypeMobile}, "description": "Application type, set at creation. Use mobile for flutter, react-native, android-native, and swift-native; use web for web-js."},
 					"runtime":               map[string]any{"type": "string", "enum": []string{runtimeWebJS, runtimeFlutter, runtimeReactNative, runtimeAndroidNative, runtimeSwiftNative}, "description": "SDK runtime. Omit to preserve the runtime on update."},
-					"corsOrigins":           map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
+					"corsOrigins":           map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
 					"extraLogLabels":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
 					"collectEndpointURL":    map[string]any{"type": "string"},
 					"otlpIngestEndpointURL": map[string]any{"type": "string"},
 					"appKey":                map[string]any{"type": "string"},
 					"settings": map[string]any{
-						"type": "object",
+						"type":                 "object",
+						"additionalProperties": false,
 						"properties": map[string]any{
 							"geolocationEnabled": map[string]any{"type": "boolean", "description": "Enrich sessions with location data. Omit to keep the stored value; false disables it."},
 							"geolocationLevel":   map[string]any{"type": "string", "enum": geolocationLevels(), "description": "Finest location detail to keep, from coarsest (continent) to finest (network). Omit to keep the stored value."},
