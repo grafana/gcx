@@ -58,7 +58,8 @@ mapping them to one existing ID, updating or removing their dependent links and
 action prompts.
 
 The helper rereads the model just before writing and handles exact repeats
-itself. It reuses an entity with the same type and normalized text, plus the
+itself. It reuses an entity with the same type and the same text, ignoring
+spacing and a final period but not case, plus the
 same source for an observation or the same prompting observation for an action.
 When several entities repeat it exactly, it reuses one of them. It skips a link
 already active between the same entities with the same stance; links already

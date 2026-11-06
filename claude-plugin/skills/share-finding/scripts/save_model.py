@@ -263,7 +263,7 @@ def read_model(context, container):
 
 
 def entity_key(kind, text, extra):
-    return kind, " ".join(text.split()).casefold().removesuffix("."), extra
+    return kind, " ".join(text.split()).removesuffix("."), extra
 
 
 class ModelIndex(NamedTuple):
