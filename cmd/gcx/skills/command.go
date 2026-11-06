@@ -55,7 +55,7 @@ func (o *installOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.Dir, "dir", defaultRoot, "Root directory for the .agents installation")
-	flags.BoolVar(&o.All, "all", false, "Install all bundled skills")
+	flags.BoolVar(&o.All, "all", false, "Install all bundled skills except those that install only by name")
 	flags.BoolVar(&o.Force, "force", false, "Overwrite existing differing files managed by the gcx skills bundle")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Preview the installation without writing files")
 }
@@ -80,7 +80,7 @@ func newInstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install [SKILL]...",
 		Short: "Install bundled gcx skills into ~/.agents/skills",
-		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle. Deprecated skills are installed with a warning; retired skills cannot be installed.",
+		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the bundle, except skills that install only by name. Deprecated skills are installed with a warning; retired skills cannot be installed.",
 		Example: `  gcx agent skills install setup-gcx
   gcx agent skills install setup-gcx debug-with-grafana manage-dashboards
   gcx agent skills install --all

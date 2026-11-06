@@ -27,6 +27,9 @@ skills:
     status: active
   investigate-alert:
     status: active
+  load-op-context:
+    status: active
+    install_only_by_name: true
   manage-dashboards:
     status: active
   oncall-triage:
@@ -35,6 +38,9 @@ skills:
     status: active
   setup-gcx:
     status: active
+  share-finding:
+    status: active
+    install_only_by_name: true
   slo-check-status:
     status: active
   slo-investigate:

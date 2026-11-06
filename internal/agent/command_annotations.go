@@ -298,6 +298,26 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents severities list": {Cost: "small"},
 	"gcx irm incidents update":          {Cost: "small", Hint: "<id> --severity <label> --title <text>; the severity is the label, run `gcx irm incidents severities list` for the valid values"},
 
+	"gcx irm opmodel containers update-observation":            {Cost: "small"},
+	"gcx irm opmodel containers update-action":                 {Cost: "small"},
+	"gcx irm opmodel containers update-claim-recovery":         {Cost: "small"},
+	"gcx irm opmodel containers create-observation":            {Cost: "small"},
+	"gcx irm opmodel containers promote-observation":           {Cost: "small"},
+	"gcx irm opmodel containers promote-observation-to-action": {Cost: "small"},
+	"gcx irm opmodel containers verify-observation":            {Cost: "small"},
+	"gcx irm opmodel containers create-claim":                  {Cost: "small"},
+	"gcx irm opmodel containers assess-claim":                  {Cost: "small"},
+	"gcx irm opmodel containers create-action":                 {Cost: "small"},
+	"gcx irm opmodel containers coordinate-action":             {Cost: "small"},
+	"gcx irm opmodel containers attach-evidence-link":          {Cost: "small"},
+	"gcx irm opmodel containers verify-evidence-link":          {Cost: "small"},
+	"gcx irm opmodel containers withdraw-evidence-link":        {Cost: "small"},
+	"gcx irm opmodel containers update-entity-text":            {Cost: "small"},
+	"gcx irm opmodel containers upsert-model":                  {Cost: "medium", Hint: "<container> -f draft.json --dry-run lists the planned writes; rerunning the same file after a stopped run writes only what is still missing"},
+	"gcx irm opmodel containers get":                           {Cost: "medium", Hint: "<container> -o json returns the full projection with observations, claims, evidence links, and actions; use --json for field selection"},
+	"gcx irm opmodel containers list-events":                   {Cost: "medium", Hint: "<container> --since-revision <rev> fetches only the diff since a known revision; --page-size bounds one call"},
+	"gcx irm incidents share":                                  {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// k6 provider
 	// -----------------------------------------------------------------------
