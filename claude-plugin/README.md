@@ -62,7 +62,7 @@ that follow the `.agents` convention treat that path as repo-context guidance
 for working on this repository, not as a globally installable skill bundle.
 
 Most skills trigger automatically when you describe what you want. The internal
-`load-opmodel-context` and `share-finding` skills run only when you invoke them
+`load-op-context` and `share-finding` skills run only when you invoke them
 by name. The table below is the current inventory of the
 canonical portable skill bundle.
 
@@ -92,7 +92,7 @@ canonical portable skill bundle.
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
 | `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 | `gcx-demo` | Run a narrated, read-only demo tour of gcx across every Grafana Cloud product area — for customer or colleague presentations |
-| `load-opmodel-context` | Internal: catch up on a shared incident investigation from its operational model. Slash command only |
+| `load-op-context` | Internal: catch up on a shared incident investigation from its operational model. Slash command only |
 | `share-finding` | Internal: share an investigation finding with the incident team and save its operational model. Slash command only |
 
 ## Skill Lifecycle
