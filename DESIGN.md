@@ -68,7 +68,7 @@ Default formats by command type:
 There is no repo-wide format set — read a command's own `-o` line, and see
 [output.md § 1.3](docs/design/output.md) for the rule new commands follow.
 
-The `--json field1,field2` flag selects specific fields. `--json ?` discovers available field paths.
+The `--json <path>,<path>` flag selects specific fields. `--json ?` discovers available field paths.
 
 See [docs/design/output.md](docs/design/output.md) for codec implementation, status messages, and mutation summaries.
 

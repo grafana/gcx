@@ -3,14 +3,19 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// TestFieldSelectCodec_SingleUnstructured covers the unstructured route. An
+// unstructured object declares no type, so gcx rejects no path here: every
+// path that resolves nowhere keeps its null and the command exits 0.
 func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -32,14 +37,10 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:   "missing field produces null",
-			fields: []string{"nonexistent"},
-			obj: map[string]any{
-				"name": "foo",
-			},
-			wantFields: map[string]any{
-				"nonexistent": nil,
-			},
+			name:       "a field that exists nowhere stays a null",
+			fields:     []string{"nonexistent"},
+			obj:        map[string]any{"name": "foo"},
+			wantFields: map[string]any{"nonexistent": nil},
 		},
 		{
 			name:   "dot-notation resolves nested field",
@@ -55,35 +56,39 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 			},
 		},
 		{
-			name:   "dot-notation on missing nested key produces null",
-			fields: []string{"metadata.missing"},
+			name:   "a path that exists and holds null stays a null",
+			fields: []string{"metadata.name"},
 			obj: map[string]any{
-				"metadata": map[string]any{
-					"name": "my-dashboard",
-				},
+				"metadata": map[string]any{"name": nil},
 			},
 			wantFields: map[string]any{
-				"metadata.missing": nil,
+				"metadata.name": nil,
 			},
 		},
 		{
-			name:   "dot-notation on non-map intermediate produces null",
-			fields: []string{"spec.title.nested"},
-			obj: map[string]any{
-				"spec": map[string]any{
-					"title": "My Dashboard",
-				},
-			},
-			wantFields: map[string]any{
-				"spec.title.nested": nil,
-			},
+			name:       "dot-notation on a missing nested key stays a null",
+			fields:     []string{"metadata.missing"},
+			obj:        map[string]any{"metadata": map[string]any{"name": "my-dashboard"}},
+			wantFields: map[string]any{"metadata.missing": nil},
 		},
 		{
-			name:   "multiple fields including missing",
+			name:       "dot-notation through a non-map intermediate stays a null",
+			fields:     []string{"spec.title.nested"},
+			obj:        map[string]any{"spec": map[string]any{"title": "My Dashboard"}},
+			wantFields: map[string]any{"spec.title.nested": nil},
+		},
+		{
+			// A typed route names the real path instead — see
+			// TestLeafNameInsteadOfPathFails.
+			name:       "a leaf name typed instead of a path stays a null",
+			fields:     []string{"username"},
+			obj:        map[string]any{"spec": map[string]any{"username": "ward"}},
+			wantFields: map[string]any{"username": nil},
+		},
+		{
+			name:   "one absent name among present ones keeps them all",
 			fields: []string{"name", "missing"},
-			obj: map[string]any{
-				"name": "foo",
-			},
+			obj:    map[string]any{"name": "foo"},
 			wantFields: map[string]any{
 				"name":    "foo",
 				"missing": nil,
@@ -97,8 +102,7 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 
 			item := unstructured.Unstructured{Object: tc.obj}
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, item)
-			require.NoError(t, err)
+			require.NoError(t, codec.Encode(&buf, item))
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -127,13 +131,15 @@ func TestFieldSelectCodec_ListWrapping(t *testing.T) {
 			},
 		},
 		{
-			name:   "missing field in list items produces null",
-			fields: []string{"nonexistent"},
+			name:   "a field only some items carry is kept for all of them",
+			fields: []string{"name", "kind"},
 			items: []map[string]any{
 				{"name": "foo"},
+				{"name": "bar", "kind": "Dashboard"},
 			},
 			wantItems: []map[string]any{
-				{"nonexistent": nil},
+				{"name": "foo", "kind": nil},
+				{"name": "bar", "kind": "Dashboard"},
 			},
 		},
 	}
@@ -300,8 +306,8 @@ func TestDiscoverFields(t *testing.T) {
 	}
 }
 
-// TestFieldSelectCodec_WithValidator verifies that the validator is invoked before
-// field extraction and that UnknownFieldSelectionError is returned for unknown fields.
+// TestFieldSelectCodec_WithValidator verifies that the validator is invoked
+// before field extraction and unknown fields become advisory warnings.
 func TestFieldSelectCodec_WithValidator(t *testing.T) {
 	type item struct {
 		Name   string `json:"name"`
@@ -313,11 +319,10 @@ func TestFieldSelectCodec_WithValidator(t *testing.T) {
 	require.NotNil(t, validator, "MakeFieldValidator must return a non-nil validator for a struct type")
 
 	tests := []struct {
-		name       string
-		fields     []string
-		value      any
-		wantErr    bool
-		wantErrMsg string
+		name        string
+		fields      []string
+		value       any
+		wantWarning bool
 	}{
 		{
 			name:   "valid fields — no error",
@@ -325,39 +330,60 @@ func TestFieldSelectCodec_WithValidator(t *testing.T) {
 			value:  item{Name: "foo", Status: "ok"},
 		},
 		{
-			name:    "single unknown field — UnknownFieldSelectionError",
-			fields:  []string{"bogus"},
-			value:   item{Name: "foo"},
-			wantErr: true,
+			name:        "single unknown field becomes a warning",
+			fields:      []string{"bogus"},
+			value:       item{Name: "foo"},
+			wantWarning: true,
 		},
 		{
-			name:    "mix of valid and unknown — UnknownFieldSelectionError with offenders only",
-			fields:  []string{"name", "bogus"},
-			value:   item{Name: "foo"},
-			wantErr: true,
+			name:        "mix of valid and unknown warns with offenders only",
+			fields:      []string{"name", "bogus"},
+			value:       item{Name: "foo"},
+			wantWarning: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := cmdio.NewFieldSelectCodecWithValidator(tc.fields, validator)
-			var buf bytes.Buffer
+			var buf, warnings bytes.Buffer
+			codec.SetWarningWriter(&warnings)
 			err := codec.Encode(&buf, tc.value)
-			if tc.wantErr {
-				require.Error(t, err)
-				var fieldErr cmdio.UnknownFieldSelectionError
-				require.ErrorAs(t, err, &fieldErr, "error must be UnknownFieldSelectionError")
-				// All unknown fields must appear in the error.
+			require.NoError(t, err)
+			if tc.wantWarning {
+				assert.Contains(t, warnings.String(), "unknown field(s) in --json")
+				assert.Equal(t, 1, strings.Count(warnings.String(), "warn:"), "validator and extraction must not duplicate the warning")
+				// All unknown fields must appear in the warning.
 				for _, f := range tc.fields {
 					if f != "name" && f != "status" {
-						assert.Contains(t, fieldErr.Fields, f)
+						assert.Contains(t, warnings.String(), f)
 					}
 				}
 			} else {
-				require.NoError(t, err)
+				assert.Empty(t, warnings.String())
 			}
 		})
 	}
+}
+
+func TestFieldSelectCodec_InvalidFieldWarningIsTypedInAgentMode(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	type item struct {
+		Name string `json:"name"`
+	}
+	codec := cmdio.NewFieldSelectCodec([]string{"bogus"})
+	var stdout, stderr bytes.Buffer
+	codec.SetWarningWriter(&stderr)
+
+	require.NoError(t, codec.Encode(&stdout, item{Name: "kept"}))
+	assert.JSONEq(t, `{"bogus":null}`, stdout.String())
+
+	var warning map[string]any
+	require.NoError(t, json.Unmarshal(stderr.Bytes(), &warning))
+	assert.Equal(t, "warning", warning["class"])
+	assert.Contains(t, warning["summary"], "unknown field(s) in --json: bogus")
 }
 
 // TestMakeFieldValidator_StructType verifies that MakeFieldValidator returns a validator

@@ -77,6 +77,7 @@ Workload-level Selection / override state is not surfaced on this command. To in
 			}
 			client := instrumentation.NewClient(r.Client)
 			promHeaders := instrumentation.PromHeadersFromStack(r.Stack)
+			outOpts.ErrWriter = cmd.ErrOrStderr()
 			return runList(ctx, opts, outOpts, client, promHeaders, cmd.OutOrStdout())
 		},
 	}
