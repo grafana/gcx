@@ -224,6 +224,14 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	// Validate context ID if provided
 	if contextID != "" {
 		notice, err := c.ValidateCLIContext(ctx, contextID)
+		if errors.Is(err, assistant.ErrAISDKContext) {
+			return gcxerrors.DetailedError{
+				Summary: "Unsupported conversation",
+				Details: fmt.Sprintf("Conversation %s runs on the AI SDK engine. gcx sends prompts over A2A, "+
+					"which does not add replies to AI SDK conversations yet.", contextID),
+				Suggestions: []string{"Start a new conversation: run the prompt without --context-id or --continue"},
+			}
+		}
 		if err != nil {
 			return err
 		}

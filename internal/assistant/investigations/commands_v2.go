@@ -67,9 +67,9 @@ func resolveID(ctx context.Context, client *Client, id string) (string, error) {
 }
 
 // resolveChatID maps a user-supplied investigation identifier to the chatId
-// regardless of API mode. Used by chat-thread commands, which read from the
-// v1 /chats/{chatId}/all-messages endpoint that's outside the investigations
-// surface and not affected by the v2 rollout.
+// regardless of API mode. Used by chat-thread commands, which read the chat's
+// transcript from the v1 /chats/{chatId} endpoints (see GetChatThread); those
+// are outside the investigations surface and not affected by the v2 rollout.
 func resolveChatID(ctx context.Context, client *Client, id string) (string, error) {
 	resp, status, err := client.ResolveByID(ctx, id)
 	if err != nil {

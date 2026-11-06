@@ -229,6 +229,15 @@ func (c *ChatThreadTextCodec) Decode(_ io.Reader, _ any) error {
 }
 
 func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
+	if b.Raw != nil {
+		// An aisdk part gcx has no mapping for; -o json shows it.
+		return
+	}
+	if b.Type == errorBlockType && !b.Received() {
+		// A converted aisdk data-error part.
+		fmt.Fprintf(w, "  ! error %s\n", errorText(b.Text))
+		return
+	}
 	switch b.Type {
 	case "text":
 		text := assistant.StripContextTags(b.Text)

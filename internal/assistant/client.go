@@ -2,6 +2,7 @@ package assistant
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -107,11 +108,22 @@ func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) (stri
 	return ValidateResumableChatSource(contextID, chat)
 }
 
+// ErrAISDKContext reports that a prompt targets an aisdk chat, which gcx
+// cannot continue over A2A yet.
+var ErrAISDKContext = errors.New("an AI SDK conversation cannot be continued from gcx yet")
+
 // ValidateResumableChatSource reports whether chat can be resumed and returns an
 // optional notice when continuing a conversation not started from the CLI.
 func ValidateResumableChatSource(contextID string, chat *Chat) (string, error) {
 	if chat == nil {
 		return "", fmt.Errorf("context %s not found or not accessible", contextID)
+	}
+	// The Assistant's A2A endpoint runs turns on legacy chats only. On an
+	// aisdk chat the turn "succeeds" but is stored apart from the chat: the
+	// agent sees none of its history and the reply never shows in the UI.
+	// Remove once the Assistant runs A2A turns on aisdk chats.
+	if chat.Engine == "aisdk" {
+		return "", fmt.Errorf("%w: context %s", ErrAISDKContext, contextID)
 	}
 	if chat.Source != "" && chat.Source != "cli" {
 		return fmt.Sprintf(

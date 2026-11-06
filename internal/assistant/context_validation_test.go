@@ -16,6 +16,7 @@ func TestValidateResumableChatSource(t *testing.T) {
 	tests := []struct {
 		name       string
 		source     string
+		engine     string
 		wantNotice bool
 		wantErr    bool
 	}{
@@ -23,6 +24,9 @@ func TestValidateResumableChatSource(t *testing.T) {
 		{name: "assistant", source: "assistant", wantNotice: true},
 		{name: "a2a", source: "a2a", wantNotice: true},
 		{name: "slack", source: "slack", wantNotice: true},
+		{name: "legacy engine", source: "assistant", engine: "legacy", wantNotice: true},
+		{name: "aisdk engine refused", source: "assistant", engine: "aisdk", wantErr: true},
+		{name: "aisdk cli chat refused", source: "cli", engine: "aisdk", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -32,6 +36,7 @@ func TestValidateResumableChatSource(t *testing.T) {
 			notice, err := assistant.ValidateResumableChatSource("chat-id", &assistant.Chat{
 				ID:     "chat-id",
 				Source: tt.source,
+				Engine: tt.engine,
 			})
 
 			if tt.wantErr {
