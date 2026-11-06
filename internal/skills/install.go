@@ -27,7 +27,8 @@ type InstallResult struct {
 }
 
 // Install installs current bundled skills. A nil filter selects all active and
-// deprecated skills; retired and unmanaged local skills are never installed.
+// deprecated skills except explicit-install ones; retired and unmanaged local
+// skills are never installed.
 func Install(source fs.FS, catalog []byte, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
 	states, err := Reconcile(source, catalog, root)
 	if err != nil {
@@ -45,6 +46,9 @@ func Install(source fs.FS, catalog []byte, root string, filter map[string]struct
 			if filter != nil && state.Status == Retired {
 				return InstallResult{}, fmt.Errorf("%s; retired skills cannot be installed", LifecycleNotice{Name: state.Name, CatalogEntry: state.CatalogEntry})
 			}
+			continue
+		}
+		if filter == nil && state.ExplicitInstall {
 			continue
 		}
 		selected[state.Name] = struct{}{}
