@@ -126,7 +126,6 @@ func validateSharePackage(pkg *sharePackage) []string {
 		}
 	}
 
-	claimEvidenceLinkSources := map[string]bool{}
 	for i, b := range pkg.EvidenceLinks {
 		srcType, srcKnown := refs[b.Source]
 		tgtType, tgtKnown := refs[b.Target]
@@ -145,9 +144,6 @@ func validateSharePackage(pkg *sharePackage) []string {
 			}
 			if !slices.Contains(shareEvidenceLinkTargets, tgtType) {
 				errs = append(errs, fmt.Sprintf("evidence_links[%d]: target %s is a %s; must be one of [%s]", i, b.Target, tgtType, strings.Join(shareEvidenceLinkTargets, " ")))
-			}
-			if slices.Contains(shareEvidenceLinkTargets, tgtType) {
-				claimEvidenceLinkSources[b.Source] = true
 			}
 		}
 		if !slices.Contains(stanceVocab, b.Stance) {
@@ -170,10 +166,6 @@ func validateSharePackage(pkg *sharePackage) []string {
 		}
 		if promptType != "observation" {
 			errs = append(errs, fmt.Sprintf("entities[%d] (%s): prompted_by ref %q is a %s; must be an observation", i, ent.Ref, ent.PromptedBy, promptType))
-			continue
-		}
-		if !claimEvidenceLinkSources[ent.PromptedBy] {
-			errs = append(errs, fmt.Sprintf("entities[%d] (%s): prompted_by observation %q must have an evidence link to a claim", i, ent.Ref, ent.PromptedBy))
 		}
 	}
 

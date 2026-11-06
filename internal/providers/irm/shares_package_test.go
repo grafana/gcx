@@ -71,7 +71,11 @@ func TestValidateSharePackage(t *testing.T) {
 		{"invalid stance", func(p *sharePackage) { p.EvidenceLinks[0].Stance = "proves" }, `invalid stance "proves"`},
 		{"prompted by unknown ref", func(p *sharePackage) { p.Entities[3].PromptedBy = "ghost" }, `prompted_by references unknown ref "ghost"`},
 		{"prompted by non-observation", func(p *sharePackage) { p.Entities[3].PromptedBy = "hyp1" }, `prompted_by ref "hyp1" is a hypothesis`},
-		{"prompted by without claim bearing", func(p *sharePackage) { p.EvidenceLinks = nil }, `prompted_by observation "obs1" must have an evidence link to a claim`},
+		{"observation and prompted action without a claim", func(p *sharePackage) {
+			p.Entities = []shareEntity{p.Entities[0], p.Entities[3]}
+			p.EvidenceLinks = nil
+			p.MessageRefs = []string{"act1"}
+		}, ""},
 		{"prompted by on non-action", func(p *sharePackage) { p.Entities[1].PromptedBy = "obs1" }, "prompted_by is only valid for actions"},
 		{"standalone action", func(p *sharePackage) { p.Entities[3].PromptedBy = "" }, ""},
 		{"second evidence link is optional", func(p *sharePackage) { p.EvidenceLinks = p.EvidenceLinks[:1] }, ""},
