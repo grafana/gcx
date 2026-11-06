@@ -117,6 +117,8 @@ type claimDTO struct {
 	Text                 string          `json:"text"`
 	ContentVersion       uint64          `json:"content_version"`
 	Origin               *originOutput   `json:"origin,omitempty"`
+	SourceRef            string          `json:"source_ref,omitempty"`
+	OriginalAuthor       *originalAuthor `json:"original_author,omitempty"`
 	ImpactAssessment     string          `json:"impact_assessment,omitempty"`
 	HypothesisAssessment string          `json:"hypothesis_assessment,omitempty"`
 	Recovery             string          `json:"recovery,omitempty"`
@@ -129,18 +131,20 @@ type claimDTO struct {
 }
 
 type actionDTO struct {
-	ID                   string        `json:"id"`
-	Text                 string        `json:"text"`
-	Status               string        `json:"status"`
-	ContentVersion       uint64        `json:"content_version"`
-	Origin               *originOutput `json:"origin,omitempty"`
-	ExpectedResult       *string       `json:"expected_result,omitempty"`
-	Assignee             *opModelActor `json:"assignee,omitempty"`
-	CoordinationRevision uint64        `json:"coordination_revision"`
-	CreatedBy            opModelActor  `json:"created_by"`
-	CreatedAt            string        `json:"created_at,omitempty"`
-	AdvancedBy           *opModelActor `json:"advanced_by,omitempty"`
-	AdvancedAt           string        `json:"advanced_at,omitempty"`
+	ID                   string          `json:"id"`
+	Text                 string          `json:"text"`
+	Status               string          `json:"status"`
+	ContentVersion       uint64          `json:"content_version"`
+	Origin               *originOutput   `json:"origin,omitempty"`
+	SourceRef            string          `json:"source_ref,omitempty"`
+	OriginalAuthor       *originalAuthor `json:"original_author,omitempty"`
+	ExpectedResult       *string         `json:"expected_result,omitempty"`
+	Assignee             *opModelActor   `json:"assignee,omitempty"`
+	CoordinationRevision uint64          `json:"coordination_revision"`
+	CreatedBy            opModelActor    `json:"created_by"`
+	CreatedAt            string          `json:"created_at,omitempty"`
+	AdvancedBy           *opModelActor   `json:"advanced_by,omitempty"`
+	AdvancedAt           string          `json:"advanced_at,omitempty"`
 }
 
 type evidenceDTO struct {

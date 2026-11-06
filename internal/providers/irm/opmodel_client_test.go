@@ -246,3 +246,40 @@ func TestOpModelClientTimeoutIsPerRequest(t *testing.T) {
 		t.Errorf("suggestions should point at --timeout: %v", derr.Suggestions)
 	}
 }
+
+func TestOpModelClientGetContainerKeepsClaimAndActionProvenance(t *testing.T) {
+	const provenance = `"source_ref": "slack: C1/p1", "original_author": {"display_name": "Ada", "source_id": "U1"}`
+	client := newTestOpModelClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"container": "INC-1", "revision": "7",
+			"claims": [{"id": "c1", "type": "impact", "text": "checkout down", `+provenance+`}],
+			"actions": [{"id": "a1", "text": "roll back", "status": "proposed", `+provenance+`}]}`)
+	})
+
+	body, err := client.GetContainer(context.Background(), getContainerRequest{Container: "INC-1"})
+	if err != nil {
+		t.Fatalf("GetContainer: %v", err)
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var doc struct {
+		Claims  []map[string]any `json:"claims"`
+		Actions []map[string]any `json:"actions"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for kind, entities := range map[string][]map[string]any{"claim": doc.Claims, "action": doc.Actions} {
+		if len(entities) != 1 {
+			t.Fatalf("%s: want 1 entity, got %d", kind, len(entities))
+		}
+		if entities[0]["source_ref"] != "slack: C1/p1" {
+			t.Errorf("%s source_ref = %v", kind, entities[0]["source_ref"])
+		}
+		author, _ := entities[0]["original_author"].(map[string]any)
+		if author["display_name"] != "Ada" || author["source_id"] != "U1" {
+			t.Errorf("%s original_author = %v", kind, entities[0]["original_author"])
+		}
+	}
+}
