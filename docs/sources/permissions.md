@@ -42,7 +42,8 @@ If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/
 | `stacks:read` | Required. Stack discovery, which resolves the stack slug for all Cloud commands. Also covers `gcx k6` reads. |
 | `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`). `gcx` needs these scopes to create the Synthetic Monitoring token. |
 | `stacks:write` | Creating or updating stacks. |
-| `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`). |
+| `stacks:delete` | Deleting stacks (`gcx cloud stacks delete`). |
+| `set:alloy-data-write`, `metrics:read` | Instrumentation Hub setup (`gcx instrumentation setup`). These scopes are for the token you add to the Helm command that `gcx instrumentation setup` prints. |
 
 `gcx fleet` and `gcx instrumentation` don't need a Cloud Access Policy scope to reach Fleet Management. They use the `grafana-collector-app` plugin on your stack, so your Grafana sign-in is enough.
 
@@ -99,6 +100,21 @@ These options remove the error object from the filtered output, so `gcx` also wr
 | 3 | A probe failed with HTTP 401 or 403. Check your permissions. |
 | 1 | Any other probe failed, for example HTTP 500. This applies even if the other products returned a result. |
 
+## Permissions to use Fleet Management
+
+`gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Cloud Access Policy scope. Your Grafana user or service account needs these Collector app permissions:
+
+| Permission | Needed for |
+| --- | --- |
+| `grafana-collector-app:read` | The Collector app's named read routes. |
+| `grafana-collector-app:admin`, or the Admin basic role | The Collector app's wildcard routes. Some read-only commands also use these routes, so `grafana-collector-app:read` alone might not be enough to read Fleet Management data. |
+
+Looking up your stack's details through the Collector app only needs the Viewer role.
+
+If you're missing a permission, the command fails with `Authorization failed` and exit code 3. When `gcx` knows which action the request needed, the error names it. Ask a stack administrator to grant that action to your user or service account.
+
+To list the actions your user is allowed to perform, refer to [Check which permissions your role has](#check-which-permissions-your-role-has).
+
 ## Permissions to use Assistant investigations
 
 {{< admonition type="note" >}}
@@ -121,5 +137,18 @@ Investigations that start automatically, for example from an alert or an IRM web
 ### Other Assistant commands
 
 For commands that change things, such as creating investigations, or that call MCP servers, `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles. 
+
+## Permissions to manage Frontend Observability apps
+
+The `gcx frontend apps` commands that change apps need these Frontend Observability permissions:
+
+| Commands | Action | Granted by |
+| --- | --- | --- |
+| `gcx frontend apps create`, `gcx frontend apps update` | `grafana-kowalski-app.apps:write` | The **Frontend Observability Editor** role |
+| `gcx frontend apps delete`, `gcx frontend apps delete-sourcemap` | `grafana-kowalski-app.apps:delete` | The **Frontend Observability Admin** role, or the Admin basic role |
+
+A user with only `grafana-kowalski-app.apps:write` can create and update apps, but can't delete apps or source map bundles.
+
+If you're missing a permission, the command fails with `Authorization failed`. The error names the missing action and the role that grants it. Ask your Grafana administrator to assign you that role.
 
 
