@@ -2,7 +2,6 @@ package assistant
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -108,9 +107,16 @@ func (c *Client) ValidateCLIContext(ctx context.Context, contextID string) (stri
 	return ValidateResumableChatSource(contextID, chat)
 }
 
-// ErrAISDKContext reports that a prompt targets an aisdk chat, which gcx
-// cannot continue over A2A yet.
-var ErrAISDKContext = errors.New("an AI SDK conversation cannot be continued from gcx yet")
+// UnsupportedEngineError reports that a prompt targets a chat whose engine gcx
+// cannot continue over A2A: today every engine but legacy, including aisdk.
+type UnsupportedEngineError struct {
+	ContextID string
+	Engine    string
+}
+
+func (e *UnsupportedEngineError) Error() string {
+	return fmt.Sprintf("context %s uses chat engine %q, which gcx cannot continue yet", e.ContextID, e.Engine)
+}
 
 // ValidateResumableChatSource reports whether chat can be resumed and returns an
 // optional notice when continuing a conversation not started from the CLI.
@@ -121,9 +127,12 @@ func ValidateResumableChatSource(contextID string, chat *Chat) (string, error) {
 	// The Assistant's A2A endpoint runs turns on legacy chats only. On an
 	// aisdk chat the turn "succeeds" but is stored apart from the chat: the
 	// agent sees none of its history and the reply never shows in the UI.
-	// Remove once the Assistant runs A2A turns on aisdk chats.
-	if chat.Engine == "aisdk" {
-		return "", fmt.Errorf("%w: context %s", ErrAISDKContext, contextID)
+	// Allow only engines known to work, so a new engine fails the same way.
+	// Relax once the Assistant runs A2A turns on aisdk chats.
+	switch chat.Engine {
+	case "", "legacy":
+	default:
+		return "", &UnsupportedEngineError{ContextID: contextID, Engine: chat.Engine}
 	}
 	if chat.Source != "" && chat.Source != "cli" {
 		return fmt.Sprintf(

@@ -27,6 +27,7 @@ func TestValidateResumableChatSource(t *testing.T) {
 		{name: "legacy engine", source: "assistant", engine: "legacy", wantNotice: true},
 		{name: "aisdk engine refused", source: "assistant", engine: "aisdk", wantErr: true},
 		{name: "aisdk cli chat refused", source: "cli", engine: "aisdk", wantErr: true},
+		{name: "unknown engine refused", source: "cli", engine: "future", wantErr: true},
 	}
 
 	for _, tt := range tests {

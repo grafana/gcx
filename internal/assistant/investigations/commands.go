@@ -289,7 +289,14 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 					// Neither a v2 nor a legacy investigation. The legacy
 					// endpoint answers an unknown ID with a bare 500, so say
 					// what was probably passed.
-					return fmt.Errorf("%w (no v2 investigation %q either: %s)", err, args[0], idKindsHint)
+					return gcxerrors.DetailedError{
+						Summary: gcxerrors.SummaryResourceNotFound,
+						Details: fmt.Sprintf("No investigation %q: %s.", args[0], idKindsHint),
+						Parent:  err,
+						Suggestions: []string{
+							"List investigations and use the `id` field: gcx assistant investigations list -o json",
+						},
+					}
 				}
 				return err
 			}
