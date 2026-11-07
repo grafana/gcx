@@ -58,7 +58,7 @@ When agent mode is active:
 1. **Default display format** becomes `agents` for commands using
    `io.Options.BindFlags()`, overriding `DefaultFormat()` unless the command
    pins its format with `PinDefaultFormat` (see § 6.4). The `agents`
-   codec emits compact JSON when the payload is ≤ 100 KiB and spills to a
+   codec emits compact JSON when the payload is ≤ 24 KiB and spills to a
    temp file otherwise, unless stdout is a regular file on disk (a
    `> out.json` redirect), which is always written in full — see
    [output.md § Agents Codec](output.md#111-agents-codec)
@@ -111,7 +111,7 @@ Explicit flags override agent mode defaults:
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
-- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400); `0` disables spilling
+- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 24576); `0` disables spilling
 - Redirecting stdout to a file (`gcx ... > out.json`) disables spilling for that
   run: the named file receives the full payload, while a harness capturing
   stdout through a pipe keeps the spill
