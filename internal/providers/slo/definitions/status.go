@@ -117,10 +117,8 @@ grafana_slo_* metrics.`,
 			}
 
 			if len(slos) == 0 {
-				if opts.IO.OutputFormat == "graph" {
-					cmdio.Info(cmd.OutOrStdout(), "No SLO definitions found.")
-					return nil
-				}
+				// The hint is diagnostic: stdout carries only the empty result.
+				cmdio.Info(cmd.ErrOrStderr(), "No SLO definitions found.")
 				return opts.IO.Encode(cmd.OutOrStdout(), []StatusResult{})
 			}
 
@@ -391,11 +389,6 @@ func StatusTable() cmdio.Table[StatusResult] {
 			{Header: "SLI_1H", Visible: cmdio.WideOnly, Content: func(r StatusResult) string { return formatOptionalPercent(r.SLI1h) }},
 			{Header: "SLI_1D", Visible: cmdio.WideOnly, Content: func(r StatusResult) string { return formatOptionalPercent(r.SLI1d) }},
 			{Header: "STATUS", Content: func(r StatusResult) string { return r.Status }},
-		},
-		// Keep prose in the table codec so JSON, YAML and agents still encode [].
-		Empty: func(w io.Writer) error {
-			cmdio.Info(w, "No SLO definitions found.")
-			return nil
 		},
 	}
 }
