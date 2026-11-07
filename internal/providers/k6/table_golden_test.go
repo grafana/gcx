@@ -23,7 +23,7 @@ func TestTablesGolden(t *testing.T) {
 		{"load_tests_wide", k6.LoadTestTable().Codec("wide"), []k6.LoadTest{{ID: 42, Name: "checkout", ProjectID: 7, Created: "2026-09-01T12:34:56Z", Updated: "2026-09-02T13:45:00Z"}, {ID: 7, Name: "minimal"}}, []k6.LoadTest{}},
 		{"test_runs_table", k6.TestRunTable().Codec("table"), []k6.TestRunStatus{{ID: 42, LoadTestID: 7, Status: "finished", ResultStatus: 0, Created: "2026-09-01T12:34:56Z", Ended: "2026-09-01T13:45:00Z"}, {ID: 7, Status: "running", ResultStatus: 1}, {ID: 9, ResultStatus: 99}}, []k6.TestRunStatus{}},
 		{"env_vars_table", k6.EnvVarTable().Codec("table"), []k6.EnvVar{{ID: 42, Name: "LONG_VALUE", Value: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ", Description: "a long value"}, {ID: 7, Name: "EMPTY"}}, []k6.EnvVar{}},
-		{"schedules_table", k6.ScheduleTable().Codec("table"), []k6.Schedule{{ID: 42, LoadTestID: 7, Starts: "2026-09-01T12:34:56Z", NextRun: "2026-09-02T13:45:00Z", Deactivated: true}, {ID: 7}}, []k6.Schedule{}},
+		{"schedules_table", k6.ScheduleTable().Codec("table"), []k6.Schedule{{ID: 42, LoadTestID: 7, Starts: "2026-09-01T12:34:56Z", NextRun: new("2026-09-02T13:45:00Z"), Deactivated: true}, {ID: 7}}, []k6.Schedule{}},
 		{"load_zones_table", k6.LoadZoneTable().Codec("table"), []k6.LoadZone{{ID: 42, Name: "private", K6LoadZoneID: "zone-42"}, {ID: 7, Name: "minimal"}}, []k6.LoadZone{}},
 		{"allowed_projects_table", k6.AllowedProjectTable().Codec("table"), []k6.AllowedProject{{ID: 42, Name: "checkout"}, {ID: 7}}, []k6.AllowedProject{}},
 		{"allowed_load_zones_table", k6.AllowedLoadZoneTable().Codec("table"), []k6.AllowedLoadZone{{ID: 42, Name: "private"}, {ID: 7}}, []k6.AllowedLoadZone{}},
