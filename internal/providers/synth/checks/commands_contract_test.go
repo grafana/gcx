@@ -1037,7 +1037,7 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 		wantStdout string
 		checkEmpty bool
 	}{
-		{name: "human default keeps prose notice", wantStdout: "🛈 No checks found.\n"},
+		{name: "human default sends notice to stderr", wantStdout: ""},
 		{name: "agent mode emits one empty JSON document", agentMode: true, checkEmpty: true},
 	}
 
@@ -1046,7 +1046,7 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 			st := &checkAPIState{probesOnline: true}
 			srv := newCheckServer(t, st)
 
-			stdout, _, err := runChecks(t, srv.URL, tc.agentMode, "", "status")
+			stdout, stderr, err := runChecks(t, srv.URL, tc.agentMode, "", "status")
 			require.NoError(t, err)
 
 			if tc.checkEmpty {
@@ -1054,7 +1054,8 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 				require.True(t, ok, "empty status must encode as a JSON array, got: %q", stdout)
 				assert.Empty(t, doc)
 			} else {
-				assert.Equal(t, tc.wantStdout, stdout)
+				assert.NotContains(t, stdout, "No checks found.")
+				assert.Contains(t, stderr, "No checks found.")
 			}
 		})
 	}

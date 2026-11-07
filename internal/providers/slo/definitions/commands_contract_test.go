@@ -484,7 +484,7 @@ func TestDefinitionsStatusEmptyContract(t *testing.T) {
 		wantStdout string
 		checkEmpty bool
 	}{
-		{name: "human default keeps prose notice", wantStdout: "🛈 No SLO definitions found.\n"},
+		{name: "human default sends notice to stderr", wantStdout: ""},
 		{name: "agent mode emits one empty JSON document", agentMode: true, checkEmpty: true},
 	}
 
@@ -492,7 +492,7 @@ func TestDefinitionsStatusEmptyContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newSLOServer(t, &sloAPIState{})
 
-			stdout, _, err := runDefinitions(t, srv.URL, tc.agentMode, "", "status")
+			stdout, stderr, err := runDefinitions(t, srv.URL, tc.agentMode, "", "status")
 			require.NoError(t, err)
 
 			if tc.checkEmpty {
@@ -500,7 +500,8 @@ func TestDefinitionsStatusEmptyContract(t *testing.T) {
 				require.True(t, ok, "empty status must encode as a JSON array, got: %q", stdout)
 				assert.Empty(t, doc)
 			} else {
-				assert.Equal(t, tc.wantStdout, stdout)
+				assert.NotContains(t, stdout, "No SLO definitions found.")
+				assert.Contains(t, stderr, "No SLO definitions found.")
 			}
 		})
 	}
@@ -512,7 +513,7 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 		agentMode  bool
 		wantStdout string
 	}{
-		{name: "human default keeps prose notice", wantStdout: "🛈 No SLO definitions found.\n"},
+		{name: "human default sends notice to stderr", wantStdout: ""},
 		{name: "agent mode emits one JSON document", agentMode: true},
 	}
 
@@ -520,7 +521,7 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newSLOServer(t, &sloAPIState{})
 
-			stdout, _, err := runDefinitions(t, srv.URL, tc.agentMode, "", "timeline")
+			stdout, stderr, err := runDefinitions(t, srv.URL, tc.agentMode, "", "timeline")
 			require.NoError(t, err)
 
 			if tc.agentMode {
@@ -529,7 +530,8 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 				assert.Contains(t, doc, "SLOs")
 				assert.Contains(t, doc, "Points")
 			} else {
-				assert.Equal(t, tc.wantStdout, stdout)
+				assert.NotContains(t, stdout, "No SLO definitions found.")
+				assert.Contains(t, stderr, "No SLO definitions found.")
 			}
 		})
 	}

@@ -129,12 +129,10 @@ grafana_slo_sli_window metrics.`,
 				}
 			}
 
-			if len(rpts) == 0 && (opts.IO.OutputFormat == "graph" || opts.IO.OutputFormat == "table") {
-				// Prose formats keep the historical notice; structured
-				// formats (json/yaml/agents) fall through and encode the
-				// (empty) payload so stdout still carries one document.
-				cmdio.Info(cmd.OutOrStdout(), "No SLO reports found.")
-				return nil
+			if len(rpts) == 0 {
+				// The hint is diagnostic: every format still encodes the
+				// (empty) payload so stdout carries only the result.
+				cmdio.Info(cmd.ErrOrStderr(), "No SLO reports found.")
 			}
 
 			// Collect all unique SLO UUIDs across all reports.
