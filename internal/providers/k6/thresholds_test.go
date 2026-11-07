@@ -112,7 +112,7 @@ func TestRunThresholdOptions_PreserveOpenValues(t *testing.T) {
 		`{"checks":["rate==1",{"threshold":"rate<0.01","abortOnFail":"true","delayAbortEval":true,"futureField":42},null,42]}`,
 	} {
 		t.Run(thresholds, func(t *testing.T) {
-			body := `{"load_test_id":0,"result_status":0,"status":"completed","options":{"thresholds":` + thresholds + `}}`
+			body := `{"result_status":0,"status":"completed","options":{"thresholds":` + thresholds + `}}`
 			var run TestRunStatus
 			require.NoError(t, json.Unmarshal([]byte(body), &run))
 			for _, codec := range []format.Codec{format.NewJSONCodec(), format.NewYAMLCodec()} {
