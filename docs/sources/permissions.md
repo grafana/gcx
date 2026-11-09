@@ -95,7 +95,6 @@ These options remove the error object from the filtered output, so `gcx` also wr
 - `--json <fields>` when the field list doesn't include `error`.
 - `--json list`.
 
-
 ## Grant Fleet Management permissions
 
 `gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Cloud Access Policy scope. Your Grafana user or service account needs these Collector app permissions:
