@@ -25,7 +25,7 @@ require (
 	github.com/grafana/grafana-app-sdk/logging v0.61.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.22
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
-	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
+	github.com/grafana/grafana/pkg/apimachinery/v13 v13.3.0
 	github.com/grafana/mcp-doc-server v1.0.0
 	github.com/grafana/otel-checker v0.4.0
 	github.com/grafana/promql-builder/go v0.0.6
