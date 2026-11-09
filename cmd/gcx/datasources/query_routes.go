@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/bigquery"
@@ -58,6 +60,11 @@ type genericQueryRequest struct {
 	limit       int
 	limitSet    bool
 	table       string
+
+	// configFile and contextName are the --config and --context values, used
+	// to build follow-up commands that target the same Grafana.
+	configFile  string
+	contextName string
 
 	// warn is the command's stderr. dispatchPostgres and dispatchPinot write
 	// LIMIT-cap (and, for Pinot, skip) notices here so they stay off stdout.
@@ -191,18 +198,24 @@ func dispatchLoki(ctx context.Context, req genericQueryRequest) (any, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	resp, err := client.Query(ctx, req.uid, loki.QueryRequest{
+	lokiReq := loki.QueryRequest{
 		Query: req.expr,
 		Start: req.start,
 		End:   req.end,
 		Step:  req.step,
 		Limit: req.limit,
-	})
+	}
+	now := time.Now()
+	resp, err := client.Query(ctx, req.uid, lokiReq)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
 	dsquery.SurfaceLogLimit(req.warn, resp, req.limit)
+	windowStart, windowEnd := lokiReq.EffectiveRange(now)
+	dsquery.SurfaceDroppedLogs(req.warn, resp, dsloki.GenericDroppedLogsCommand(
+		os.Args[0], req.configFile, req.contextName, req.uid, req.expr,
+		windowStart, windowEnd, req.limit, req.limitSet))
 	return resp, nil
 }
 

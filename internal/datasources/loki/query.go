@@ -2,10 +2,12 @@ package loki
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -40,6 +42,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	drilldown := &dsquery.DrilldownLinkOpts{}
 	var limit int
 	var datasource string
+	var droppedLogs bool
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -64,7 +67,22 @@ the Explore URL for expressions Drilldown's simple filter model can't
 represent, e.g. parser stages or aggregations).
 Use -o graph for a log-volume-over-time chart of the lines the query
 returned, counted per level. It does not cover lines beyond --limit or the
-backend's own line limits, so it can undercount a busy time range.`,
+backend's own line limits, so it can undercount a busy time range.
+
+When Adaptive Logs sampling dropped some matching lines, a stderr hint gives
+the --dropped-logs command that queries the Adaptive Logs time machine for the
+same window. A missing hint does not prove nothing was dropped: rules that
+drop every line of a kind leave no surviving line to report it.
+
+--dropped-logs (experimental) returns only the dropped lines, never the lines
+a normal query returns; each carries __time_machine__ structured metadata.
+Merge them with a normal query's results yourself, matching on stream labels
+and timestamp. It accepts log queries only (no metric queries or --step),
+returns at most 10000 lines (--limit 0 uses the time machine's default of
+100), and cannot be combined with Explore or Drilldown links. Lines older
+than the time machine's retention are not available; stderr notes when the
+window was cut short. It needs a Grafana Cloud Logs datasource on a stack with
+the time machine enabled.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -85,11 +103,19 @@ backend's own line limits, so it can undercount a busy time range.`,
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
 
   # Output as JSON
-  gcx datasources loki query -d UID '{job="varlogs"}' -o json`,
+  gcx datasources loki query -d UID '{job="varlogs"}' -o json
+
+  # Lines Adaptive Logs dropped in a window (experimental)
+  gcx datasources loki query -d UID '{job="varlogs"}' --from 2026-01-02T15:00:00Z --to 2026-01-02T15:15:00Z --dropped-logs -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
+			}
+			if droppedLogs {
+				if err := validateDroppedLogs(shared.Step, limit, *share, *drilldown); err != nil {
+					return gcxerrors.NewCommandUsageError(cmd, "", err)
+				}
 			}
 
 			expr, err := shared.ResolveExpr(args, 0)
@@ -129,7 +155,12 @@ backend's own line limits, so it can undercount a busy time range.`,
 				Limit: limit,
 			}
 
-			resp, err := client.Query(ctx, datasourceUID, req)
+			var resp *loki.QueryResponse
+			if droppedLogs {
+				resp, err = client.QueryDroppedLogs(ctx, datasourceUID, req)
+			} else {
+				resp, err = client.Query(ctx, datasourceUID, req)
+			}
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
@@ -141,6 +172,21 @@ backend's own line limits, so it can undercount a busy time range.`,
 			}
 
 			dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			if droppedLogs {
+				dsquery.SurfaceNotices(cmd.ErrOrStderr(), resp)
+				if err := shared.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
+					return err
+				}
+				if shared.ErrorOnEmpty {
+					return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+						Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+					})
+				}
+				return nil
+			}
+
+			windowStart, windowEnd := req.EffectiveRange(now)
+			dsquery.SurfaceDroppedLogs(cmd.ErrOrStderr(), resp, DroppedLogsCommand(os.Args, windowStart, windowEnd, limit))
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -198,6 +244,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
 	share.Setup(cmd.Flags(), "executed query")
 	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
+	cmd.Flags().BoolVar(&droppedLogs, "dropped-logs", false, "[experimental] Query the Adaptive Logs time machine for lines dropped by sampling instead of Loki. Returns only dropped lines, each tagged with __time_machine__ structured metadata; merge them with a normal query's results yourself")
 
 	return cmd
 }

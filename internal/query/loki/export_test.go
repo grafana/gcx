@@ -18,6 +18,10 @@ func (c *Client) BuildPatternsPath(datasourceUID string) string {
 	return c.buildPatternsPath(datasourceUID)
 }
 
+func (c *Client) BuildDroppedLogsPath(datasourceUID string) string {
+	return c.buildDroppedLogsPath(datasourceUID)
+}
+
 // ConvertGrafanaResponse exposes convertGrafanaResponse for testing.
 func ConvertGrafanaResponse(resp *GrafanaQueryResponse) *QueryResponse {
 	return convertGrafanaResponse(resp)

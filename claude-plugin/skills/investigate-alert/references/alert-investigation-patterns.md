@@ -250,6 +250,12 @@ Common mistakes:
   lists the indexed labels (what's valid in `{}`); it does not enumerate
   structured-metadata keys.
 
+`__adaptive_logs_sampled__` structured metadata means Adaptive Logs dropped
+some similar lines at ingest. Follow the stderr hint's `--dropped-logs`
+command to fetch the dropped lines from the Adaptive Logs time machine; it
+returns only those lines, tagged `__time_machine__`, so merge them with the
+normal results by stream labels and timestamp before counting occurrences.
+
 ---
 
 ## Interpreting Graph Output

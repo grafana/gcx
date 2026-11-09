@@ -30,6 +30,32 @@ func BuildListLimitCommand(argv []string, limit int) string {
 	return shellJoin(args)
 }
 
+// RewriteCommand returns a shell command derived from argv with valueFlags
+// (each consuming its next argument unless written --flag=value) and
+// boolFlags removed, then appendArgs added.
+func RewriteCommand(argv, valueFlags, boolFlags, appendArgs []string) string {
+	args := append([]string(nil), argv...)
+	for _, flag := range valueFlags {
+		args = stripFlag(args, flag)
+	}
+	for _, flag := range boolFlags {
+		args = stripBoolFlag(args, flag)
+	}
+	args = append(args, appendArgs...)
+	return shellJoin(args)
+}
+
+func stripBoolFlag(argv []string, flag string) []string {
+	out := make([]string, 0, len(argv))
+	for _, arg := range argv {
+		if arg == flag || strings.HasPrefix(arg, flag+"=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
 func stripFlag(argv []string, flag string) []string {
 	out := make([]string, 0, len(argv))
 	for i := 0; i < len(argv); i++ {

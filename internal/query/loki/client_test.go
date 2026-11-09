@@ -34,6 +34,7 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		{"patterns", c.BuildPatternsPath(uid)},
 		{"labelValues", c.BuildLabelValuesPath(uid, "job")},
 		{"series", c.BuildSeriesPath(uid)},
+		{"droppedLogs", c.BuildDroppedLogsPath(uid)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

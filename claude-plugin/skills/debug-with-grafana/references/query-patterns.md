@@ -252,6 +252,27 @@ explicit limits bound samples, not frequency. Omitting the CLI cap does not
 establish complete backend coverage. The earliest returned line is only the
 earliest **observed in that sample**, not necessarily the first occurrence.
 
+### Lines dropped by Adaptive Logs
+
+Adaptive Logs may drop part of the matching lines at ingest. Each line that
+survived partial sampling carries `__adaptive_logs_sampled__` structured
+metadata, whose value is the drop rate as a percentage. When `logs query` sees
+the marker or Loki's sampling notice, stderr carries a hint with a follow-up
+command that queries the Adaptive Logs time machine for the same window:
+
+```bash
+gcx logs query -d "$LOKI_UID" '{service_name="api"}' \
+  --from "$FROM" --to "$TO" --limit 100 --dropped-logs -o agents
+```
+
+`--dropped-logs` is experimental. It returns **only** the dropped lines, so
+merge them with the normal results yourself by stream labels and timestamp.
+Each recovered line carries `__time_machine__` structured metadata and has no
+`detected_level`. It accepts log selectors only (no metric queries or
+`--step`), returns at most 10000 lines, and a stderr hint notes when the window
+predates the time machine's retention. No hint does not prove nothing was
+dropped: rules that drop every line of a kind leave no marker behind.
+
 ### Log-derived trends
 
 Use `logs metrics`, not the log-line `logs query` output path, for aggregate

@@ -3,6 +3,7 @@ package query
 import (
 	"fmt"
 	"io"
+	"strconv"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -48,5 +49,34 @@ func SurfaceLogLimit(w io.Writer, resp *loki.QueryResponse, limit int) {
 	}
 	if count >= limit {
 		cmdio.EmitHint(w, fmt.Sprintf("query reached --limit %d; results may be incomplete. Increase --limit to retrieve more log lines", limit), "")
+	}
+}
+
+// SurfaceDroppedLogs hints that Adaptive Logs sampling dropped matching lines
+// and that the time machine may still hold them. command is the follow-up
+// invocation that fetches those lines.
+func SurfaceDroppedLogs(w io.Writer, resp *loki.QueryResponse, command string) {
+	s := loki.SampledLines(resp)
+	if !s.Any() {
+		return
+	}
+
+	var summary string
+	switch {
+	case s.Lines > 0 && s.MaxDropPercent > 0:
+		summary = fmt.Sprintf("%d returned line(s) were sampled by Adaptive Logs (up to %s%% of similar lines dropped); the dropped lines may be recoverable from the time machine",
+			s.Lines, strconv.FormatFloat(s.MaxDropPercent, 'f', -1, 64))
+	case s.Lines > 0:
+		summary = fmt.Sprintf("%d returned line(s) were sampled by Adaptive Logs; the dropped lines may be recoverable from the time machine", s.Lines)
+	default:
+		summary = "Adaptive Logs sampling dropped some matching lines; they may be recoverable from the time machine"
+	}
+	cmdio.EmitHint(w, summary, command)
+}
+
+// SurfaceNotices writes each datasource notice on resp to w as a hint.
+func SurfaceNotices(w io.Writer, resp *loki.QueryResponse) {
+	for _, notice := range resp.Data.Notices {
+		cmdio.EmitHint(w, notice.Text, "")
 	}
 }

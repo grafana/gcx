@@ -392,7 +392,7 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	"gcx logs labels":  {Cost: "small"},
 	"gcx logs metrics": {Cost: "large", Hint: "'rate({job=\"myapp\"}[5m])' --since 1h -o json"},
-	"gcx logs query":   {Cost: "large", Hint: "'{job=\"myapp\"}' --since 1h --limit 100 -o json | Docs: " + docs.LogQL},
+	"gcx logs query":   {Cost: "large", Hint: "'{job=\"myapp\"}' --since 1h --limit 100 -o json | add --dropped-logs to fetch lines Adaptive Logs dropped | Docs: " + docs.LogQL},
 	"gcx logs series":  {Cost: "medium", Hint: "--match '{job=\"myapp\"}' -o json"},
 
 	// Logs adaptive

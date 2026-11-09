@@ -2,13 +2,17 @@ package query_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/query/loki"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func rows(n int) [][]any {
@@ -96,4 +100,69 @@ func TestSurfaceLogLimit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSurfaceDroppedLogs(t *testing.T) {
+	sampled := func(value string) loki.LogEntry {
+		return loki.LogEntry{StructuredMetadata: map[string]string{loki.SampledMetadataKey: value}}
+	}
+	notice := loki.FrameNotice{Severity: "warning", Text: "Some logs may have been dropped by Adaptive Logs sampling"}
+	const command = "gcx logs query '{job=\"app\"}' --dropped-logs"
+
+	tests := []struct {
+		name        string
+		resp        *loki.QueryResponse
+		wantSummary string
+	}{
+		{
+			name: "no evidence",
+			resp: &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{{Line: "x"}}}}}},
+		},
+		{
+			name:        "numeric marker",
+			resp:        &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{sampled("90.00"), sampled("99.99")}}}}},
+			wantSummary: "2 returned line(s) were sampled by Adaptive Logs (up to 99.99% of similar lines dropped); the dropped lines may be recoverable from the time machine",
+		},
+		{
+			name:        "legacy marker",
+			resp:        &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{sampled("true")}}}}},
+			wantSummary: "1 returned line(s) were sampled by Adaptive Logs; the dropped lines may be recoverable from the time machine",
+		},
+		{
+			name:        "notice only",
+			resp:        &loki.QueryResponse{Data: loki.QueryResultData{Notices: []loki.FrameNotice{notice}}},
+			wantSummary: "Adaptive Logs sampling dropped some matching lines; they may be recoverable from the time machine",
+		},
+	}
+	for _, tt := range tests {
+		for _, agentMode := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/agent=%t", tt.name, agentMode), func(t *testing.T) {
+				agent.SetFlag(agentMode)
+				t.Cleanup(func() { agent.SetFlag(false) })
+
+				var stderr bytes.Buffer
+				dsquery.SurfaceDroppedLogs(&stderr, tt.resp, command)
+
+				switch {
+				case tt.wantSummary == "":
+					assert.Empty(t, stderr.String())
+				case agentMode:
+					var event map[string]string
+					require.NoError(t, json.Unmarshal(stderr.Bytes(), &event))
+					assert.Equal(t, map[string]string{"class": "hint", "summary": tt.wantSummary, "command": command}, event)
+				default:
+					assert.Equal(t, "hint: "+tt.wantSummary+": "+command+"\n", stderr.String())
+				}
+			})
+		}
+	}
+}
+
+func TestSurfaceNotices(t *testing.T) {
+	resp := &loki.QueryResponse{Data: loki.QueryResultData{Notices: []loki.FrameNotice{
+		{Severity: "warning", Text: "first"}, {Severity: "warning", Text: "second"},
+	}}}
+	var stderr bytes.Buffer
+	dsquery.SurfaceNotices(&stderr, resp)
+	assert.Equal(t, "hint: first\nhint: second\n", stderr.String())
 }

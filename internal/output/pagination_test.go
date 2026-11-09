@@ -78,3 +78,34 @@ func TestShellCommandQuotesWindowsNativeArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestRewriteCommandStripsValueAndBoolFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		argv []string
+		want []string
+	}{
+		{
+			name: "separate and inline values, bool flags and their =value forms",
+			argv: []string{"gcx", "logs", "query", "-d", "uid", "{job=\"app\"}", "--since", "1h", "--share-link", "--open=true", "--step=1m", "--limit", "5"},
+			want: []string{"gcx", "logs", "query", "-d", "uid", "{job=\"app\"}", "--limit", "5", "--from", "a", "--dropped-logs"},
+		},
+		{
+			name: "bool flag does not consume the next argument",
+			argv: []string{"gcx", "logs", "query", "--share-link", "{job=\"app\"}"},
+			want: []string{"gcx", "logs", "query", "{job=\"app\"}", "--from", "a", "--dropped-logs"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			argv := append([]string(nil), tt.argv...)
+			got := output.RewriteCommand(argv, []string{"--since", "--step"}, []string{"--share-link", "--open"}, []string{"--from", "a", "--dropped-logs"})
+			if want := output.ShellCommand(tt.want); got != want {
+				t.Fatalf("RewriteCommand() = %q, want %q", got, want)
+			}
+			if output.ShellCommand(argv) != output.ShellCommand(tt.argv) {
+				t.Fatalf("RewriteCommand mutated argv: %q", argv)
+			}
+		})
+	}
+}

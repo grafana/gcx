@@ -112,6 +112,8 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		limit:       o.limit,
 		limitSet:    cmd.Flags().Changed("limit"),
 		table:       o.table,
+		configFile:  o.config.ConfigFile,
+		contextName: o.config.Context,
 		warn:        cmd.ErrOrStderr(),
 	})
 	if err != nil {
