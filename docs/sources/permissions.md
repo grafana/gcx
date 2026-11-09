@@ -55,6 +55,18 @@ When you sign in with a [service account token](../authentication#service-accoun
 
 On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope query access more tightly, for example `datasources:read` plus `datasources:query` on specific data sources.
 
+### Alerting
+
+`gcx alert` commands use the Grafana alerting APIs. The service account needs these permissions:
+
+| Commands | Permission |
+| --- | --- |
+| View Grafana-managed alert rules, rule groups, and state history: `gcx alert rules`, `gcx alert groups`, `gcx alert state-history` | `alert.rules:read` |
+| View data source-managed rules: `gcx alert ruler` | `alert.rules.external:read` on the data source |
+| Create, update, or delete data source-managed rules: `gcx alert ruler upsert`, `gcx alert ruler delete` | `alert.rules.external:write` on the data source |
+| View contact points, mute timings, templates, and notification policies | One of `alert.provisioning:read`, `alert.notifications.provisioning:read`, or `alert.notifications:read` |
+| Create, update, or delete contact points, mute timings, templates, and notification policies | `alert.provisioning:write` or `alert.notifications.provisioning:write` |
+
 ### Fleet Management
 
 `gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Cloud Access Policy scope. The service account needs these Collector app permissions:
@@ -131,13 +143,70 @@ A user with only `grafana-kowalski-app.apps:write` can create and update apps, b
 
 ### Grafana IRM
 
-IRM commands go through the IRM plugin on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud credential.
+`gcx irm` commands go through the IRM plugin on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud credential. The service account needs an IRM plugin role.
+
+These core roles cover most use:
+
+| Role | Access |
+| --- | --- |
+| `plugins:grafana-irm-app:reader` | Read-only access to everything in IRM. |
+| `plugins:grafana-irm-app:oncaller` | Read access to everything in IRM, plus editing alert groups, schedules, and your own settings. |
+| `plugins:grafana-irm-app:editor` | Like Admin, except creating integrations, escalation chains, and outgoing webhooks, and updating ChatOps, other users', and general IRM settings. |
+| `plugins:grafana-irm-app:admin` | Read and write access to everything in IRM. |
+| `plugins:grafana-irm-app:incident-access` | Access to IRM incidents. |
+
+To grant narrower access, use the granular IRM roles for the commands you run:
+
+| Commands | Read role | Write role |
+| --- | --- | --- |
+| `gcx irm oncall alert-groups` | `plugins:grafana-irm-app:alert-groups-reader` | `plugins:grafana-irm-app:alert-groups-editor` |
+| `gcx irm oncall integrations` | `plugins:grafana-irm-app:integrations-reader` | `plugins:grafana-irm-app:integrations-editor` |
+| `gcx irm oncall integrations start-maintenance`, `stop-maintenance` | `plugins:grafana-irm-app:maintenance-reader` | `plugins:grafana-irm-app:maintenance-editor` |
+| `gcx irm oncall escalation-chains` | `plugins:grafana-irm-app:escalation-chains-reader` | `plugins:grafana-irm-app:escalation-chains-editor` |
+| `gcx irm oncall schedules`, `gcx irm oncall shifts` | `plugins:grafana-irm-app:schedules-reader` | `plugins:grafana-irm-app:schedules-editor` |
+| `gcx irm oncall webhooks` | `plugins:grafana-irm-app:outgoing-webhooks-reader` | `plugins:grafana-irm-app:outgoing-webhooks-editor` |
 
 OnCall personal notification rules don't work with a service account: the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../guides/manage-oncall-notification-rules) for the permissions those commands need.
 
+### Synthetic Monitoring
+
+`gcx sm` commands go through the Synthetic Monitoring data source on your stack, using your Grafana sign-in. The service account needs a Synthetic Monitoring plugin role:
+
+| Role | Access |
+| --- | --- |
+| `plugins:grafana-synthetic-monitoring-app:reader` | Read checks, probes, alerts, thresholds, and access tokens. |
+| `plugins:grafana-synthetic-monitoring-app:editor` | Add, update, and delete checks, probes, alerts, and thresholds. |
+| `plugins:grafana-synthetic-monitoring-app:admin` | Everything Editor can do, plus managing access tokens and enabling or disabling the plugin. |
+
+For narrower access, use the granular roles, such as `plugins:grafana-synthetic-monitoring-app:checks-reader` and `plugins:grafana-synthetic-monitoring-app:checks-writer`, or the equivalent `probes`, `alerts`, and `thresholds` roles.
+
+If `gcx` can't use the data source, it calls the Synthetic Monitoring API directly. That path needs a Grafana Cloud credential to create a Synthetic Monitoring token. Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-access-policy-scopes).
+
+### Grafana Cloud k6
+
+When you sign in with OAuth, `gcx k6` commands go through the k6 plugin on your stack. Your user needs one of these k6 plugin roles:
+
+| Role | Access |
+| --- | --- |
+| `plugins:k6-app:reader` | Read-only access to k6. |
+| `plugins:k6-app:editor` | Read and write access to k6, with limited scopes. |
+| `plugins:k6-app:admin` | Admin access to everything in k6. |
+
+When you sign in with a service account token, `gcx` exchanges the token with the k6 API directly, and the token needs k6 access.
+
+### SLO
+
+`gcx slo` commands use the SLO plugin on your stack. SLO permissions follow folder permissions:
+
+| Role | Access |
+| --- | --- |
+| `plugins:grafana-slo-app:slo-reader` | View SLOs in folders where you have folder read permission. |
+| `plugins:grafana-slo-app:slo-writer` | Create, update, and delete SLOs in folders where you have folder edit permission. |
+| `plugins:grafana-slo-app:slo-admin` | Everything SLO Writer can do, plus changing organization preferences. |
+
 ## Choose Grafana Cloud access policy scopes
 
-Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, such as managing stacks, plus Synthetic Monitoring (`gcx sm`) and k6 (`gcx k6`). Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, such as managing stacks, plus k6 (`gcx k6`) with a service account token, and Synthetic Monitoring (`gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
 
 You can sign in to Grafana Cloud in two ways:
 
