@@ -12,63 +12,63 @@ weight: 7
 
 # Roles and permissions
 
-Some `gcx` commands need additional Grafana permissions beyond the ones required to sign in. Use this page to find out which permissions a command needs and how to fix authorization errors.
+What you can do with `gcx` depends on how you sign in. Use this page to find out which permissions you need for each sign-in method, and how to fix authorization errors.
 
-For the permissions you need to sign in with OAuth, refer to [Required role for OAuth sign-in](../authentication#required-role-for-oauth-sign-in).
+- [OAuth sign-in](#grant-permissions-for-oauth-sign-in): `gcx` uses your own Grafana user permissions.
+- [Service account sign-in](#grant-permissions-to-a-service-account): `gcx` uses the permissions of the service account.
+- [Grafana Cloud sign-in](#choose-grafana-cloud-access-policy-scopes): a separate credential for Grafana Cloud commands, such as `gcx cloud`, scoped by an access policy.
 
-If you're signing in using a service account token and your user role needs permissions for querying, managing dashboards and folders, or managing data sources, refer to [Service account token](../authentication#service-account-token).
+## Grant permissions for OAuth sign-in
 
-## Fix an authorization error
+When you sign in with OAuth, `gcx` acts as your Grafana user. Your effective permissions are your own Grafana user permissions. OAuth sign-in doesn't add to them, so you can't do anything with `gcx` that you can't already do in the Grafana UI.
 
-When a command fails because you're missing a permission, it fails with `Authorization failed` and exit code 3. Often, the error names the action you're missing.
+To use a product through `gcx`, your user needs the same permissions that a service account would need. Refer to [Grant permissions to a service account](#grant-permissions-to-a-service-account) for the permissions each product needs.
 
-To fix an authorization error:
+### Required role for OAuth sign-in
 
-1. Note the action that the error names, if any.
-1. List the actions your user is allowed to perform:
+To authorize a `gcx` CLI connection with OAuth, your Grafana user needs the `grafana-assistant-app.tokens.gcx:access` permission. The gcx User role, registered by the Grafana Assistant application, grants this permission and is assigned automatically to users with the basic role Viewer or higher.
 
-   ```bash
-   gcx api /api/access-control/user/actions
-   ```
+If your default role is `None`, or you're using a custom role that doesn't grant the default `plugins.app:access` action, you also need to explicitly grant access to `grafana-assistant-app`:
 
-1. Compare the output with the action the error names.
-1. Send the output and the error message to your Grafana administrator. They can grant the missing action, or assign you a role that includes it.
+```json
+{
+  "action": "plugins.app:access",
+  "scope": "plugins:id:grafana-assistant-app"
+}
+```
 
-Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.
+The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `gcx` tokens for your own user. It doesn't grant access to other users' tokens and it doesn't extend your existing Grafana permissions.
 
-## Choose Cloud Access Policy scopes
+If `gcx login` fails with a `Permission Required` error naming the gcx User role, ask your Grafana administrator to assign you the gcx User role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, update the Grafana Assistant application to a version that includes it.
 
-Commands under `gcx sm`, `gcx k6`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana sign-in. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+## Grant permissions to a service account
 
-If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), scope the access policy to the products you manage:
+When you sign in with a [service account token](../authentication#service-account-token), `gcx` uses the permissions of the service account. Grant the service account a role that matches what it needs to do, and add the product permissions listed in this section for the products you use.
 
-- **`stacks:read` is required**. It resolves your stack and is checked when you sign in and when `gcx` validates the token.
-- Add the scopes for the products you use:
+### Dashboards, folders, and data sources
 
-| Scope | Enables |
+| To | The service account needs |
 | --- | --- |
-| `stacks:read` | Required. Stack discovery, which resolves the stack slug for all Grafana Cloud commands. Also covers `gcx k6` reads. |
-| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring (`gcx sm`). `gcx` needs these scopes to create the Synthetic Monitoring token. |
-| `stacks:write` | Creating or updating stacks. |
-| `stacks:delete` | Deleting stacks (`gcx cloud stacks delete`). |
-| `set:alloy-data-write`, `metrics:read` | Instrumentation Hub setup (`gcx instrumentation setup`). These scopes are for the token you add to the Helm command that `gcx instrumentation setup` prints. |
+| Query metrics, logs, traces, and profiles, and read dashboards and folders | The Viewer basic role |
+| Push and edit dashboards and folders | The Editor basic role |
+| Manage data source configuration | The Admin basic role |
 
-`gcx fleet` and `gcx instrumentation` don't need a Cloud Access Policy scope to reach Fleet Management. They use the `grafana-collector-app` plugin on your stack, so your Grafana sign-in is enough.
+On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope query access more tightly, for example `datasources:read` plus `datasources:query` on specific data sources.
 
-The Cloud Access Policy token is only for Grafana Cloud product APIs: stack management, Synthetic Monitoring, and k6. IRM and SLO commands, and signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles`, use your Grafana sign-in, either OAuth or a service account token.
+### Fleet Management
 
-If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
+`gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Cloud Access Policy scope. The service account needs these Collector app permissions:
 
-Refer to [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for how to create the policy and token.
+| Permission | Needed for |
+| --- | --- |
+| `grafana-collector-app:read` | The Collector app's named read routes. |
+| `grafana-collector-app:admin`, or the Admin basic role | The Collector app's wildcard routes. Some read-only commands also use these routes, so `grafana-collector-app:read` alone might not be enough to read Fleet Management data. |
 
-## Grant permissions to check instrumentation status
+Looking up your stack's details through the Collector app only needs the Viewer role.
 
-`gcx setup status` and `gcx instrumentation clusters list` check Kubernetes monitoring through the Collector app. To run them, your Grafana user needs both of these permissions:
+#### Check instrumentation status
 
-- `grafana-collector-app:read`
-- `grafana-collector-app:admin`
-
-### Read the status when a check fails
+`gcx setup status` and `gcx instrumentation clusters list` check Kubernetes monitoring through the Collector app. To run them, you need both `grafana-collector-app:read` and `grafana-collector-app:admin`.
 
 `gcx setup status` reports `true` or `false` for each product it can check. `false` means `gcx` checked and the product isn't set up.
 
@@ -76,7 +76,7 @@ If `gcx` can't check a product, for example because of a permissions error, the 
 
 The `fleet-management` row also shows unknown when `gcx` can't read the state of the Collector app, because its status depends on that app.
 
-### Use status checks in scripts and agents
+#### Use status checks in scripts and agents
 
 When a check fails, the rest of the status document is still returned, with the same `type`, `schema_version`, and `products` fields. You can parse it as usual and treat `null` values as unknown.
 
@@ -95,18 +95,7 @@ These options remove the error object from the filtered output, so `gcx` also wr
 - `--json <fields>` when the field list doesn't include `error`.
 - `--json list`.
 
-## Grant Fleet Management permissions
-
-`gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Cloud Access Policy scope. Your Grafana user or service account needs these Collector app permissions:
-
-| Permission | Needed for |
-| --- | --- |
-| `grafana-collector-app:read` | The Collector app's named read routes. |
-| `grafana-collector-app:admin`, or the Admin basic role | The Collector app's wildcard routes. Some read-only commands also use these routes, so `grafana-collector-app:read` alone might not be enough to read Fleet Management data. |
-
-Looking up your stack's details through the Collector app only needs the Viewer role.
-
-## Grant Assistant investigation permissions
+### Grafana Assistant
 
 {{< admonition type="note" >}}
 `gcx setup status` doesn't check Assistant access, so a passing status check doesn't mean Assistant commands work.
@@ -121,15 +110,15 @@ If an Assistant command such as `gcx assistant investigations list` fails, use t
 | A plugin route, for example `plugin proxy route access denied` | The error doesn't say which permission is missing. It might be access to the Assistant app: `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`. | Check your actions with `gcx api /api/access-control/user/actions`, and send the output to your Grafana administrator. |
 | `insufficient permissions`, or a named action such as `grafana-assistant-app.investigations:read` | Permission to read investigations: `grafana-assistant-app.investigations:read` | Ask your administrator to assign you the Assistant Investigation User role. |
 
-### View investigations created by alerts and webhooks
+#### View investigations created by alerts and webhooks
 
 Investigations that start automatically, for example from an alert or an IRM webhook, need an additional permission: `grafana-assistant-app.investigations.system:read`. Without it, those investigations don't appear in your list.
 
-### Troubleshoot other Assistant commands
+#### Troubleshoot other Assistant commands
 
 For commands that change things, such as creating investigations, or that call MCP servers, `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles.
 
-## Grant Frontend Observability permissions
+### Frontend Observability
 
 The `gcx frontend apps` commands that change apps need these Frontend Observability permissions:
 
@@ -139,3 +128,55 @@ The `gcx frontend apps` commands that change apps need these Frontend Observabil
 | `gcx frontend apps delete`, `gcx frontend apps delete-sourcemap` | `grafana-kowalski-app.apps:delete` | The Frontend Observability Admin role, or the Admin basic role |
 
 A user with only `grafana-kowalski-app.apps:write` can create and update apps, but can't delete apps or source map bundles.
+
+### Grafana IRM
+
+IRM commands go through the IRM plugin on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud credential.
+
+OnCall personal notification rules don't work with a service account: the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../guides/manage-oncall-notification-rules) for the permissions those commands need.
+
+## Choose Grafana Cloud access policy scopes
+
+Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, such as managing stacks, plus Synthetic Monitoring (`gcx sm`) and k6 (`gcx k6`). Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+
+You can sign in to Grafana Cloud in two ways:
+
+- **Cloud Access Policy token:** recommended for automation. The scopes you give the access policy decide which commands work.
+- **Grafana Cloud OAuth:** the experimental browser flow, with `gcx cloud login` or the Grafana Cloud step of `gcx login`. By default it requests `profile`, `stacks:read`, `stacks:write`, `stacks:delete`, `metrics:write`, `logs:write`, and `traces:write`. Not every Grafana Cloud product command accepts it yet.
+
+If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), scope the access policy to the commands you use:
+
+- **`stacks:read` is required**. It resolves your stack and is checked when you sign in and when `gcx` validates the token.
+- Add the scopes for the products you use:
+
+| Scope | Enables |
+| --- | --- |
+| `stacks:read` | Required. Stack discovery, which resolves the stack slug for all Grafana Cloud commands. Also covers `gcx k6` reads. |
+| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring (`gcx sm`). `gcx` needs these scopes to create the Synthetic Monitoring token. |
+| `stacks:write` | Creating or updating stacks. |
+| `stacks:delete` | Deleting stacks (`gcx cloud stacks delete`). |
+| `set:alloy-data-write`, `metrics:read` | Instrumentation Hub setup (`gcx instrumentation setup`). These scopes are for the token you add to the Helm command that `gcx instrumentation setup` prints. |
+
+Fleet Management, IRM, and SLO commands, and signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles`, don't use the Grafana Cloud credential. They use your Grafana sign-in, either OAuth or a service account token.
+
+If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
+
+Refer to [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for how to create the policy and token.
+
+## Fix an authorization error
+
+When a command fails because you're missing a permission, it fails with `Authorization failed` and exit code 3. Often, the error names the action you're missing.
+
+To fix an authorization error:
+
+1. Note the action that the error names, if any.
+1. List the actions your user is allowed to perform:
+
+   ```bash
+   gcx api /api/access-control/user/actions
+   ```
+
+1. Compare the output with the action the error names.
+1. Send the output and the error message to your Grafana administrator. They can grant the missing action, or assign you a role that includes it.
+
+Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.

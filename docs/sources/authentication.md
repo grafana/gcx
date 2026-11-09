@@ -14,7 +14,7 @@ weight: 4
 
 `gcx` supports four ways to authenticate to a Grafana instance or stack:
 
-- [OAuth - Grafana Cloud only](#browser-based-oauth-cloud-only-recommended): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](#required-role-for-oauth-sign-in) for the permission this flow needs.
+- [OAuth - Grafana Cloud only](#browser-based-oauth-cloud-only-recommended): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](../permissions#required-role-for-oauth-sign-in) for the permission this flow needs.
 - [Service account token](#service-account-token): Works for Grafana Cloud and on-premises instances, and is the recommended method for CI and other non-interactive environments. Refer to [Grafana service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/) for how to create one.
 - [Basic authentication - Self-managed Grafana](#basic-authentication-self-managed-grafana): Username and password. Use this only when service accounts aren't available.
 - mTLS: A client certificate and key for instances behind an identity-aware proxy. Configure the `grafana.tls` fields or corresponding TLS [environment variables](#environment-variables).
@@ -50,24 +50,7 @@ This flow:
 
 Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](../keychain).
 
-### Required role for OAuth sign-in
-
-To authorize a `gcx` CLI connection with OAuth, your Grafana user needs the `grafana-assistant-app.tokens.gcx:access` permission. The **gcx User** role, registered by the Grafana Assistant application, grants this permission and is assigned automatically to users with the basic role Viewer or higher.
-
-If your default role is `None`, or you're using a custom role that doesn't grant the default `plugins.app:access` action, you'll also need to explicitly grant access to `grafana-assistant-app`:
-
-```json
-{
-  "action": "plugins.app:access",
-  "scope": "plugins:id:grafana-assistant-app"
-}
-```
-
-The `grafana-assistant-app.tokens.gcx:access` permission only lets you create `gcx` tokens for your own user. It doesn't grant access to other users' tokens and it doesn't extend your existing Grafana permissions.
-
-If `gcx login` fails with a `Permission Required` error naming the **gcx User** role, ask your Grafana administrator to assign you the **gcx User** role, or a custom role that includes the `grafana-assistant-app.tokens.gcx:access` permission. If the role doesn't exist on your instance, update the Grafana Assistant application to a version that includes it.
-
-For the permissions other `gcx` commands need, such as Assistant investigations and instrumentation status checks, refer to [Permissions](../permissions).
+To sign in with OAuth, your Grafana user needs the gcx User role. Refer to [Required role for OAuth sign-in](../permissions#required-role-for-oauth-sign-in). For the permissions other `gcx` commands need, refer to [Roles and permissions](../permissions).
 
 ### Grafana Cloud product API
 
