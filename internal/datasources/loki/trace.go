@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -242,8 +243,9 @@ func probeTraceCandidates(ctx context.Context, candidates []traceCandidate, run 
 // runTraceQuery resolves the selectors for trace mode (explicit selector,
 // --trace-service, or labels discovered from the datasource), probes the candidate
 // queries and reports the outcome as a hint on stderr. selector is the optional
-// bare stream selector given on the command line.
-func runTraceQuery(ctx context.Context, stderr io.Writer, client *loki.Client, datasourceUID string, opts traceOpts, selector string, run queryFunc) (*traceMatch, error) {
+// bare stream selector given on the command line. Labels are discovered over the
+// same start/end the candidate queries run over.
+func runTraceQuery(ctx context.Context, stderr io.Writer, client *loki.Client, datasourceUID string, opts traceOpts, selector string, start, end time.Time, run queryFunc) (*traceMatch, error) {
 	var selectors []string
 	switch {
 	case selector != "":
@@ -251,17 +253,22 @@ func runTraceQuery(ctx context.Context, stderr io.Writer, client *loki.Client, d
 	case opts.Service != "":
 		selectors = serviceSelectors(opts.Service)
 	default:
-		labels, err := client.Labels(ctx, datasourceUID, "")
+		labels, err := client.LabelsInRange(ctx, datasourceUID, "", start, end)
 		if err != nil {
 			return nil, fmt.Errorf("failed to discover labels for --trace-id (pass --trace-service or a stream selector instead): %w", err)
 		}
 		selectors = discoverySelectors(labels.Data)
 		if len(selectors) == 0 {
-			return nil, errors.New("no stream labels found in the datasource; pass --trace-service or a stream selector with --trace-id")
+			return nil, errors.New("no stream labels found in the datasource for the queried time range; widen --since/--from or pass --trace-service or a stream selector with --trace-id")
 		}
 	}
 
-	match, err := probeTraceCandidates(ctx, buildTraceCandidates(opts, selectors), run)
+	candidates := buildTraceCandidates(opts, selectors)
+	// Probing is sequential and can take a while, so say up front how much work
+	// may follow rather than staying silent until the first match.
+	cmdio.EmitHint(stderr, fmt.Sprintf("trying up to %d candidate queries for trace %s (stops at the first that returns logs)", len(candidates), opts.TraceID), "")
+
+	match, err := probeTraceCandidates(ctx, candidates, run)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}

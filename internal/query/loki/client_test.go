@@ -89,6 +89,32 @@ func TestClient_Labels_NoQuery(t *testing.T) {
 	assert.Empty(t, capturedRawQuery)
 }
 
+func TestClient_LabelsInRange(t *testing.T) {
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["app"]}`))
+	}))
+	defer server.Close()
+
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	start, end := time.Unix(1700000000, 0), time.Unix(1700003600, 0)
+	_, err = client.LabelsInRange(context.Background(), "loki-uid", "", start, end)
+	require.NoError(t, err)
+	assert.Equal(t, "1700000000000000000", capturedQuery.Get("start"))
+	assert.Equal(t, "1700003600000000000", capturedQuery.Get("end"))
+	assert.False(t, capturedQuery.Has("query"))
+
+	// Zero bounds are omitted so the backend default applies.
+	_, err = client.LabelsInRange(context.Background(), "loki-uid", "", time.Time{}, time.Time{})
+	require.NoError(t, err)
+	assert.False(t, capturedQuery.Has("start"))
+	assert.False(t, capturedQuery.Has("end"))
+}
+
 func TestClient_LabelValues_Query(t *testing.T) {
 	var capturedPath string
 	var capturedQuery url.Values

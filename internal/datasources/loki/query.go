@@ -56,14 +56,17 @@ are labeled. EXPR is then optional and, when given, must be a bare stream
 selector such as '{service_name="app"}'. Candidate queries (structured trace id
 fields such as traceID, trace_id, traceId, TraceID, TraceId and otel_trace_id,
 then a plain line filter) are tried in order until one returns lines, mirroring
-the trace-to-logs discovery in Grafana Explore. At most 7 queries are run per
-selector (14 with --span-id), and the matched query is reported on stderr.
+the trace-to-logs discovery in Grafana Explore.
 
-Narrow the search with --trace-service or a stream selector; they are mutually
-exclusive. With neither, up to two catch-all selectors are derived from the
-datasource's labels, which are read from the backend's default label window
-rather than the queried time range. Add --span-id SPAN_ID to also match a span
-(falling back to the trace alone). The time range defaults to the last hour.
+Queries run one after another, 7 per stream selector, and stop at the first one
+that returns lines. A stream selector in EXPR means 7 queries at most;
+--trace-service or label discovery means 14 (discovery derives up to two
+catch-all selectors from the labels seen in the queried time range). Add
+--span-id SPAN_ID to also match a span (falling back to the trace alone), which
+doubles every figure: 28 at most. The number of queries about to run and the
+matched query are reported on stderr. --trace-service and a stream selector are
+mutually exclusive. The time range defaults to the last hour; a narrower
+selector or time range makes each query cheaper.
 
 CSV preserves original cell values. Spreadsheet apps may interpret values as
 formulas; import untrusted CSV columns as text.
@@ -152,7 +155,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 			var resp *loki.QueryResponse
 			if trace.enabled() {
 				var match *traceMatch
-				match, err = runTraceQuery(ctx, cmd.ErrOrStderr(), client, datasourceUID, *trace, expr, run)
+				match, err = runTraceQuery(ctx, cmd.ErrOrStderr(), client, datasourceUID, *trace, expr, start, end, run)
 				if err != nil {
 					return err
 				}
@@ -226,7 +229,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
-	cmd.Flags().StringVar(&trace.TraceID, "trace-id", "", "Find logs for this hex trace id by trying candidate queries (7 per selector, 14 with --span-id); makes EXPR optional (a bare stream selector)")
+	cmd.Flags().StringVar(&trace.TraceID, "trace-id", "", "Find logs for this hex trace id by trying candidate queries one by one; makes EXPR optional (a bare stream selector). At most 7 queries with EXPR, 14 with --trace-service or label discovery, doubled by --span-id (28 max)")
 	cmd.Flags().StringVar(&trace.SpanID, "span-id", "", "With --trace-id, also match this hex span id (falls back to the trace alone)")
 	cmd.Flags().StringVar(&trace.Service, "trace-service", "", "With --trace-id, restrict the search to this service name (service_name or job label); mutually exclusive with EXPR")
 	share.Setup(cmd.Flags(), "executed query")

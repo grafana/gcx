@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,7 @@ type fakeLoki struct {
 	exprs       []string
 	bodies      []map[string]any
 	labels      []string
+	labelQuery  url.Values // query string of the last labels request
 	matchSubstr string
 	matchExact  string
 	failExpr    string // queries containing this substring return a 500
@@ -42,6 +44,9 @@ func (f *fakeLoki) handler(t *testing.T) http.HandlerFunc {
 		case r.URL.Path == "/bootdata":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case strings.HasSuffix(r.URL.Path, "/resources/labels"):
+			f.mu.Lock()
+			f.labelQuery = r.URL.Query()
+			f.mu.Unlock()
 			b, err := json.Marshal(map[string]any{"status": "success", "data": f.labels})
 			assert.NoError(t, err)
 			_, _ = w.Write(b)
@@ -234,4 +239,46 @@ func TestQueryCmd_ExprStillRequiredWithoutTrace(t *testing.T) {
 	f := &fakeLoki{}
 	_, _, err := execQueryTrace(t, f)
 	require.ErrorContains(t, err, "expression is required")
+}
+
+func TestQueryCmd_TraceAnnouncesCandidateBound(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"selector", []string{`{a="b"}`}, "up to 7 candidate queries"},
+		{"service", []string{"--trace-service", "app"}, "up to 14 candidate queries"},
+		{"service and span", []string{"--trace-service", "app", "--span-id", "46be9af5ba3e6a15"}, "up to 28 candidate queries"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeLoki{}
+			_, stderr, err := execQueryTrace(t, f, append([]string{"--trace-id", traceTestID}, tc.args...)...)
+			require.NoError(t, err)
+			assert.Contains(t, stderr, tc.want)
+		})
+	}
+}
+
+func TestQueryCmd_TraceLabelDiscoveryUsesQueriedRange(t *testing.T) {
+	f := &fakeLoki{labels: []string{"service_name"}}
+
+	_, _, err := execQueryTrace(t, f, "--trace-id", traceTestID, "--from", "2024-03-01T00:00:00Z", "--to", "2024-03-01T06:00:00Z")
+	require.NoError(t, err)
+
+	start, err := strconv.ParseInt(f.labelQuery.Get("start"), 10, 64)
+	require.NoError(t, err, "label discovery must send the queried start")
+	end, err := strconv.ParseInt(f.labelQuery.Get("end"), 10, 64)
+	require.NoError(t, err, "label discovery must send the queried end")
+	assert.Equal(t, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC).UnixNano(), start)
+	assert.Equal(t, time.Date(2024, 3, 1, 6, 0, 0, 0, time.UTC).UnixNano(), end)
+}
+
+func TestQueryCmd_TraceNoLabelsInRangeFailsWithoutQuerying(t *testing.T) {
+	f := &fakeLoki{}
+
+	_, _, err := execQueryTrace(t, f, "--trace-id", traceTestID)
+	require.ErrorContains(t, err, "no stream labels found in the datasource for the queried time range")
+	assert.Empty(t, f.exprs, "no log query must run without a selector")
 }
