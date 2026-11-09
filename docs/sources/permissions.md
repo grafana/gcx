@@ -30,7 +30,7 @@ Send the output to your Grafana administrator along with any error message to mo
 
 ## Cloud Access Policy scopes
 
-Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana instance authentication. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+Commands under `gcx sm`, `gcx k6`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana instance authentication. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
 
 If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), scope the access policy to the products you manage:
 
@@ -40,14 +40,14 @@ If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/
 | Scope | Enables |
 | --- | --- |
 | `stacks:read` | Required. Stack discovery, which resolves the stack slug for all Cloud commands. Also covers `gcx k6` reads. |
-| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`). `gcx` needs these scopes to create the Synthetic Monitoring token. |
+| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring (`gcx sm`). `gcx` needs these scopes to create the Synthetic Monitoring token. |
 | `stacks:write` | Creating or updating stacks. |
 | `stacks:delete` | Deleting stacks (`gcx cloud stacks delete`). |
 | `set:alloy-data-write`, `metrics:read` | Instrumentation Hub setup (`gcx instrumentation setup`). These scopes are for the token you add to the Helm command that `gcx instrumentation setup` prints. |
 
 `gcx fleet` and `gcx instrumentation` don't need a Cloud Access Policy scope to reach Fleet Management. They use the `grafana-collector-app` plugin on your stack, so your Grafana sign-in is enough.
 
-The Cloud Access Policy token is only for Grafana Cloud product APIs: stack management, Synthetic Monitoring, k6, IRM, and SLO. Signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles` use your Grafana token, either OAuth or a service account token.
+The Cloud Access Policy token is only for Grafana Cloud product APIs: stack management, Synthetic Monitoring, and k6. IRM and SLO commands, and signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles`, use your Grafana token, either OAuth or a service account token.
 
 If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
 
@@ -127,7 +127,7 @@ If an Assistant command such as `gcx assistant investigations list` fails with `
 
 | If the error mentions | You're missing | How to fix it |
 | --- | --- | --- |
-| A plugin route, for example `plugin proxy route access denied` | Access to the Assistant app: `plugins.app:access` scoped to `plugins:id:grafana-assistant-app` | Ask your Grafana administrator to grant this permission. |
+| A plugin route, for example `plugin proxy route access denied` | The error doesn't say which permission is missing. It might be access to the Assistant app: `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`. | Check your actions with `gcx api /api/access-control/user/actions`, and send the output to your Grafana administrator. |
 | `insufficient permissions`, or a named action such as `grafana-assistant-app.investigations:read` | Permission to read investigations: `grafana-assistant-app.investigations:read` | Ask your administrator to assign you the **Assistant Investigation User** role. |
 
 ### Permissions for investigations created by alerts and webhooks
