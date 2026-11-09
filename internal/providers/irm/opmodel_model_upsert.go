@@ -442,12 +442,24 @@ func runContainersUpsertModel(cmd *cobra.Command, opts *containersUpsertModelOpt
 		if opts.DryRun {
 			return opts.IO.Encode(cmd.OutOrStdout(), plan.dryRun(opts.Container))
 		}
+		knownCount := len(plan.known)
 		receipt, writeErr := plan.execute(ctx, api, opts.Container, opts.Actor.actor())
 		if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
 			return err
 		}
 		if writeErr != nil {
-			return fail.NewEmittedError(fail.ExitPartialFailure, writeErr)
+			code := fail.ExitGeneralError
+			var detailed *fail.DetailedError
+			cause := context.Cause(ctx)
+			switch {
+			case len(receipt.Entities) > knownCount || len(receipt.EvidenceLinks) > 0:
+				code = fail.ExitPartialFailure
+			case errors.Is(writeErr, context.Canceled) || cause != nil && errors.Is(writeErr, cause):
+				code = fail.ExitCancelled
+			case errors.As(writeErr, &detailed) && detailed.ExitCode != nil:
+				code = *detailed.ExitCode
+			}
+			return fail.NewEmittedError(code, writeErr)
 		}
 		if receipt.Revision != nil {
 			cmdio.EmitHint(cmd.ErrOrStderr(), "Inspect the saved model", "gcx irm opmodel containers get "+opts.Container)

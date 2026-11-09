@@ -23,7 +23,7 @@ func (o *messageShareOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.See, "see", "", "Optional pointer appended as a See: line; give the pointer only, gcx adds the See: prefix")
 	flags.StringVar(&o.DraftedByAgent, "drafted-by-agent", "", "Agent ID that drafted the message; empty means the authenticated user authored it")
 	flags.StringVar(&o.DraftedByAgentName, "drafted-by-agent-name", "", "Agent display name; defaults to --drafted-by-agent")
-	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate and print the exact message that would be posted without sending it")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate and preview the message body and See: line without sending it")
 	setupOpModelReadIO(&o.IO, flags)
 }
 
@@ -90,7 +90,8 @@ Requires an OAuth user login through gcx login and the experimental IRM sharing
 API. Service accounts cannot share messages.
 
 --dry-run validates the message and the login, sends nothing, and prints a
-preview that shows exactly what will be posted, including the See: line.
+preview of the message body and optional See: line. The server adds attribution
+for the authenticated user and any agent named by --drafted-by-agent.
 
 A real send has no idempotency key. After a failed or timed-out send, check the
 incident's updates before sending again: the message may already have been

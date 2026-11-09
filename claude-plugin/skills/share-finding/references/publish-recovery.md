@@ -38,10 +38,12 @@ details reply.
 
 ## Model writes
 
-A `stopped` receipt (exit 4) names the failed write in `stopped_at` and its
-cause in `error`; earlier writes stay saved and are listed with their IDs.
-Report which entities and relationships were saved before the failure. Do not
-resend the Incident message.
+A `stopped` receipt names the failed write in `stopped_at` and its cause in
+`error`. Exit 4 means this invocation confirmed earlier writes. With no
+confirmed writes, the exit code describes the failure, such as 3 for
+authentication or 5 for cancellation. The receipt may also list existing
+entities and skipped links; those are not new writes. Report the confirmed
+writes and the failed step. Do not resend the Incident message.
 
 Fix the cause, then rerun the same `upsert-model` command on the same draft.
 It rereads the model, reuses what already landed, and creates only what is

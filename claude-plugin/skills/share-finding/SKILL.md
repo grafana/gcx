@@ -36,7 +36,7 @@ If the Incident is missing, ask for it and stop.
 Resolve it through the current GCX context:
 
 ```bash
-name=$(gcx config current-context 2>/dev/null | jq -er '."current-context" | select(type == "string" and length > 0)') &&
+name=$(gcx config current-context -o json 2>/dev/null | jq -er '."current-context" | select(type == "string" and length > 0)') &&
 gcx irm incidents get <container> --context "$name" \
   --json metadata.name,spec.title,spec.status
 ```
@@ -166,10 +166,11 @@ gcx --agent --context "$name" irm incidents share <incident-id> \
 ```
 
 Pass the pointer without `See:`, or omit `--see` when there is none. Reading the
-body from the file keeps apostrophes intact and lets the send reuse the exact
-previewed text. Use the invoking
-product's identity (`codex` / `Codex` or `claude-code` / `Claude Code`). The
-output's `preview` field is exactly what will be posted.
+body from the file keeps apostrophes intact and lets the send reuse the
+previewed body. Use the invoking product's identity (`codex` / `Codex` or
+`claude-code` / `Claude Code`). The output's `preview` field shows the body and
+optional `See:` line. The server adds attribution for the authenticated user
+and the named agent when posting.
 
 Put this question before that preview:
 

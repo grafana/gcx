@@ -103,6 +103,6 @@ failed write. Its receipt maps refs to IDs under `entities` and lists the
 messages or perform assessment, recovery, verification or remediation. Gaps
 stay private.
 
-On `saved`, briefly report completion and meaningful gaps. A usage error (exit
-2) or a failed model read means nothing was written; fix the cause and rerun. On
-`stopped` (exit 4), follow [publish-recovery.md](publish-recovery.md).
+On `saved`, briefly report completion and meaningful gaps. Validation or model
+read failures occur before writes; fix the cause and rerun. On a `stopped`
+receipt, follow [publish-recovery.md](publish-recovery.md), regardless of exit code.

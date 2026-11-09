@@ -20,16 +20,20 @@ import (
 type modelStore struct {
 	fakeOpModel
 
-	body   containerBody
-	writes []any
-	failAt int
-	minted int
+	body    containerBody
+	writes  []any
+	failAt  int
+	failErr error
+	minted  int
 }
 
 func (s *modelStore) write(req any) (string, string, error) {
 	s.writes = append(s.writes, req)
 	s.minted++
 	if len(s.writes) == s.failAt {
+		if s.failErr != nil {
+			return "", "", s.failErr
+		}
 		return "", "", errors.New("scripted failure")
 	}
 	s.body.Revision = strconv.Itoa(s.minted)
@@ -473,13 +477,79 @@ func TestUpsertModelStopsWhenTheServerReturnsNoID(t *testing.T) {
 	draft := `{"entities": [{"ref": "o1", "type": "observation", "text": "x"}, {"ref": "h1", "type": "hypothesis", "text": "y"}], "evidence_links": []}`
 	receipt, _, err := runUpsert(t, &storeLoader{api: client}, draft)
 	var emitted *fail.EmittedError
-	if !errors.As(err, &emitted) || emitted.Code != fail.ExitPartialFailure {
-		t.Fatalf("expected exit %d, got %v", fail.ExitPartialFailure, err)
+	if !errors.As(err, &emitted) || emitted.Code != fail.ExitGeneralError {
+		t.Fatalf("expected exit %d, got %v", fail.ExitGeneralError, err)
 	}
 	if posts != 1 || receipt["status"] != "stopped" || receipt["error"] != "the server returned no id" {
 		t.Errorf("posts=%d receipt=%v", posts, receipt)
 	}
 	if entities, _ := receipt["entities"].(map[string]any); len(entities) != 0 {
 		t.Errorf("an empty id must not be recorded: %v", entities)
+	}
+}
+
+func TestUpsertModelFailureExitReflectsConfirmedWrites(t *testing.T) {
+	authCode, usageCode := fail.ExitAuthFailure, fail.ExitUsageError
+	authErr := &fail.DetailedError{Summary: "forbidden", ExitCode: &authCode}
+	usageErr := &fail.DetailedError{Summary: "backend rejected the request", ExitCode: &usageCode}
+	cancelErr := fmt.Errorf("write: %w", context.Canceled)
+	signalCause := errors.New("received interrupt")
+	oneNew := `{"entities":[{"ref":"o1","type":"observation","text":"new"}],"evidence_links":[]}`
+	twoNew := `{"entities":[{"ref":"o1","type":"observation","text":"new"},{"ref":"o2","type":"observation","text":"another"}],"evidence_links":[]}`
+	reused := `{"entities":[` + linkedEntities + `,{"ref":"a1","type":"action","text":"new"}],"evidence_links":[]}`
+	explicit := `{"entities":[{"ref":"o1","type":"observation","text":"selected","existing_id":"obs-a"},{"ref":"a1","type":"action","text":"new"}],"evidence_links":[]}`
+	links := `{"entities":[` + linkedEntities + `],"evidence_links":[{"source":"o1","target":"h1","stance":"context"},{"source":"o1","target":"i1","stance":"supports"}]}`
+	for _, tc := range []struct {
+		name, draft                  string
+		failure                      error
+		cancelCause                  error
+		failAt, wantExit             int
+		entities, reused, savedLinks int
+	}{
+		{name: "first auth", draft: oneNew, failure: authErr, failAt: 1, wantExit: fail.ExitAuthFailure},
+		{name: "first usage", draft: oneNew, failure: usageErr, failAt: 1, wantExit: fail.ExitUsageError},
+		{name: "first cancellation", draft: oneNew, failure: cancelErr, failAt: 1, wantExit: fail.ExitCancelled},
+		{name: "first signal cause", draft: oneNew, failure: fmt.Errorf("write: %w", signalCause), cancelCause: signalCause, failAt: 1, wantExit: fail.ExitCancelled},
+		{name: "first general", draft: oneNew, failure: errors.New("unavailable"), failAt: 1, wantExit: fail.ExitGeneralError},
+		{name: "first unclassified detailed", draft: oneNew, failure: &fail.DetailedError{Summary: "unavailable"}, failAt: 1, wantExit: fail.ExitGeneralError},
+		{name: "unrelated error during cancellation", draft: oneNew, failure: errors.New("unavailable"), cancelCause: signalCause, failAt: 1, wantExit: fail.ExitGeneralError},
+		{name: "reused entities before auth", draft: reused, failure: authErr, failAt: 1, wantExit: fail.ExitAuthFailure, entities: 3, reused: 3},
+		{name: "explicit entity before auth", draft: explicit, failure: authErr, failAt: 1, wantExit: fail.ExitAuthFailure, entities: 1},
+		{name: "entity saved before auth", draft: twoNew, failure: authErr, failAt: 2, wantExit: fail.ExitPartialFailure, entities: 1},
+		{name: "entity saved before cancellation", draft: twoNew, failure: cancelErr, failAt: 2, wantExit: fail.ExitPartialFailure, entities: 1},
+		{name: "link saved before failure", draft: links, failure: errors.New("unavailable"), failAt: 2, wantExit: fail.ExitPartialFailure, entities: 3, reused: 3, savedLinks: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setAgentMode(t, true)
+			store := &modelStore{body: linkedContainer(), failAt: tc.failAt, failErr: tc.failure}
+			stdout, _, err := runNounCmd(t, func() *cobra.Command {
+				cmd := newOpModelCmd(&storeLoader{api: store})
+				if tc.cancelCause != nil {
+					cmd.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+						ctx, cancel := context.WithCancelCause(cmd.Context())
+						cancel(tc.cancelCause)
+						cmd.SetContext(ctx)
+					}
+				}
+				return cmd
+			}, tc.draft, "containers", "upsert-model", "INC-1", "-f", "-", "--actor-kind", "agent", "--actor-id", "codex")
+			receipt := decodeSingleJSONValue(t, stdout)
+			var emitted *fail.EmittedError
+			if !errors.As(err, &emitted) || emitted.Code != tc.wantExit {
+				t.Errorf("expected exit %d, got %v", tc.wantExit, err)
+			}
+			if !errors.Is(err, tc.failure) {
+				t.Errorf("underlying failure lost: %v", err)
+			}
+			if receipt["status"] != "stopped" || receipt["stopped_at"] == nil || receipt["error"] == "" {
+				t.Errorf("missing failure details: %v", receipt)
+			}
+			entities, _ := receipt["entities"].(map[string]any)
+			reused, _ := receipt["reused"].(map[string]any)
+			savedLinks, _ := receipt["evidence_links"].([]any)
+			if len(store.writes) != tc.failAt || len(entities) != tc.entities || len(reused) != tc.reused || len(savedLinks) != tc.savedLinks {
+				t.Errorf("writes=%d receipt=%v", len(store.writes), receipt)
+			}
+		})
 	}
 }
