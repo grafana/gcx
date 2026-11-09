@@ -100,7 +100,7 @@ func (context *Context) grafanaCredentialRejectionForMode(mode grafanaAuthMode) 
 		return nil
 	}
 	switch mode {
-	case grafanaAuthOAuth:
+	case grafanaAuthOAuth, grafanaAuthOIDC:
 		return firstCredentialRejection(context.StackEntry, credentials.FieldOAuthToken, credentials.FieldOAuthRefreshToken)
 	case grafanaAuthToken:
 		return firstCredentialRejection(context.StackEntry, credentials.FieldGrafanaToken)

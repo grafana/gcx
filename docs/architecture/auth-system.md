@@ -43,6 +43,7 @@ graph LR
 | Method | Target | Provisioning | Storage field | Refresh | Rotation |
 |---|---|---|---|---|---|
 | OAuth PKCE | Grafana API, K8s `/apis` | Browser flow via `gcx login` | `GrafanaConfig.OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` | Automatic via `RefreshTransport` | Transparent |
+| OIDC ID token | Self-hosted Grafana API, K8s `/apis` (Grafana `[auth.jwt]`) | Browser flow via `gcx login --web` on self-hosted Grafana (SSO logins listed from Grafana's `/bootdata`; issuer, client ID and scopes discovered best-effort from the login's redirect, or `--oidc-issuer`/`--oidc-client-id`) | `GrafanaConfig.OAuthToken` (ID token), `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OIDCIssuer`, `OIDCClientID`, `OIDCScopes` | Automatic via `RefreshTransport` at the provider's token endpoint | Transparent |
 | Service account token | Grafana API, K8s `/apis` | Grafana UI → Administration → Service accounts | `GrafanaConfig.APIToken` | None (static) | Manual (rotate in Grafana UI) |
 | mTLS client certificate | Grafana API, K8s `/apis` | Identity-aware proxy (e.g. Teleport) | `GrafanaConfig.TLS.CertFile`, `KeyFile`, `CAFile` (or `CertData`, `KeyData`, `CAData`) | External (proxy manages cert lifecycle) | External (e.g. `tsh apps login`) |
 | Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudEntry.Token` | None (static) | Manual (rotate in Cloud UI) |
@@ -452,6 +453,20 @@ alongside another validation error, gcx first persists a forced-stale recovery
 generation and then returns the validation error. A later process can retry
 safely; the process that observed the malformed response remains blocked so it
 cannot accidentally send an invalid access token or refresh twice.
+
+The `Refresh` hook replaces the proxy refresh endpoint. OIDC contexts
+(`auth-method: oidc`) use it to call the identity provider's token endpoint
+(`auth.OIDCRefresh`) with a form-encoded `refresh_token` grant and the
+login's stored scopes, so the refreshed ID token matches the login's. The
+discovery document is
+cached per process. The response's
+ID token becomes the bearer and its `exp` claim the expiry; a provider that
+does not rotate refresh tokens omits `refresh_token`, and the current one is
+kept. `invalid_grant` maps to `ErrRefreshTokenExpired`. OIDC requests go to
+the Grafana server directly, so `NamespacedRESTConfig.IsOAuthProxy` is false
+for them. The ID token's claims (issuer, audience, nonce, expiry) are checked
+after the code exchange and refresh; its signature is verified by Grafana's
+`[auth.jwt]` on every request.
 
 ---
 

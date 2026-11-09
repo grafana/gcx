@@ -791,12 +791,13 @@ Validation happens in two places:
    - `Server` must be non-empty
    - a credential withheld because its source, owner, field, or destination was
      rejected cannot fall through to anonymous or incomplete authentication
-   - an explicit `auth-method` must be one of `oauth`, `token`, `basic`, or
-     `mtls`; it is authoritative over stale fields for other methods unless a
+   - an explicit `auth-method` must be one of `oauth`, `oidc`, `token`,
+     `basic`, or `mtls`; it is authoritative over stale fields for other methods unless a
      non-blank `GRAFANA_TOKEN` selects runtime-only token authentication for
      this invocation (the derived selector is never persisted)
    - the selected method must have complete material: OAuth needs its proxy and
-     an access or refresh token, token needs a non-empty service-account token,
+     an access or refresh token, OIDC needs its issuer, client ID and an ID or
+     refresh token, token needs a non-empty service-account token,
      explicit Basic needs user and password, and mTLS needs client certificate
      and private key
    - Either `OrgID != 0`, discovery succeeds, or `StackID != 0`

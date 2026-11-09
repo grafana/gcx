@@ -74,6 +74,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCobraUnknownCommandErrors,
 		convertBrowserCancelled,                     // Cancel on a browser login's consent page — a cancellation with a message
 		convertOAuthExchangeErrors,                  // Rate limit or service error from the browser login's token exchange
+		convertOIDCLoginErrors,                      // OIDC provider discovery and Grafana rejecting the ID token (before generic auth errors)
 		convertContextCanceled,                      // Context cancellation (before the generic converters below — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
 		convertCredentialsErrors,                    // OS credential-store failures — must precede config errors that wrap them
@@ -1857,6 +1858,37 @@ func convertOAuthExchangeErrors(err error) (*gcxerrors.DetailedError, bool) {
 // deliberately does not wrap context.Canceled: the root command exits silently
 // for that error, and a user who cancelled in the browser should still see in
 // the terminal that gcx stopped.
+// convertOIDCLoginErrors explains the two OIDC login failures that need
+// server-side action: gcx could not find the provider behind Grafana's SSO
+// login, or Grafana does not accept the provider's ID tokens.
+func convertOIDCLoginErrors(err error) (*gcxerrors.DetailedError, bool) {
+	if discoveryErr, ok := errors.AsType[*login.OIDCDiscoveryError](err); ok {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: gcxerrors.SummaryEndpointNotAvailable,
+			Details: "gcx could not find the OIDC identity provider behind the Grafana SSO login. Discovery is best effort: Grafana does not publish its SSO configuration.",
+			Suggestions: []string{
+				"Pass the provider explicitly: gcx login --server " + discoveryErr.Server + " --oidc-issuer <issuer-url> --oidc-client-id <client-id>",
+				"Check that Grafana's SSO login (for example auth.azuread or auth.generic_oauth) is enabled and uses an OIDC provider",
+			},
+		}, true
+	}
+	if _, ok := errors.AsType[*login.OIDCTokenRejectedError](err); ok {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: gcxerrors.SummaryAuthenticationFailed,
+			Details: "The identity provider login succeeded, but Grafana rejected the ID token. Grafana accepts ID tokens only through [auth.jwt]. No credentials were saved.",
+			Suggestions: []string{
+				"Enable [auth.jwt] on the Grafana server with jwk_set_url set to the provider's JWKS URL",
+				"Set expect_claims so that iss is the issuer and aud is the client ID used by gcx",
+				"Check that username_claim or email_claim names a claim the ID token contains",
+			},
+			ExitCode: new(gcxerrors.ExitAuthFailure),
+		}, true
+	}
+	return nil, false
+}
+
 func convertBrowserCancelled(err error) (*gcxerrors.DetailedError, bool) {
 	if !errors.Is(err, auth.ErrBrowserCancelled) {
 		return nil, false

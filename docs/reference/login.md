@@ -13,7 +13,7 @@ This page walks through the common login paths, the mental model behind them, an
 1. **New to Grafana Cloud, or no stack URL at hand** → [First-time Grafana Cloud login](#first-time-grafana-cloud-login)
 2. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
 3. **Running gcx over SSH, with the browser on another computer** → [Remote host or SSH session](#remote-host-or-ssh-session)
-4. **Setting up on-premises Grafana** → [Service account token](#service-account-token) or [Basic authentication](#basic-authentication)
+4. **Setting up on-premises Grafana** → [Service account token](#service-account-token), [Basic authentication](#basic-authentication) or [OIDC identity provider](#oidc-identity-provider)
 5. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
 6. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
 7. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
@@ -136,6 +136,64 @@ mTLS/anonymous inference, but a partial or rejected higher-priority credential
 fails before any request instead of falling through. Repair the selected method
 with `gcx login`, or use `gcx config edit --config <path>` when the file cannot
 be loaded normally.
+
+### OIDC identity provider
+
+For a self-hosted Grafana whose users sign in with an OIDC identity provider
+(Entra ID, Keycloak, Okta, …), gcx can log in with the same provider in the
+browser and authenticate to Grafana with the provider's ID token:
+
+```bash
+gcx login onprem --server https://grafana.example.com --web
+```
+
+`--web` picks the browser login that fits the server: Grafana Cloud stacks use
+the Grafana Cloud OAuth login described above, every other Grafana uses its
+SSO provider as described here.
+
+Interactive `gcx login` offers this as "Web login (browser)" when Grafana
+offers an SSO login gcx can use (`azuread`, `okta`, or `generic_oauth` for
+providers such as Keycloak), read from Grafana's unauthenticated `/bootdata` endpoint. When
+Grafana offers several, each entry carries the name of Grafana's login
+button.
+
+**Finding the provider's issuer and client ID is best effort.** Grafana does
+not publish them, so gcx reads the unauthenticated redirect of the chosen SSO
+login (`/login/<provider>`). The redirect names the provider's authorize
+endpoint, the client ID and the scopes. gcx accepts as issuer only a URL whose OIDC
+discovery document names that same authorize endpoint. When this fails, or
+to skip it, pass the provider explicitly:
+
+```bash
+gcx login onprem --server https://grafana.example.com \
+  --oidc-issuer https://login.microsoftonline.com/<tenant-id>/v2.0 \
+  --oidc-client-id <client-id>
+```
+
+gcx runs the authorization code flow with PKCE. It requests the scopes of
+Grafana's own login (or `openid profile email` with explicit values), always
+adding `openid` and `offline_access`. It stores the ID token and refresh token
+like OAuth credentials, sends the ID token as `Authorization: Bearer` directly
+to the Grafana server, and refreshes it at the provider's token endpoint with
+the same scopes. `gcx login onprem` repeats the login with the stored issuer,
+client ID and scopes. `--oauth-callback-port` and `--oauth-manual` work as for
+Grafana Cloud OAuth.
+
+The identity provider and Grafana need matching setup:
+
+- **Identity provider:** the client must allow public-client logins with the
+  redirect URI `http://localhost/callback`; gcx adds the port, which Entra ID
+  ignores for localhost. For Entra ID, this can be the app registration
+  Grafana already uses for SSO.
+- **Grafana:** enable `[auth.jwt]` with the provider's JWKS URL, and pin
+  `expect_claims` to the issuer and the client ID as audience. Map users and
+  roles from the token as the browser SSO login does, for example
+  `username_claim`/`email_claim` and `role_attribute_path`.
+
+When Grafana answers the ID token with 401, `gcx login` stops with
+"Authentication failed" and saves nothing; the fix is the `[auth.jwt]` setup.
+Errors from the identity provider, such as an unregistered redirect URI, are
+shown with the provider's description.
 
 ### Remote host or SSH session
 
