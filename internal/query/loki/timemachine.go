@@ -83,7 +83,7 @@ func droppedLogsError(status int, body []byte) error {
 	apiErr := queryerror.FromBody("loki", droppedLogsOperation, status, body).WithAvailability(true, true)
 	switch status {
 	case http.StatusNotFound:
-		return fmt.Errorf("%w (HTTP 404 can mean the datasource's Loki endpoint does not serve the Adaptive Logs time machine: it needs a Grafana Cloud Logs datasource on a cell with the time machine enabled)", apiErr)
+		return fmt.Errorf("%w (HTTP 404 can mean the datasource's Loki endpoint does not serve the Adaptive Logs time machine: it needs a Grafana Cloud Logs datasource on a stack with the time machine enabled)", apiErr)
 	case http.StatusGatewayTimeout:
 		return fmt.Errorf("%w (the time machine query timed out; narrow the stream selector or the time range)", apiErr)
 	}
