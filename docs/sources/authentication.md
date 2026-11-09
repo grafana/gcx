@@ -27,7 +27,7 @@ If you don't have a Grafana account, run:
 gcx signup
 ```
 
-`gcx` opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection. 
+`gcx` opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection.
 
 If you already have an account but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. Refer to [First-time Grafana Cloud login](https://github.com/grafana/gcx/blob/main/docs/reference/login.md#first-time-grafana-cloud-login) for more details.
 
@@ -46,7 +46,7 @@ This flow:
 1. Opens a browser for OAuth.
 1. Saves the access token.
 1. Saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry, and makes the context current.
-1. `gcx` stops before the browser flow when the current process cannot write to the OS credential store. 
+1. `gcx` stops before the browser flow when the current process cannot write to the OS credential store.
 
 Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](../keychain).
 
@@ -69,9 +69,9 @@ If `gcx login` fails with a `Permission Required` error naming the **gcx User** 
 
 For the permissions other `gcx` commands need, such as Assistant investigations and instrumentation status checks, refer to [Permissions](../permissions).
 
-### Grafana Cloud product API 
+### Grafana Cloud product API
 
-Grafana Cloud platform APIs use a separate credential stored in a named Cloud entry in addition to the Grafana instance auth. 
+Grafana Cloud platform APIs use a separate credential stored in a named Cloud entry in addition to the Grafana instance auth.
 
 For automation, log in with a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), which has the widest command compatibility. A CAP supports many Cloud management operations, but cannot enumerate user organisation memberships:
 
@@ -95,21 +95,21 @@ gcx cloud login --context my-stack
 gcx cloud orgs list --context my-stack
 ```
 
-Default Cloud logins include `profile` alongside stack-management scopes. Run again `login` for existing credentials. `--scope profile` replaces the scope set, so use the default login to retain stack access. 
+Default Cloud logins include `profile` alongside stack-management scopes. Run again `login` for existing credentials. `--scope profile` replaces the scope set, so use the default login to retain stack access.
 
 If `GRAFANA_CLOUD_TOKEN` or `cloud.<entry>.token` is set, unset it when using browser OAuth for organisation listing: access-policy tokens take precedence over OAuth tokens.
 
 The command uses the selected context's Cloud API endpoint, including dev and ops environments. Membership is not a guarantee of
 stack-creation permission. This differs from `gcx api /api/orgs`, which targets organisations inside a Grafana instance.
 
-#### Specify your org 
+#### Specify your org
 
 To specify the organisation slug when creating a stack:
 
 ```bash
 gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run
 ```
-Dry runs show the creation request. Review the preview, then omit `--dry-run` to create the stack. Creation defaults to YAML with `name`, `orgSlug`, `slug`, `status` and `url`. Use `stacks get <slug>` for full details. 
+Dry runs show the creation request. Review the preview, then omit `--dry-run` to create the stack. Creation defaults to YAML with `name`, `orgSlug`, `slug`, `status` and `url`. Use `stacks get <slug>` for full details.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
@@ -121,7 +121,7 @@ Both `stacks create` and `stacks list` require `--org <slug>`.
 
 ### Custom environments
 
-You don't need to set Cloud endpoints for `grafana.com` as `gcx` defaults to `https://grafana.com`. 
+You don't need to set Cloud endpoints for `grafana.com` as `gcx` defaults to `https://grafana.com`.
 
 For a custom environment, authenticate and store a coherent OAuth/API destination pair: supplying one endpoint to a login command
 uses it for both operations unless you explicitly supply both to `gcx cloud login`. Changing a named entry's `api-url` or `oauth-url` invalidates its old credential, so re-authenticate after the edit.
@@ -134,23 +134,23 @@ Service account tokens work for Cloud or self-managed Grafana, and are useful fo
 gcx login my-grafana --server https://your-instance.grafana.net --token glsa_xxx --yes
 ```
 
-Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; **Editor** covers pushing and editing dashboards and folders; managing datasource configuration needs **Admin**. 
+Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; **Editor** covers pushing and editing dashboards and folders; managing data source configuration needs **Admin**.
 
-On Grafana Cloud and Enterprise, RBAC custom roles can scope query access tighter (for example `datasources:read` plus `datasources:query` on specific datasources). On-premises stacks can also use basic authentication or configured mTLS client certificates.
+On Grafana Cloud and Enterprise, RBAC custom roles can scope query access tighter (for example `datasources:read` plus `datasources:query` on specific data sources). On-premises stacks can also use basic authentication or configured mTLS client certificates.
 
 ## Basic authentication (self-managed Grafana)
 
-If you're using self-managed Grafana, you can also use basic auth, which prompts for a password without echoing it: 
+If you're using self-managed Grafana, you can also use basic auth, which prompts for a password without echoing it:
 
 ```bash
 gcx login my-grafana --server https://grafana.example.com --basic-auth --user admin
 ```
 
-For automation, supply `GRAFANA_PASSWORD` and add `--yes`. 
+For automation, supply `GRAFANA_PASSWORD` and add `--yes`.
 
 Refer to [Basic authentication](/docs/reference/login#basic-authentication) for credential storage, auth switching, and validation behaviour.
 
-## Environment variables 
+## Environment variables
 
 For CI/CD or if you're using an AI agent, you can authenticate using environment variables:
 
@@ -189,9 +189,9 @@ Refer to the [login reference](https://github.com/grafana/gcx/blob/main/docs/ref
 
 Data source-managed rule commands such as `gcx alert ruler groups list` exit with code 3 when authentication fails.
 
-Run `gcx datasources health <uid>` to see the data source health. 
+Run `gcx datasources health <uid>` to see the data source health.
 
-- The health check uses a different API path and doesn't establish that ruler access works. 
+- The health check uses a different API path and doesn't establish that ruler access works.
 - To find the UID, use `gcx datasources list -o json`.
 
 Inspect the data source with `gcx datasources get <uid> -o json` and check its credentials and ruler configuration in Grafana.

@@ -26,15 +26,15 @@ To list the actions your user is allowed to perform, run:
 gcx api /api/access-control/user/actions
 ```
 
-Send the output to your Grafana administrator along with any error message to modify them. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.
+Send the output to your Grafana administrator along with any error message. They can grant the missing action. Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.
 
 ## Cloud Access Policy scopes
 
-Commands under `gcx sm`, `gcx k6`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana instance authentication. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
+Commands under `gcx sm`, `gcx k6`, and other Grafana Cloud product commands need a Grafana Cloud credential in addition to your Grafana sign-in. Refer to [Grafana Cloud product API](../authentication#grafana-cloud-product-api) for how to add it.
 
 If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), scope the access policy to the products you manage:
 
--  **`stacks:read` is required**. It resolves your stack and is checked when you log in and when `gcx` validates the token. 
+- **`stacks:read` is required**. It resolves your stack and is checked when you sign in and when `gcx` validates the token.
 - Add the scopes for the products you use:
 
 | Scope | Enables |
@@ -47,7 +47,7 @@ If you use a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/
 
 `gcx fleet` and `gcx instrumentation` don't need a Cloud Access Policy scope to reach Fleet Management. They use the `grafana-collector-app` plugin on your stack, so your Grafana sign-in is enough.
 
-The Cloud Access Policy token is only for Grafana Cloud product APIs: stack management, Synthetic Monitoring, and k6. IRM and SLO commands, and signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles`, use your Grafana token, either OAuth or a service account token.
+The Cloud Access Policy token is only for Grafana Cloud product APIs: stack management, Synthetic Monitoring, and k6. IRM and SLO commands, and signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles`, use your Grafana sign-in, either OAuth or a service account token.
 
 If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
 
@@ -89,7 +89,7 @@ These options remove the error object from the filtered output, so `gcx` also wr
 - `-o yaml`, and `-o json` outside agent mode.
 - `--jq`.
 - `--json <fields>` when the field list doesn't include `error`.
-- `--json list`
+- `--json list`.
 
 ### Exit codes
 
@@ -97,8 +97,8 @@ These options remove the error object from the filtered output, so `gcx` also wr
 
 | Exit code | Meaning |
 | --- | --- |
-| 3 | A probe failed with HTTP 401 or 403. Check your permissions. |
 | 1 | Any other probe failed, for example HTTP 500. This applies even if the other products returned a result. |
+| 3 | A probe failed with HTTP 401 or 403. Check your permissions. |
 
 ## Permissions to use Fleet Management
 
@@ -136,7 +136,7 @@ Investigations that start automatically, for example from an alert or an IRM web
 
 ### Other Assistant commands
 
-For commands that change things, such as creating investigations, or that call MCP servers, `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles. 
+For commands that change things, such as creating investigations, or that call MCP servers, `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles.
 
 ## Permissions to manage Frontend Observability apps
 
