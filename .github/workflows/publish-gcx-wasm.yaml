@@ -64,7 +64,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ steps.ref.outputs.ref }}
           persist-credentials: false
@@ -79,7 +79,7 @@ jobs:
 
       # No build caches in this workflow: it publishes what it builds.
       - name: Setup mise
-        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
         with:
           install: true
           cache: false
@@ -89,7 +89,7 @@ jobs:
           experimental/sandbox/build.sh
           git rev-parse HEAD >experimental/sandbox/gcx.commit
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gcx-wasm
           path: |
@@ -116,13 +116,13 @@ jobs:
     steps:
       # The precompile command must come from the same commit as the module,
       # so it uses the same wazero version.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.build.outputs.commit }}
           persist-credentials: false
 
       - name: Setup mise
-        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
         with:
           install: true
           cache: false
@@ -165,7 +165,7 @@ jobs:
           mkdir -p "$DIGEST_DIR"
           jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json" >"$DIGEST_DIR/${PLATFORM//\//-}"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digest-${{ strategy.job-index }}
           path: ${{ runner.temp }}/digests/*
