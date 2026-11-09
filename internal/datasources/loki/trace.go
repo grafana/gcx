@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Trace-to-logs discovery for `query --trace`.
+// Trace-to-logs discovery for `query --trace-id`.
 //
 // This mirrors the dynamic trace-to-logs discovery in Grafana Explore
 // (grafana/grafana#130515): when the exact label/field mapping between a trace
@@ -35,7 +35,7 @@ var traceFieldVariants = []struct{ trace, span string }{ //nolint:gochecknogloba
 }
 
 // discoveryLabelPreference lists stream labels tried, in order, as a catch-all
-// selector when the caller supplies neither a selector nor --service.
+// selector when the caller supplies neither a selector nor --trace-service.
 var discoveryLabelPreference = []string{ //nolint:gochecknoglobals // constant-like lookup table
 	"service_name", "service", "job", "app", "application", "namespace", "container", "pod", "cluster",
 }
@@ -46,36 +46,36 @@ const maxDiscoverySelectors = 2
 
 var hexID = regexp.MustCompile(`^[0-9a-fA-F]+$`)
 
-// TraceOpts holds the flags that switch `query` into trace-to-logs mode.
-type TraceOpts struct {
+// traceOpts holds the flags that switch `query` into trace-to-logs mode.
+type traceOpts struct {
 	TraceID string
 	SpanID  string
 	Service string
 }
 
-// Enabled reports whether trace mode is requested.
-func (o TraceOpts) Enabled() bool { return o.TraceID != "" }
+// enabled reports whether trace mode is requested.
+func (o traceOpts) enabled() bool { return o.TraceID != "" }
 
-// Validate checks the trace-related flags. Ids are restricted to hex so they can
+// validate checks the trace-related flags. Ids are restricted to hex so they can
 // be safely embedded in LogQL string literals.
-func (o TraceOpts) Validate(exprProvided bool) error {
-	if !o.Enabled() {
+func (o traceOpts) validate(exprProvided bool) error {
+	if !o.enabled() {
 		switch {
 		case o.SpanID != "":
-			return errors.New("--span requires --trace")
+			return errors.New("--span-id requires --trace-id")
 		case o.Service != "":
-			return errors.New("--service requires --trace")
+			return errors.New("--trace-service requires --trace-id")
 		}
 		return nil
 	}
 	if !hexID.MatchString(o.TraceID) {
-		return fmt.Errorf("invalid --trace %q: expected a hexadecimal trace id", o.TraceID)
+		return fmt.Errorf("invalid --trace-id %q: expected a hexadecimal trace id", o.TraceID)
 	}
 	if o.SpanID != "" && !hexID.MatchString(o.SpanID) {
-		return fmt.Errorf("invalid --span %q: expected a hexadecimal span id", o.SpanID)
+		return fmt.Errorf("invalid --span-id %q: expected a hexadecimal span id", o.SpanID)
 	}
 	if o.Service != "" && exprProvided {
-		return errors.New("--service cannot be combined with a stream selector expression; use one or the other")
+		return errors.New("--trace-service cannot be combined with a stream selector expression; use one or the other")
 	}
 	return nil
 }
@@ -87,10 +87,10 @@ type traceCandidate struct {
 	Strategy string
 }
 
-// ServiceSelectors returns the stream selectors Grafana tries for a service
+// serviceSelectors returns the stream selectors Grafana tries for a service
 // name: the OTel-style service_name label and a job label matching
 // "namespace/service" style values.
-func ServiceSelectors(service string) []string {
+func serviceSelectors(service string) []string {
 	return []string{
 		"{service_name=" + strconv.Quote(service) + "}",
 		"{job=~" + strconv.Quote("(.*/)?("+regexp.QuoteMeta(service)+")") + "}",
@@ -101,8 +101,8 @@ func ServiceSelectors(service string) []string {
 func checkSelector(expr string) error {
 	expr = strings.TrimSpace(expr)
 	_, filters, ok := loki.ParseStreamSelector(expr)
-	if !ok || len(filters) > 0 || !strings.HasSuffix(expr, "}") {
-		return fmt.Errorf("with --trace the expression must be a bare stream selector such as '{service_name=\"app\"}', got %q", expr)
+	if !ok || len(filters) > 0 {
+		return fmt.Errorf("with --trace-id the expression must be a bare stream selector such as '{service_name=\"app\"}', got %q", expr)
 	}
 	return nil
 }
@@ -110,7 +110,7 @@ func checkSelector(expr string) error {
 // buildTraceCandidates expands selectors into the ordered list of candidate
 // queries. When a span id is set, every span-scoped candidate is followed by the
 // same set without the span filter, in case span ids are not logged.
-func buildTraceCandidates(opts TraceOpts, selectors []string) []traceCandidate {
+func buildTraceCandidates(opts traceOpts, selectors []string) []traceCandidate {
 	withSpan := []string{opts.SpanID}
 	if opts.SpanID != "" {
 		withSpan = append(withSpan, "")
@@ -170,7 +170,7 @@ func discoverySelectors(labels []string) []string {
 	if len(chosen) == 0 {
 		sorted := make([]string, 0, len(labels))
 		for _, l := range labels {
-			if l != "__stream_shard__" && !strings.HasPrefix(l, "__") {
+			if !strings.HasPrefix(l, "__") {
 				sorted = append(sorted, l)
 			}
 		}
@@ -240,24 +240,24 @@ func probeTraceCandidates(ctx context.Context, candidates []traceCandidate, run 
 }
 
 // runTraceQuery resolves the selectors for trace mode (explicit selector,
-// --service, or labels discovered from the datasource), probes the candidate
+// --trace-service, or labels discovered from the datasource), probes the candidate
 // queries and reports the outcome as a hint on stderr. selector is the optional
 // bare stream selector given on the command line.
-func runTraceQuery(ctx context.Context, stderr io.Writer, client *loki.Client, datasourceUID string, opts TraceOpts, selector string, run queryFunc) (*traceMatch, error) {
+func runTraceQuery(ctx context.Context, stderr io.Writer, client *loki.Client, datasourceUID string, opts traceOpts, selector string, run queryFunc) (*traceMatch, error) {
 	var selectors []string
 	switch {
 	case selector != "":
 		selectors = []string{selector}
 	case opts.Service != "":
-		selectors = ServiceSelectors(opts.Service)
+		selectors = serviceSelectors(opts.Service)
 	default:
 		labels, err := client.Labels(ctx, datasourceUID, "")
 		if err != nil {
-			return nil, fmt.Errorf("failed to discover labels for --trace (pass --service or a stream selector instead): %w", err)
+			return nil, fmt.Errorf("failed to discover labels for --trace-id (pass --trace-service or a stream selector instead): %w", err)
 		}
 		selectors = discoverySelectors(labels.Data)
 		if len(selectors) == 0 {
-			return nil, errors.New("no stream labels found in the datasource; pass --service or a stream selector with --trace")
+			return nil, errors.New("no stream labels found in the datasource; pass --trace-service or a stream selector with --trace-id")
 		}
 	}
 
@@ -266,40 +266,40 @@ func runTraceQuery(ctx context.Context, stderr io.Writer, client *loki.Client, d
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
+	failures := ""
+	if match.Failed > 0 {
+		failures = fmt.Sprintf(" (%d candidate quer%s failed)", match.Failed, plural(match.Failed))
+	}
 	if match.Found {
-		cmdio.EmitHint(stderr, fmt.Sprintf("matched logs for trace %s using %s (query: %s)", opts.TraceID, match.Strategy, match.Expr), "")
+		cmdio.EmitHint(stderr, fmt.Sprintf("matched logs for trace %s using %s (query: %s)%s", opts.TraceID, match.Strategy, match.Expr, failures), "")
 	} else {
-		failures := ""
-		if match.Failed > 0 {
-			failures = fmt.Sprintf(" (%d failed, so the result may be incomplete)", match.Failed)
-		}
-		cmdio.EmitHint(stderr, fmt.Sprintf("no logs found for trace %s after %d candidate queries%s; widen --since/--from, or pass --service or a stream selector", opts.TraceID, match.Tried, failures), "")
+		cmdio.EmitHint(stderr, fmt.Sprintf("no logs found for trace %s after %d candidate queries%s; results may be incomplete if any failed; widen --since/--from, or pass --trace-service or a stream selector", opts.TraceID, match.Tried, failures), "")
 	}
 	return match, nil
 }
 
-// defaultTraceSince is the look-back window for --trace when no time flags are set.
+// defaultTraceSince is the look-back window for --trace-id when no time flags are set.
 const defaultTraceSince = "1h"
 
 // prepareQuery validates the shared and trace flags, applies the trace time-range
-// default, and resolves the expression. Without --trace the expression is
-// required; with --trace it is an optional bare stream selector and the result
+// default, and resolves the expression. Without --trace-id the expression is
+// required; with --trace-id it is an optional bare stream selector and the result
 // is empty when none was given.
-func prepareQuery(shared *dsquery.SharedOpts, trace *TraceOpts, flags *pflag.FlagSet, args []string) (string, error) {
+func prepareQuery(shared *dsquery.SharedOpts, trace *traceOpts, flags *pflag.FlagSet, args []string) (string, error) {
 	// Reject an explicitly empty value (unset shell variable) instead of
 	// silently dropping trace mode.
-	for _, name := range []string{"trace", "span", "service"} {
+	for _, name := range []string{"trace-id", "span-id", "trace-service"} {
 		if flags.Changed(name) && flags.Lookup(name).Value.String() == "" {
 			return "", fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
 		}
 	}
 
 	exprProvided := shared.Expr != "" || len(args) > 0
-	if err := trace.Validate(exprProvided); err != nil {
+	if err := trace.validate(exprProvided); err != nil {
 		return "", err
 	}
 
-	if trace.Enabled() && shared.From == "" && shared.To == "" && shared.Since == "" {
+	if trace.enabled() && shared.From == "" && shared.To == "" && shared.Since == "" {
 		// Instant queries only look back a minute, which is useless for traces.
 		shared.Since = defaultTraceSince
 	}
@@ -308,7 +308,7 @@ func prepareQuery(shared *dsquery.SharedOpts, trace *TraceOpts, flags *pflag.Fla
 		return "", err
 	}
 
-	if trace.Enabled() && !exprProvided {
+	if trace.enabled() && !exprProvided {
 		return "", nil
 	}
 
@@ -316,10 +316,17 @@ func prepareQuery(shared *dsquery.SharedOpts, trace *TraceOpts, flags *pflag.Fla
 	if err != nil {
 		return "", err
 	}
-	if trace.Enabled() {
+	if trace.enabled() {
 		if err := checkSelector(expr); err != nil {
 			return "", err
 		}
 	}
 	return expr, nil
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }

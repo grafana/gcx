@@ -13,22 +13,22 @@ import (
 func TestTraceOpts_Validate(t *testing.T) {
 	tests := []struct {
 		name         string
-		opts         TraceOpts
+		opts         traceOpts
 		exprProvided bool
 		wantErr      string
 	}{
-		{name: "disabled", opts: TraceOpts{}},
-		{name: "span without trace", opts: TraceOpts{SpanID: "abc"}, wantErr: "--span requires --trace"},
-		{name: "service without trace", opts: TraceOpts{Service: "app"}, wantErr: "--service requires --trace"},
-		{name: "valid trace", opts: TraceOpts{TraceID: "0000000000000000237857C3f3e35e37"}},
-		{name: "trace with selector", opts: TraceOpts{TraceID: "abc123"}, exprProvided: true},
-		{name: "non hex trace", opts: TraceOpts{TraceID: `abc"} or {`}, wantErr: "invalid --trace"},
-		{name: "non hex span", opts: TraceOpts{TraceID: "abc", SpanID: "zz"}, wantErr: "invalid --span"},
-		{name: "service and selector", opts: TraceOpts{TraceID: "abc", Service: "app"}, exprProvided: true, wantErr: "--service cannot be combined"},
+		{name: "disabled", opts: traceOpts{}},
+		{name: "span without trace", opts: traceOpts{SpanID: "abc"}, wantErr: "--span-id requires --trace-id"},
+		{name: "service without trace", opts: traceOpts{Service: "app"}, wantErr: "--trace-service requires --trace-id"},
+		{name: "valid trace", opts: traceOpts{TraceID: "0000000000000000237857C3f3e35e37"}},
+		{name: "trace with selector", opts: traceOpts{TraceID: "abc123"}, exprProvided: true},
+		{name: "non hex trace", opts: traceOpts{TraceID: `abc"} or {`}, wantErr: "invalid --trace-id"},
+		{name: "non hex span", opts: traceOpts{TraceID: "abc", SpanID: "zz"}, wantErr: "invalid --span-id"},
+		{name: "service and selector", opts: traceOpts{TraceID: "abc", Service: "app"}, exprProvided: true, wantErr: "--trace-service cannot be combined"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.opts.Validate(tc.exprProvided)
+			err := tc.opts.validate(tc.exprProvided)
 			if tc.wantErr == "" {
 				require.NoError(t, err)
 				return
@@ -42,12 +42,12 @@ func TestServiceSelectors(t *testing.T) {
 	assert.Equal(t, []string{
 		`{service_name="app"}`,
 		`{job=~"(.*/)?(app)"}`,
-	}, ServiceSelectors("app"))
+	}, serviceSelectors("app"))
 
 	// Regex metacharacters are escaped for the regex and the LogQL string.
-	assert.Equal(t, `{job=~"(.*/)?(my\\.svc)"}`, ServiceSelectors("my.svc")[1])
+	assert.Equal(t, `{job=~"(.*/)?(my\\.svc)"}`, serviceSelectors("my.svc")[1])
 	// Quotes cannot break out of the selector.
-	assert.Equal(t, `{service_name="a\"b"}`, ServiceSelectors(`a"b`)[0])
+	assert.Equal(t, `{service_name="a\"b"}`, serviceSelectors(`a"b`)[0])
 }
 
 func TestCheckSelector(t *testing.T) {
@@ -57,11 +57,14 @@ func TestCheckSelector(t *testing.T) {
 	require.Error(t, checkSelector(`{a="b"} | json`))
 	require.Error(t, checkSelector(`rate({a="b"}[1m])`))
 	require.Error(t, checkSelector(`app`))
+	require.Error(t, checkSelector(`{a="b"} garbage`))
+	require.Error(t, checkSelector(`{a="b"}}`))
+	require.NoError(t, checkSelector(`  {a="b"}  `))
 }
 
 func TestBuildTraceCandidates_Trace(t *testing.T) {
 	const id = "0000000000000000237857c3f3e35e37"
-	got := buildTraceCandidates(TraceOpts{TraceID: id}, []string{`{service_name="app"}`, `{job=~"(.*/)?(app)"}`})
+	got := buildTraceCandidates(traceOpts{TraceID: id}, []string{`{service_name="app"}`, `{job=~"(.*/)?(app)"}`})
 
 	// 6 field variants x 2 selectors + 1 line filter per selector.
 	require.Len(t, got, 6*2+2)
@@ -80,7 +83,7 @@ func TestBuildTraceCandidates_SpanFallsBackToTrace(t *testing.T) {
 		traceID = "0000000000000000237857c3f3e35e37"
 		spanID  = "46be9af5ba3e6a15"
 	)
-	got := buildTraceCandidates(TraceOpts{TraceID: traceID, SpanID: spanID}, []string{`{service_name="app"}`})
+	got := buildTraceCandidates(traceOpts{TraceID: traceID, SpanID: spanID}, []string{`{service_name="app"}`})
 
 	// (6 field variants + 1 line filter) with span, then the same without.
 	require.Len(t, got, 14)

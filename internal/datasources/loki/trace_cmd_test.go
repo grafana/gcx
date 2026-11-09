@@ -118,7 +118,7 @@ current-context: default
 func TestQueryCmd_TraceWithService_ProbesUntilMatch(t *testing.T) {
 	f := &fakeLoki{matchSubstr: `{job=~"(.*/)?(app)"} | logfmt | json | drop __error__ | trace_id="` + traceTestID + `"`}
 
-	stdout, stderr, err := execQueryTrace(t, f, "--trace", traceTestID, "--service", "app", "-o", "raw")
+	stdout, stderr, err := execQueryTrace(t, f, "--trace-id", traceTestID, "--trace-service", "app", "-o", "raw")
 	require.NoError(t, err)
 
 	// traceID x2 selectors, then trace_id on service_name, then trace_id on job (match).
@@ -140,13 +140,24 @@ func TestQueryCmd_TraceWithService_ProbesUntilMatch(t *testing.T) {
 func TestQueryCmd_TraceNoMatchReportsFailedCandidates(t *testing.T) {
 	f := &fakeLoki{failExpr: "trace_id"}
 
-	_, stderr, err := execQueryTrace(t, f, "--trace", traceTestID, "--service", "app")
+	_, stderr, err := execQueryTrace(t, f, "--trace-id", traceTestID, "--trace-service", "app")
 	require.NoError(t, err)
-	assert.Contains(t, stderr, "failed, so the result may be incomplete")
+	assert.Contains(t, stderr, "candidate queries failed)")
+	assert.Contains(t, stderr, "results may be incomplete")
+}
+
+func TestQueryCmd_TraceMatchReportsFailedCandidates(t *testing.T) {
+	// The first candidate (traceID) errors; the second (trace_id) matches.
+	f := &fakeLoki{failExpr: `traceID="`, matchSubstr: `trace_id="`}
+
+	_, stderr, err := execQueryTrace(t, f, "--trace-id", traceTestID, `{cluster="prod"}`)
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "matched logs for trace")
+	assert.Contains(t, stderr, "(1 candidate query failed)")
 }
 
 func TestQueryCmd_EmptyTraceFlagsRejected(t *testing.T) {
-	for _, flag := range []string{"--trace", "--span", "--service"} {
+	for _, flag := range []string{"--trace-id", "--span-id", "--trace-service"} {
 		t.Run(flag, func(t *testing.T) {
 			f := &fakeLoki{}
 			_, _, err := execQueryTrace(t, f, `{a="b"}`, flag, "")
@@ -159,7 +170,7 @@ func TestQueryCmd_EmptyTraceFlagsRejected(t *testing.T) {
 func TestQueryCmd_TraceWithSelectorAndSpan(t *testing.T) {
 	f := &fakeLoki{matchExact: `{cluster="prod"} |= "` + traceTestID + `"`}
 
-	_, _, err := execQueryTrace(t, f, `{cluster="prod"}`, "--trace", traceTestID, "--span", "46be9af5ba3e6a15")
+	_, _, err := execQueryTrace(t, f, `{cluster="prod"}`, "--trace-id", traceTestID, "--span-id", "46be9af5ba3e6a15")
 	require.NoError(t, err)
 
 	require.NotEmpty(t, f.exprs)
@@ -174,7 +185,7 @@ func TestQueryCmd_TraceWithSelectorAndSpan(t *testing.T) {
 func TestQueryCmd_TraceDiscoversSelectorFromLabels(t *testing.T) {
 	f := &fakeLoki{labels: []string{"pod", "job", "service_name"}, matchSubstr: `{job=~".+"} |= "` + traceTestID + `"`}
 
-	_, _, err := execQueryTrace(t, f, "--trace", traceTestID)
+	_, _, err := execQueryTrace(t, f, "--trace-id", traceTestID)
 	require.NoError(t, err)
 
 	require.NotEmpty(t, f.exprs)
@@ -185,7 +196,7 @@ func TestQueryCmd_TraceDiscoversSelectorFromLabels(t *testing.T) {
 func TestQueryCmd_TraceNoMatchHintsAndSucceeds(t *testing.T) {
 	f := &fakeLoki{}
 
-	_, stderr, err := execQueryTrace(t, f, "--trace", traceTestID, "--service", "app")
+	_, stderr, err := execQueryTrace(t, f, "--trace-id", traceTestID, "--trace-service", "app")
 	require.NoError(t, err)
 	assert.Contains(t, stderr, "no logs found for trace "+traceTestID)
 	assert.Len(t, f.exprs, 14)
@@ -194,7 +205,7 @@ func TestQueryCmd_TraceNoMatchHintsAndSucceeds(t *testing.T) {
 func TestQueryCmd_TraceNoMatchWithErrorOnEmptyFails(t *testing.T) {
 	f := &fakeLoki{}
 
-	_, _, err := execQueryTrace(t, f, "--trace", traceTestID, "--service", "app", "--error-on-empty")
+	_, _, err := execQueryTrace(t, f, "--trace-id", traceTestID, "--trace-service", "app", "--error-on-empty")
 	require.Error(t, err)
 }
 
@@ -204,10 +215,10 @@ func TestQueryCmd_TraceFlagValidation(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{"pipeline expr rejected", []string{`{a="b"} |= "x"`, "--trace", traceTestID}, "bare stream selector"},
-		{"service with expr", []string{`{a="b"}`, "--trace", traceTestID, "--service", "app"}, "--service cannot be combined"},
-		{"bad trace id", []string{"--trace", "not-hex!"}, "invalid --trace"},
-		{"span without trace", []string{`{a="b"}`, "--span", "abc"}, "--span requires --trace"},
+		{"pipeline expr rejected", []string{`{a="b"} |= "x"`, "--trace-id", traceTestID}, "bare stream selector"},
+		{"service with expr", []string{`{a="b"}`, "--trace-id", traceTestID, "--trace-service", "app"}, "--trace-service cannot be combined"},
+		{"bad trace id", []string{"--trace-id", "not-hex!"}, "invalid --trace-id"},
+		{"span without trace", []string{`{a="b"}`, "--span-id", "abc"}, "--span-id requires --trace-id"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

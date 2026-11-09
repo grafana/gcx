@@ -39,6 +39,12 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Log volume over time, colored by level
   gcx logs query -d abc123 '{job="varlogs"}' -o graph
 
+  # Logs for a trace (candidate queries are discovered automatically)
+  gcx logs query -d abc123 --trace-id 0000000000000000237857c3f3e35e37
+
+  # Logs for a trace, narrowed to a service and a span
+  gcx logs query -d abc123 --trace-id 0000000000000000237857c3f3e35e37 --trace-service app --span-id 46be9af5ba3e6a15 --since 6h
+
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
 
