@@ -246,6 +246,19 @@ gcx logs query -d "$LOKI_UID" \
   --from "$FROM" --to "$TO" --limit 20 -o agents
 ```
 
+When you only have a trace id and do not know how logs carry it, let gcx try
+the common conventions (`traceID`, `trace_id`, `traceId`, `TraceID`, `TraceId`,
+`otel_trace_id`, then a plain line filter) until one returns lines. The
+expression becomes an optional bare stream selector; `--service` or `--span`
+narrow the search, and the matched query is reported on stderr. Without a
+selector or `--service` it derives one from the datasource's labels, and the
+window defaults to the last hour, so pass `--from`/`--to` for older traces:
+
+```bash
+gcx logs query -d "$LOKI_UID" --trace "<trace-id>" --service api \
+  --from "$FROM" --to "$TO" --limit 20 -o agents
+```
+
 Choose actual fields and parsers. If `trace_id` is structured metadata, filter
 it after a pipe without parsing the body. gcx defaults to **50 log lines**;
 explicit limits bound samples, not frequency. Omitting the CLI cap does not

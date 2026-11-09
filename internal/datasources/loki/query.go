@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -38,6 +39,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	drilldown := &dsquery.DrilldownLinkOpts{}
+	trace := &TraceOpts{}
 	var limit int
 	var datasource string
 
@@ -48,6 +50,16 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 EXPR is the LogQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.loki in your context.
+
+Use --trace TRACE_ID to find the logs of a trace without knowing how they are
+labeled. EXPR is then optional and, when given, must be a bare stream selector
+such as '{service_name="app"}'. Candidate queries (structured trace id fields
+such as traceID, trace_id, traceId, TraceID, TraceId and otel_trace_id, then a
+plain line filter) are tried in order until one returns lines, mirroring the
+trace-to-logs discovery in Grafana Explore. Narrow the search with --service or
+a selector; otherwise a catch-all selector is derived from the datasource's
+labels. Add --span SPAN_ID to also match a span (falling back to the trace
+alone). The time range defaults to the last hour.
 
 CSV preserves original cell values. Spreadsheet apps may interpret values as
 formulas; import untrusted CSV columns as text.
@@ -81,6 +93,12 @@ backend's own line limits, so it can undercount a busy time range.`,
   # Print a Grafana Logs Drilldown link for the query
   gcx datasources loki query '{job="varlogs"}' --drilldown-link
 
+  # Logs for a trace (candidate queries are discovered automatically)
+  gcx datasources loki query -d UID --trace 0000000000000000237857c3f3e35e37
+
+  # Logs for a trace, narrowed to a service and a span
+  gcx datasources loki query -d UID --trace 0000000000000000237857c3f3e35e37 --service app --span 46be9af5ba3e6a15 --since 6h
+
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
 
@@ -88,11 +106,7 @@ backend's own line limits, so it can undercount a busy time range.`,
   gcx datasources loki query -d UID '{job="varlogs"}' -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := shared.Validate(); err != nil {
-				return err
-			}
-
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := prepareQuery(shared, trace, cmd.Flags(), args)
 			if err != nil {
 				return err
 			}
@@ -121,17 +135,29 @@ backend's own line limits, so it can undercount a busy time range.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			req := loki.QueryRequest{
-				Query: expr,
-				Start: start,
-				End:   end,
-				Step:  step,
-				Limit: limit,
+			run := func(ctx context.Context, e string) (*loki.QueryResponse, error) {
+				return client.Query(ctx, datasourceUID, loki.QueryRequest{
+					Query: e,
+					Start: start,
+					End:   end,
+					Step:  step,
+					Limit: limit,
+				})
 			}
 
-			resp, err := client.Query(ctx, datasourceUID, req)
-			if err != nil {
-				return fmt.Errorf("query failed: %w", err)
+			var resp *loki.QueryResponse
+			if trace.Enabled() {
+				var match *traceMatch
+				match, err = runTraceQuery(ctx, cmd.ErrOrStderr(), client, datasourceUID, *trace, expr, run)
+				if err != nil {
+					return err
+				}
+				resp, expr = match.Resp, match.Expr
+			} else {
+				resp, err = run(ctx, expr)
+				if err != nil {
+					return fmt.Errorf("query failed: %w", err)
+				}
 			}
 
 			if shared.IO.OutputFormat == "graph" {
@@ -196,6 +222,9 @@ backend's own line limits, so it can undercount a busy time range.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
+	cmd.Flags().StringVar(&trace.TraceID, "trace", "", "Find logs for this trace id by trying candidate queries; makes the expression optional (a bare stream selector)")
+	cmd.Flags().StringVar(&trace.SpanID, "span", "", "With --trace, also match this span id (falls back to the trace alone)")
+	cmd.Flags().StringVar(&trace.Service, "service", "", "With --trace, restrict the search to this service name (service_name label or job label)")
 	share.Setup(cmd.Flags(), "executed query")
 	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
 
