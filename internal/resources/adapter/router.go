@@ -143,6 +143,10 @@ func (r *ResourceClientRouter) GetMultiple(
 		return r.dynamic.GetMultiple(ctx, desc, names, opts)
 	}
 
+	if getter, ok := a.(MultipleGetter); ok {
+		return getter.GetMultiple(ctx, names, opts)
+	}
+
 	res := make([]unstructured.Unstructured, len(names))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -188,4 +192,91 @@ func (r *ResourceClientRouter) Delete(
 		return a.Delete(ctx, name, opts)
 	}
 	return r.dynamic.Delete(ctx, desc, name, opts)
+}
+
+// NewPullPreflight propagates optional adapter-owned checks to the puller.
+func (r *ResourceClientRouter) NewPullPreflight(ctx context.Context, selections []PullSelection) (PullPreflight, error) {
+	checks := make(map[schema.GroupVersionKind]PullPreflight)
+	seen := make(map[schema.GroupVersionKind]bool)
+	for _, selection := range selections {
+		if len(selection.Items) == 0 {
+			continue
+		}
+		gvk := selection.Filter.Descriptor.GroupVersionKind()
+		if seen[gvk] {
+			continue
+		}
+		seen[gvk] = true
+		a, err := r.getAdapter(ctx, gvk)
+		if err != nil {
+			return nil, err
+		}
+		if preflighter, ok := a.(PullPreflighter); ok {
+			checks[gvk] = preflighter.NewPullPreflight(selections)
+		}
+	}
+	return func(ctx context.Context, filter resources.Filter, item unstructured.Unstructured) error {
+		if check := checks[filter.Descriptor.GroupVersionKind()]; check != nil {
+			return check(ctx, filter, item)
+		}
+		return nil
+	}, nil
+}
+
+// NewPushPreflight constructs one plan per selected adapter before any writes.
+func (r *ResourceClientRouter) NewPushPreflight(ctx context.Context, selections []PushSelection) (PushPreflight, error) {
+	checks := make(map[schema.GroupVersionKind]PushPreflight)
+	for _, selection := range selections {
+		if len(selection.Items) == 0 {
+			continue
+		}
+		gvk := selection.Descriptor.GroupVersionKind()
+		if _, exists := checks[gvk]; exists {
+			continue
+		}
+		a, err := r.getAdapter(ctx, gvk)
+		if err != nil {
+			checks[gvk] = func(context.Context, *resources.Resource) error { return err }
+			continue
+		}
+		checks[gvk] = nil
+		if preflighter, ok := a.(PushPreflighter); ok {
+			checks[gvk], err = preflighter.NewPushPreflight(ctx, selections)
+			if err != nil {
+				checks[gvk] = func(context.Context, *resources.Resource) error { return err }
+			}
+		}
+	}
+	return func(ctx context.Context, item *resources.Resource) error {
+		if check := checks[resources.NormalizeGVK(item.GroupVersionKind())]; check != nil {
+			return check(ctx, item)
+		}
+		return nil
+	}, nil
+}
+
+// PushEnvelope bypasses generic identity probes for adapters that own upsert.
+// Handled distinguishes an absent hook from a successful operation.
+func (r *ResourceClientRouter) PushEnvelope(ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions) (bool, error) {
+	a, err := r.getAdapter(ctx, desc.GroupVersionKind())
+	if err != nil {
+		return true, err
+	}
+	if pusher, ok := a.(EnvelopePusher); ok {
+		return true, pusher.PushEnvelope(ctx, obj, opts)
+	}
+	return false, nil
+}
+
+// SelectDelete delegates identity-only selection without falling back to reads.
+func (r *ResourceClientRouter) SelectDelete(ctx context.Context, filter resources.Filter, manifests []unstructured.Unstructured) ([]unstructured.Unstructured, bool, error) {
+	a, err := r.getAdapter(ctx, filter.Descriptor.GroupVersionKind())
+	if err != nil {
+		return nil, true, err
+	}
+	if selector, ok := a.(DeleteSelector); ok {
+		items, err := selector.SelectDelete(ctx, filter, manifests)
+		return items, true, err
+	}
+	return nil, false, nil
 }

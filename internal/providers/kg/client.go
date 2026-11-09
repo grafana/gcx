@@ -39,6 +39,10 @@ const (
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
 	rulesValidateSyncPath    = rulesPath + "-validate-sync"
+	thresholdRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rules"
+	thresholdRulesByCatFmt   = thresholdRulesPath + "/%s" // request|resource
+	thresholdRulePath        = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rule"
+	thresholdRuleDeletePath  = thresholdRulePath + "/delete"
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
@@ -118,9 +122,25 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 // Configuration upload operations
 // ---------------------------------------------------------------------------
 
-// UploadPromRules uploads Prometheus recording rules.
-func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error {
-	return c.DoYAML(ctx, http.MethodPut, rulesPath, yamlContent)
+// UploadPromRules uploads Prometheus recording rules. When skipPromQLEval
+// is true the backend skips executing each expression against the tenant's TSDB
+// (the local parse and Asserts metadata checks still run); use it for rules too
+// expensive to validate within the request timeout.
+func (c *Client) UploadPromRules(ctx context.Context, yamlContent string, skipPromQLEval bool) error {
+	return c.DoYAML(ctx, http.MethodPut, withSkipPromQLEval(rulesPath, skipPromQLEval), yamlContent)
+}
+
+// skipPromQLEvalParam is the query parameter that makes the prom-rules PUT
+// and validate-sync endpoints skip remote PromQL validation.
+const skipPromQLEvalParam = "skipPromQLEval"
+
+// withSkipPromQLEval appends the backend's skipPromQLEval query
+// parameter to path when skip is true, and returns path unchanged otherwise.
+func withSkipPromQLEval(path string, skip bool) string {
+	if !skip {
+		return path
+	}
+	return path + "?" + url.Values{skipPromQLEvalParam: {"true"}}.Encode()
 }
 
 // GetPromRulesSchema fetches the live JSON Schema for the Prometheus rules config from the backend.
@@ -134,6 +154,60 @@ func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error)
 		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
 	}
 	return result, nil
+}
+
+// GetThresholds fetches the whole threshold config (v1). The response is a
+// PrometheusRulesDto, identical to the prom-rules whole-config shape, so it decodes
+// into [Rule].
+func (c *Client) GetThresholds(ctx context.Context) (*Rule, error) {
+	var rule Rule
+	if err := c.GetJSON(ctx, thresholdRulesPath, &rule); err != nil {
+		return nil, fmt.Errorf("kg: get thresholds: %w", err)
+	}
+	return &rule, nil
+}
+
+// GetThresholdsByCategory fetches the structured per-category threshold view (v1).
+// category must be "request" or "resource" (v1 has no health category).
+func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (*ThresholdRulesDto, error) {
+	var dto ThresholdRulesDto
+	if err := c.GetJSON(ctx, fmt.Sprintf(thresholdRulesByCatFmt, url.PathEscape(category)), &dto); err != nil {
+		return nil, fmt.Errorf("kg: get %s thresholds: %w", category, err)
+	}
+	return &dto, nil
+}
+
+// ThresholdIdentity is the {record, expr, labels} triple gcx sends to address a
+// single v1 threshold. The backend has no delete-by-name, so upsert and delete
+// both send the full triple. It matches on record and labels, plus expr unless the
+// expr is a plain number (PrometheusRuleKeyFactory in asserts-adi).
+type ThresholdIdentity struct {
+	Record string            `json:"record"`
+	Expr   string            `json:"expr"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// UpsertThreshold creates or updates a single threshold (v1).
+func (c *Client) UpsertThreshold(ctx context.Context, t ThresholdIdentity) error {
+	if err := c.PostJSON(ctx, thresholdRulePath, t, nil); err != nil {
+		return fmt.Errorf("kg: upsert threshold %q: %w", t.Record, err)
+	}
+	return nil
+}
+
+// DeleteThreshold deletes a single threshold (v1). The backend takes the full
+// identity triple in a POST body rather than a DELETE verb.
+func (c *Client) DeleteThreshold(ctx context.Context, t ThresholdIdentity) error {
+	if err := c.PostJSON(ctx, thresholdRuleDeletePath, t, nil); err != nil {
+		return fmt.Errorf("kg: delete threshold %q: %w", t.Record, err)
+	}
+	return nil
+}
+
+// ReplaceThresholds replaces the whole threshold config (v1) from a PrometheusRules
+// YAML document. This is destructive: anything absent from yamlContent is removed.
+func (c *Client) ReplaceThresholds(ctx context.Context, yamlContent string) error {
+	return c.DoYAML(ctx, http.MethodPost, thresholdRulesPath+"/", yamlContent)
 }
 
 // UploadModelRules uploads model rules configuration.
@@ -403,9 +477,11 @@ func (c *Client) ValidateModelRules(ctx context.Context, yamlContent string) err
 // ValidatePromRules checks a Custom Prometheus rules configuration against the
 // backend's synchronous validate-only endpoint (prom-rules-validate-sync, distinct
 // from the orphaned async prom-rules-validate) without persisting anything. It
-// accepts the same YAML payload as create.
-func (c *Client) ValidatePromRules(ctx context.Context, yamlContent string) error {
-	return c.validateConfig(ctx, rulesValidateSyncPath, "application/x-yaml", []byte(yamlContent), "prom rules")
+// accepts the same YAML payload as create. skipPromQLEval has the same
+// meaning as for UploadPromRules.
+func (c *Client) ValidatePromRules(ctx context.Context, yamlContent string, skipPromQLEval bool) error {
+	path := withSkipPromQLEval(rulesValidateSyncPath, skipPromQLEval)
+	return c.validateConfig(ctx, path, "application/x-yaml", []byte(yamlContent), "prom rules")
 }
 
 // validateConfig POSTs a payload to a validate-only endpoint and maps the
@@ -788,6 +864,21 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
+}
+
+// CypherQuery executes a bounded read-only query and preserves its projected rows.
+func (c *Client) CypherQuery(ctx context.Context, req CypherQueryRequest) (*CypherQueryResponse, error) {
+	var result CypherQueryResponse
+	if err := c.PostJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/query/cypher", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: cypher query: %w", err)
+	}
+	if result.Columns == nil {
+		result.Columns = []string{}
+	}
+	if result.Rows == nil {
+		result.Rows = [][]json.RawMessage{}
+	}
+	return &result, nil
 }
 
 // CypherSearch runs a read-only Cypher query against the Knowledge Graph.

@@ -79,6 +79,7 @@ func listExamplesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 				filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 					Selectors:            sels,
+					Warn:                 cmd.ErrOrStderr(),
 					PreferredVersionOnly: true,
 				})
 				if err != nil {

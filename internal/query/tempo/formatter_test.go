@@ -248,7 +248,7 @@ func TestFormatMetricsTable_EmptySeries(t *testing.T) {
 // ==============================================================
 // Trace tree formatter tests (FormatTraceTable, FormatTraceWide,
 // formatDurationNanos). Cover the acceptance criteria from
-// docs/specs/feature-traces-get-table/spec.md.
+// docs/rfcs/018-tree-table-render-for-traces-get.md.
 // ==============================================================
 
 // b64ID encodes a hex string as the base64 wire representation Tempo emits

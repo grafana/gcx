@@ -1,0 +1,3 @@
+ID  TARGET                 TYPE  CONFIDENCE  SCORE  REACHABILITY  NAMESPACE
+s1  https://a.example.com  http  high        0.91   public        payments
+s2  https://b.example.com  grpc  low         0.40   unknown       

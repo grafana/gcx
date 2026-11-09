@@ -3,6 +3,7 @@ package telemetry
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -176,6 +177,7 @@ func TestFirstRunNoticeSuppressedWhenModeNotEnabled(t *testing.T) {
 func TestFirstRunNoticeSkippedWhenStateHomeUnknown(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	assert.Empty(t, FirstRunNoticePath(), "unknown state home must not yield a relative path")
 
 	var out strings.Builder
@@ -210,12 +212,12 @@ func TestFirstRunNoticeSkippedWhenStateFileUnreadable(t *testing.T) {
 // Pinning the exact text closes that. Any edit fails here, which forces the
 // author to make the revision decision deliberately instead of by omission.
 func TestFirstRunNoticeTextIsPinnedToItsRevision(t *testing.T) {
-	const pinnedRevision = "3"
+	const pinnedRevision = "4"
 	const pinnedNotice = `gcx collects anonymous usage statistics so we can make gcx better. We do not collect arguments, free-form flag values, or resource names, and no raw batch or resource counts. Flags you set are recorded by name only.
 
 For the resource commands that work on batches, we record fixed size categories for the operation's succeeded, failed and skipped portions, rather than numbers. What each portion counts depends on the command: for some it is individual resources, for others whole resource types. Two of those categories, "0" and "1", cover a single value each; the rest are ranges. We also record the output format used, and whether the operation ran in dry-run mode.
 
-For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations.
+For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations. For gcx signup, we record the last step it reached, such as browser or complete.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
@@ -232,14 +234,28 @@ Find out more at https://grafana.com/docs/grafana/latest/as-code/observability-a
 }
 
 func TestFirstRunNoticeSkippedWhenStateDirUnwritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions do not apply to Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("permission checks do not apply to root")
 	}
-	readonly := filepath.Join(t.TempDir(), "readonly")
-	require.NoError(t, os.MkdirAll(readonly, 0o500))
-	path := filepath.Join(readonly, "gcx", firstRunNoticeFileName)
+	stateHome := t.TempDir()
+	require.NoError(t, os.Chmod(stateHome, 0o500))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(stateHome, 0o700)) })
+	path := filepath.Join(stateHome, "gcx", firstRunNoticeFileName)
 
 	var out strings.Builder
 	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
-	assert.Empty(t, out.String(), "unwritable flag file must skip the notice, not repeat it")
+	assert.Empty(t, out.String(), "unwritable state directory must skip the notice")
+}
+
+func TestFirstRunNoticeSkippedWhenStateHomeIsFile(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("file, not directory"), 0o600))
+	path := filepath.Join(blocked, "gcx", firstRunNoticeFileName)
+
+	var out strings.Builder
+	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+	assert.Empty(t, out.String(), "state home file must skip the notice")
 }

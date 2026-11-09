@@ -1,0 +1,3 @@
+ID           STREAM SELECTOR            REASON           CREATED AT            MANAGED BY  EXPIRES AT            ACTIVE INTERVAL  CREATED BY        UPDATED AT
+exemption-2  {service_name="checkout"}  Keep audit logs  2026-09-01T12:00:00Z  operator    2026-12-31T00:00:00Z  24h              user@example.com  2026-09-02T12:00:00Z
+																																									

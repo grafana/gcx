@@ -10,6 +10,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFormatPatternsTable_EmptyResponse(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatPatternsTable(&buf, &loki.PatternsResponse{}))
+	assert.Contains(t, buf.String(), "No patterns returned for this selector and range")
+}
+
+func TestFormatPatternsTable_RendersSummarizedPatterns(t *testing.T) {
+	resp := &loki.PatternsResponse{
+		Data: []loki.Pattern{
+			{Pattern: "frequent pattern", TotalCount: 25},
+			{Pattern: "medium pattern", TotalCount: 5},
+			{Pattern: "rare pattern", TotalCount: 2},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+
+	rows := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, rows, 4)
+	assert.Equal(t, []string{"PATTERN", "SAMPLES"}, strings.Fields(rows[0]))
+	assert.Equal(t, []string{"frequent", "pattern", "25"}, strings.Fields(rows[1]))
+	assert.Equal(t, []string{"medium", "pattern", "5"}, strings.Fields(rows[2]))
+	assert.Equal(t, []string{"rare", "pattern", "2"}, strings.Fields(rows[3]))
+}
+
 func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{

@@ -87,11 +87,7 @@ Query operations are not disguised CRUD:
 - `labels`, `series`, `metrics`, and `metadata` are established shorthand
   operations in signal and datasource command families.
 
-Use the shorthand only where its domain meaning is clear. The cross-signal
-vocabulary and intentional aliases are documented in
-[Cross-Signal Command Consistency](../adrs/signal-provider-ux/001-cross-signal-command-consistency.md).
-Do not characterize query commands as side-effect-free: supporting work such as
-datasource discovery may persist configuration.
+Use the shorthand only where its domain meaning is clear. The cross-signal vocabulary and intentional aliases are documented in [Cross-Signal Command Consistency](../rfcs/029-cross-signal-command-consistency.md). Do not characterize query commands as side-effect-free: supporting work such as datasource discovery may persist configuration.
 
 ## View verbs
 
@@ -141,6 +137,16 @@ Use an `<operation>-<subject>` compound for either of these cases:
 The second rule does not decide the deferred composite-identity and
 parent-required-`create` cases described at the start of this guide.
 
+### Addressability precedents
+
+Filter flags and read qualifiers do not establish independent identity. InfluxDB's `--measurement` narrows field and tag discovery; it does not make measurements independently addressable resources, so their enumeration remains `gcx datasources influxdb list-measurements`. An agent's `get --version` is a version-qualified parent read; its history uses `gcx agento11y agents list-versions <agent-name>`.
+
+Place relationship membership under the identity required to enumerate it. `gcx k6 projects list-allowed-load-zones <project-id>` belongs under projects, while the reverse lookup uses `gcx k6 load-zones list-allowed-projects <load-zone-id>`. The related entities having identities of their own does not change which parent scopes the membership lookup.
+
+An enumeration without a parent identity can retain a noun group: `gcx cloud orgs list` lists the caller's organisation memberships without requiring an organisation ID. Being a membership list does not by itself require a compound verb.
+
+### Other operations
+
 A direct get-by-ID may therefore use the child's noun group even when listing
 the same child is parent-scoped. The number of commands implemented for the
 subject, and the number of subjects one invocation affects, are not placement
@@ -161,7 +167,4 @@ are operands. In the second example, collection membership is changed, the
 collection ID scopes that relationship, and saved-conversation IDs are operands.
 This is different from a composite key whose parts together identify the child.
 
-For a new composite-identity or parent-required-`create` shape, either amend the
-Constitution to state the rule or record an explicit human-approved
-constitutional waiver in the approving PR or ADR. Do not create an implicit
-exception in this guide.
+For a new composite-identity or parent-required-`create` shape, either amend the Constitution to state the rule or record an explicit human-approved constitutional waiver in the approving PR or RFC. Do not create an implicit exception in this guide.

@@ -163,6 +163,7 @@ func (c *Client) DoYAML(ctx context.Context, method, path, yamlContent string) e
 // APIError is a structured error returned by the KG API.
 type APIError struct {
 	StatusCode int
+	Code       string // stable backend error code, when provided
 	message    string // extracted from JSON body, if available
 	rawBody    string
 }
@@ -175,7 +176,7 @@ func NewAPIError(statusCode int, message string) *APIError {
 
 func (e *APIError) Error() string {
 	if e.message != "" {
-		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.message)
+		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.APIUserMessage())
 	}
 	if e.rawBody != "" {
 		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.rawBody)
@@ -193,6 +194,9 @@ func (e *APIError) APIServiceName() string {
 
 func (e *APIError) APIUserMessage() string {
 	if e.message != "" {
+		if e.Code != "" {
+			return e.Code + ": " + e.message
+		}
 		return e.message
 	}
 	return e.rawBody
@@ -214,9 +218,11 @@ func ReadError(resp *http.Response) *APIError {
 		// Try to extract a human-readable message from a JSON error body.
 		var jsonErr struct {
 			Message string `json:"message"`
+			Code    string `json:"code"`
 		}
 		if jsonErr2 := json.Unmarshal(body, &jsonErr); jsonErr2 == nil && jsonErr.Message != "" {
 			apiErr.message = jsonErr.Message
+			apiErr.Code = jsonErr.Code
 		} else {
 			apiErr.rawBody = string(body)
 		}

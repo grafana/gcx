@@ -36,7 +36,7 @@ func yamlBodyCodec() bodyCodec {
 // 404 responses are wrapped around notFound; other >= 400 responses go
 // through providers.HandleErrorResponse. path is the logical API path used
 // in error messages (the full URL may include proxy prefixes).
-func doBody(ctx context.Context, httpClient *http.Client, method, url, path string, codec bodyCodec, notFound error, in, out any) error {
+func doBody(ctx context.Context, httpClient *http.Client, method, url, path string, codec bodyCodec, notFound error, in, out any, headers http.Header) error {
 	var body io.Reader
 	if in != nil {
 		data, err := codec.marshal(in)
@@ -54,6 +54,11 @@ func doBody(ctx context.Context, httpClient *http.Client, method, url, path stri
 		req.Header.Set("Content-Type", codec.contentType)
 	}
 	req.Header.Set("Accept", codec.contentType)
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

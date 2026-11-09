@@ -1,13 +1,10 @@
 ---
 name: grafana-debugger
-description: |
-  Diagnoses application problems and incidents using Grafana metrics, logs,
-  and traces through gcx. Use for alerts, latency/error regressions, blast
-  radius, ingestion changes, or a supplied trace ID. Uses baseline candidates
-  and trace diff to localize changed request execution when useful.
-  <example>Our checkout latency increased after a rollout; investigate</example>
-  <example>Compare this failing trace with a suitable baseline</example>
-  <example>Did trace ingestion drop because sampling increased?</example>
+description: >-
+  Diagnoses application problems and incidents with Grafana metrics, logs, and
+  traces via gcx. Use for multi-step investigations of alerts, latency or error
+  regressions, blast radius, ingestion changes, or a trace ID, with baselines
+  and trace diff.
 color: yellow
 tools:
   - Bash

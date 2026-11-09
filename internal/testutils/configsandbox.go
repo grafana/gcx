@@ -24,6 +24,7 @@ func SandboxConfigEnv(t *testing.T) string {
 	SetAgentMode(t, false)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".state"))
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())

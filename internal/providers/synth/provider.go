@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/namedquery"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/providers/synth/suggestions"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
@@ -119,6 +120,7 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 	synthCmd.AddCommand(probes.Commands(loader))
 	synthCmd.AddCommand(namedquery.Commands(loader))
 	synthCmd.AddCommand(namedquery.QueriesCommands(loader))
+	synthCmd.AddCommand(suggestions.Commands(loader))
 
 	return []*cobra.Command{synthCmd}
 }

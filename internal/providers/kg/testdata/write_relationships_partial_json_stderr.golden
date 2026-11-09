@@ -1,0 +1,2 @@
+✔ relationship "CALLS" written
+warn: failed to upsert relationship "CALLS" (1/2 succeeded): kg: upsert relationship: kg: request failed with status 500: {"error":"boom"}

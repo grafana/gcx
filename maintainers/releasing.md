@@ -1,11 +1,5 @@
 # Releasing
 
-Releases are handled by `goreleaser`, configured in the [`.goreleaser.yaml`](../.goreleaser.yaml)
-file and running in the [`release.yaml`](../.github/workflows/release.yaml) GitHub action.
+Follow the repository's [release workflow](../.agents/skills/release/SKILL.md) for version selection, checks, changelog preparation, and tagging. The workflow files in [`.github/workflows/`](../.github/workflows/) and [GoReleaser configuration](../.goreleaser.yaml) define the release automation.
 
-Trigger the release pipeline by creating and pushing a tag: `git tag v{version} && git push origin v{version}`
-
-The documentation will be built and published as well.
-
-If you wish to build and publish the documentation without releasing `grafafanactl`,
-manually start the [`publish-docs.yaml`](../.github/workflows/publish-docs.yaml) workflow.
+For documentation changes, follow [documentation maintenance](../docs/reference/doc-maintenance.md). Website publication is separate from generating the released CLI reference.

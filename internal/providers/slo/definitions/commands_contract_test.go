@@ -42,6 +42,8 @@ func (f *fakeGrafanaLoader) LoadGrafanaConfig(_ context.Context) (config.Namespa
 // sloAPIState drives the fake SLO plugin API.
 type sloAPIState struct {
 	mu             sync.Mutex
+	listCalls      int
+	updateCalls    int
 	createCalls    int
 	failCreateFrom int // fail POST create calls numbered >= this (1-based); 0 = never
 	slos           map[string]definitions.Slo
@@ -60,6 +62,7 @@ func newSLOServer(t *testing.T, st *sloAPIState) *httptest.Server {
 		switch r.Method {
 		case http.MethodGet:
 			st.mu.Lock()
+			st.listCalls++
 			slos := make([]definitions.Slo, 0, len(st.slos))
 			for _, s := range st.slos {
 				slos = append(slos, s)
@@ -102,6 +105,9 @@ func newSLOServer(t *testing.T, st *sloAPIState) *httptest.Server {
 			}
 			writeJSON(w, s)
 		case http.MethodPut:
+			st.mu.Lock()
+			st.updateCalls++
+			st.mu.Unlock()
 			_, _ = w.Write([]byte("{}"))
 		case http.MethodDelete:
 			if st.failDelete[uuid] {
@@ -573,10 +579,10 @@ func TestDefinitionsPushPreservesLegacyIdentity(t *testing.T) {
 						} else {
 							assert.NotContains(t, item, "uuid")
 						}
-					case uuid == "target-uuid":
+					case uuid == "target-uuid" || uuid == "":
 						assert.Zero(t, st.createCalls)
 						assert.Equal(t, "updated", item["action"])
-						assert.Equal(t, uuid, item["uuid"])
+						assert.Equal(t, "target-uuid", item["uuid"])
 					default:
 						assert.Equal(t, 1, st.createCalls)
 						assert.Equal(t, "created", item["action"])

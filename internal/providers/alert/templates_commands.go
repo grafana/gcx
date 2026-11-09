@@ -117,14 +117,16 @@ func newTemplatesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type templatesUpsertOpts struct {
-	IO   cmdio.Options
-	File string
+	IO             cmdio.Options
+	File           string
+	AllowUIUpdates bool
 }
 
 func (o *templatesUpsertOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the template definition (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.AllowUIUpdates, "allow-ui-updates", true, "Keep the template editable in the Grafana UI (false disables UI edits)")
 }
 
 func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -132,6 +134,7 @@ func newTemplatesUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upsert",
 		Short: "Create or update a notification template.",
+		Args:  cobra.NoArgs,
 		Long: `Create or update a notification template.
 
 The provisioning API uses a single PUT endpoint keyed by template name,
@@ -156,7 +159,7 @@ so the same command handles both create and update.`,
 			if err != nil {
 				return err
 			}
-			saved, err := client.UpsertTemplate(ctx, t)
+			saved, err := client.UpsertTemplate(ctx, t, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}

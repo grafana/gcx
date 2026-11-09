@@ -1,0 +1,2 @@
+SCOPE   RECORD                         ACTIVE  EXPR
+global  asserts:error:ratio:threshold  false   clamp_max( max by (asserts_env, asserts_site, namespace, workload, service, job) ( quantile_over_time(0.75, asserts:error:ratio[1d] offset 1h) ) > on() group_left() (asserts:error:ratio:threshold{asserts_threshold_level=""} > 0), scalar(asserts:error:ratio:threshold_automatic_max) )

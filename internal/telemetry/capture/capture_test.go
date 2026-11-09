@@ -37,6 +37,11 @@ func TestMain(m *testing.M) {
 			"capture package has a non-empty auth method default: invocations that never touched Grafana would report one")
 		os.Exit(1)
 	}
+	if capture.CurrentLoginStage() != "" {
+		fmt.Fprintln(os.Stderr,
+			"capture package has a non-empty login stage default: logins that never started would report a stage")
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 
@@ -82,10 +87,12 @@ func TestResetClearsEverything(t *testing.T) {
 	capture.SetHTTPStatus(503)
 	capture.SetK8sReason("NotFound")
 	capture.SetGrafanaAuthMethod("token")
+	capture.SetLoginStage("browser")
 	require.NotNil(t, capture.CurrentBatch())
 	require.Equal(t, 503, capture.CurrentHTTPStatus())
 	require.Equal(t, "NotFound", capture.CurrentK8sReason())
 	require.Equal(t, "token", capture.CurrentGrafanaAuthMethod())
+	require.Equal(t, "browser", capture.CurrentLoginStage())
 
 	capture.Reset()
 
@@ -93,6 +100,19 @@ func TestResetClearsEverything(t *testing.T) {
 	assert.Zero(t, capture.CurrentHTTPStatus())
 	assert.Empty(t, capture.CurrentK8sReason())
 	assert.Empty(t, capture.CurrentGrafanaAuthMethod())
+	assert.Empty(t, capture.CurrentLoginStage())
+}
+
+func TestSetLoginStageLastWinsAndIgnoresEmpty(t *testing.T) {
+	capture.Reset()
+	t.Cleanup(capture.Reset)
+
+	capture.SetLoginStage("browser")
+	capture.SetLoginStage("callback")
+	assert.Equal(t, "callback", capture.CurrentLoginStage())
+
+	capture.SetLoginStage("")
+	assert.Equal(t, "callback", capture.CurrentLoginStage(), "an empty stage must not erase the one reached")
 }
 
 func TestSetHTTPStatusRoundTripsAndIgnoresZero(t *testing.T) {

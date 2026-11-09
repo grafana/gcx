@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"testing/fstest"
 
@@ -169,7 +170,9 @@ func TestUpdateCommand(t *testing.T) {
 					require.Equal(t, expected, data)
 					info, err := os.Stat(file)
 					require.NoError(t, err)
-					require.Equal(t, fs.FileMode(0o644), info.Mode().Perm())
+					if runtime.GOOS != "windows" {
+						require.Equal(t, fs.FileMode(0o644), info.Mode().Perm())
+					}
 				}
 			}
 			if len(tc.installed) == 0 {

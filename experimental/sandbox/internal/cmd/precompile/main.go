@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"time"
 
@@ -38,11 +39,17 @@ func run() error {
 	ctx := context.Background()
 
 	start := time.Now()
-	rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: os.Args[2]})
+	cacheDir := os.Args[2]
+	rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: cacheDir})
 	if err != nil {
 		return fmt.Errorf("compiling: %w", err)
 	}
 	defer rt.Close(ctx)
+	// New compiles without a cache it can't use, which would publish an
+	// empty one.
+	if err := rt.CacheError(); err != nil {
+		return fmt.Errorf("the cache did not take the compiled code: %w", err)
+	}
 	fmt.Fprintf(os.Stdout, "compiled in %v\n", time.Since(start).Round(time.Millisecond))
 
 	var stdout, stderr bytes.Buffer
@@ -53,6 +60,28 @@ func run() error {
 	if res.ExitCode != 0 {
 		return fmt.Errorf("gcx version exited with status %d: %s", res.ExitCode, stderr.String())
 	}
-	_, err = stdout.WriteTo(os.Stdout)
-	return err
+	if _, err := stdout.WriteTo(os.Stdout); err != nil {
+		return err
+	}
+	return makeReadable(cacheDir)
+}
+
+// makeReadable lets any user read the cache, which wazero writes owner-only:
+// an image copies it as is, and embedders rarely run as the user who built it.
+func makeReadable(dir string) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		mode := fs.FileMode(0o644)
+		if d.IsDir() {
+			mode = 0o755
+		}
+		return root.Chmod(path, mode)
+	})
 }

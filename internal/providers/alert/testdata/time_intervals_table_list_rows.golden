@@ -1,0 +1,3 @@
+TITLE     API_NAME         INTERVALS  READ-ONLY
+weekends  opaque-weekends  2          true
+holidays  opaque-holidays  0          false

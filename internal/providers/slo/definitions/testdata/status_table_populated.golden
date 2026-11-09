@@ -1,0 +1,4 @@
+NAME         UUID    OBJECTIVE  WINDOW  SLI     BUDGET  STATUS
+payment-api  abc123  99.50%     28d     99.72%  44.0%   OK
+checkout     def456  99.90%     7d      99.85%  -50.0%  BREACHING
+new-service  ghi789  99.00%     28d     --      --      Creating

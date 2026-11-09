@@ -143,6 +143,7 @@ func TestGCOMClient_GetStack_TypedHTTPError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
 				w.WriteHeader(tt.statusCode)
 				_, _ = w.Write([]byte(`{"message":"denied"}`))
 			}))
@@ -160,6 +161,9 @@ func TestGCOMClient_GetStack_TypedHTTPError(t *testing.T) {
 			var httpErr *cloud.GCOMHTTPError
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("expected error to wrap *cloud.GCOMHTTPError, got %T: %v", err, err)
+			}
+			if httpErr.ContentType != "application/problem+json" {
+				t.Errorf("ContentType = %q", httpErr.ContentType)
 			}
 			if httpErr.Status != tt.statusCode {
 				t.Errorf("Status: got %d, want %d", httpErr.Status, tt.statusCode)

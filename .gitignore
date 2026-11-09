@@ -15,7 +15,7 @@
 # Override global gitignore for checked-in .claude content
 !.claude/
 .claude/*
-!.claude/skills/
+!.claude/skills
 !.claude/CLAUDE.md
 !.claude/settings.json
 .claude/settings.local.json
@@ -33,3 +33,8 @@ test-*.yaml
 .beads
 .beads-credential-key
 
+
+# Repository contributor skills
+!.agents/
+!.agents/skills/
+!.agents/skills/**

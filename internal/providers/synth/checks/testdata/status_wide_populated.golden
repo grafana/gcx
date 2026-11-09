@@ -1,0 +1,4 @@
+NAME              JOB            TARGET                    TYPE  SUCCESS  LATENCY  PROBES_UP  PROBES_TOTAL  PROBES                   STATUS
+shop-frontend-42  Shop Frontend  https://shop.example.com  http  99.72%   250ms    2          3             Oregon, Paris (offline)  OK
+ping-check-43     ping-check     db.example.com            ping  0.00%    1108ms   0          2                                      FAILING
+new-check         new check      https://new.example.com   http  --       --       0          1                                      NODATA

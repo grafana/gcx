@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -871,7 +872,7 @@ stacks:
       oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
       stack-id: 1
       tls:
-        ca-file: "`+caFile+`"
+        ca-file: `+strconv.Quote(caFile)+`
 contexts:
   default:
     stack: default

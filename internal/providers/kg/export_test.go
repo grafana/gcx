@@ -193,6 +193,11 @@ func NewNotificationsCommand(loader RESTConfigLoader) *cobra.Command {
 	return newNotificationsCommand(loader)
 }
 
+// NewThresholdsCommand exposes the thresholds command group for tests.
+func NewThresholdsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newThresholdsCommand(loader)
+}
+
 func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsDeleteCommand(loader)
 }
@@ -241,4 +246,10 @@ func NewKGOpenLinkForTest(url string) any { return newKGOpenLink(url) }
 // RcaWorkbenchURLForTest wraps rcaWorkbenchURL for tests.
 func RcaWorkbenchURLForTest(host, entityType, name string, scope map[string]string, startMs, endMs int64, since string) string {
 	return rcaWorkbenchURL(host, entityType, name, scope, startMs, endMs, since)
+}
+
+func NewCypherCommand(loader RESTConfigLoader) *cobra.Command { return newCypherCommand(loader) }
+
+func NewGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
+	return newGraphQueryCommand(loader)
 }

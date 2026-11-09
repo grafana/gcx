@@ -12,12 +12,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/gcx/internal/telemetry"
 )
 
@@ -73,6 +77,13 @@ func TestIsSilentCancellation(t *testing.T) {
 		{name: "nil error", err: nil, want: false},
 		{name: "bare context.Canceled", err: context.Canceled, want: true},
 		{name: "wrapped context.Canceled", err: fmt.Errorf("query: %w", context.Canceled), want: true},
+		{
+			name: "canceled dynamic-client request",
+			err: dynamic.ParseStatusError(&url.Error{
+				Op: "Get", URL: "http://example.invalid", Err: context.Canceled,
+			}),
+			want: true,
+		},
 		{name: "deadline exceeded is not a cancellation", err: context.DeadlineExceeded, want: false},
 		{name: "unrelated error", err: errors.New("boom"), want: false},
 		{
@@ -208,6 +219,7 @@ func TestConfigSetUnavailableKeychainFailsClosedProcess(t *testing.T) {
 
 	for _, agentMode := range []string{"false", "true"} {
 		t.Run("agent-mode="+agentMode, func(t *testing.T) {
+			userHome := t.TempDir()
 			configPath := filepath.Join(t.TempDir(), "config.yaml")
 			contents := []byte(`version: 1
 stacks:
@@ -237,7 +249,8 @@ current-context: smoke
 				"GCX_TELEMETRY=disabled",
 				"GCX_NO_UPDATE_NOTIFIER=1",
 				"NO_COLOR=1",
-				"HOME="+t.TempDir(),
+				"HOME="+userHome,
+				"USERPROFILE="+userHome,
 				"XDG_CONFIG_HOME="+t.TempDir(),
 				"XDG_CONFIG_DIRS="+t.TempDir(),
 				"XDG_CACHE_HOME="+t.TempDir(),
@@ -289,8 +302,10 @@ current-context: smoke
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := info.Mode().Perm(); got != 0o600 {
-				t.Fatalf("config permissions = %o, want 600", got)
+			if runtime.GOOS != "windows" {
+				if got := info.Mode().Perm(); got != 0o600 {
+					t.Fatalf("config permissions = %o, want 600", got)
+				}
 			}
 		})
 	}
@@ -366,6 +381,7 @@ current-context: old
 		{name: "agent incompatible version", agentMode: "true", configPath: versionConfigPath, grafanaServer: versionServer.URL, grafanaToken: "test-token", wantExitCode: 6, wantOutput: "gcx requires Grafana 12.0.0 or later"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			userHome := t.TempDir()
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
 			// Re-exec the trusted current test binary to verify the actual process exit path.
@@ -378,7 +394,8 @@ current-context: old
 				"GCX_AGENT_MODE="+tc.agentMode,
 				"GCX_TELEMETRY=disabled",
 				"NO_COLOR=1",
-				"HOME="+t.TempDir(),
+				"HOME="+userHome,
+				"USERPROFILE="+userHome,
 				"XDG_CONFIG_HOME="+t.TempDir(),
 				"XDG_CONFIG_DIRS="+t.TempDir(),
 				"XDG_CACHE_HOME="+t.TempDir(),
@@ -532,5 +549,35 @@ func TestBuildUsageEvent_APIRequestDetail(t *testing.T) {
 	}
 	if event.APIDatasourceTypes != "prometheus" {
 		t.Errorf("APIDatasourceTypes = %q, want %q", event.APIDatasourceTypes, "prometheus")
+	}
+}
+
+type mutationCancellationError struct {
+	cause error
+	saved bool
+}
+
+func (e mutationCancellationError) Error() string          { return "resource id=example: " + e.cause.Error() }
+func (e mutationCancellationError) Unwrap() error          { return e.cause }
+func (e mutationCancellationError) MutationWasSaved() bool { return e.saved }
+
+func TestSavedMutationCancellationKeepsReceipt(t *testing.T) {
+	for _, cause := range []error{context.Canceled, errors.New("interrupt signal received")} {
+		for _, saved := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/saved=%t", cause, saved), func(t *testing.T) {
+				ctx, cancel := context.WithCancelCause(t.Context())
+				cancel(cause)
+				err := fmt.Errorf("edit resource: %w", mutationCancellationError{cause: cause, saved: saved})
+				if got := isSilentCancellation(ctx, err); got != !saved {
+					t.Fatalf("silent cancellation = %t, saved=%t", got, saved)
+				}
+				if saved {
+					detail := fail.ErrorToDetailedError(err)
+					if detail == nil || detail.ExitCode == nil || *detail.ExitCode != gcxerrors.ExitPartialFailure || !strings.Contains(detail.Details, "id=example") {
+						t.Fatalf("saved mutation lost its receipt or partial-failure status: %+v", detail)
+					}
+				}
+			})
+		}
 	}
 }

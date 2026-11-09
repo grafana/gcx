@@ -125,7 +125,7 @@ func TestGrafanaCredentialRejectionFailsBeforeRESTConfigConstruction(t *testing.
 	require.ErrorAs(t, err, &rejected)
 	assert.Equal(t, credentials.FieldGrafanaToken, rejected.Field)
 	assert.Contains(t, err.Error(), "before network use")
-	assert.Contains(t, err.Error(), `--config "/tmp/config.yaml"`)
+	assert.Contains(t, err.Error(), "--config "+quoteConfigPath("/tmp/config.yaml"))
 }
 
 func TestRejectedGrafanaTokenCannotFallThroughToEmptyBasicAuth(t *testing.T) {

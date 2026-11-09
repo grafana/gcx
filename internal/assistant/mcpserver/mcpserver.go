@@ -27,7 +27,7 @@ const (
 
 // GetResourceName returns the composite metadata.name for the manifest:
 // {scope}-{slug(name)}. Server names are not unique and scope is required,
-// so name alone is ambiguous (ADR-021 Decision 3).
+// so name alone is ambiguous (RFC 022 Decision 3).
 func (m MCPServer) GetResourceName() string {
 	return m.Scope + "-" + adapter.SlugifyName(m.Name)
 }

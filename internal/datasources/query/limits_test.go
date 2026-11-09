@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/loki"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
 )
@@ -71,4 +72,28 @@ func TestSurfaceRowLimits(t *testing.T) {
 		lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 		assert.Len(t, lines, 2, "one hint line per source")
 	})
+}
+
+func TestSurfaceLogLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		count, limit int
+		warn         bool
+	}{
+		{"empty", 0, 50, false}, {"below", 49, 50, false}, {"at cap", 50, 50, true},
+		{"above cap", 51, 50, true}, {"uncapped", 50, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{
+				{Values: make([]loki.LogEntry, tc.count/2)}, {Values: make([]loki.LogEntry, tc.count-tc.count/2)},
+			}}}
+			var stderr bytes.Buffer
+			dsquery.SurfaceLogLimit(&stderr, resp, tc.limit)
+			if tc.warn {
+				assert.Contains(t, stderr.String(), "results may be incomplete")
+			} else {
+				assert.Empty(t, stderr.String())
+			}
+		})
+	}
 }

@@ -117,7 +117,7 @@ contexts:
 	require.Error(t, err)
 	require.ErrorContains(t, err, "different files")
 	require.ErrorContains(t, err, systemPath)
-	require.ErrorContains(t, err, userPath)
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(userPath))
 }
 
 func TestPlanLoginMutationRejectsHigherLayerShadowOfCloudBinding(t *testing.T) {
@@ -152,8 +152,8 @@ contexts:
 			require.NoError(t, err)
 			_, err = opts.PlanLoginMutation(cfg, "prod", intent)
 			require.ErrorContains(t, err, "different files")
-			require.ErrorContains(t, err, userPath)
-			require.ErrorContains(t, err, localPath)
+			require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(userPath))
+			require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(localPath))
 		})
 	}
 }
@@ -191,7 +191,7 @@ contexts:
 	require.Error(t, err)
 	require.ErrorContains(t, err, "different files")
 	require.ErrorContains(t, err, systemPath)
-	require.ErrorContains(t, err, localPath)
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(localPath))
 }
 
 func TestPlanLoginMutationPreservesLayeredLocalOwnerProvenance(t *testing.T) {
@@ -242,8 +242,8 @@ contexts:
 	_, err = opts.PlanLoginMutation(cfg, "new-context", config.LoginMutationUnified)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "does not exist")
-	require.ErrorContains(t, err, userPath)
-	require.ErrorContains(t, err, localPath)
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(userPath))
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(localPath))
 }
 
 func TestPlanLoginMutationRejectsSameNamedStackOutsideContextOwner(t *testing.T) {
@@ -269,8 +269,8 @@ contexts:
 	require.NoError(t, err)
 	_, err = opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
 	require.ErrorContains(t, err, "Stack entry \"prod\" already exists outside the selected context owner")
-	require.ErrorContains(t, err, userPath)
-	require.ErrorContains(t, err, localPath)
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(userPath))
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(localPath))
 }
 
 func TestPlanLoginMutationRejectsShadowedSameNamedStackInContextOwner(t *testing.T) {
@@ -302,8 +302,8 @@ contexts:
 	require.NoError(t, err)
 	_, err = opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
 	require.ErrorContains(t, err, "Stack entry \"prod\" already exists outside the selected context owner")
-	require.ErrorContains(t, err, userPath)
-	require.ErrorContains(t, err, localPath)
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(userPath))
+	require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(localPath))
 }
 
 func TestPlanLoginMutationKeepsZeroOneAndExplicitSelectionBehavior(t *testing.T) {

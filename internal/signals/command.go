@@ -30,6 +30,7 @@ type AdaptiveSpec struct {
 type Descriptor struct {
 	Name          string
 	Short         string
+	Long          string
 	Commands      []CommandSpec
 	ExtraCommands []CommandBuilder
 	Adaptive      *AdaptiveSpec
@@ -44,6 +45,7 @@ func Command(desc Descriptor) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   desc.Name,
 		Short: desc.Short,
+		Long:  desc.Long,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if root := cmd.Root(); root.PersistentPreRun != nil {
 				root.PersistentPreRun(cmd, args)

@@ -1,0 +1,4 @@
+ID  NAME      ENABLED  CONFIG TYPE       MATCHERS
+42  otel      true     CONFIG_TYPE_OTEL  env=prod, service=checkout
+7   disabled  false    -                 -
+9   minimal   -        -                 -

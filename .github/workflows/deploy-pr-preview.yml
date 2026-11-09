@@ -18,7 +18,9 @@ jobs:
       id-token: write
       pull-requests: write
       statuses: write
-    if: "!github.event.pull_request.head.repo.fork"
+    # The preview looks up the PR in grafana/gcx (repo: gcx below), so it
+    # fails in any other repository. Skip it outside the canonical repo.
+    if: github.repository == 'grafana/gcx' && !github.event.pull_request.head.repo.fork
     uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main # zizmor: ignore[unpinned-uses]
     with:
       branch: ${{ github.head_ref }}

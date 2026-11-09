@@ -39,7 +39,7 @@ func (o *sessionsGetOpts) setupIO() {
 
 func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 	o.SetupTimeFlags(flags)
-	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id or numeric id (required)")
+	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id, numeric ID or display name (required)")
 	flags.StringVar(&o.AppType, "app-type", "", "web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted")
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Grafana datasource UID (required). Type is inferred (loki or pinot)")
 	flags.StringVar(&o.Save, "save", "", "Write the session dump to this path instead of stdout")
@@ -121,9 +121,10 @@ datasource and infers Loki vs Pinot from its type. Each Loki query times out
 after 60s so a slow scan cannot hang; try a Pinot datasource UID or a narrower
 window.
 
-Faro apps do not store web vs mobile on the app resource. Omit --app-type and
-gcx infers it from sdkName / osName on the session (so mobile journeys exclude
-app_memory / app_cpu_usage). Pass --app-type to override.`,
+Omit --app-type and gcx infers web vs mobile from sdkName / osName on the
+session (so mobile journeys exclude app_memory / app_cpu_usage). It does not
+use the app's stored appType, which older apps may lack or have wrong. Pass
+--app-type to override.`,
 		Example: `  # Pinot on stdout (metadata fields, journey TSV)
   gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d
 
@@ -165,14 +166,11 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				return err
 			}
 
-			appID := resolveAppID(opts.App)
-			app, err := faroClient.Get(ctx, appID)
+			target, err := resolveApp(ctx, newAppCRUD(faroClient, cfg.Namespace), opts.App)
 			if err != nil {
 				return err
 			}
-			if app.ID != "" {
-				appID = app.ID
-			}
+			appID := target.Spec.ID
 
 			now := time.Now()
 			start, end, err := opts.ParseTimeRange(now)

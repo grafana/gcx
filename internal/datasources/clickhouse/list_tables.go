@@ -19,6 +19,7 @@ type listTablesOpts struct {
 }
 
 func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
+	opts.IO.RegisterCustomCodec("csv", cmdio.CSV[[]clickhouse.TableInfo]{Records: clickhouse.TableInfoCSVRecords})
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.clickhouse is configured)")

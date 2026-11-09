@@ -121,7 +121,11 @@ func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resume <id>",
 		Short: "Resume a paused v2 investigation.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Resume a paused v2 investigation, which restarts its Grafana Assistant
+agents. Use it when the user asks to resume the investigation.
+
+` + investigationBillingNote,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

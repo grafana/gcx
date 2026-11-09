@@ -8,10 +8,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/appo11y/activation"
@@ -84,25 +84,25 @@ func (o *fleetOperationsListOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if strings.TrimSpace(o.Since) == "" {
-		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
 	if _, err := model.ParseDuration(o.Since); err != nil {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if _, err := resolveSpanKinds(o.Kind); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	if o.Limit < 1 {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--limit must be at least 1 (got %d); this command has no unlimited mode because the unbounded fleet shape is #services x #operations", o.Limit), nil)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--limit must be at least 1 (got %d); this command has no unlimited mode because the unbounded fleet shape is #services x #operations", o.Limit), nil)
 	}
 	if o.Limit > fleetOperationsMaxLimit {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--limit must be at most %d (got %d)", fleetOperationsMaxLimit, o.Limit), nil)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--limit must be at most %d (got %d)", fleetOperationsMaxLimit, o.Limit), nil)
 	}
 	if _, err := o.KG.resolve(); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -161,19 +161,19 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		}
 		kinds, err := resolveSpanKinds(opts.Kind)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		groupBy, err := parseGroupBy(opts.GroupBy)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()
@@ -571,22 +571,22 @@ func (o *operationDetailOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if strings.TrimSpace(o.Service) == "" {
-		return fail.NewCommandUsageError(cmd, "--service is required", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--service is required", nil)
 	}
 	if strings.TrimSpace(o.Since) == "" {
-		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
 	if _, err := model.ParseDuration(o.Since); err != nil {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if _, err := resolveSpanKinds(o.Kind); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	if _, err := o.KG.resolve(); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -645,19 +645,19 @@ func runOperationGet(loader *providers.ConfigLoader, opts *operationDetailOpts) 
 		operation := args[0]
 		namespace, name, err := parseServiceArg(opts.Service, opts.Namespace)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		kinds, err := resolveSpanKinds(opts.Kind)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		filterMatchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()

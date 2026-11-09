@@ -13,7 +13,9 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -42,6 +44,8 @@ func (err ParseError) Error() string {
 	return fmt.Sprintf("parse error in '%s': %s", err.File, err.Err)
 }
 
+type ErrorListener func(err error, path string)
+
 // FSReader is a reader that reads resources from the filesystem.
 //
 // The reader will read all resources from the filesystem and return them as
@@ -54,6 +58,12 @@ type FSReader struct {
 	// MaxConcurrentReads is the maximum number of concurrent file reads.
 	// If not set, the default is 1.
 	MaxConcurrentReads int
+	// Warn receives deprecation and duplicate-identity diagnostics; nil uses logging for duplicates.
+	Warn io.Writer
+
+	// errorListeners contains a list of listeners that can be notified on
+	// error. Only used when StopOnError is false.
+	errorListeners []ErrorListener
 }
 
 // Read reads all resources from the filesystem and returns them as an unstructured list.
@@ -87,6 +97,7 @@ func (reader *FSReader) Read(
 				}
 
 				logger.Warn("Failed to stat path", slog.String("path", path), logs.Err(err))
+				reader.notifyErrorListeners(err, path)
 				continue
 			}
 
@@ -113,6 +124,7 @@ func (reader *FSReader) Read(
 						return err
 					}
 					logger.Warn("Failed to traverse directory", slog.String("path", path), logs.Err(err))
+					reader.notifyErrorListeners(err, path)
 					return nil
 				}
 
@@ -154,6 +166,7 @@ func (reader *FSReader) Read(
 					}
 
 					logger.Warn("failed to read file", slog.String("path", path), logs.Err(err))
+					reader.notifyErrorListeners(err, path)
 					return nil
 				}
 
@@ -185,23 +198,49 @@ func (reader *FSReader) Read(
 
 	// Read all results in parallel.
 	gr.Go(func() error {
-		idx := make(map[objIdx]resources.Resource)
+		idx := make(map[resources.ResourceRef]string)
+		warned := make(map[schema.GroupVersion]bool)
 
 		for res := range resCh {
 			obj := res.Object
+			gvk := obj.GroupVersionKind()
+			target := resources.NormalizeGVK(gvk)
+			if resources.MatchesGroupAlias(target, gvk.Group) {
+				// only write on reader.Warn once
+				if reader.Warn != nil && !warned[gvk.GroupVersion()] {
+					output.EmitWarn(reader.Warn, fmt.Sprintf("apiVersion %q is deprecated; use %q instead", gvk.GroupVersion(), target.GroupVersion()))
+					warned[gvk.GroupVersion()] = true
+				}
 
-			if _, ok := idx[objIdx{
-				gvk:  obj.Raw.GetGroupVersionKind(),
-				name: obj.Name(),
-			}]; ok {
-				logger.Info("skipping duplicate object",
-					"gvk", obj.Raw.GetGroupVersionKind(),
-					"name", obj.Name(),
-					"path", res.Path,
-				)
+				// but notify for every resource (used by the linter)
+				reader.notifyErrorListeners(resources.DeprecatedResourceError{
+					Ref:         obj.Ref(),
+					Used:        gvk.GroupVersion(),
+					Alternative: target.GroupVersion(),
+				}, res.Path)
+			}
+
+			if adapter.RetainsLocalDuplicates(obj.GroupVersionKind()) {
+				dst.AddDistinct(&obj)
+				continue
+			}
+
+			if previous, ok := idx[obj.Ref()]; ok {
+				message := fmt.Sprintf("skipping duplicate object %q: same resource identity as %q; remove stale files before pushing", res.Path, previous)
+				if reader.Warn != nil {
+					output.EmitWarn(reader.Warn, message)
+				} else {
+					logger.Warn(message)
+				}
+
+				reader.notifyErrorListeners(resources.DuplicatedResourceError{
+					Ref:   obj.Ref(),
+					Files: []string{idx[obj.Ref()], res.Path},
+				}, res.Path)
 
 				continue
 			}
+			idx[obj.Ref()] = res.Path
 
 			logger.Debug("adding object",
 				"gvk", obj.Raw.GetGroupVersionKind(),
@@ -285,7 +324,7 @@ func (reader *FSReader) readRaw(
 	object := &unstructured.Unstructured{}
 
 	if err := decoder.Decode(src, object); err != nil {
-		return ParseError{Err: err}
+		return ParseError{Err: err, File: path}
 	}
 
 	if err := dst.SetUnstructured(object); err != nil {
@@ -311,9 +350,15 @@ func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) {
 	}
 }
 
-type objIdx struct {
-	gvk  schema.GroupVersionKind
-	name string
+// AddErrorListener registers a new error listener.
+func (reader *FSReader) AddErrorListener(listener ErrorListener) {
+	reader.errorListeners = append(reader.errorListeners, listener)
+}
+
+func (reader *FSReader) notifyErrorListeners(err error, path string) {
+	for _, listener := range reader.errorListeners {
+		listener(err, path)
+	}
 }
 
 type readResult struct {

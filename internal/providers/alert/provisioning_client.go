@@ -21,11 +21,23 @@ const (
 // ErrProvisioningNotFound is returned when a provisioning resource does not exist.
 var ErrProvisioningNotFound = errors.New("provisioning resource not found")
 
+func echoedProvenance(allowUIUpdates []bool) string {
+	if len(allowUIUpdates) != 0 && !allowUIUpdates[0] {
+		return "api"
+	}
+	return ""
+}
+
 // doJSON performs an HTTP request with an optional JSON body and optionally
 // decodes a JSON response. Returns ErrProvisioningNotFound for 404 responses.
 // A 202 Accepted with an empty body is treated as success.
-func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) error {
-	return doBody(ctx, c.httpClient, method, c.host+path, path, jsonBodyCodec(), ErrProvisioningNotFound, in, out)
+func (c *Client) doJSON(ctx context.Context, method, path string, in, out any, allowUIUpdates ...bool) error {
+	var headers http.Header
+	if (method == http.MethodPost || method == http.MethodPut) && (len(allowUIUpdates) == 0 || allowUIUpdates[0]) {
+		// Match the dashboard default: keep provisioning writes editable in the UI.
+		headers = http.Header{"X-Disable-Provenance": {"true"}}
+	}
+	return doBody(ctx, c.httpClient, method, c.host+path, path, jsonBodyCodec(), ErrProvisioningNotFound, in, out, headers)
 }
 
 // doRaw performs an HTTP GET and returns the raw response body bytes.
@@ -80,23 +92,25 @@ func (c *Client) GetContactPoint(ctx context.Context, uid string) (*ContactPoint
 }
 
 // CreateContactPoint creates a new contact point.
-func (c *Client) CreateContactPoint(ctx context.Context, cp ContactPoint) (*ContactPoint, error) {
+func (c *Client) CreateContactPoint(ctx context.Context, cp ContactPoint, allowUIUpdates ...bool) (*ContactPoint, error) {
 	var created ContactPoint
-	if err := c.doJSON(ctx, http.MethodPost, contactPointsPath, cp, &created); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, contactPointsPath, cp, &created, allowUIUpdates...); err != nil {
 		return nil, err
 	}
+	created.Provenance = echoedProvenance(allowUIUpdates)
 	return &created, nil
 }
 
 // UpdateContactPoint updates an existing contact point. The PUT endpoint
 // returns 202 Accepted with no body; the caller gets back the input with
 // its UID preserved.
-func (c *Client) UpdateContactPoint(ctx context.Context, uid string, cp ContactPoint) (*ContactPoint, error) {
+func (c *Client) UpdateContactPoint(ctx context.Context, uid string, cp ContactPoint, allowUIUpdates ...bool) (*ContactPoint, error) {
 	path := contactPointsPath + "/" + url.PathEscape(uid)
-	if err := c.doJSON(ctx, http.MethodPut, path, cp, nil); err != nil {
+	if err := c.doJSON(ctx, http.MethodPut, path, cp, nil, allowUIUpdates...); err != nil {
 		return nil, err
 	}
 	cp.UID = uid
+	cp.Provenance = echoedProvenance(allowUIUpdates)
 	return &cp, nil
 }
 
@@ -136,9 +150,9 @@ func (c *Client) GetMuteTiming(ctx context.Context, name string) (*MuteTiming, e
 }
 
 // CreateMuteTiming creates a new mute timing.
-func (c *Client) CreateMuteTiming(ctx context.Context, mt MuteTiming) (*MuteTiming, error) {
+func (c *Client) CreateMuteTiming(ctx context.Context, mt MuteTiming, allowUIUpdates ...bool) (*MuteTiming, error) {
 	var created MuteTiming
-	if err := c.doJSON(ctx, http.MethodPost, muteTimingsPath, mt, &created); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, muteTimingsPath, mt, &created, allowUIUpdates...); err != nil {
 		return nil, err
 	}
 	return &created, nil
@@ -146,9 +160,9 @@ func (c *Client) CreateMuteTiming(ctx context.Context, mt MuteTiming) (*MuteTimi
 
 // UpdateMuteTiming updates a mute timing. The PUT endpoint returns 202 with
 // no body; the caller gets back the input with its name preserved.
-func (c *Client) UpdateMuteTiming(ctx context.Context, name string, mt MuteTiming) (*MuteTiming, error) {
+func (c *Client) UpdateMuteTiming(ctx context.Context, name string, mt MuteTiming, allowUIUpdates ...bool) (*MuteTiming, error) {
 	path := muteTimingsPath + "/" + url.PathEscape(name)
-	if err := c.doJSON(ctx, http.MethodPut, path, mt, nil); err != nil {
+	if err := c.doJSON(ctx, http.MethodPut, path, mt, nil, allowUIUpdates...); err != nil {
 		return nil, err
 	}
 	mt.Name = name
@@ -186,8 +200,8 @@ func (c *Client) GetNotificationPolicy(ctx context.Context) (*NotificationPolicy
 }
 
 // SetNotificationPolicy replaces the entire notification policy tree.
-func (c *Client) SetNotificationPolicy(ctx context.Context, p NotificationPolicy) error {
-	return c.doJSON(ctx, http.MethodPut, policiesPath, p, nil)
+func (c *Client) SetNotificationPolicy(ctx context.Context, p NotificationPolicy, allowUIUpdates ...bool) error {
+	return c.doJSON(ctx, http.MethodPut, policiesPath, p, nil, allowUIUpdates...)
 }
 
 // ResetNotificationPolicy restores the default notification policy.
@@ -225,14 +239,15 @@ func (c *Client) GetTemplate(ctx context.Context, name string) (*NotificationTem
 
 // UpsertTemplate creates or updates a template by name. The provisioning API
 // uses the same PUT endpoint for both create and update.
-func (c *Client) UpsertTemplate(ctx context.Context, t NotificationTemplate) (*NotificationTemplate, error) {
+func (c *Client) UpsertTemplate(ctx context.Context, t NotificationTemplate, allowUIUpdates ...bool) (*NotificationTemplate, error) {
 	var out NotificationTemplate
 	path := templatesPath + "/" + url.PathEscape(t.Name)
-	if err := c.doJSON(ctx, http.MethodPut, path, t, &out); err != nil {
+	if err := c.doJSON(ctx, http.MethodPut, path, t, &out, allowUIUpdates...); err != nil {
 		return nil, err
 	}
 	if out.Name == "" {
 		// Some versions return 202 with empty body; echo the input back.
+		t.Provenance = echoedProvenance(allowUIUpdates)
 		return &t, nil
 	}
 	return &out, nil

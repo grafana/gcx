@@ -138,17 +138,8 @@ func TestHasInteractiveTextOutput_AllowsKnownTextFormats(t *testing.T) {
 func resetNotifierTestState(t *testing.T) {
 	t.Helper()
 
-	for _, env := range []string{
-		"GCX_NO_UPDATE_NOTIFIER",
-		"GCX_AGENT_MODE",
-		"CLAUDECODE",
-		"CLAUDE_CODE",
-		"CURSOR_AGENT",
-		"GITHUB_COPILOT",
-		"AMAZON_Q",
-		"OPENCODE",
-		"PI_CODING_AGENT",
-	} {
+	t.Setenv("GCX_NO_UPDATE_NOTIFIER", "")
+	for _, env := range agent.EnvironmentVariables() {
 		t.Setenv(env, "")
 	}
 

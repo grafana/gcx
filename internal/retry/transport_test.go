@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -494,5 +495,24 @@ func TestIsTransientConnectionError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, retry.IsTransientConnectionError(tc.err))
 		})
+	}
+}
+
+func TestOperationWithoutRetriesMakesOneAttempt(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+		for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+			t.Run(method+"/"+strconv.Itoa(status), func(t *testing.T) {
+				var count atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { count.Add(1); w.WriteHeader(status) }))
+				defer server.Close()
+				req, err := http.NewRequestWithContext(retry.WithoutRetries(t.Context()), method, server.URL, strings.NewReader(`{}`))
+				require.NoError(t, err)
+				response, err := (&http.Client{Transport: &retry.Transport{}}).Do(req)
+				require.NoError(t, err)
+				defer response.Body.Close()
+				assert.Equal(t, status, response.StatusCode)
+				assert.Equal(t, int32(1), count.Load())
+			})
+		}
 	}
 }

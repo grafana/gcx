@@ -2,6 +2,10 @@ package services //nolint:testpackage // Tests cover unexported builders, merge 
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -332,5 +336,96 @@ func TestDirectionLatencyBucketMetric(t *testing.T) {
 	}
 	if calleesDirection.latencyBucketMetric() != serviceGraphRequestClientBucketMetric {
 		t.Errorf("callees should use client_seconds_bucket")
+	}
+}
+
+func TestFetchServiceMapInstrumentation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Expr string `json:"expr"`
+			} `json:"queries"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		expr := body.Queries[0].Expr
+		var labels []map[string]string
+		switch {
+		case strings.Contains(expr, "target_info"):
+			if strings.Contains(expr, `k8s_cluster_name="test-cluster"`) {
+				t.Errorf("edge filter restricts metadata baseline: %s", expr)
+			}
+			if !strings.Contains(expr, "(.+/)?inventory") {
+				t.Errorf("namespace-less peer missing from metadata matcher: %s", expr)
+			}
+			if !strings.Contains(expr, "(.+/)?payment") {
+				t.Errorf("namespaced peer missing from metadata matcher: %s", expr)
+			}
+			if !strings.Contains(expr, `job=~`) {
+				t.Errorf("metadata is not scoped: %s", expr)
+			}
+			labels = []map[string]string{{"job": "billing/checkout"}, {"job": "billing/frontend"}, {"job": "payment"}, {"job": "other/inventory"}, {"job": "postgres"}, {"job": "user"}}
+		case strings.Contains(expr, `server="checkout"`):
+			labels = []map[string]string{{"client": "frontend", "client_service_namespace": "billing"}}
+		default:
+			labels = []map[string]string{{"server": "payment", "server_service_namespace": "billing"}, {"server": "inventory"}, {"server": "postgres", "connection_type": "database"}, {"server": "user", "connection_type": "virtual_node"}, {"server": "queue", "connection_type": "messaging_system"}}
+		}
+		frames := make([]any, 0, len(labels))
+		for _, l := range labels {
+			frames = append(frames, map[string]any{"schema": map[string]any{"fields": []any{map[string]any{"name": "Time", "type": "time"}, map[string]any{"name": "Value", "type": "number", "labels": l}}}, "data": map[string]any{"values": []any{[]int{1000}, []int{1}}}})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": map[string]any{"A": map[string]any{"frames": frames}}})
+	}))
+	defer server.Close()
+	client, err := prometheus.NewClient(newKGTestConfig(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := fetchServiceMap(context.Background(), client, "prom", "billing", "checkout", "5m", []Matcher{{Label: "k8s_cluster_name", Op: "=", Value: "test-cluster"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Service.Instrumented {
+		t.Error("checkout metadata proves instrumentation")
+	}
+	for _, e := range append(result.Callers, result.Callees...) {
+		want := e.Peer.Name != "queue"
+		if e.Peer.Instrumented != want {
+			t.Errorf("%s instrumented=%v want=%v", e.Peer.Name, e.Peer.Instrumented, want)
+		}
+	}
+}
+
+func TestFetchServiceMapMetadataError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Expr string `json:"expr"`
+			} `json:"queries"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if strings.Contains(body.Queries[0].Expr, "target_info") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+	}))
+	defer server.Close()
+	client, err := prometheus.NewClient(newKGTestConfig(server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := fetchServiceMap(context.Background(), client, "prom", "billing", "checkout", "5m", nil, nil)
+	if err == nil || result != nil {
+		t.Fatalf("metadata denial must not produce uninstrumented result: result=%+v err=%v", result, err)
 	}
 }

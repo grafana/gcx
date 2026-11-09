@@ -18,14 +18,19 @@ type describeTableOpts struct {
 	Datasource string
 	Project    string
 	Dataset    string
+	Filter     string
+	Limit      int
 }
 
 func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
+	opts.IO.RegisterCustomCodec("csv", cmdio.CSV[[]bigquery.ColumnInfo]{Records: bigquery.ColumnInfoCSVRecords})
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")
 	flags.StringVar(&opts.Project, "project", "", "GCP project ID (default: the datasource's default project)")
 	flags.StringVar(&opts.Dataset, "dataset", "", "Dataset containing the table (required)")
+	flags.StringVar(&opts.Filter, "filter", "", "Only show columns whose name contains this text (case-insensitive)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "columns", bigquery.MetadataRowLimit)
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -46,8 +51,9 @@ The dataset is required, supplied either in the table name (DATASET.TABLE or
 PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
 datasource's default project is used.
 
-At most 1000 columns are returned; if a table is wider, a warning is printed
-on stderr rather than silently truncating.`,
+At most --limit columns are returned (1000 by default); if a table is wider, a
+warning is printed on stderr rather than silently truncating. Narrow a wide
+table with --filter, or pass --limit 0 to return every column.`,
 		Example: `
   # Describe a table in a dataset (default project; equivalent forms)
   gcx datasources bigquery describe-table my_dataset.events
@@ -56,6 +62,9 @@ on stderr rather than silently truncating.`,
   # Describe a table in a specific project (equivalent forms)
   gcx datasources bigquery describe-table my-project.my_dataset.events
   gcx datasources bigquery describe-table events --project my-project --dataset my_dataset
+
+  # Find columns by name in a wide table
+  gcx datasources bigquery describe-table my_dataset.events --filter timestamp
 
   # Output as JSON
   gcx datasources bigquery describe-table my_dataset.events -o json`,
@@ -115,11 +124,14 @@ on stderr rather than silently truncating.`,
 				return err
 			}
 
-			sql := fmt.Sprintf(
-				"SELECT column_name, data_type, is_nullable FROM %s.COLUMNS WHERE table_name = '%s' ORDER BY ordinal_position LIMIT %d",
-				bigquery.InfoSchemaPrefix(project, dataset),
-				bigquery.EscapeSQLString(table),
-				bigquery.MetadataRowLimit+1,
+			sql := bigquery.MetadataQuery(
+				fmt.Sprintf("SELECT column_name, data_type, is_nullable FROM %s.COLUMNS", bigquery.InfoSchemaPrefix(project, dataset)),
+				[]string{
+					fmt.Sprintf("table_name = '%s'", bigquery.EscapeSQLString(table)),
+					bigquery.MetadataFilterClause("column_name", opts.Filter),
+				},
+				"ordinal_position",
+				opts.Limit,
 			)
 
 			client, err := bigquery.NewClient(cfg)
@@ -132,7 +144,7 @@ on stderr rather than silently truncating.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "columns")
+			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "columns", opts.Limit)
 
 			cols := bigquery.ParseColumnInfoRows(resp)
 			return opts.IO.Encode(cmd.OutOrStdout(), cols)

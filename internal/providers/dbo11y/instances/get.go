@@ -9,7 +9,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -57,13 +56,13 @@ func (o *getOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if strings.TrimSpace(o.Since) == "" {
-		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
 	if _, err := model.ParseDuration(o.Since); err != nil {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if o.Top < 0 {
-		return fail.NewCommandUsageError(cmd, "--top must be zero or positive", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--top must be zero or positive", nil)
 	}
 	return nil
 }
@@ -130,11 +129,11 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 		name := strings.TrimSpace(args[0])
 		if name == "" {
-			return fail.NewCommandUsageError(cmd, "instance name is required", nil)
+			return gcxerrors.NewCommandUsageError(cmd, "instance name is required", nil)
 		}
 		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()

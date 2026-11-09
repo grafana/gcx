@@ -115,6 +115,8 @@ type GCOMHTTPError struct {
 	Body    string
 	Code    string
 	Message string
+	// ContentType is the response Content-Type header.
+	ContentType string
 }
 
 func (e *GCOMHTTPError) Error() string {
@@ -124,10 +126,11 @@ func (e *GCOMHTTPError) Error() string {
 
 // newGCOMHTTPError builds a GCOMHTTPError from a non-200 response, keeping the
 // raw body verbatim and extracting code/message when the body is a JSON object.
-func newGCOMHTTPError(status int, body []byte) *GCOMHTTPError {
+func newGCOMHTTPError(resp *http.Response, body []byte) *GCOMHTTPError {
 	httpErr := &GCOMHTTPError{
-		Status: status,
-		Body:   strings.TrimSpace(string(body)),
+		Status:      resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		Body:        strings.TrimSpace(string(body)),
 	}
 	var parsed struct {
 		Code    string `json:"code"`
@@ -211,7 +214,7 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
+		return StackInfo{}, newGCOMHTTPError(resp, body)
 	}
 
 	var info StackInfo
@@ -248,7 +251,7 @@ func (c *GCOMClient) ListStacks(ctx context.Context, orgSlug string) ([]StackInf
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, newGCOMHTTPError(resp.StatusCode, body)
+		return nil, newGCOMHTTPError(resp, body)
 	}
 
 	var envelope struct {
@@ -295,7 +298,7 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
+		return StackInfo{}, newGCOMHTTPError(resp, body)
 	}
 
 	var info StackInfo
@@ -336,7 +339,7 @@ func (c *GCOMClient) UpdateStack(ctx context.Context, slug string, r UpdateStack
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
+		return StackInfo{}, newGCOMHTTPError(resp, body)
 	}
 
 	var info StackInfo
@@ -372,7 +375,7 @@ func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return newGCOMHTTPError(resp.StatusCode, body)
+		return newGCOMHTTPError(resp, body)
 	}
 	return nil
 }
@@ -403,7 +406,7 @@ func (c *GCOMClient) ListRegions(ctx context.Context) ([]Region, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, newGCOMHTTPError(resp.StatusCode, body)
+		return nil, newGCOMHTTPError(resp, body)
 	}
 
 	var envelope struct {

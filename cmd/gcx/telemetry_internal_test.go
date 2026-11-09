@@ -40,11 +40,9 @@ import (
 // config and would otherwise bleed into unrelated cases, which is the exact
 // cross-case leak this helper exists to stop.
 //
-// The gap that remains is real but currently unasserted: buildUsageEvent also
-// derives IsAgent and Agent from agent.IsAgentMode(), IsCI and CIProvider from
-// telemetry.DetectCI(), and IsTTY from the real stdout. No case here asserts on
-// any of those. A case that does must pin them locally — it cannot reach for
-// the shared sandbox.
+// Agent identity is pinned by agenttelemetry_process_test.go against the real
+// receiver path. Assertions here on agent identity, CI, or TTY must pin their
+// environment inputs locally. This helper does not clear those host inputs.
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -431,9 +429,9 @@ func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name:       "bare provider 401 keeps exit 1",
+			name:       "bare provider 401 uses exit 3",
 			err:        providers.FormatError(401, []byte(`{"message":"denied"}`)),
-			wantExit:   gcxerrors.ExitGeneralError,
+			wantExit:   gcxerrors.ExitAuthFailure,
 			wantStatus: 401,
 		},
 		{
@@ -456,9 +454,11 @@ func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
 			wantReason: "Unauthorized",
 		},
 		{
-			name:       "dynamic k8s unauthorized keeps exit 1 and no http_status",
+			// dynamic.APIError implements APIStatus, so the API converter maps
+			// 401/403 from the dynamic client to the auth-failure exit code.
+			name:       "dynamic k8s unauthorized exits 3 and no http_status",
 			err:        dynamic.ParseStatusError(k8sapi.NewUnauthorized("bad token")),
-			wantExit:   gcxerrors.ExitGeneralError,
+			wantExit:   gcxerrors.ExitAuthFailure,
 			wantReason: "Unauthorized",
 		},
 		{
@@ -518,6 +518,33 @@ func TestBuildUsageEventKeepsGrafanaAuthMethodOnEveryOutcome(t *testing.T) {
 
 		assert.Equal(t, "token", event.GrafanaAuthMethod,
 			"auth method must survive exit code %d", exitCode)
+	}
+}
+
+// signup_stage belongs to signup alone: gcx login runs the same probes but
+// does not report them, and no other command may carry a stage. Unlike the
+// failure-depth fields it survives a cancellation, which is where the
+// unfinished signups it exists to explain end.
+func TestBuildUsageEventReportsSignupStageForSignupOnly(t *testing.T) {
+	signup := &root.TelemetryInfo{Command: "signup"}
+	for _, exitCode := range []int{gcxerrors.ExitSuccess, gcxerrors.ExitGeneralError, gcxerrors.ExitCancelled} {
+		isolate(t)
+		capture.SetLoginStage("browser")
+
+		event := buildUsageEvent(signup, time.Now(), exitCode)
+		assert.Equal(t, "browser", event.SignupStage, "signup must report its stage on exit code %d", exitCode)
+	}
+
+	isolate(t)
+	capture.SetLoginStage("state=abc123&code=xyz")
+	event := buildUsageEvent(signup, time.Now(), 1)
+	assert.Equal(t, telemetry.SignupStageUnknown, event.SignupStage, "an arbitrary captured string must be clamped")
+
+	for _, info := range []*root.TelemetryInfo{{Command: "login"}, {Command: "cloud login"}, pushInfo()} {
+		isolate(t)
+		capture.SetLoginStage("complete")
+		fields := marshalEvent(t, buildUsageEvent(info, time.Now(), 0))
+		assert.NotContains(t, fields, "signup_stage", "%q must omit the signup stage", info.Command)
 	}
 }
 

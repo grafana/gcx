@@ -1,6 +1,10 @@
 ---
 name: synth-check-status
-description: Shows Synthetic Monitoring check health - check inventory, per-check pass/fail status with success rates, and success-rate timelines as terminal graphs. Use when the user asks about Synthetic Monitoring check health, status, or trends. Trigger on phrases like "are my checks healthy", "check status", "synth check", "probe status", or when users mention specific check names or IDs. For investigating failing checks use synth-investigate-check. For creating or managing checks use synth-manage-checks.
+description: >-
+  Shows Synthetic Monitoring check health via gcx: inventory, pass/fail and
+  success rate per check, success-rate timelines. Use for "are my checks
+  healthy" or a named check. For a failing check use synth-investigate-check. To
+  create or change checks use synth-manage-checks.
 allowed-tools: Bash
 ---
 
@@ -49,12 +53,14 @@ Only failing checks:
 gcx synthetic-monitoring checks status --status FAILING
 ```
 
-Output columns: NAME, JOB, TARGET, SUCCESS, LATENCY, STATUS. Use `-o wide` for PROBES_UP/PROBES_TOTAL, or `-o json` for all fields.
+Output columns: NAME, JOB, TARGET, SUCCESS (reachability, as shown on the app's check list card, over the last 3 hours), LATENCY, STATUS. Use `-o wide` for PROBES_UP/PROBES_TOTAL, or `-o json` for all fields.
 
 **Status interpretation** (threshold depends on the check's `alertSensitivity`: high = 95%, medium/default = 90%, low = 75%):
-- `OK` - success rate at or above the threshold; check is healthy
-- `FAILING` - success rate below the threshold; route to synth-investigate-check for deeper analysis
-- `NODATA` - no Prometheus data; check may be disabled or datasource misconfigured
+- `OK` - reachability at or above the threshold; check is healthy
+- `FAILING` - reachability below the threshold; route to synth-investigate-check for deeper analysis
+- `NODATA` - the backend answered but has no reachability data for the check; it may be disabled or newly created
+
+If the command exits non-zero with an error naming `checks_reachability`, the stack's Synthetic Monitoring app cannot serve the status queries (it is too old, or the query failed); no rows are printed, so this is not a NODATA result. A warning on stderr naming `checks_probe_count` or `checks_latency` means only that column is empty; statuses are still valid.
 
 ### Step 3: Conditional Timeline
 
@@ -91,7 +97,7 @@ Note: `--since` and `--from`/`--to` are mutually exclusive. Use one or the other
 After presenting status:
 
 - If any check is `FAILING`: suggest `synth-investigate-check` for per-probe breakdown, failure mode classification, and PromQL deep-dive
-- If any check is `NODATA`: note that no Prometheus data is available; suggest checking if the check is enabled and verifying datasource configuration. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
+- If any check is `NODATA`: note that no metrics are available; suggest checking if the check is enabled and has had time to run. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
 - If user wants to create, update, or delete checks: route to `synth-manage-checks`
 
 ## Output Format
@@ -134,7 +140,7 @@ Timeline pattern: <flat/drops/intermittent/declining>
 For NODATA checks:
 ```
 Check: <ID> <JOB> (<TARGET>)
-Status: NODATA — no Prometheus metrics available.
+Status: NODATA — no metrics available.
 
 Possible causes:
 - Check is disabled (spec.enabled: false)

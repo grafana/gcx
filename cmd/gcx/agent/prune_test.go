@@ -102,6 +102,8 @@ func TestPrune_NoFiles_ReturnsZero(t *testing.T) {
 func TestPruneCommand_DeletesOldFiles_ReportsCount(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TEMP", dir)
+	t.Setenv("TMP", dir)
 
 	old := filepath.Join(dir, "gcx-results-cmd.json")
 	require.NoError(t, os.WriteFile(old, []byte(`{"test":true}`), 0o600))
@@ -125,6 +127,8 @@ func runPrune(t *testing.T, agentMode bool, nOldFiles int, args ...string) (stri
 
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
+	t.Setenv("TEMP", dir)
+	t.Setenv("TMP", dir)
 
 	for i := range nOldFiles {
 		f := filepath.Join(dir, "gcx-results-contract-"+string(rune('a'+i))+".json")

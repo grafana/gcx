@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"k8s.io/client-go/rest"
 )
 
@@ -18,6 +20,9 @@ import (
 // "/api/v2/investigations/{id}/snapshot") so a single client can talk to both
 // the v1 and v2 surfaces.
 const pluginBasePath = "/api/plugins/grafana-assistant-app/resources"
+
+// maxErrorBodyBytes matches the provider HTTP error-body limit.
+const maxErrorBodyBytes = 1 << 20 // 1 MiB
 
 // Client is a base HTTP client for the Grafana Assistant plugin API.
 type Client struct {
@@ -95,18 +100,58 @@ func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path strin
 	return &envelope.Data, nil
 }
 
+// ForbiddenError identifies permission failures from the Assistant plugin API.
+// It preserves the transport error for status classification and body rendering.
+type ForbiddenError struct {
+	*gcxerrors.HTTPStatusError
+
+	// Permission is the action required by the calling operation, when known.
+	Permission string
+}
+
+func (e *ForbiddenError) Unwrap() error { return e.HTTPStatusError }
+
+var rbacActionPattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.*-]+$`)
+
+// RequiredPermission prefers the backend's required action over the caller's fallback.
+func (e *ForbiddenError) RequiredPermission() string {
+	var body struct {
+		RequiredPermission any             `json:"requiredPermission"`
+		Details            json.RawMessage `json:"details"`
+	}
+	if err := json.Unmarshal([]byte(e.ServerMessage), &body); err == nil {
+		var details struct {
+			RequiredPermission any `json:"requiredPermission"`
+		}
+		_ = json.Unmarshal(body.Details, &details)
+		for _, value := range []any{details.RequiredPermission, body.RequiredPermission} {
+			if action, ok := value.(string); ok && len(action) <= 256 && rbacActionPattern.MatchString(action) {
+				return action
+			}
+		}
+	}
+	return e.Permission
+}
+
 // HandleErrorResponse reads an error response body and returns a formatted error.
 func HandleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
+	statusErr := &gcxerrors.HTTPStatusError{
+		Status:      resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		Message:     fmt.Sprintf("request failed with status %d", resp.StatusCode),
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
+		statusErr.Message = fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err)
+		statusErr.Cause = err
+	} else if len(body) > 0 {
+		statusErr.Message = fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(body))
+		statusErr.ServerMessage = string(body)
 	}
-
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+	if resp.StatusCode == http.StatusForbidden {
+		return &ForbiddenError{HTTPStatusError: statusErr}
 	}
-
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return statusErr
 }
 
 // FormatTime formats a time for table display, returning "-" for zero values.

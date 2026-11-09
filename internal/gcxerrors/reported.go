@@ -34,8 +34,7 @@ func NewAlreadyReportedError(code int) error {
 // AlreadyReportedExitCode returns the requested exit code for an already
 // rendered failure. A bare ErrAlreadyReported uses ExitGeneralError.
 func AlreadyReportedExitCode(err error) (int, bool) {
-	var reported *alreadyReportedError
-	if errors.As(err, &reported) {
+	if reported, ok := errors.AsType[*alreadyReportedError](err); ok {
 		return reported.code, true
 	}
 	if errors.Is(err, ErrAlreadyReported) {

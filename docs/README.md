@@ -4,8 +4,8 @@
 
 - **[Installation](sources/installation.md)** — Install gcx via Homebrew or binary download
 - **[Configuration](sources/configuration.md)** — Set up contexts, authentication, and environments
-- **[Guides](guides/index.md)** — How-to guides for common workflows
-- **[CLI Reference](reference/cli/)** — Auto-generated command reference
+- **[Guides](sources/guides/)** — How-to guides for common workflows
+- **[CLI Reference](sources/cli-reference.md)** — Generated release reference
 
 ## Local preview
 
@@ -17,51 +17,16 @@ To build the Grafana.com-style docs locally:
 
 ## For Contributors & Agents
 
-- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point: doc map, build commands, package index
+- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point: doc map and build commands
 - **[CONSTITUTION.md](../CONSTITUTION.md)** — Project invariants and constraints (authoritative)
-- **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview, pipeline diagrams, ADR index
+- **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview and pipeline diagrams
 - **[DESIGN.md](../DESIGN.md)** — CLI UX design: command grammar, output model, taste rules
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** — Dev setup, testing, contribution workflow
-- **[Engineering RFCs](rfcs/README.md)** — Proposals, tradeoffs, and validation criteria
+- **[Engineering RFCs](rfcs/README.md)** — Proposals, tradeoffs, and open questions
 - **[Architecture](architecture/README.md)** — Deep-dive architecture docs per domain
 
-## Directory Layout
+## Maintaining documentation
 
-```
-docs/
-├── architecture/     # Per-domain codebase analysis
-├── rfcs/             # Numbered engineering proposals and review workflows
-├── adrs/             # Architecture Decision Records
-├── sources/          # Grafana.com-mounted user-facing docs
-├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
-├── guides/           # User-facing how-to guides
-├── research/         # Point-in-time research reports
-├── specs/            # Ephemeral spec packages (cleaned after merge)
-├── _templates/       # Templates for ADRs, specs, research reports
-└── assets/           # Images and static assets
-```
+Follow the [contribution guide](../CONTRIBUTING.md#contributing-code) for when an [RFC](rfcs/README.md) is required. Developers choose their own implementation and planning tools. Keep design decisions and terminology in the RFC; keep current user-facing behavior in the relevant guide.
 
-### Templates
-
-Available in [`_templates/`](_templates/):
-
-| Template | Use For |
-|----------|---------|
-| `adr.md` | Architecture Decision Records |
-| `research.md` | Research reports |
-| `feature-spec.md` | New feature specs |
-| `feature-plan.md` | Architecture/design plans |
-| `feature-tasks.md` | Task breakdown with dependency waves |
-| `bugfix-spec.md` | Bug fix specs |
-| `refactor-spec.md` | Refactoring specs |
-
-### Conventions
-
-| Scope | Convention | Example |
-|-------|-----------|---------|
-| Point-in-time docs | `YYYY-MM-DD-short-name.md` | `2026-03-27-gap-analysis.md` |
-| RFCs | `NNN-title.md`, indexed in `rfcs/README.md` | `001-alerting-provider-refactor.md` |
-| Evergreen docs | Descriptive name, no date | `provider-guide.md` |
-| Feature subdirs | Lowercase hyphenated | `cloud-rest-config/` |
-
-See [reference/doc-maintenance.md](reference/doc-maintenance.md) for which docs to update when.
+See [documentation maintenance](reference/doc-maintenance.md) for what to update when behavior or architecture changes. Browse the directories for available documents instead of maintaining duplicate inventories.

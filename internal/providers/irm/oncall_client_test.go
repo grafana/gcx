@@ -670,3 +670,30 @@ func TestListWebhookTriggerOptionsMissingFilter(t *testing.T) {
 		t.Errorf("expected missing-filter error, got %v", err)
 	}
 }
+
+func TestListFilterEvents_SendsDateParam(t *testing.T) {
+	t.Parallel()
+
+	var gotQuery map[string][]string
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"events": []any{}}) //nolint:errcheck
+	}))
+
+	if _, err := client.ListFilterEvents(context.Background(), "S1", "UTC", "2026-11-01", 30); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The OnCall backend reads the start of the range from "date"; any other
+	// name is ignored and the range silently starts at the current week.
+	want := map[string][]string{
+		"type":    {"final"},
+		"user_tz": {"UTC"},
+		"date":    {"2026-11-01"},
+		"days":    {"30"},
+	}
+	if !reflect.DeepEqual(gotQuery, want) {
+		t.Errorf("query = %v, want %v", gotQuery, want)
+	}
+}

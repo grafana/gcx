@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -33,6 +34,7 @@ func TestLoginMutationGuardRejectsNewlyDiscoveredLayer(t *testing.T) {
 	userDir := filepath.Join(home, ".config")
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
@@ -110,5 +112,9 @@ func TestVerifyLoginMutationBindingsQuotesExactConfigPath(t *testing.T) {
 		&config.Context{Cloud: "grafana-ops"},
 		config.LoginMutationCloud,
 	)
-	require.ErrorContains(t, err, `--config "/tmp/config owner/with spaces.yaml"`)
+	want := `--config "/tmp/config owner/with spaces.yaml"`
+	if runtime.GOOS == "windows" {
+		want = `--config '/tmp/config owner/with spaces.yaml'`
+	}
+	require.ErrorContains(t, err, want)
 }

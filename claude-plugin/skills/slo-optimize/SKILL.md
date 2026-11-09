@@ -1,14 +1,10 @@
 ---
 name: slo-optimize
-description: |
-  Analyzes Grafana SLO timeline trends via gcx and produces data-backed advisory recommendations:
-  objective tuning, alerting sensitivity review, label visibility, or window adjustments.
-  Use when the user wants to analyze SLO performance trends and receive improvement suggestions.
-  Trigger on phrases like "optimize my SLO", "SLO improvement suggestions", "tune my SLO",
-  "SLO performance analysis", or "should I change my SLO objective".
-  For SLO status overview use slo-check-status.
-  For investigating breaching SLOs use slo-investigate.
-  For creating or modifying SLO definitions use slo-manage.
+description: >-
+  Analyzes Grafana SLO timeline trends via gcx and gives advisory
+  recommendations: objective tuning, alert sensitivity, labels, windows. Use for
+  "optimize my SLO" or "should I change my SLO objective". For status use
+  slo-check-status. To change definitions use slo-manage.
 allowed-tools: Bash
 ---
 

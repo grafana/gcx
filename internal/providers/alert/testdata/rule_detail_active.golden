@@ -1,0 +1,2 @@
+UID     NAME              STATE   HEALTH  PAUSED
+rule-2  Database latency  firing  ok      no

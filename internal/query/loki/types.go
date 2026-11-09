@@ -91,6 +91,25 @@ type SeriesResponse struct {
 	Data   []map[string]string `json:"data"`
 }
 
+// PatternsResponse represents the response from the Loki detected-patterns API.
+type PatternsResponse struct {
+	Status string    `json:"status"`
+	Data   []Pattern `json:"data"`
+}
+
+// Pattern is one detected log pattern (with "<_>" placeholders for the
+// variable parts, directly reusable in a LogQL pattern filter) and its
+// per-bucket sample counts. Each sample is a [timestamp, count] tuple with
+// the timestamp in Unix seconds — unlike the nanosecond-epoch start/end
+// request params this endpoint takes.
+// gcx derives totalCount by summing sample counts; it is not part of Loki's response.
+type Pattern struct {
+	Pattern    string    `json:"pattern"`
+	Level      string    `json:"level,omitempty"`
+	Samples    [][]int64 `json:"samples"`
+	TotalCount int64     `json:"totalCount"`
+}
+
 // MetricQueryResponse represents the response from a metric LogQL query.
 // It uses the same structure as a Prometheus response (time-series with metric labels).
 type MetricQueryResponse struct {

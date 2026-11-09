@@ -1,0 +1,4 @@
+ID  NAME      ENABLED
+42  otel      true
+7   disabled  false
+9   minimal   -

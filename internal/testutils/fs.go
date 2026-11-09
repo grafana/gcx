@@ -17,11 +17,9 @@ func CreateTempFile(t *testing.T, content string) string {
 	require.NoError(t, err)
 
 	_, err = file.WriteString(content)
+	closeErr := file.Close()
 	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.Remove(file.Name())
-	})
+	require.NoError(t, closeErr)
 
 	return file.Name()
 }

@@ -77,7 +77,7 @@ func (c *RulerClient) path(segments ...string) string {
 // doYAML performs a bodyless HTTP request and optionally decodes a YAML
 // response. 2xx with an empty body is success. 404 maps to ErrRulerNotFound.
 func (c *RulerClient) doYAML(ctx context.Context, method, path string, out any) error {
-	return doBody(ctx, c.httpClient, method, c.host+path, path, yamlBodyCodec(), ErrRulerNotFound, nil, out)
+	return doBody(ctx, c.httpClient, method, c.host+path, path, yamlBodyCodec(), ErrRulerNotFound, nil, out, nil)
 }
 
 // ListNamespaces returns all rule groups keyed by namespace. An empty ruler
@@ -118,7 +118,7 @@ func (c *RulerClient) GetGroup(ctx context.Context, namespace, group string) (*R
 // is JSON: Grafana's ruler proxy rejects YAML bodies (see RulerClient docs).
 func (c *RulerClient) UpsertGroup(ctx context.Context, namespace string, group RulerRuleGroup) error {
 	path := c.path(namespace)
-	return doBody(ctx, c.httpClient, http.MethodPost, c.host+path, path, jsonBodyCodec(), ErrRulerNotFound, group, nil)
+	return doBody(ctx, c.httpClient, http.MethodPost, c.host+path, path, jsonBodyCodec(), ErrRulerNotFound, group, nil, nil)
 }
 
 // DeleteGroup deletes a single rule group.

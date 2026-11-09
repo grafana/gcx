@@ -21,6 +21,7 @@ import "strings"
 //
 //nolint:gochecknoglobals // central availability registry, accessed via IsCloudOnlyPath
 var cloudOnlyPaths = []string{
+	"gcx ml",                   // Covers Machine Learning groups and all their leaves.
 	"gcx slo",                  // Service Level Objectives — Grafana Cloud
 	"gcx synthetic-monitoring", // Synthetic Monitoring — requires Grafana Cloud
 	"gcx irm",                  // IRM: OnCall + Incident — Grafana Cloud
@@ -47,6 +48,7 @@ var cloudOnlyPaths = []string{
 	"gcx metrics adaptive",         // Adaptive Metrics — Grafana Cloud
 	"gcx metrics billing",          // Grafana Cloud billing/usage metrics (grafanacloud-usage datasource)
 	"gcx logs adaptive",            // Adaptive Logs — Grafana Cloud
+	"gcx logs archive",             // Adaptive Telemetry archive — Grafana Cloud
 	"gcx traces adaptive",          // Adaptive Traces — Grafana Cloud
 	"gcx profiles adaptive",        // Adaptive Profiles — Grafana Cloud
 }

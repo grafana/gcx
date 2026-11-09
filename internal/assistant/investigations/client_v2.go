@@ -85,7 +85,7 @@ func (c *Client) ListLodestone(ctx context.Context, opts ListLodestoneOptions) (
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, assistanthttp.HandleErrorResponse(resp)
+		return nil, withReadPermission(assistanthttp.HandleErrorResponse(resp))
 	}
 	var envelope struct {
 		Data LodestoneList `json:"data"`
@@ -116,7 +116,7 @@ func (c *Client) ResolveByID(ctx context.Context, id string) (ResolveByIDRespons
 		return ResolveByIDResponse{}, http.StatusNotFound, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return ResolveByIDResponse{}, resp.StatusCode, assistanthttp.HandleErrorResponse(resp)
+		return ResolveByIDResponse{}, resp.StatusCode, withReadPermission(assistanthttp.HandleErrorResponse(resp))
 	}
 	var envelope struct {
 		Data ResolveByIDResponse `json:"data"`
@@ -133,7 +133,7 @@ func (c *Client) GetState(ctx context.Context, id string) (LodestoneState, error
 	path := fmt.Sprintf(v2SnapshotFmt, url.PathEscape(id))
 	state, err := assistanthttp.DoEnvelopeRequest[LodestoneState](c.base, ctx, http.MethodGet, path, nil, "get investigation state")
 	if err != nil {
-		return nil, err
+		return nil, withReadPermission(err)
 	}
 	return *state, nil
 }
@@ -155,7 +155,8 @@ func (c *Client) Resume(ctx context.Context, id string) (*Message, error) {
 // query that produced each panel.
 func (c *Client) Evidence(ctx context.Context, id string) (*EvidenceResponse, error) {
 	path := fmt.Sprintf(v2EvidenceFmt, url.PathEscape(id))
-	return assistanthttp.DoEnvelopeRequest[EvidenceResponse](c.base, ctx, http.MethodGet, path, nil, "get investigation evidence")
+	evidence, err := assistanthttp.DoEnvelopeRequest[EvidenceResponse](c.base, ctx, http.MethodGet, path, nil, "get investigation evidence")
+	return evidence, withReadPermission(err)
 }
 
 // SetMode changes the autonomy mode of a running investigation.

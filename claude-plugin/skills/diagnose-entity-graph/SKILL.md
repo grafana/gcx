@@ -1,13 +1,9 @@
 ---
 name: diagnose-entity-graph
-description: >
-  Diagnose Entity Graph problems: missing entities, missing edges, disconnected
-  clusters, or filtering issues. Use when the user reports that Entity Graph
-  doesn't look right, services are missing, edges aren't appearing, or
-  environments can't be filtered. Triggers for: "entity graph is empty",
-  "services missing from entity graph", "no edges in entity graph",
-  "disconnected services", "can't filter entity graph", "entity graph not
-  working", "diagnose entity graph", "debug knowledge graph".
+description: >-
+  Diagnoses Entity Graph (knowledge graph) problems: missing entities or
+  services, missing edges, disconnected clusters, environment filters that do
+  not work. Use when the Entity Graph is empty or looks wrong.
 ---
 
 # Diagnose Entity Graph
@@ -247,14 +243,18 @@ Extra `asserts_env` values (like AWS account IDs) that don't match any
 
 ## Step 7: Per-Service Investigation
 
-For a specific missing or edge-less service:
+For a specific missing or edge-less service, query bounded rows. The response has
+`columns`, `rows`, and `stats`; node cells contain `kind`, response-local `ref`,
+`labels`, and `properties`; relationship cells use `type`, `startRef`, and `endRef`.
+Scalar projections return their values directly.
+Use identity properties to correlate results across requests.
 
 ```bash
 # Find in graph
-gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
+gcx kg graph query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s LIMIT 10" --since 1h
 
 # Check relationships
-gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
+gcx kg graph query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other LIMIT 20" --since 1h
 
 # Source metrics
 gcx metrics query 'count(traces_service_graph_request_total{client="SERVICE"})' --since 1h

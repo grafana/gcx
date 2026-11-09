@@ -4,6 +4,7 @@ import (
 	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivelogs "github.com/grafana/gcx/internal/providers/logs/adaptive"
+	logsarchive "github.com/grafana/gcx/internal/providers/logs/archive"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/signals"
 	"github.com/spf13/cobra"
@@ -34,6 +35,9 @@ func (p *Provider) descriptor() signals.Descriptor {
 
   # Print a Grafana Explore share link for the query
   gcx logs query '{job="varlogs"}' --share-link
+
+  # Log volume over time, colored by level
+  gcx logs query -d abc123 '{job="varlogs"}' -o graph
 
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
@@ -66,6 +70,12 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Get values for a specific label
   gcx logs labels -d UID --label job
 
+  # Filter labels with a query
+  gcx logs labels -d UID --query '{app="foo"}'
+
+  # Filter label values with a query
+  gcx logs labels -d UID --label job --query '{app="foo"}'
+
   # Output as JSON
   gcx logs labels -d UID -o json`,
 			},
@@ -83,7 +93,22 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Output as JSON
   gcx logs series -d UID --match '{job="varlogs"}' -o json`,
 			},
+			{
+				Build:     dsloki.QueryPatternsCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx logs query-patterns -d abc123 '{job="varlogs"}' --since 1h -o json`,
+				Example: `
+  # Detect patterns using configured default datasource
+  gcx logs query-patterns '{job="varlogs"}'
+
+  # Detect patterns over a specific window
+  gcx logs query-patterns -d UID '{job="varlogs"}' --since 3h
+
+  # Output as JSON
+  gcx logs query-patterns -d UID '{job="varlogs"}' -o json`,
+			},
 		},
+		ExtraCommands: []signals.CommandBuilder{logsarchive.Commands},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivelogs.Commands,
 			Use:   "adaptive",

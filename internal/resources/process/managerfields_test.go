@@ -12,13 +12,13 @@ import (
 )
 
 func TestManagerIdentity(t *testing.T) {
-	// A build without version information reports the snapshot value.
-	require.Equal(t, "gcx/SNAPSHOT", process.ManagerIdentity())
+	// The manager identity must be the same for every gcx build.
+	require.Equal(t, "gcx", process.ManagerIdentity())
 
 	version.Set("1.2.3")
 	t.Cleanup(func() { version.Set("") })
 
-	require.Equal(t, "gcx/1.2.3", process.ManagerIdentity())
+	require.Equal(t, "gcx", process.ManagerIdentity())
 }
 
 func TestManagerFieldsAppender(t *testing.T) {

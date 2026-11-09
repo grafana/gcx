@@ -41,7 +41,7 @@ func (c *GCOMClient) ListOrgs(ctx context.Context) ([]OrgMembership, error) {
 		return nil, fmt.Errorf("gcom client: read response body: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, newGCOMHTTPError(resp.StatusCode, body)
+		return nil, newGCOMHTTPError(resp, body)
 	}
 	var rows []struct {
 		Login string `json:"login"`

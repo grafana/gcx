@@ -49,7 +49,7 @@ var keychainStoreFn = defaultKeychainStore
 // atomic replacement fails.
 //
 //nolint:gochecknoglobals // narrow filesystem failure-injection seam.
-var renameConfigFile = os.Rename
+var renameConfigFile = renameConfigFileWithRetry
 
 // syncConfigDirectory is a test seam for the post-rename durability barrier.
 // Old keychain generations are deleted only after it succeeds.
@@ -129,6 +129,7 @@ const (
 	StandardConfigFolder   = "gcx"
 	StandardConfigFileName = "config.yaml"
 	ConfigFileEnvVar       = "GCX_CONFIG"
+	ContextEnvVar          = "GCX_CONTEXT"
 	LocalConfigFileName    = ".gcx.yaml"
 
 	defaultEmptyConfigFile = `
@@ -279,7 +280,7 @@ func probeConfigSource(path, typ string) (ConfigSource, bool, error) {
 // symlinks.
 func readConfigSource(source ConfigSource) ([]byte, error) {
 	if source.Type != "local" {
-		return os.ReadFile(source.Path)
+		return readConfigFile(source.Path)
 	}
 	before, err := os.Lstat(source.Path)
 	if err != nil {
@@ -754,7 +755,7 @@ func readConfigFileForLayer(filename, layer string) ([]byte, error) {
 	if layer == "local" {
 		return readConfigSource(ConfigSource{Path: filename, Type: layer})
 	}
-	return os.ReadFile(filename)
+	return readConfigFile(filename)
 }
 
 func prepareConfigRuntimeForWrite(filename string, cfg *Config) error {
@@ -872,7 +873,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	}
 	var previousContents []byte
 	if keychainTxn != nil && len(keychainTxn.deletes) > 0 {
-		previousContents, err = os.ReadFile(writeFilename)
+		previousContents, err = readConfigFile(writeFilename)
 		if err != nil {
 			return 0, fmt.Errorf("capture config before keychain deletion: %w", err)
 		}
@@ -1006,7 +1007,7 @@ func configLockFile(sourceIdentity string) (string, error) {
 }
 
 func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) error {
-	contents, err := os.ReadFile(filename)
+	contents, err := readConfigFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) && !cfg.hasSourceRevision {
 			return nil
@@ -1148,6 +1149,8 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // If explicitFile is set (--config flag) or GCX_CONFIG env var is set,
 // bypasses layering entirely and loads that single file.
 // Every load also records the effective context's telemetry target kind.
+// GCX_CONTEXT is resolved by the CLI layer alongside the --context flag
+// (the flag wins); LoadLayered itself never reads it.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
 	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
 }
@@ -1173,7 +1176,20 @@ func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptio
 	return cfg, err
 }
 
+type layeredConfigChangedError struct {
+	path string
+}
+
+func (e *layeredConfigChangedError) Error() string {
+	return fmt.Sprintf("config %s changed while loading layered configuration; retry", e.path)
+}
+
+// Load optimistically. A concurrent write triggers a fresh load under the
+// source write locks, rather than a fixed number of timed retries.
 func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
+	if err := ctx.Err(); err != nil {
+		return Config{}, err
+	}
 	// --config flag bypasses layering.
 	if explicitFile != "" {
 		return loadExplicit(ctx, explicitFile, opts, overrides...)
@@ -1205,6 +1221,36 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		cfg.Sources = newSources
 		return cfg, nil
 	}
+	merged, err := loadLayeredSources(ctx, sources, opts, nil)
+	if _, ok := errors.AsType[*layeredConfigChangedError](err); ok {
+		merged, err = loadLayeredSourcesLocked(ctx, opts)
+	}
+	if err != nil {
+		return Config{}, err
+	}
+
+	// Apply overrides on the merged config.
+	for _, override := range overrides {
+		if err := override(&merged); err != nil {
+			return merged, err
+		}
+	}
+
+	// Each layer's Load only resolved its own current-context, so the effective
+	// context after merge and overrides (e.g. a --context selecting a context
+	// that was current in no layer) may still hold raw keychain sentinels.
+	// Idempotent for already-resolved fields.
+	merged.ResolveContext(merged.CurrentContext)
+	if err := enforceRuntimeCredentialBindings(&merged); err != nil {
+		return merged, err
+	}
+
+	return merged, nil
+}
+
+// loadLayeredSources reads and merges the selected sources. Callers run
+// overrides after this phase so callbacks never run under newly acquired locks.
+func loadLayeredSources(ctx context.Context, sources []ConfigSource, opts loadOptions, identities map[string]string) (Config, error) {
 	var hasLegacyLayer bool
 	if err := preflightLayeredSources(sources, &hasLegacyLayer); err != nil {
 		return Config{}, err
@@ -1233,6 +1279,9 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		// another layer's rules, or from another layer's content.
 		layerOpts := opts
 		layerOpts.layer = src.Type
+		if identities != nil {
+			layerOpts.writeLockHeldFor = identities[src.Path]
+		}
 		if hasLegacyLayer && len(sources) > 1 && isLegacyConfig(src.snapshot) {
 			layerOpts.suppressMigrationPersistence = true
 			layerOpts.migrationWarnings = migrationWarnings
@@ -1251,14 +1300,33 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		if src.Type == "local" && i > 0 {
 			loaded.Credentials = nil
 		}
+		if identities != nil {
+			identity, err := canonicalConfigSourceForLayer(src.Path, src.Type)
+			if err != nil {
+				return Config{}, err
+			}
+			if identity != identities[src.Path] || loaded.sourceIdentity != identity {
+				return Config{}, fmt.Errorf("config source identity changed while loading %s; retry", src.Path)
+			}
+		}
 		current, err := readConfigSource(src)
 		if err != nil {
 			return Config{}, err
 		}
 		if loaded.hasSourceRevision && sha256.Sum256(current) != loaded.sourceRevision {
-			return Config{}, fmt.Errorf("config %s changed while loading layered configuration; retry", src.Path)
+			return Config{}, &layeredConfigChangedError{path: src.Path}
 		}
 		sources[i].snapshot = bytes.Clone(current)
+		if identities != nil {
+			// A migration can replace a file shared by two source paths.
+			// Later aliases must consume the committed bytes, not the older
+			// preflight snapshot of the same file whose lock we still hold.
+			for j := i + 1; j < len(sources); j++ {
+				if identities[sources[j].Path] == identities[src.Path] {
+					sources[j].snapshot = bytes.Clone(current)
+				}
+			}
+		}
 		if info, statErr := os.Lstat(src.Path); statErr == nil {
 			sources[i].ModTime = info.ModTime()
 		}
@@ -1277,22 +1345,6 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	}
 
 	merged.Sources = sources
-
-	// Apply overrides on the merged config.
-	for _, override := range overrides {
-		if err := override(&merged); err != nil {
-			return merged, err
-		}
-	}
-
-	// Each layer's Load only resolved its own current-context, so the effective
-	// context after merge and overrides (e.g. a --context selecting a context
-	// that was current in no layer) may still hold raw keychain sentinels.
-	// Idempotent for already-resolved fields.
-	merged.ResolveContext(merged.CurrentContext)
-	if err := enforceRuntimeCredentialBindings(&merged); err != nil {
-		return merged, err
-	}
 
 	return merged, nil
 }
@@ -1588,7 +1640,7 @@ func diagnosticsSourcePaths(ctx context.Context) []string {
 // like `telemetry: disabled` are honoured even on the run that performs the
 // migration. Missing or malformed files yield (nil, err).
 func readDiagnostics(path string) (*DiagnosticsConfig, error) {
-	contents, err := os.ReadFile(path)
+	contents, err := readConfigFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -1622,12 +1674,13 @@ func annotateErrorWithSource(filename string, contents []byte, err error) error 
 			return err
 		}
 
+		validationError.File = filename
 		annotatedSource, err := path.AnnotateSource(contents, true)
 		if err != nil {
-			return err
+			// Environment-only values have no YAML node to annotate.
+			return validationError
 		}
 
-		validationError.File = filename
 		validationError.AnnotatedSource = string(annotatedSource)
 
 		return validationError

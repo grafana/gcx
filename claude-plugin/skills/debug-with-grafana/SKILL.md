@@ -1,13 +1,10 @@
 ---
 name: debug-with-grafana
-description: >
-  Investigates application problems and incidents using Grafana metrics, logs,
-  and traces via gcx. Use for alerts, errors, latency, regressions, blast radius,
-  or trace comparison. Uses qualified baselines and trace diff to investigate
-  execution changes. Accepts alert payloads, dashboard links, and trace IDs;
-  does not require IRM or all three signals. For alert-rule semantics use
-  investigate-alert; dashboard authoring uses create-dashboard and inventory
-  uses manage-dashboards.
+description: >-
+  Investigates application problems and incidents with Grafana metrics, logs,
+  and traces via gcx: errors, latency, regressions, blast radius, trace
+  comparison with baselines. Accepts alert payloads, dashboard links, and trace
+  IDs. For alert rule semantics use investigate-alert.
 ---
 
 # Debug with Grafana
@@ -124,5 +121,5 @@ inconclusive result. Running diff alone does not increase confidence.
 
 - [Alert-to-trace](references/alert-to-trace.md): alert normalization and cohort/seed selection.
 - [Query patterns](references/query-patterns.md): metrics/logs, dashboard schemas, counting and output examples.
-- [TraceQL patterns](references/traceql-patterns.md): scoped discovery, search and trace metrics.
+- [TraceQL patterns](references/traceql-patterns.md): scoped discovery, search, trace metrics arithmetic, percentages and per-service shares.
 - [Error recovery](references/error-recovery.md): access, query and capability failures.

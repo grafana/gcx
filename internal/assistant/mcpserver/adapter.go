@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
@@ -62,6 +64,13 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]MCPServer, error) {
 			servers, err := client.ListAll(ctx, assistantmcp.ListOptions{})
 			if err != nil {
+				// Mark the transport error, not the wrapped one. A marker on the
+				// outer error repeats its text one level down, which changes the
+				// summary cmd/gcx/fail derives for `mcp-servers list`.
+				var statusErr *gcxerrors.HTTPStatusError
+				if errors.As(err, &statusErr) && statusErr.Status == http.StatusNotFound {
+					err = adapter.Unavailable(err)
+				}
 				return nil, fmt.Errorf("failed to list MCP servers: %w", err)
 			}
 			result := make([]MCPServer, 0, len(servers))

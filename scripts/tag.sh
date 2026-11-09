@@ -28,7 +28,7 @@ for cmd in claude svu; do
 	if ! command -v "$cmd" >/dev/null 2>&1; then
 		echo "Error: '${cmd}' is required but not found." >&2
 		[[ "$cmd" == "claude" ]] && echo "Install from https://claude.ai/download" >&2
-		[[ "$cmd" == "svu" ]] && echo "Install with: go install github.com/caarlos0/svu/v3@latest" >&2
+		[[ "$cmd" == "svu" ]] && echo "Install with: mise install" >&2
 		exit 1
 	fi
 done
@@ -161,6 +161,9 @@ for f in "$PLUGIN_JSON" "$MARKETPLACE_JSON"; do
 	fi
 done
 
+# Generate from the release checkout before the new tag exists.
+mise run docs:refresh -- "$NEW_TAG"
+
 # ── dry-run exits here ────────────────────────────────────────────────────────
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
@@ -173,7 +176,7 @@ fi
 RELEASE_BRANCH="release/${NEW_TAG}"
 git checkout -b "$RELEASE_BRANCH"
 
-git add "$CHANGELOG" .release-notes.md
+git add "$CHANGELOG" .release-notes.md docs/sources/cli-reference.md docs/sources/configuration.md
 [[ -f "$PLUGIN_JSON" ]] && git add "$PLUGIN_JSON"
 [[ -f "$MARKETPLACE_JSON" ]] && git add "$MARKETPLACE_JSON"
 git commit -m "chore(release): ${NEW_TAG} changelog"

@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -528,9 +529,13 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		`  gcx kg prom-rules upsert -f rules.yaml
 
   # Validate against the backend and preview the diff without uploading:
-  gcx kg prom-rules upsert -f rules.yaml --dry-run`,
+  gcx kg prom-rules upsert -f rules.yaml --dry-run
+
+  # Skip remote PromQL validation for rules too expensive to validate in time:
+  gcx kg prom-rules upsert -f rules.yaml --skip-promql-eval`,
 		Kind,
 		"Knowledge Graph rules uploaded",
+		true,
 		runPromRulesDryRun,
 		(*Client).UploadPromRules,
 	)
@@ -679,8 +684,13 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
   gcx kg model-rules upsert -f model-rules.yaml --dry-run`,
 		"ModelRules",
 		"Model rules uploaded",
-		runModelRulesDryRun,
-		(*Client).UploadModelRules,
+		false,
+		func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte, _ bool) error {
+			return runModelRulesDryRun(cmd, ioOpts, client, data)
+		},
+		func(client *Client, ctx context.Context, yamlContent string, _ bool) error {
+			return client.UploadModelRules(ctx, yamlContent)
+		},
 	)
 
 	listOpts := &modelRulesListOpts{}
@@ -1023,7 +1033,11 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 
 Applies the entries in the input file, creating each config when absent or
 updating it when present. Remote configs absent from the file are never
-deleted.`,
+deleted.
+
+The input may be an alertConfigs wrapper, one bare config, or a bare list of
+configs, so YAML output from notifications get or list can be edited and passed
+back directly. Field names are case-sensitive, and unknown fields are rejected.`,
 		Example: `  gcx kg notifications upsert -f notifications.yaml
 
   echo 'alertConfigs:
@@ -1040,14 +1054,14 @@ deleted.`,
 			if err != nil {
 				return err
 			}
-			var configs AlertConfigs
-			if err := yaml.Unmarshal(data, &configs); err != nil {
+			configs, err := parseNotificationConfigs(data)
+			if err != nil {
 				return fmt.Errorf("failed to parse notifications file: %w", err)
 			}
-			if len(configs.AlertConfigs) == 0 {
+			if len(configs) == 0 {
 				return errors.New("no notification configs found in file")
 			}
-			for i, ac := range configs.AlertConfigs {
+			for i, ac := range configs {
 				if ac.Name == "" {
 					return fmt.Errorf("notification config %d has an empty name", i)
 				}
@@ -1060,9 +1074,9 @@ deleted.`,
 			if err != nil {
 				return err
 			}
-			total := len(configs.AlertConfigs)
+			total := len(configs)
 			result := cmdio.NewBatchMutation("upserted")
-			for i, ac := range configs.AlertConfigs {
+			for i, ac := range configs {
 				if err := client.UpsertNotification(cmd.Context(), ac); err != nil {
 					failure := fmt.Errorf("failed to upsert notification config %q (%d/%d succeeded): %w", ac.Name, i, total, err)
 					if i == 0 {
@@ -1113,6 +1127,71 @@ deleted.`,
 
 	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd)
 	return cmd
+}
+
+// parseNotificationConfigs accepts the shapes notifications get and list print
+// (one config, or a list of configs) as well as an alertConfigs wrapper, and
+// rejects unknown fields so a misspelled key isn't silently dropped.
+func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, err
+	}
+	if len(document.Content) == 0 {
+		return nil, nil
+	}
+
+	root := document.Content[0]
+	decodeStrict := func(v any) error {
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(v); err != nil {
+			return err
+		}
+		// Reject later documents instead of dropping them, so joined get output
+		// can't silently lose every config after the first. yaml.v3 decodes a
+		// trailing "---" as an empty null document, which is allowed.
+		for {
+			var extra yaml.Node
+			err := decoder.Decode(&extra)
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if len(extra.Content) > 0 && extra.Content[0].Tag != "!!null" {
+				return errors.New("multiple YAML documents are not supported; put the configs in one list")
+			}
+		}
+	}
+
+	switch root.Kind {
+	case yaml.SequenceNode:
+		var configs []AlertConfig
+		if err := decodeStrict(&configs); err != nil {
+			return nil, err
+		}
+		return configs, nil
+	case yaml.MappingNode:
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Value != "alertConfigs" {
+				continue
+			}
+			var wrapped AlertConfigs
+			if err := decodeStrict(&wrapped); err != nil {
+				return nil, err
+			}
+			return wrapped.AlertConfigs, nil
+		}
+		var config AlertConfig
+		if err := decodeStrict(&config); err != nil {
+			return nil, err
+		}
+		return []AlertConfig{config}, nil
+	default:
+		return nil, errors.New("expected a notification config, a list of configs, or an alertConfigs wrapper")
+	}
 }
 
 type notificationsListOpts struct {
@@ -1397,14 +1476,22 @@ func unifiedYAMLDiff(remote, local string) (string, error) {
 // ---------------------------------------------------------------------------
 
 type rulesCreateOpts struct {
-	File   string
-	DryRun bool
-	IO     cmdio.Options
+	File           string
+	DryRun         bool
+	SkipPromQLEval bool
+	IO             cmdio.Options
 }
 
-func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string) {
+func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string, withSkipPromQLEval bool) {
 	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin.")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate against the backend and show a diff without uploading.")
+	if withSkipPromQLEval {
+		flags.BoolVar(&o.SkipPromQLEval, "skip-promql-eval", false,
+			"Skip the backend's remote PromQL validation (each expression is otherwise executed against the stack's "+
+				"metrics datasource). Use for expensive rules that time out. Syntax and Asserts metadata checks still run, "+
+				"so a rule that parses but is invalid is accepted and fails later at ruler evaluation. Backends without "+
+				"support for the parameter ignore it and validate as before.")
+	}
 	o.IO.RegisterCustomCodec("text", &RulesDryRunTextCodec{SuccessMsg: successMsg})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
@@ -1415,12 +1502,15 @@ func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string) {
 // stdin) and both support --dry-run (validate + client-side diff, no writes).
 // dryRun runs the validate/diff path; upload performs the real PUT; kind names
 // the mutated resource in the result document and successMsg is the human
-// one-liner printed after a real upsert.
+// one-liner printed after a real upsert. withSkipPromQLEval registers
+// --skip-promql-eval and passes its value to dryRun and upload; commands
+// without the flag always receive false.
 func newRulesUpsertCommand(
 	loader RESTConfigLoader,
 	short, example, kind, successMsg string,
-	dryRun func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error,
-	upload func(client *Client, ctx context.Context, yamlContent string) error,
+	withSkipPromQLEval bool,
+	dryRun func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte, skipPromQLEval bool) error,
+	upload func(client *Client, ctx context.Context, yamlContent string, skipPromQLEval bool) error,
 ) *cobra.Command {
 	opts := &rulesCreateOpts{}
 	createCmd := &cobra.Command{
@@ -1444,16 +1534,16 @@ func newRulesUpsertCommand(
 				return err
 			}
 			if opts.DryRun {
-				return dryRun(cmd, &opts.IO, client, data)
+				return dryRun(cmd, &opts.IO, client, data, opts.SkipPromQLEval)
 			}
-			if err := upload(client, cmd.Context(), string(data)); err != nil {
+			if err := upload(client, cmd.Context(), string(data), opts.SkipPromQLEval); err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(),
 				cmdio.NewSingleMutation("upserted", cmdio.MutationTarget{Kind: kind}))
 		},
 	}
-	opts.setup(createCmd.Flags(), successMsg)
+	opts.setup(createCmd.Flags(), successMsg, withSkipPromQLEval)
 	_ = createCmd.MarkFlagRequired("file")
 	return createCmd
 }
@@ -1520,7 +1610,7 @@ func runModelRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Clie
 }
 
 // runPromRulesDryRun is the prom-rules counterpart to runModelRulesDryRun.
-func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error {
+func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte, skipPromQLEval bool) error {
 	ctx := cmd.Context()
 
 	var local Rule
@@ -1531,7 +1621,7 @@ func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Clien
 		return errors.New("prom-rules file has no name")
 	}
 
-	if err := client.ValidatePromRules(ctx, string(data)); err != nil {
+	if err := client.ValidatePromRules(ctx, string(data), skipPromQLEval); err != nil {
 		return err
 	}
 
@@ -1732,23 +1822,31 @@ func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
 		// nothing on stdout (an advisory note goes to stderr).
 		return nil
 	}
-	rawRules, _ := group["rules"].([]any)
-	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
-	for _, r := range rawRules {
-		rule, _ := r.(map[string]any)
-		if rule == nil {
-			continue
-		}
-		t.Row(
-			stringField(rule["selector"]),
-			stringField(rule["target_label"]),
-			joinStringSlice(rule["join_labels"]),
-			joinStringSlice(rule["ranked_choice"]),
-			stringField(rule["replacement"]),
-			boolField(rule["drop"]),
-		)
+	return relabelRuleTable().Codec(cmdio.FormatTable).Encode(w, group)
+}
+
+func relabelRuleTable() cmdio.TableAdapter[map[string]any, map[string]any] {
+	return cmdio.TableAdapter[map[string]any, map[string]any]{
+		Table: cmdio.Table[map[string]any]{Columns: []cmdio.Column[map[string]any]{
+			{Header: "SELECTOR", Content: func(r map[string]any) string { return stringField(r["selector"]) }},
+			{Header: "TARGET LABEL", Content: func(r map[string]any) string { return stringField(r["target_label"]) }},
+			{Header: "JOIN LABELS", Content: func(r map[string]any) string { return joinStringSlice(r["join_labels"]) }},
+			{Header: "RANKED CHOICE", Content: func(r map[string]any) string { return joinStringSlice(r["ranked_choice"]) }},
+			{Header: "REPLACEMENT", Content: func(r map[string]any) string { return stringField(r["replacement"]) }},
+			{Header: "DROP", Content: func(r map[string]any) string { return boolField(r["drop"]) }},
+		}},
+		Rows: func(group map[string]any) ([]map[string]any, error) {
+			rawRules, _ := group["rules"].([]any)
+			rules := make([]map[string]any, 0, len(rawRules))
+			for _, r := range rawRules {
+				rule, _ := r.(map[string]any)
+				if rule != nil {
+					rules = append(rules, rule)
+				}
+			}
+			return rules, nil
+		},
 	}
-	return t.Render(w)
 }
 
 func (c *RelabelRuleTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1792,8 +1890,8 @@ func joinStringSlice(v any) string {
 func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
-		Short: "Manage Knowledge Graph entities.",
-		Long: `Manage Knowledge Graph entities.
+		Short: "List and look up Knowledge Graph entities with their type, scope and properties; also upsert and delete custom ones.",
+		Long: `List, look up and manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
 properties — the labels used to build PromQL/Loki queries); it is cheap and is
@@ -1812,7 +1910,8 @@ Pick the read verb by what you start with:
   inspect    Root-cause analysis only — heavy: insight timeline + related
              entities. Don't use it just to read an entity's properties (use
              'list'); reach for it only when you need the RCA view.
-  query      Arbitrary Cypher over the graph.`,
+  query      Deprecated legacy entity/edge search. For Cypher projections,
+             aggregates, and paths, use 'gcx kg graph query'.`,
 	}
 
 	// list subcommand
@@ -2679,8 +2778,14 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &cypherOpts{}
 	cmd := &cobra.Command{
 		Use:   "query <cypher-query>",
-		Short: "Query entities by running a read-only Cypher query against the Knowledge Graph.",
+		Short: "Query entities with the legacy Cypher API (Deprecated: use gcx kg graph query).",
 		Long: `Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Deprecated: use 'gcx kg graph query' for new workflows. That command returns
+columns/rows/stats, requires a literal LIMIT, and does not support --page or
+--insights-only. Update queries and output parsing when migrating.
+This command retains its search endpoint, entities/edges response, and flags
+through v1.x; it will not be removed before the next major release.
 
 Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
 
@@ -2711,6 +2816,8 @@ Tips:
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
+			// Cobra's Deprecated field writes to stdout and would corrupt JSON output.
+			logging.FromContext(cmd.Context()).Warn("gcx kg entities query is deprecated; migrate to gcx kg graph query (columns/rows/stats; requires LIMIT; no --page or --insights-only). The legacy command remains supported through v1.x.")
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -2750,35 +2857,27 @@ type cypherOpts struct {
 }
 
 func (o *cypherOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, cypherTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-// CypherTableCodec renders a CypherSearchResponse as a table of entities.
-type CypherTableCodec struct{}
-
-func (c *CypherTableCodec) Format() format.Format { return "table" }
-
-func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*CypherSearchResponse)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
+func cypherTable() cmdio.TableAdapter[*CypherSearchResponse, CypherEntity] {
+	return cmdio.TableAdapter[*CypherSearchResponse, CypherEntity]{
+		Table: cmdio.Table[CypherEntity]{Columns: []cmdio.Column[CypherEntity]{
+			{Header: "TYPE", Content: func(e CypherEntity) string { return e.Type }},
+			{Header: "NAME", Content: func(e CypherEntity) string { return e.Name }},
+			{Header: "SCOPE", Content: func(e CypherEntity) string {
+				parts := make([]string, 0, len(e.Scope))
+				for k, val := range e.Scope {
+					parts = append(parts, fmt.Sprintf("%s=%v", k, val))
+				}
+				sort.Strings(parts)
+				return strings.Join(parts, ", ")
+			}},
+		}},
+		Rows: func(resp *CypherSearchResponse) ([]CypherEntity, error) { return resp.Entities, nil },
 	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE")
-	for _, e := range resp.Entities {
-		var parts []string
-		for k, val := range e.Scope {
-			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
-		}
-		sort.Strings(parts)
-		t.Row(e.Type, e.Name, strings.Join(parts, ", "))
-	}
-	return t.Render(w)
-}
-
-func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -3225,7 +3324,7 @@ func (c *DescribeTextCodec) Decode(_ io.Reader, _ any) error {
 func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "meta",
-		Short: "Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.",
+		Short: "Show what the Knowledge Graph contains: entity and relationship types, valid env/namespace/site values, and telemetry query configs.",
 	}
 	cmd.AddCommand(
 		newDescribeSchemaCmd(loader),
@@ -3243,7 +3342,26 @@ func newDescribeSchemaCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "schema",
-		Short: "Show entity types, properties, and relationships.",
+		Short: "Show entity types, their properties and the relationships between them (last hour by default; --from/--to for older data).",
+		Long: `Show the entity types with their properties, and the relationships between
+them as 'A --TYPE--> B', for the requested window (the last hour by default;
+pass --from/--to for older data, the same window as your queries).
+
+The JSON output nests everything under .schema: .schema.entityTypes[] is
+{type, properties} and .schema.relationships[] is a string. Filter it with the
+built-in --jq rather than an external parser; -o text prints one line per type
+with its properties, then one line with every relationship.`,
+		Example: `  # Show the schema for an incident window
+  gcx kg meta schema --from <start> --to <end>
+
+  # Print one line per entity type with its properties, then every relationship
+  gcx kg meta schema --since 1h -o text
+
+  # List the properties of one entity type
+  gcx kg meta schema --since 1h --jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'
+
+  # List the relationships that involve one entity type
+  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -3276,7 +3394,7 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "scopes",
-		Short: "Show all valid env/namespace/site filter values.",
+		Short: "List the environments, namespaces and sites the stack has (last hour by default; --from/--to for older data).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

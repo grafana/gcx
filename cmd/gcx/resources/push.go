@@ -5,6 +5,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -23,6 +24,7 @@ type pushOpts struct {
 	DryRun             bool
 	OmitManagerFields  bool
 	IncludeManaged     bool
+	IncludeSuccesses   bool
 	AssumeServerDryRun []string
 }
 
@@ -32,6 +34,7 @@ func (opts *pushOpts) setup(flags *pflag.FlagSet) {
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the push operation will be simulated, without actually creating or updating any resources")
 	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, the manager fields will not be appended to the resources")
+	flags.BoolVar(&opts.IncludeSuccesses, "include-successes", opts.IncludeSuccesses, "Include requested and returned resource identities in structured push results")
 	flags.BoolVar(&opts.IncludeManaged, "include-managed", opts.IncludeManaged, "If set, resources managed by other tools will be included in the push operation")
 	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 	// The push result is a BatchMutation document through the codec system:
@@ -105,11 +108,14 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	gcx resources push dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources push slo -p ./slo-defs/
-	gcx resources push checks -p ./checks/
-	gcx resources push rules -p ./rules/
+	gcx resources push checks.syntheticmonitoring -p ./checks/
+
+	# Native Grafana alert rules:
+
+	gcx resources push alertrules -p ./alertrules/
 
 	# Mixed push: native and provider resources from the same directory
 	# (types auto-detected from apiVersion/kind in YAML files):
@@ -139,6 +145,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 				Selectors: sels,
+				Warn:      cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
@@ -146,6 +153,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			reader := local.FSReader{
 				Decoders:           format.Codecs(),
+				Warn:               cmd.ErrOrStderr(),
 				MaxConcurrentReads: opts.MaxConcurrent,
 				StopOnError:        opts.OnError.StopOnError(),
 			}
@@ -173,29 +181,44 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			req := remote.PushRequest{
-				Resources:      resourcesList,
-				MaxConcurrency: opts.MaxConcurrent,
-				StopOnError:    opts.OnError.StopOnError(),
-				DryRun:         opts.DryRun,
-				Processors:     procs,
-				IncludeManaged: opts.IncludeManaged,
+				Resources:        resourcesList,
+				MaxConcurrency:   opts.MaxConcurrent,
+				StopOnError:      opts.OnError.StopOnError(),
+				DryRun:           opts.DryRun,
+				Processors:       procs,
+				IncludeManaged:   opts.IncludeManaged,
+				IncludeSuccesses: opts.IncludeSuccesses,
 			}
 
-			summary, err := pusher.Push(ctx, req)
-			if err != nil {
-				return err
+			summary, pushErr := pusher.Push(ctx, req)
+			reportOperationWarnings(cmd.ErrOrStderr(), summary)
+			if pushErr != nil && !summary.HasSavedMutationFailure() && (!opts.IncludeSuccesses || summary == nil || len(summary.Successes()) == 0) {
+				return pushErr
 			}
 
+			if opts.IncludeSuccesses && opts.IO.OutputFormat == "text" {
+				cmdio.EmitHint(cmd.ErrOrStderr(), "Returned identities require a structured format (--output json, yaml, or agents); text output shows counts", "")
+			}
 			result := batchMutationFromSummary("pushed", summary, opts.DryRun)
+			if opts.IncludeSuccesses && result.Successes == nil {
+				empty := []cmdio.MutationSuccess{}
+				result.Successes = &empty
+			}
 			// The push is done and its counts are final; a later rendering or
 			// stdout failure does not un-push anything.
-			captureBatchVolume(result.Summary, result.DryRun, err)
+			captureBatchVolume(result.Summary, result.DryRun, pushErr)
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
+			if pushErr != nil && opts.IncludeSuccesses && len(summary.Successes()) > 0 {
+				// The result includes writes completed before the abort. Keep the
+				// original cause and do not write a second result document.
+				cmdio.EmitWarn(cmd.ErrOrStderr(), "push aborted after partial success: "+pushErr.Error())
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, pushErr)
+			}
 
-			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {
+			if summary.HasSavedMutationFailure() || (opts.OnError.FailOnErrors() && summary.FailedCount() > 0) {
 				// The result document (with enumerated failures) is already
 				// on stdout — the typed stderr diagnostic + EmittedError
 				// carry exit 4 without a second error document.
