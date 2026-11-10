@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -102,7 +103,12 @@ func newClusterScopedFixture(t *testing.T) *clusterScopedFixture {
 			f.recordGet(r.URL.Path)
 			result = &unstructured.UnstructuredList{Object: map[string]any{"apiVersion": clusterTestGV, "kind": "KgSchemaList"}, Items: []unstructured.Unstructured{userSchema}}
 		default:
-			t.Errorf("unexpected GET %s", r.URL.Path)
+			// Pull without a selector also reads provider plugin endpoints,
+			// and which ones depends on the registered providers. They are
+			// not served here. Only unknown Kubernetes API paths are errors.
+			if strings.HasPrefix(r.URL.Path, "/apis/") {
+				t.Errorf("unexpected GET %s", r.URL.Path)
+			}
 			http.NotFound(w, r)
 			return
 		}
