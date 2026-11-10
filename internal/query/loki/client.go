@@ -88,31 +88,25 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 // instant log queries, so a log query with no time range runs as a range query
 // over the last minute.
 func buildLogQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
-	from, to := "now-1m", "now"
-	if req.IsRange() {
-		from, to = rangeBounds(req)
-	}
-	query := baseQuery(datasourceUID, req, "range")
-	if req.Limit > 0 {
-		query["maxLines"] = req.Limit
-	}
-	return marshalQueryBody(query, from, to)
+	return queryBody(datasourceUID, req, "range", req.Limit)
 }
 
 // buildMetricQueryBody builds the request body for a metric query. With no
-// time range it is an instant query. Grafana's Loki datasource reads queryType
-// and ignores the legacy instant field. It evaluates an instant query at "to";
-// "from" still feeds $__range and the step. Line limits do not apply.
+// time range it is an instant query. Line limits do not apply.
 func buildMetricQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	queryType := "instant"
 	if req.IsRange() {
-		from, to := rangeBounds(req)
-		return marshalQueryBody(baseQuery(datasourceUID, req, "range"), from, to)
+		queryType = "range"
 	}
-	return marshalQueryBody(baseQuery(datasourceUID, req, "instant"), "now-1m", "now")
+	return queryBody(datasourceUID, req, queryType, 0)
 }
 
-// baseQuery returns the query fields that log and metric queries share.
-func baseQuery(datasourceUID string, req QueryRequest, queryType string) map[string]any {
+// queryBody builds the Grafana datasource query API request body. Grafana's
+// Loki datasource reads queryType and ignores the legacy instant field. With no
+// time range the request covers the last minute: Grafana evaluates an instant
+// query at "to", and "from" still feeds $__range and the step. A maxLines of 0
+// omits the field.
+func queryBody(datasourceUID string, req QueryRequest, queryType string, maxLines int) ([]byte, error) {
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -123,18 +117,18 @@ func baseQuery(datasourceUID string, req QueryRequest, queryType string) map[str
 		"intervalMs": 60000,
 		"queryType":  queryType,
 	}
-	if req.IsRange() && req.Step > 0 {
-		query["intervalMs"] = req.Step.Milliseconds()
+	from, to := "now-1m", "now"
+	if req.IsRange() {
+		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
+		to = strconv.FormatInt(req.End.UnixMilli(), 10)
+		if req.Step > 0 {
+			query["intervalMs"] = req.Step.Milliseconds()
+		}
 	}
-	return query
-}
+	if maxLines > 0 {
+		query["maxLines"] = maxLines
+	}
 
-// rangeBounds returns req's time range as Unix milliseconds.
-func rangeBounds(req QueryRequest) (string, string) {
-	return strconv.FormatInt(req.Start.UnixMilli(), 10), strconv.FormatInt(req.End.UnixMilli(), 10)
-}
-
-func marshalQueryBody(query map[string]any, from, to string) ([]byte, error) {
 	body, err := json.Marshal(map[string]any{
 		"queries": []any{query},
 		"from":    from,
