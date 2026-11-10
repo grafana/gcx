@@ -249,7 +249,7 @@ Grafana API (/apis endpoint)
       |
 [APIGroup list]   [APIResourceList list]
       |
-      v  FilterDiscoveryResults()  ← strips ignoredResourceGroups + non-namespaced + subresources
+      v  FilterDiscoveryResults()  ← strips ignoredResourceGroups + subresources
       |
       v  RegistryIndex.Update()
       |
@@ -278,7 +278,19 @@ Discovery excludes internal, identity, storage, and read-only service groups tha
 
 For partially exposed groups, `partiallyExposedGroups` retains the group's `APIGroup` entry and preferred version while hiding resources outside its allowlist. This preserves native version selection without exposing the entire group.
 
-`FilterDiscoveryResults()` also excludes non-namespaced resources and subresources such as `dashboards/status`. Keep these filters when adding registrations or changing discovery.
+`FilterDiscoveryResults()` also excludes subresources such as `dashboards/status`. Keep this filter when adding registrations or changing discovery.
+
+### Cluster-scoped resources
+
+Discovery keeps cluster-scoped kinds (`Namespaced: false` in the API resource list). `RegistryIndex.Update()` sets `Descriptor.ClusterScoped` for them. The zero value means namespaced, so descriptors that providers register statically stay namespaced. `Descriptor.Scope()` returns `Namespaced` or `Cluster`, and `list-types` shows it in wide, JSON and YAML output.
+
+Cluster-scoped kinds are read-only in gcx:
+
+- `get` and `pull` with a selector read them. The dynamic client sends these requests without a namespace.
+- `pull` without a selector skips them, so that a pulled tree can be pushed again.
+- `adapter.CheckMutation()` refuses `push`, `edit` and `delete` with `resources.ClusterScopedMutationError` before any read or write. The dynamic client also refuses `Create`, `Update`, `Delete` and `Apply` for them.
+
+The namespace of the current context does not apply to cluster-scoped kinds.
 
 ### Preferred Versions
 
