@@ -41,10 +41,15 @@ func MetricsExploreURL(host string, query dsquery.ExploreQuery) string {
 
 	from, to := dsquery.ShortExploreRange(query.From, query.To)
 
+	// Explore reads queryType; instant and range are legacy fields it drops.
+	queryType := "range"
+	if query.Instant {
+		queryType = "instant"
+	}
 	q := map[string]any{
 		"refId":      "A",
 		"expr":       query.Expr,
-		"queryType":  "range",
+		"queryType":  queryType,
 		"instant":    query.Instant,
 		"range":      !query.Instant,
 		"editorMode": "code",

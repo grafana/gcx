@@ -1,5 +1,9 @@
 ## Unreleased
 
+- `gcx logs metrics` with no time flags now runs an instant query and returns
+  one value per series. It used to run a range query over the last minute and
+  return two points per series, so summing them doubled counts. Its
+  `--share-link` URL now opens an instant query in Explore too. (#1785)
 - Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
   evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
   dropped both fields without an error, so a `sequential` rule was created as

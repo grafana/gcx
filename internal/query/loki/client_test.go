@@ -224,6 +224,50 @@ func TestQuery_SendsMaxLines(t *testing.T) {
 	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
 }
 
+func TestQueryType(t *testing.T) {
+	start, end := time.Unix(1, 0), time.Unix(2, 0)
+	for _, tt := range []struct {
+		name   string
+		metric bool
+		req    loki.QueryRequest
+		want   string
+	}{
+		{name: "metric query without a range is instant", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`}, want: "instant"},
+		{name: "metric query with a range is range", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`, Start: start, End: end}, want: "range"},
+		// Loki rejects instant log queries.
+		{name: "log query without a range stays range", req: loki.QueryRequest{Query: `{job="grafana"}`}, want: "range"},
+		{name: "log query with a range is range", req: loki.QueryRequest{Query: `{job="grafana"}`, Start: start, End: end}, want: "range"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody []byte
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotBody, _ = io.ReadAll(r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+			}))
+			defer server.Close()
+
+			client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+			require.NoError(t, err)
+			if tt.metric {
+				_, err = client.MetricQuery(context.Background(), "loki-uid", tt.req)
+			} else {
+				_, err = client.Query(context.Background(), "loki-uid", tt.req)
+			}
+			require.NoError(t, err)
+
+			var payload struct {
+				Queries []map[string]any `json:"queries"`
+			}
+			require.NoError(t, json.Unmarshal(gotBody, &payload))
+			require.Len(t, payload.Queries, 1)
+			assert.Equal(t, tt.want, payload.Queries[0]["queryType"])
+			// Grafana ignores the legacy field, so sending it only misleads.
+			assert.NotContains(t, payload.Queries[0], "instant")
+		})
+	}
+}
+
 func TestClient_Patterns(t *testing.T) {
 	var capturedPath string
 	var capturedQuery url.Values
