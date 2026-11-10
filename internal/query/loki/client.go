@@ -43,7 +43,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, false)
+	body, err := buildLogQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 // MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
 // Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
 func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, true)
+	body, err := buildMetricQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -84,10 +84,35 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	return convertMetricResponse(grafanaResp), nil
 }
 
-// buildQueryBody builds the Grafana datasource query API request body shared by
-// Query and MetricQuery. metric marks a metric LogQL query: it never sends
-// req.Limit as maxLines, and with no time range it runs as an instant query.
-func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, metric bool) ([]byte, error) {
+// buildLogQueryBody builds the request body for a log query. Loki rejects
+// instant log queries, so a log query with no time range runs as a range query
+// over the last minute.
+func buildLogQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	from, to := "now-1m", "now"
+	if req.IsRange() {
+		from, to = rangeBounds(req)
+	}
+	query := baseQuery(datasourceUID, req, "range")
+	if req.Limit > 0 {
+		query["maxLines"] = req.Limit
+	}
+	return marshalQueryBody(query, from, to)
+}
+
+// buildMetricQueryBody builds the request body for a metric query. With no
+// time range it is an instant query. Grafana's Loki datasource reads queryType
+// and ignores the legacy instant field. It evaluates an instant query at "to";
+// "from" still feeds $__range and the step. Line limits do not apply.
+func buildMetricQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	if req.IsRange() {
+		from, to := rangeBounds(req)
+		return marshalQueryBody(baseQuery(datasourceUID, req, "range"), from, to)
+	}
+	return marshalQueryBody(baseQuery(datasourceUID, req, "instant"), "now-1m", "now")
+}
+
+// baseQuery returns the query fields that log and metric queries share.
+func baseQuery(datasourceUID string, req QueryRequest, queryType string) map[string]any {
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -96,42 +121,28 @@ func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, metric b
 		},
 		"expr":       req.Query,
 		"intervalMs": 60000,
-		"queryType":  "range",
+		"queryType":  queryType,
 	}
-
-	var from, to string
-	if req.IsRange() {
-		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
-		to = strconv.FormatInt(req.End.UnixMilli(), 10)
-		if req.Step > 0 {
-			query["intervalMs"] = req.Step.Milliseconds()
-		}
-	} else {
-		from = "now-1m"
-		to = "now"
-		// Grafana's Loki datasource reads queryType and ignores the legacy
-		// instant field. Loki rejects instant log queries, so a log query with
-		// no time range stays a range query over the last minute.
-		if metric {
-			query["queryType"] = "instant"
-		}
+	if req.IsRange() && req.Step > 0 {
+		query["intervalMs"] = req.Step.Milliseconds()
 	}
+	return query
+}
 
-	if !metric && req.Limit > 0 {
-		query["maxLines"] = req.Limit
-	}
+// rangeBounds returns req's time range as Unix milliseconds.
+func rangeBounds(req QueryRequest) (string, string) {
+	return strconv.FormatInt(req.Start.UnixMilli(), 10), strconv.FormatInt(req.End.UnixMilli(), 10)
+}
 
-	bodyMap := map[string]any{
+func marshalQueryBody(query map[string]any, from, to string) ([]byte, error) {
+	body, err := json.Marshal(map[string]any{
 		"queries": []any{query},
 		"from":    from,
 		"to":      to,
-	}
-
-	body, err := json.Marshal(bodyMap)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-
 	return body, nil
 }
 

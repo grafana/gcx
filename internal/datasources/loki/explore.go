@@ -41,7 +41,8 @@ func MetricsExploreURL(host string, query dsquery.ExploreQuery) string {
 
 	from, to := dsquery.ShortExploreRange(query.From, query.To)
 
-	// Explore reads queryType; instant and range are legacy fields it drops.
+	// Explore prefers queryType over the legacy instant and range pair. Keep
+	// sending all three so older Grafana still reads the mode.
 	queryType := "range"
 	if query.Instant {
 		queryType = "instant"

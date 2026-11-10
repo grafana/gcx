@@ -232,8 +232,8 @@ func TestQueryType(t *testing.T) {
 		req    loki.QueryRequest
 		want   string
 	}{
-		{name: "metric query without a range is instant", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`}, want: "instant"},
-		{name: "metric query with a range is range", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`, Start: start, End: end}, want: "range"},
+		{name: "metric query without a range is instant", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`, Limit: 10}, want: "instant"},
+		{name: "metric query with a range is range", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`, Start: start, End: end, Limit: 10}, want: "range"},
 		// Loki rejects instant log queries.
 		{name: "log query without a range stays range", req: loki.QueryRequest{Query: `{job="grafana"}`}, want: "range"},
 		{name: "log query with a range is range", req: loki.QueryRequest{Query: `{job="grafana"}`, Start: start, End: end}, want: "range"},
@@ -264,6 +264,9 @@ func TestQueryType(t *testing.T) {
 			assert.Equal(t, tt.want, payload.Queries[0]["queryType"])
 			// Grafana ignores the legacy field, so sending it only misleads.
 			assert.NotContains(t, payload.Queries[0], "instant")
+			if tt.metric {
+				assert.NotContains(t, payload.Queries[0], "maxLines", "line limits do not apply to metric queries")
+			}
 		})
 	}
 }
