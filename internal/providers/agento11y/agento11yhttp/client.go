@@ -4,21 +4,38 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 )
 
-const pluginBasePath = "/api/plugins/grafana-agento11y-app/resources"
+const pluginID = "grafana-agento11y-app"
+const pluginBasePath = "/api/plugins/" + pluginID + "/resources"
+
+// PluginUnavailableError identifies Grafana's explicit missing-plugin response.
+// It stays unrendered so non-CLI callers can safely include it in artifacts.
+type PluginUnavailableError struct {
+	Cause error
+}
+
+func (e *PluginUnavailableError) Error() string {
+	return fmt.Sprintf("plugin %s (Agent Observability) is not available: %v", pluginID, e.Cause)
+}
+
+func (e *PluginUnavailableError) Unwrap() error { return e.Cause }
 
 // Client is a base HTTP client for the Agent Observability plugin API.
 type Client struct {
@@ -64,9 +81,17 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Rea
 	return resp, nil
 }
 
+// DefaultPageSize is the page size requested from list endpoints when the
+// caller does not set its own "limit" query parameter.
+const DefaultPageSize = 100
+
 // ListAll fetches pages from a paginated endpoint up to maxItems,
 // using the common { "items": [...], "next_cursor": "..." } envelope.
 // Pass maxItems <= 0 for no limit (fetch all pages).
+//
+// Every request carries an explicit "limit" page size so the server never has
+// to materialize an unbounded result: the caller's own "limit" query value if
+// set, otherwise [DefaultPageSize] (or maxItems when that is smaller).
 func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.Values, maxItems ...int) ([]T, error) {
 	items, _, err := ListAllWithHasMore[T](ctx, c, basePath, query, maxItems...)
 	return items, err
@@ -86,6 +111,13 @@ func ListAllWithHasMore[T any](ctx context.Context, c *Client, basePath string, 
 	// Copy to avoid mutating the caller's map during pagination.
 	q := make(url.Values, len(query))
 	maps.Copy(q, query)
+	if q.Get("limit") == "" {
+		pageSize := DefaultPageSize
+		if limit > 0 && limit < pageSize {
+			pageSize = limit
+		}
+		q.Set("limit", strconv.Itoa(pageSize))
+	}
 
 	for {
 		path := basePath
@@ -143,7 +175,8 @@ func DoJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, 
 }
 
 // DoJSONNotFound behaves like DoJSON, but returns notFoundErr instead of the
-// generic HandleErrorResponse error when the response status is 404.
+// generic HandleErrorResponse error when the response status is 404, unless
+// Grafana explicitly reports that the plugin is unavailable.
 // Callers typically pass a sentinel wrapped with request-specific context,
 // e.g. fmt.Errorf("%s: %w", id, ErrNotFound), so that errors.Is still
 // matches the resource-specific sentinel.
@@ -170,7 +203,7 @@ func doJSON[Req, Resp any](ctx context.Context, c *Client, method, path string, 
 	defer resp.Body.Close()
 
 	if notFoundErr != nil && resp.StatusCode == http.StatusNotFound {
-		return zero, notFoundErr
+		return zero, handleNotFoundResponse(resp, notFoundErr)
 	}
 	if !slices.Contains(okStatuses, resp.StatusCode) {
 		return zero, HandleErrorResponse(resp)
@@ -193,7 +226,8 @@ func DoStatus[Req any](ctx context.Context, c *Client, method, path string, body
 }
 
 // DoStatusNotFound behaves like DoStatus, but returns notFoundErr instead of
-// the generic HandleErrorResponse error when the response status is 404.
+// the generic HandleErrorResponse error when the response status is 404, unless
+// Grafana explicitly reports that the plugin is unavailable.
 func DoStatusNotFound[Req any](ctx context.Context, c *Client, method, path string, body *Req, notFoundErr error, okStatuses ...int) error {
 	return doStatus[Req](ctx, c, method, path, body, notFoundErr, okStatuses)
 }
@@ -215,12 +249,20 @@ func doStatus[Req any](ctx context.Context, c *Client, method, path string, body
 	defer resp.Body.Close()
 
 	if notFoundErr != nil && resp.StatusCode == http.StatusNotFound {
-		return notFoundErr
+		return handleNotFoundResponse(resp, notFoundErr)
 	}
 	if !slices.Contains(okStatuses, resp.StatusCode) {
 		return HandleErrorResponse(resp)
 	}
 	return nil
+}
+
+func handleNotFoundResponse(resp *http.Response, notFoundErr error) error {
+	err := HandleErrorResponse(resp)
+	if _, ok := errors.AsType[*PluginUnavailableError](err); ok {
+		return err
+	}
+	return notFoundErr
 }
 
 // NewClientFromCommand creates a Client from a cobra command and config loader.
@@ -254,6 +296,15 @@ func Truncate(s string, maxLen int) string {
 }
 
 // HandleErrorResponse reads an error response body and returns a formatted error.
+// A missing-plugin 404 returns *PluginUnavailableError wrapping the status error.
 func HandleErrorResponse(resp *http.Response) error {
-	return providers.HandleErrorResponse(resp)
+	err := providers.HandleErrorResponse(resp)
+	var statusErr *gcxerrors.HTTPStatusError
+	if errors.As(err, &statusErr) && statusErr.Status == http.StatusNotFound {
+		message := strings.TrimSpace(statusErr.ServerMessage)
+		if strings.HasPrefix(message, "Plugin not found") {
+			return &PluginUnavailableError{Cause: err}
+		}
+	}
+	return err
 }

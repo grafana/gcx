@@ -744,6 +744,67 @@ func TestClient_Create(t *testing.T) {
 	assert.Equal(t, "DB Outage", inc.Title)
 }
 
+func TestClient_CreateRejectsDescriptionBeforeAnyRequest(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		t.Errorf("unexpected API call: %s", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	inc, err := c.Create(t.Context(), &irm.Incident{
+		Title:       "DB Outage",
+		Description: "Important details",
+		Severity:    "Major",
+	})
+	require.ErrorContains(t, err, "spec.description is read-only")
+	assert.Nil(t, inc)
+	assert.Zero(t, calls)
+}
+
+func TestClient_UpdateDescription(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		description string
+		wantError   bool
+	}{
+		{name: "unchanged backup value", description: "Existing details"},
+		{name: "changed value", description: "New details", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Contains(t, r.URL.Path, "IncidentsService.GetIncident")
+				writeJSON(w, map[string]any{
+					"incident": map[string]any{
+						"incidentID": "inc-123", "title": "DB Outage",
+						"status": "active", "description": "Existing details",
+					},
+				})
+			}))
+			defer server.Close()
+
+			c := newTestClient(t, server)
+			inc, fields, err := c.Update(t.Context(), "inc-123", &irm.Incident{
+				Title:       "DB Outage",
+				Description: tc.description,
+			})
+			if tc.wantError {
+				require.ErrorContains(t, err, "spec.description is read-only")
+				assert.Nil(t, inc)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, "Existing details", inc.Description)
+			}
+			assert.Empty(t, fields)
+			assert.Equal(t, 1, calls, "update may read, but must not write")
+		})
+	}
+}
+
 func TestClient_UpdateStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.Path, "IncidentsService.UpdateStatus")

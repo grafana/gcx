@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -38,13 +37,14 @@ func TestAmbiguousCloudCredentialNamesExactRawEditRecovery(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte(ambiguousCloudDestinationConfig), 0o600))
 
 		_, err := LoadLayered(t.Context(), path)
-		assertAmbiguousCloudRecovery(t, err, path, "gcx config edit --config "+strconv.Quote(path))
+		assertAmbiguousCloudRecovery(t, err, path, "gcx config edit --config "+quoteConfigPath(path))
 	})
 
 	t.Run("discovered user layer", func(t *testing.T) {
 		home := t.TempDir()
 		workDir := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 		t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 		t.Setenv(ConfigFileEnvVar, "")

@@ -1,6 +1,10 @@
 ---
 name: synth-manage-checks
-description: Creates, updates, exports, and deletes Synthetic Monitoring checks from YAML definitions via gcx. Use when the user wants to create, update, pull, push, or delete Synthetic Monitoring checks. Trigger on phrases like "create a check", "add a synthetic check", "update check", "pull my SM checks", "push checks", "delete check", or when the user provides a target URL/hostname/domain for monitoring. For check status overview use synth-check-status. For investigating failing checks use synth-investigate-check.
+description: >-
+  Creates, updates, pulls, pushes, and deletes Synthetic Monitoring checks from
+  YAML via gcx. Use also when the user gives a URL or hostname to monitor. For
+  check health use synth-check-status. For a failing check use
+  synth-investigate-check.
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -125,6 +129,16 @@ gcx synthetic-monitoring checks update <ID> -f check-<ID>.yaml --dry-run
 
 # Update the check from file
 gcx synthetic-monitoring checks update <ID> -f check-<ID>.yaml
+```
+
+To run a check once without saving or scheduling it, pass either a saved check or a manifest. Ad-hoc runs are billed like scheduled executions, so confirm before running them repeatedly:
+
+```bash
+# Run a saved check once (resource name or numeric ID)
+gcx synthetic-monitoring checks test <ID>
+
+# Run an edited manifest once, before updating
+gcx synthetic-monitoring checks test -f check-<ID>.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)

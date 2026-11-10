@@ -111,7 +111,7 @@ func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, recs)
 		case r.URL.Path == "/aggregations/rules" && r.Method == http.MethodGet:
-			w.Header().Set("Etag", "v1")
+			w.Header().Set("ETag", "v1")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, "[]")
 		case r.URL.Path == "/aggregations/rules" && r.Method == http.MethodPost: // SyncRules
@@ -123,7 +123,7 @@ func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
 				fmt.Fprint(w, "boom")
 				return
 			}
-			w.Header().Set("Etag", "v2")
+			w.Header().Set("ETag", "v2")
 			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/aggregations/rules/segments" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")

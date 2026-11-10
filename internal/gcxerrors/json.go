@@ -64,14 +64,25 @@ func (e DetailedError) resolvedDetails() string {
 	return ""
 }
 
-// errorJSON is the JSON representation of a DetailedError.
-// Optional fields use pointers so they are omitted when empty.
-type errorJSON struct {
-	Summary     string   `json:"summary"`
-	ExitCode    int      `json:"exitCode"`
-	Details     string   `json:"details,omitempty"`
-	Suggestions []string `json:"suggestions,omitempty"`
-	DocsLink    string   `json:"docsLink,omitempty"`
+// JSONError is the machine-readable representation of a DetailedError.
+type JSONError struct {
+	Summary     string   `json:"summary" yaml:"summary"`
+	ExitCode    int      `json:"exitCode" yaml:"exitCode"`
+	Details     string   `json:"details,omitempty" yaml:"details,omitempty"`
+	Suggestions []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	DocsLink    string   `json:"docsLink,omitempty" yaml:"docsLink,omitempty"`
+}
+
+// JSONObject builds an error object for a structured result, resolving parent
+// details, stripping box characters and adding documentation-fetch guidance.
+func (e DetailedError) JSONObject(exitCode int) JSONError {
+	return JSONError{
+		Summary:     e.Summary,
+		ExitCode:    exitCode,
+		Details:     stripBoxChars(e.resolvedDetails()),
+		Suggestions: e.agentSuggestions(),
+		DocsLink:    e.DocsLink,
+	}
 }
 
 // Discriminators for the gcx-owned envelope shapes written to stdout. The
@@ -89,7 +100,7 @@ const (
 type errorEnvelope struct {
 	Type          string    `json:"type"`
 	SchemaVersion string    `json:"schema_version"`
-	Error         errorJSON `json:"error"`
+	Error         JSONError `json:"error"`
 }
 
 // WriteJSON writes the error as a JSON object to the given writer.
@@ -105,13 +116,7 @@ func (e DetailedError) WriteJSON(w io.Writer, exitCode int) error {
 	envelope := errorEnvelope{
 		Type:          ErrorEnvelopeType,
 		SchemaVersion: envelopeSchemaVersion,
-		Error: errorJSON{
-			Summary:     e.Summary,
-			ExitCode:    exitCode,
-			Details:     stripBoxChars(e.resolvedDetails()),
-			Suggestions: e.agentSuggestions(),
-			DocsLink:    e.DocsLink,
-		},
+		Error:         e.JSONObject(exitCode),
 	}
 
 	data, err := json.Marshal(envelope)
@@ -132,20 +137,14 @@ func (e DetailedError) WriteJSONWithItems(w io.Writer, exitCode int, items any) 
 		Type          string    `json:"type"`
 		SchemaVersion string    `json:"schema_version"`
 		Items         any       `json:"items"`
-		Error         errorJSON `json:"error"`
+		Error         JSONError `json:"error"`
 	}
 
 	env := combined{
 		Type:          PartialResultEnvelopeType,
 		SchemaVersion: envelopeSchemaVersion,
 		Items:         items,
-		Error: errorJSON{
-			Summary:     e.Summary,
-			ExitCode:    exitCode,
-			Details:     stripBoxChars(e.resolvedDetails()),
-			Suggestions: e.agentSuggestions(),
-			DocsLink:    e.DocsLink,
-		},
+		Error:         e.JSONObject(exitCode),
 	}
 
 	data, err := json.Marshal(env)

@@ -13,14 +13,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/synth"
@@ -235,8 +233,12 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &tableCodec{rows: suggestionTable().Codec("table")})
-	o.IO.DefaultFormat("table")
+	table := cmdio.TableAdapter[*listResult, Suggestion]{
+		Table: suggestionTable(),
+		Rows:  func(res *listResult) ([]Suggestion, error) { return res.Suggestions, nil },
+	}
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 
 	// The service has no pagination, so the whole generated set is always in
@@ -258,26 +260,6 @@ type listResult struct {
 	// reader cannot mistake a page for the complete set. Reserved key; see
 	// docs/design/output.md, List Truncation Contract.
 	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
-}
-
-// tableCodec renders the envelope's suggestions as rows.
-type tableCodec struct {
-	rows format.Codec
-}
-
-func (c *tableCodec) Format() format.Format { return "table" }
-
-func (c *tableCodec) Encode(w io.Writer, v any) error {
-	res, ok := v.(*listResult)
-	if !ok {
-		return fmt.Errorf("invalid data type for table codec: expected *listResult, got %T", v)
-	}
-
-	return c.rows.Encode(w, res.Suggestions)
-}
-
-func (c *tableCodec) Decode(io.Reader, any) error {
-	return errors.New("table codec does not support decoding")
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {

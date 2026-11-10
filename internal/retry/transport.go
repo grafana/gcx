@@ -258,14 +258,12 @@ func isTransientConnectionError(err error) bool {
 
 	// Check for net.OpError wrapping syscall-level connection errors
 	// (ECONNREFUSED, ECONNRESET, etc.).
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return true
 	}
 
 	// Check for net.DNSError with IsTemporary.
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok {
 		return dnsErr.IsTemporary
 	}
 
@@ -277,8 +275,7 @@ func isTransientConnectionError(err error) bool {
 	}
 
 	// Fallback: check for net.Error interface (timeout, temporary).
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if netErr, ok := errors.AsType[net.Error](err); ok {
 		return netErr.Timeout()
 	}
 

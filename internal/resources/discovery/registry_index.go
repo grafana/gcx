@@ -405,13 +405,13 @@ func (r *RegistryIndex) filterCandidates(
 			resolvedGroup = group
 		}
 
-		if resolvedGroup == "" {
-			return resources.Descriptor{}, false
-		}
-
 		for _, gk := range groupKindCandidates {
-			if gk.Group == resolvedGroup {
+			if resolvedGroup != "" && gk.Group == resolvedGroup {
 				return r.resolveDescriptor(gk, version)
+			}
+			desc, ok := r.resolveDescriptor(gk, version)
+			if ok && resources.MatchesGroupAlias(desc.GroupVersionKind(), group) {
+				return desc, true
 			}
 		}
 
@@ -476,17 +476,15 @@ func (r *RegistryIndex) filterAllCandidates(
 
 	var targetGroups []string
 	if group != "" {
-		// Check if the group was provided in the short form.
 		if g, ok := r.shortGroups[group]; ok {
 			targetGroups = []string{g}
 		} else if _, ok := r.longGroups[group]; ok {
-			// Check if the group was provided in the long form.
 			targetGroups = []string{group}
-		} else {
-			return nil, false
 		}
-	} else {
-		// No group specified, collect all groups that support this resource
+	}
+	knownGroup := len(targetGroups) > 0
+	if !knownGroup {
+		// No known group specified, collect all groups that support this resource.
 		groupSet := make(map[string]struct{})
 		for _, gk := range groupKindCandidates {
 			groupSet[gk.Group] = struct{}{}
@@ -516,7 +514,7 @@ func (r *RegistryIndex) filterAllCandidates(
 				continue
 			}
 			for _, desc := range descs {
-				if desc.Kind == kind {
+				if desc.Kind == kind && (group == "" || knownGroup || resources.MatchesGroupAlias(desc.GroupVersionKind(), group)) {
 					result = append(result, desc)
 					break
 				}

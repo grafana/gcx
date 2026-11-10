@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"io"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -12,6 +13,7 @@ import (
 
 type FetchRequest struct {
 	Config             config.NamespacedRESTConfig
+	Warn               io.Writer
 	StopOnError        bool
 	ExcludeManaged     bool
 	ExcludeReadOnly    bool
@@ -56,6 +58,7 @@ func fetchResources(ctx context.Context, opts FetchRequest, args []string, valid
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors:            sels,
+		Warn:                 opts.Warn,
 		PreferredVersionOnly: true,
 	})
 	if err != nil {

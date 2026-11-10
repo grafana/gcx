@@ -48,7 +48,7 @@ To create a Watcher, follow these steps:
    gcx assistant watchers create -f watcher.yaml -o json
    ```
 
-   The result includes the saved resource and a separate calibration request outcome. Creation requests background calibration without automatically starting monitoring. Notification destinations and investigations are disabled unless you enable them in the manifest.
+   The result includes the saved resource and a separate calibration request outcome. Creation requests background calibration without automatically starting monitoring. Notification destinations and investigations are disabled unless you enable them in the manifest. Watcher calibration and runs consume Grafana Assistant tokens; refer to [Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant/).
 
 1. Replace `WATCHER` with the returned resource name or ID and inspect progress:
 

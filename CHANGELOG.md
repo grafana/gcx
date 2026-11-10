@@ -1,3 +1,40 @@
+## Unreleased
+
+- Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
+  evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
+  dropped both fields without an error, so a `sequential` rule was created as
+  `parallel` and its tag keys were lost. `rules get` and `rules list` with
+  `-o json` or `-o yaml`, and `gcx resources pull`, now include both, so a
+  pulled rule keeps them when pushed back. A file that leaves either field
+  out still gets the server default on create and keeps the stored value on
+  update; `filterable_tag_keys: []` clears the keys.
+- `gcx setup status` reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled, names the missing permission when
+  known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC
+  paths from auth diagnostics. It exits 3 on auth failures and 1 on other
+  probe failures instead of 4. The
+  `fleet-management` row also has `enabled: null` when the plugin state is
+  unknown, and the JSON document gains an optional `error` object. (#1699)
+- Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a
+  false value from the request, so the API applied its default of `true`, and
+  `checks update` switched a full-metrics check back to basic metrics.
+  `checks get` and `checks list` now also show `basicMetricsOnly: false`, so
+  a get and update round trip keeps full metrics. A spec that leaves the field
+  out still gets the API default (#1395)
+- Anonymous usage statistics for `gcx signup` now record the last step it
+  reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
+  `gcx signup` reports its HTTP status. The one-time telemetry notice is shown
+  again to disclose the new field.
+
+## v1.7.1 (2026-10-21)
+
+- Build release binaries with Go 1.26.10 and update `golang.org/x/net` to
+  v0.60.0, picking up standard library security fixes and five HTTP/2
+  fixes (GO-2026-6603, -6610, -6611, -6612, -6617) (#1625)
+- Fix the container image build, which stopped the v1.7.0 release before
+  it published binaries or images (#1623)
+
+
 ## v1.7.0 (2026-10-20)
 
 ### Breaking changes
@@ -24,6 +61,11 @@
   `datasources query` against Loki) now reject metric queries such as
   `rate(...)` in every output format, instead of printing metric values as
   log lines. Run metric queries with `gcx logs metrics`. (#1580)
+- `gcx kg notifications upsert` now rejects unknown or misspelled fields, and
+  input containing more than one YAML document. Both previously succeeded,
+  dropping the unknown key or the extra documents. It now also accepts the
+  output of `notifications get` and `list` directly. Correct field names in
+  saved notification files before you upgrade. (#1571)
 
 ### New commands and improvements
 

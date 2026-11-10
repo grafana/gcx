@@ -3,7 +3,6 @@ package irm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -70,8 +69,12 @@ func IncidentSchema() json.RawMessage {
 					},
 					"isDrill":      map[string]any{"type": "boolean"},
 					"incidentType": map[string]any{"type": "string"},
-					"description":  map[string]any{"type": "string"},
-					"labels":       map[string]any{"type": "array"},
+					"description": map[string]any{
+						"type":        "string",
+						"readOnly":    true,
+						"description": "Incident description. Reads include it, but the documented API cannot create or change it. Pull omits it from portable manifests.",
+					},
+					"labels": map[string]any{"type": "array"},
 				},
 				"required": []string{"title", "status"},
 			},
@@ -164,9 +167,6 @@ func newIncidentCRUD(client *IncidentClient, namespace string, query IncidentQue
 			// The push reports the manifest, not the list of changed fields.
 			updated, _, err := client.Update(ctx, name, inc)
 			return updated, err
-		},
-		DeleteFn: func(_ context.Context, _ string) error {
-			return errors.New("incidents: delete is not supported by the IRM API")
 		},
 		StripFields: incidentStripFields,
 		Namespace:   namespace,

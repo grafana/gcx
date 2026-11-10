@@ -20,7 +20,7 @@ weight: 3
 
 Grafana resources can be migrated from one environment to another, for example from a development to production environment. 
 
-You need to [configure one context per environment](../../configuration#define-contexts). In this example scenario, use `dev` for the development environment and `prod` for production.
+You need to [configure one context per environment](../../configuration#define-contexts-to-use-different-instances). In this example scenario, use `dev` for the development environment and `prod` for production.
 
 1. Make changes to dashboards and other resources using the Grafana UI in your **development instance**.
 1. Pull those resources from the development environment to your local machine:
@@ -36,8 +36,31 @@ You need to [configure one context per environment](../../configuration#define-c
 Resources are pulled and pushed from the `./resources` directory by default.
 Configure this path with the `--path`/`-p` flags.
 {{< /admonition >}}
-    Resources are pulled and pushed from the `./resources` directory by default.
-    Configure this path with the `--path`/`-p` flags.
+
+## Name pulled files by title
+
+By default, `gcx resources pull` names each file using the resource's
+`metadata.name` (usually its UID). Use `--filename-by=title` for readable filenames:
+
+```shell
+gcx resources pull dashboards --filename-by=title --path ./dashboard-backup
+```
+
+For example, a dashboard titled `Ventas Overview` becomes `ventas-overview.json`
+inside its usual resource-type directory. Resources without a usable title fall
+back to `metadata.name`. The resource contents retain their original identity,
+so push, validate, and serve use these files normally.
+
+Title mode checks filename conflicts against the current pull and existing
+destination files. It preserves files that belong to other resources. See the
+[file naming rules](https://github.com/grafana/gcx/blob/main/docs/design/naming.md#92-file-naming)
+for the full algorithm.
+
+`gcx resources pull` does not remove old files. Title-mode pull warns on stderr
+when it finds another file for the same resource at a different path, such as
+after a rename or a change of naming mode. Reading resources also warns when skipping duplicate
+identities. Pull into a clean directory or remove stale files (for example, with
+`git rm`) before pushing.
 
 ## Back up and restore resources
 
@@ -56,3 +79,15 @@ Follow this workflow to back up all Grafana resources from one instance and late
    ```shell
    gcx resources push --path ./backup-prod
    ```
+
+## Incident descriptions
+
+Incident descriptions remain visible in `gcx resources get` and
+`gcx irm incidents list` results.
+
+`gcx resources pull` omits descriptions from saved manifests. These backups
+cannot restore incident descriptions.
+
+Old backup files can contain `spec.description`. Remove that field before you
+push the file to create an incident or to change an incident with a different
+description. You can update other fields when `spec.description` is absent or equal to the current value.

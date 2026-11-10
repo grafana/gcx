@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant/watcher"
 	clientwatchers "github.com/grafana/gcx/internal/assistant/watchers"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -20,16 +21,22 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// watcherBillingNote ends the Long of every Watcher command that starts
+// calibration or a scan, so --help readers see the cost before invoking it.
+const watcherBillingNote = " Watcher calibration and runs consume Grafana Assistant tokens; see " + docs.AssistantPricing + " for billing."
+
 func newLifecycleCommand(loader *providers.ConfigLoader, verb string) *cobra.Command {
 	opts := &readOpts{}
-	var description string
+	var description, hint string
 	switch verb {
 	case "start":
-		description = "Activate a calibrated Watcher with at least one enabled check. The server decides readiness and reports refusal reasons. Starting can immediately enqueue a scan and deliver configured notifications or investigations; event-only Watchers wait for their trigger. A failed start request can still leave monitoring active: inspect the returned lifecycle and status before retrying."
+		description = "Activate a calibrated Watcher with at least one enabled check. The server decides readiness and reports refusal reasons. Starting can immediately enqueue a scan and deliver configured notifications or investigations; event-only Watchers wait for their trigger. A failed start request can still leave monitoring active: inspect the returned lifecycle and status before retrying." + watcherBillingNote
+		hint = "Activates monitoring; scans and any investigations they launch consume Grafana Assistant tokens (" + docs.AssistantPricing + "). Use when the user asks to start the Watcher."
 	case "pause":
 		description = "Stop future Watcher scans without changing configuration or deleting history. An in-flight scan may finish and deliver configured notifications or investigations. Pausing does not cancel calibration; finish or cancel calibration in Grafana first."
 	case "run":
-		description = "Request one immediate scan without changing scheduled activation. Reports request acceptance or skipped work, never a completed assessment. The returned task ID is an enqueue identifier, not a run-history ID; exact correlation is unavailable, and the newest history entry must not be assumed to belong to this request. The server enforces lifecycle and readiness requirements. Requires run/create permission as well as any server-required write permission; editing permission alone may be insufficient. Configured notifications and investigations can run."
+		description = "Request one immediate scan without changing scheduled activation. Reports request acceptance or skipped work, never a completed assessment. The returned task ID is an enqueue identifier, not a run-history ID; exact correlation is unavailable, and the newest history entry must not be assumed to belong to this request. The server enforces lifecycle and readiness requirements. Requires run/create permission as well as any server-required write permission; editing permission alone may be insufficient. Configured notifications and investigations can run." + watcherBillingNote
+		hint = "Requests one scan, which consumes Grafana Assistant tokens (" + docs.AssistantPricing + "). Use when the user asks to run the Watcher."
 	case "archive":
 		description = "Archive an explicitly paused Watcher while retaining configuration and history. Pause it first; gcx never calls pause implicitly. If it is calibrating, finish or cancel calibration in Grafana before pausing. The paused-state precheck and archive request are not atomic: another client's concurrent start can be stopped by archive. Archive may resolve active Grafana Alerting findings. An in-flight scan may still finish; notification cancellation is not guaranteed."
 	case "unarchive":
@@ -52,6 +59,9 @@ func newLifecycleCommand(loader *providers.ConfigLoader, verb string) *cobra.Com
 	}}
 	markExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "small"
+	if hint != "" {
+		cmd.Annotations[agent.AnnotationLLMHint] = hint
+	}
 	opts.setup(cmd.Flags())
 	return cmd
 }

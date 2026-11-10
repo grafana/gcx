@@ -2,15 +2,11 @@ package alert
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -150,7 +146,7 @@ type rulesGetOpts struct {
 }
 
 func (o *rulesGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RuleDetailTableCodec{})
+	o.IO.RegisterCustomCodec("table", RuleDetailTable().Codec("table"))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -192,27 +188,9 @@ func newRulesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// RuleDetailTableCodec renders a single rule as a table row.
-type RuleDetailTableCodec struct{}
-
-func (c *RuleDetailTableCodec) Format() format.Format { return "table" }
-
-func (c *RuleDetailTableCodec) Encode(w io.Writer, v any) error {
-	rule, ok := v.(*RuleStatus)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *RuleStatus")
+func RuleDetailTable() cmdio.TableAdapter[*RuleStatus, RuleStatus] {
+	return cmdio.TableAdapter[*RuleStatus, RuleStatus]{
+		Table: RulesTable(),
+		Rows:  func(rule *RuleStatus) ([]RuleStatus, error) { return []RuleStatus{*rule}, nil },
 	}
-
-	paused := "no"
-	if rule.IsPaused {
-		paused = "yes"
-	}
-
-	t := style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
-	t.Row(rule.UID, rule.Name, rule.State, rule.Health, paused)
-	return t.Render(w)
-}
-
-func (c *RuleDetailTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
 }

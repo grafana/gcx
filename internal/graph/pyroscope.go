@@ -15,7 +15,10 @@ func FromPyroscopeResponse(resp *pyroscope.QueryResponse) (*ChartData, error) {
 		return nil, errors.New("no flamegraph data in response")
 	}
 
-	topFunctions := pyroscope.ExtractTopFunctions(resp.Flamegraph, 20)
+	topFunctions, err := pyroscope.ExtractTopFunctions(resp.Flamegraph, 20)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(topFunctions) == 0 {
 		return &ChartData{

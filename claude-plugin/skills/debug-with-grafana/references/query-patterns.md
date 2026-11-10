@@ -294,6 +294,29 @@ Do not recommend high-cardinality trace-ID grouping as a universal deduplication
 fix. For endpoint ownership, distinguish error **counts/shares** from per-endpoint
 error **ratios**; for retries, distinguish attempts from original requests.
 
+## Profiles: compare code costs against a baseline
+
+Use `gcx profiles query` for one profile and `gcx profiles diff` against a
+comparable baseline. Discover the profile type and selectors first; keep the
+same datasource/type and prefer equal-length windows.
+
+```bash
+gcx profiles diff -d "$PYROSCOPE_UID" \
+  '{service_name="frontend",version="v1"}' '{service_name="frontend",version="v2"}' \
+  --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
+  --before-from "$BEFORE_FROM" --before-to "$BEFORE_TO" \
+  --after-from "$AFTER_FROM" --after-to "$AFTER_TO" --drilldown-link -o agents
+```
+
+Read self and inclusive totals as raw cost, not traffic-normalized regression
+proof. Empty profiles do not establish improvement; if `complete=false`, inspect
+`omitted` and refine the query before treating missing symbols as code changes.
+See `gcx profiles diff --help` for output and time semantics.
+
+Retain `links.before`, `links.after`, and the comparison link. `--drilldown-link`
+targets the diff view when representable, otherwise falling back to exact split
+Explore; `--share-link` always targets that split view.
+
 ## Output and evidence links
 
 Start with normal agent output; examples pin it with `-o agents`. Inspect the

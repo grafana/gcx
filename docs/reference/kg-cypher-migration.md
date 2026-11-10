@@ -20,7 +20,7 @@ does not set a removal date or retire the backend search API.
 | JSON response | `entities`, `edges`, `pageNum`, `lastPage` | `columns`, `rows`, `stats` |
 | Projection | Whole entities and edges | Ordered, positional values corresponding to `columns` |
 | Result bounds | Existing `--page` behavior | Literal Cypher `LIMIT` required; optional `ORDER BY`/`SKIP` |
-| Health | Existing `--insights-only` behavior | Fetch health with `kg entities list --insight any` or `kg entities inspect` |
+| Health | Existing `--insights-only` behavior | Fetch health with `kg entities list --insight any` or `kg entities inspect`, passing the `env`, `site` and `namespace` the query returns |
 | Default window | Last hour | Last hour |
 
 These are separate contracts, not interchangeable aliases. There is no automatic

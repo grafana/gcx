@@ -45,8 +45,7 @@ func ExtractIDFromSlug(name string) (string, bool) {
 		return name, true
 	}
 	// "slug-<id>" — extract numeric suffix after the last hyphen.
-	if idx := strings.LastIndex(name, "-"); idx >= 0 {
-		suffix := name[idx+1:]
+	if _, suffix, ok := strings.CutLast(name, "-"); ok {
 		if _, err := strconv.Atoi(suffix); err == nil {
 			return suffix, true
 		}

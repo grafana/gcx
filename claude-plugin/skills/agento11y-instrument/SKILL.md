@@ -1,14 +1,11 @@
 ---
 name: agento11y-instrument
-description: >
-  Instrument a developer's own LLM app or agent with Grafana Agent Observability.
-  Use for initial setup, incomplete or broken instrumentation, missing generations,
-  or empty Performance charts. Reads the code, checks SDK and OpenTelemetry setup,
-  and iterates instrument → run → verify → fix using gcx to confirm generation
-  ingest, with separate checks for traces and metrics. Proposes changes with
-  file:line evidence and applies them only after explicit confirmation.
-  For offline tests use agento11y-test-starter; for online eval rules and guards
-  use agento11y-prod-setup. Excludes coding-agent telemetry plugins.
+description: >-
+  Instruments a developer's own LLM app or repairs missing generations and empty
+  Performance charts in Grafana Agent Observability. Applies confirmed changes
+  and verifies generation ingest, traces, and metrics. Excludes coding-agent
+  telemetry plugins. For offline tests use agento11y-test-starter; for eval rules
+  and guards use agento11y-prod-setup.
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write, WebFetch
 ---
 

@@ -1,4 +1,4 @@
-# RFC 025: Providers declare table columns instead of writing codecs
+# RFC 025: Providers declare table columns, with typed adapters for wrapper and singleton payloads
 
 **Created**: 2026-09-08
 **Status**: accepted
@@ -90,29 +90,37 @@ be checked again later.
 | 9 places using `tabwriter` directly | They never used the shared table builder, so there is nothing to swap. |
 | text codecs | Printing one line is a different job. It needs its own small shared type. |
 
-### Rejected: an extractor on `Table`
+### Typed payload adapters
 
 29 of the 116 table codecs are handed something other than a plain list. Usually
 it is a wrapper like `{"items": [...]}`, which is the shape JSON output has to
 keep. The table wants the rows; JSON wants the wrapper.
 
-A `Rows func(any) ([]T, error)` field on `Table` would handle this. It was
-rejected for now. Instead the command picks what to pass, based on the format it
-resolved:
+A separate `output.TableAdapter[P, T]` adapts wrapper and singleton payloads
+to table rows:
 
 ```go
-switch string(codec.Format()) {
-case cmdio.FormatTable, cmdio.FormatWide, cmdio.FormatText:
-	return codec.Encode(w, rows)
-default:
-	return opts.Encode(w, ListEnvelope[T]{Items: rows})
+table := output.TableAdapter[Result, Item]{
+    Table: itemTable(),
+    Rows: func(result Result) ([]Item, error) {
+        return result.Items, nil
+    },
 }
+opts.RegisterCustomCodec("table", table.Codec("table"))
+// Every format receives the complete result, including list-level metadata.
+return opts.Encode(w, result)
 ```
 
-This is fine while few providers need it. It stops being fine when it spreads.
+`P` is the complete payload type; `T` is one row. The adapter checks the payload
+type and runs `Rows` only when its codec is selected. Extraction errors return
+before rendering. The underlying table still owns columns, visibility and empty
+output; its codec supplies `Format` and `Decode`. JSON/YAML codecs receive the
+original payload without extraction. A singleton adapter returns a one-element
+slice without changing that object's machine-readable shape.
 
-**Revisit when a second package writes its own version of this helper.** One
-copy is a special case. Two copies mean the shared type should carry it.
+Slice-based tables continue to use `Table[T]` directly. Register adapted codecs
+under the command's existing format names explicitly, including `wide` where it
+is already supported. The adapter does not change defaults or add formats.
 
 ### Rejected: naming formats per column
 
@@ -138,8 +146,8 @@ nothing. A single field cannot be in two states.
 
 **Worse:**
 
-- Commands handed a wrapper instead of a list need a few lines to choose what to
-  pass, until the extractor question is settled.
+- Commands handed a wrapper or singleton declare a typed row extraction function
+  alongside their table, while passing the same payload to every output format.
 - Some commands call their narrow table `"table"` and some call it `"text"`.
   This decision works around that split. It does not fix it.
 

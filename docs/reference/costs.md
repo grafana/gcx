@@ -11,7 +11,7 @@ exactly as if you had used the Grafana UI or API directly.
 
 > [!NOTE]
 >
-> [Grafana Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/)
+> [Grafana Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant/)
 > explicitly counts token usage made through the gcx CLI. Automated or
 > agent-driven `gcx assistant` invocations consume tokens the same way
 > interactive use does.
@@ -20,15 +20,22 @@ exactly as if you had used the Grafana UI or API directly.
 
 | Product | Billing unit | gcx commands | Details |
 |---|---|---|---|
-| Grafana Assistant | Tokens consumed per request (usage-based) | `gcx assistant prompt` | [Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/) |
+| Grafana Assistant | Tokens consumed (usage-based), plus monthly active AI users | `gcx assistant prompt`, `gcx assistant investigations create` / `resume`, `gcx assistant watchers create` / `start` / `run`, `gcx instrumentation check --fix-plan=assistant` | [Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant/) |
 | Synthetic Monitoring | Test executions (per probe, per run) plus resulting metrics and logs | `gcx synthetic-monitoring checks create` / `update` | [Synthetic Monitoring invoice](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice/) |
 | Performance Testing (k6) | Virtual User Hours (VUh); browser VUs are billed at a higher rate | `gcx k6 load-tests create`, `gcx k6 test-run emit --apply` | [Performance Testing invoice](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/performance-testing-invoice/) |
 | IRM (OnCall + Incident) | Monthly active IRM users | `gcx irm oncall …`, `gcx irm incidents …` write actions | [IRM invoice](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice/) |
 
 Notes on the table:
 
-- **Assistant Investigations** (`gcx assistant investigations …`) is in public
-  preview and currently has no charge.
+- **Assistant Investigations and Watchers** consume Assistant tokens. Starting
+  an investigation manually counts you as an active AI user; Watcher calibration
+  and runs draw from the system-initiated token allowance. Metering for each
+  starts on its own date; refer to
+  [Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant/)
+  and [Assistant usage](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/).
+- Reading existing Assistant resources (`gcx assistant investigations get`,
+  `gcx assistant conversation get`, `gcx assistant watchers status`) starts no
+  Assistant work.
 - **IRM**: a user counts as active when they are on an OnCall schedule or
   escalation chain, change alert group status, or create or edit incidents —
   actions gcx can perform on a user's behalf.

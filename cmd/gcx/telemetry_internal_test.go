@@ -521,6 +521,33 @@ func TestBuildUsageEventKeepsGrafanaAuthMethodOnEveryOutcome(t *testing.T) {
 	}
 }
 
+// signup_stage belongs to signup alone: gcx login runs the same probes but
+// does not report them, and no other command may carry a stage. Unlike the
+// failure-depth fields it survives a cancellation, which is where the
+// unfinished signups it exists to explain end.
+func TestBuildUsageEventReportsSignupStageForSignupOnly(t *testing.T) {
+	signup := &root.TelemetryInfo{Command: "signup"}
+	for _, exitCode := range []int{gcxerrors.ExitSuccess, gcxerrors.ExitGeneralError, gcxerrors.ExitCancelled} {
+		isolate(t)
+		capture.SetLoginStage("browser")
+
+		event := buildUsageEvent(signup, time.Now(), exitCode)
+		assert.Equal(t, "browser", event.SignupStage, "signup must report its stage on exit code %d", exitCode)
+	}
+
+	isolate(t)
+	capture.SetLoginStage("state=abc123&code=xyz")
+	event := buildUsageEvent(signup, time.Now(), 1)
+	assert.Equal(t, telemetry.SignupStageUnknown, event.SignupStage, "an arbitrary captured string must be clamped")
+
+	for _, info := range []*root.TelemetryInfo{{Command: "login"}, {Command: "cloud login"}, pushInfo()} {
+		isolate(t)
+		capture.SetLoginStage("complete")
+		fields := marshalEvent(t, buildUsageEvent(info, time.Now(), 0))
+		assert.NotContains(t, fields, "signup_stage", "%q must omit the signup stage", info.Command)
+	}
+}
+
 // Golden privacy sweep for the new fields: every capture slot is fed content
 // shaped like the things that must never travel — a resource name and a
 // namespace inside a server-controlled reason, a credential in the auth slot —

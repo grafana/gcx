@@ -95,13 +95,11 @@ func (o *checkOpts) Validate() error {
 		return errors.New("--instrumentation-file is required when --language=js and --manual-instrumentation are set")
 	}
 
-	var ule *otelutils.UnsupportedLanguageError
-	if errors.As(err, &ule) {
+	if ule, ok := errors.AsType[*otelutils.UnsupportedLanguageError](err); ok {
 		return fmt.Errorf("language %q is not supported. Possible values: %s",
 			ule.Language, strings.Join(otelutils.SupportedLanguages, ", "))
 	}
-	var uce *otelutils.UnsupportedComponentError
-	if errors.As(err, &uce) {
+	if uce, ok := errors.AsType[*otelutils.UnsupportedComponentError](err); ok {
 		return fmt.Errorf("component %q is not supported. Possible values: %s",
 			uce.Component, strings.Join(otelutils.SupportedComponents, ", "))
 	}
@@ -161,6 +159,7 @@ Supported components: ` + strings.Join(otelutils.SupportedComponents, ", ") + `.
 Add --fix-plan=local for a deterministic aggregation of the explanation docs
 (offline, no billing), or --fix-plan=assistant for a prioritized plan synthesized
 by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see ` + docs.AssistantPricing + `).
+Use --fix-plan=assistant only when the user requests Grafana Assistant.
 
 Powered by github.com/grafana/otel-checker.`,
 		Args: cobra.MaximumNArgs(1),

@@ -173,8 +173,7 @@ func validateVersionDetail(item *VersionDetail, version int64) error {
 }
 
 func versionAPIError(err error) error {
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		switch {
 		case errors.Is(err, ErrNotFound):
 			apiErr.Reason = "Watcher or version is unavailable; retained versions may be pruned, or the version route may be unavailable"

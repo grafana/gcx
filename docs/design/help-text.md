@@ -49,10 +49,17 @@ Example: `  # List all SLOs (default: no row cap; API returns the full list)
 
 Dedicated help pages for cross-cutting concerns:
 
-| Topic | Content |
-|-------|---------|
-| `gcx help environment` | All env vars ([environment-variables.md](environment-variables.md)) |
-| `gcx help formatting` | Output format guide, jq patterns |
-| `gcx help exit-codes` | Exit code reference ([exit-codes.md](exit-codes.md)) |
+| Topic | Content | Status |
+|-------|---------|--------|
+| `gcx help environment` | All env vars ([environment-variables.md](environment-variables.md)) | Planned |
+| `gcx help formatting` | Output format guide, jq patterns | Planned |
+| `gcx help exit-codes` | Exit code reference with descriptions and examples ([exit-codes.md](exit-codes.md)) | Implemented |
 
-Implemented as Cobra help topic commands. Tracked by R2.1, R2.2.
+Implemented as a topic registry served by the help command, which delegates
+ordinary command help to Cobra. Topics are listed as `gcx help <topic>` under
+"Additional help topics:" and offered by `gcx help` completion. Styled help lists
+them alongside native Cobra topics in a shared block before the closing
+`Use "gcx [command] --help"` line. Plain help appends registry topics after
+Cobra's default output, which already includes native topics.
+They are not registered as standalone commands or included in `gcx commands`.
+Tracked by R2.1, R2.2.

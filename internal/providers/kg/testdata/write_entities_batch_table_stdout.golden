@@ -1,0 +1,3 @@
+DOMAIN  TYPE     NAME      SCOPE
+myapp   Service  checkout  env=prod, site=west
+myapp   Service  cart      env=prod, site=west

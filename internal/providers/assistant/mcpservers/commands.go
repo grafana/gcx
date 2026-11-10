@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -18,7 +17,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"sigs.k8s.io/yaml"
@@ -292,9 +290,9 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("text", &ListTableCodec{})
-	o.IO.RegisterCustomCodec("table", &ListTableCodec{FormatName: "table"})
-	o.IO.RegisterCustomCodec("wide", &ListTableCodec{Wide: true})
+	table := listTable()
+	cmdio.RegisterTableAs(&o.IO, table, cmdio.FormatText)
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of integrations to request")
@@ -854,41 +852,15 @@ func maybeAttachAuthURL(cmd *cobra.Command, client *assistantmcp.Client, result 
 	return nil
 }
 
-type ListTableCodec struct {
-	Wide       bool
-	FormatName format.Format
-}
-
-func (c *ListTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func listTable() cmdio.Table[assistantmcp.Server] {
+	return cmdio.Table[assistantmcp.Server]{
+		Columns: []cmdio.Column[assistantmcp.Server]{
+			{Header: "ID", Content: func(s assistantmcp.Server) string { return s.ID }},
+			{Header: "NAME", Content: func(s assistantmcp.Server) string { return s.Name }},
+			{Header: "ENABLED", Content: func(s assistantmcp.Server) string { return strconv.FormatBool(s.Enabled) }},
+			{Header: "URL", Content: func(s assistantmcp.Server) string { return s.URL }},
+			{Header: "SCOPE", Visible: cmdio.WideOnly, Content: func(s assistantmcp.Server) string { return s.Scope }},
+			{Header: "APPLICATIONS", Visible: cmdio.WideOnly, Content: func(s assistantmcp.Server) string { return strings.Join(s.Applications, ", ") }},
+		},
 	}
-	if c.FormatName != "" {
-		return c.FormatName
-	}
-	return "text"
-}
-
-func (c *ListTableCodec) Encode(dst io.Writer, value any) error {
-	servers, ok := value.([]assistantmcp.Server)
-	if !ok {
-		return fmt.Errorf("expected []mcpservers.Server, got %T", value)
-	}
-	headers := []string{"ID", "NAME", "ENABLED", "URL"}
-	if c.Wide {
-		headers = append(headers, "SCOPE", "APPLICATIONS")
-	}
-	table := style.NewTable(headers...)
-	for _, server := range servers {
-		row := []string{server.ID, server.Name, strconv.FormatBool(server.Enabled), server.URL}
-		if c.Wide {
-			row = append(row, server.Scope, strings.Join(server.Applications, ", "))
-		}
-		table.Row(row...)
-	}
-	return table.Render(dst)
-}
-
-func (c *ListTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }

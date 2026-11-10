@@ -22,7 +22,9 @@ func isolatedConfigEnv(t *testing.T) (string, string) {
 	t.Helper()
 	userDir := t.TempDir()
 	workDir := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
@@ -599,7 +601,10 @@ func Test_ViewCommand_failsWithNonExistentConfigFile(t *testing.T) {
 		Cmd:     config.Command(),
 		Command: []string{"view", "--config", "does-not-exist.yaml"},
 		Assertions: []testutils.CommandAssertion{
-			testutils.CommandErrorContains("no such file or directory"),
+			func(t *testing.T, result testutils.CommandResult) {
+				t.Helper()
+				require.ErrorIs(t, result.Err, os.ErrNotExist)
+			},
 		},
 	}
 

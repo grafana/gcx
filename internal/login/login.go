@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 )
 
 // cloudTokenHint returns the guidance shown on the interactive Cloud Access
@@ -416,6 +417,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	capture.SetLoginStage("validate")
 	if err := validateRuntimeOnlyBearerDestination(*opts, authMethod, grafanaCfg); err != nil {
 		return Result{}, err
 	}
@@ -753,6 +755,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if checkPersistence == nil {
 			checkPersistence = config.CheckOAuthCredentialPersistence
 		}
+		capture.SetLoginStage("credentials")
 		if err := checkPersistence(); err != nil {
 			return "", nil, fmt.Errorf("%w: %w", ErrCredentialPersistencePreflight, err)
 		}
@@ -782,6 +785,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 			authOpts.ReopenOnEnter = opts.Interactive
 			authOpts.ManualCommand = opts.ManualRetryCommand
 		}
+		capture.SetLoginStage("browser")
 		flow := opts.NewAuthFlow(opts.Server, authOpts)
 		result, err := flow.Run(ctx)
 		if err != nil {
@@ -1026,6 +1030,7 @@ func warnCloudTokenUnvalidated(w io.Writer, e *GCOMStackError) {
 // only token fields and AuthMethod are mutated; other fields are preserved
 // (D20, AC-009).
 func persistContext(ctx context.Context, opts Options, contextName string, tempCtx config.Context, stackSlug string) error {
+	capture.SetLoginStage("persist")
 	source := opts.ConfigSource
 	if source == nil {
 		source = config.StandardLocation()
@@ -1091,6 +1096,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	if err := config.Write(ctx, source, cfg); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
+	capture.SetLoginStage("complete")
 	return nil
 }
 

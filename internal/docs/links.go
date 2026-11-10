@@ -72,12 +72,18 @@ const (
 	// AdaptiveLogs documents Adaptive Logs cost control.
 	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs.md"
 
+	// AdaptiveLogsArchive documents archiving logs to a customer-owned bucket.
+	AdaptiveLogsArchive = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs/archive-logs.md"
+
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
 	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-traces.md"
 
+	// AdaptiveProfiles documents Adaptive Profiles sampling controls.
+	AdaptiveProfiles = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles.md"
+
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
-	AssistantPricing = "https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md"
+	AssistantPricing = "https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md"
 
 	// SyntheticMonitoringInvoice documents how Synthetic Monitoring test
 	// executions and their resulting metrics/logs are billed.
@@ -141,7 +147,9 @@ func AllNamed() []NamedLink {
 		{Name: "KubernetesMonitoring", URL: KubernetesMonitoring},
 		{Name: "AdaptiveMetrics", URL: AdaptiveMetrics},
 		{Name: "AdaptiveLogs", URL: AdaptiveLogs},
+		{Name: "AdaptiveLogsArchive", URL: AdaptiveLogsArchive},
 		{Name: "AdaptiveTraces", URL: AdaptiveTraces},
+		{Name: "AdaptiveProfiles", URL: AdaptiveProfiles},
 		{Name: "AssistantPricing", URL: AssistantPricing},
 		{Name: "SyntheticMonitoringInvoice", URL: SyntheticMonitoringInvoice},
 		{Name: "PerformanceTestingInvoice", URL: PerformanceTestingInvoice},

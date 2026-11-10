@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"io"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
@@ -154,6 +155,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				// refused deletion into a successful zero-resource batch.
 				fetchRes, err := fetchResources(ctx, FetchRequest{
 					Config:             cfg,
+					Warn:               cmd.ErrOrStderr(),
 					IdentityOnlyDelete: true,
 					StopOnError:        opts.OnError.StopOnError(),
 					ExcludeReadOnly:    true,
@@ -167,7 +169,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			} else {
 				// Load resources from the filesystem
 				res = *resources.NewResources()
-				if err := loadResourcesFromDirectories(ctx, cfg, &res, opts, sels); err != nil {
+				if err := loadResourcesFromDirectories(ctx, cfg, &res, opts, sels, cmd.ErrOrStderr()); err != nil {
 					return err
 				}
 			}
@@ -249,7 +251,7 @@ func rejectUnsupportedDelete(filters resources.Filters) error {
 	return nil
 }
 
-func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors) error {
+func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors, warn io.Writer) error {
 	reg, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
 		return err
@@ -257,12 +259,14 @@ func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedREST
 
 	reader := local.FSReader{
 		Decoders:           format.Codecs(),
+		Warn:               warn,
 		MaxConcurrentReads: opts.MaxConcurrent,
 		StopOnError:        opts.OnError.StopOnError(),
 	}
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors: selectors,
+		Warn:      warn,
 	})
 	if err != nil {
 		return err

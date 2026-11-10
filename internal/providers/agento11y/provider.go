@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/savedconversations"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/templates"
 	"github.com/grafana/gcx/internal/providers/agento11y/generations"
+	"github.com/grafana/gcx/internal/providers/agento11y/modelcards"
 	"github.com/grafana/gcx/internal/providers/agento11y/modelrates"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -89,7 +90,13 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 	modelRatesCmd := modelrates.Commands(loader)
 	modelRatesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y model-rates list; gcx agento11y model-rates create --provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00; gcx agento11y model-rates delete --provider openai --model gpt-5.5 --effective-from <ts>`,
+		agent.AnnotationLLMHint:   `gcx agento11y model-rates resolve --provider openai --model gpt-5.5 -o json; gcx agento11y model-rates list; gcx agento11y model-rates create --provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00; gcx agento11y model-rates delete --provider openai --model gpt-5.5 --effective-from <ts>`,
+	}
+
+	modelCardsCmd := modelcards.Commands(loader)
+	modelCardsCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "small",
+		agent.AnnotationLLMHint:   `gcx agento11y model-cards get openai/gpt-4o-mini -o json; gcx agento11y model-cards list --provider openai --min-context-length 100000 -o json`,
 	}
 
 	generationsCmd := generations.Commands(loader)
@@ -119,10 +126,10 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 	experimentsCmd := experiments.Commands(loader)
 	experimentsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments get-report <run-id> -o json; gcx agento11y experiments test-suites list -o json; gcx agento11y experiments test-suites cases list <suite-id> <version> -o json; gcx agento11y experiments list-trials <run-id> -o json; gcx agento11y experiments pull <run-id> -d ./exports/<run-id>`,
+		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments get-report <run-id> -o json; gcx agento11y experiments list-filter-values -o json; gcx agento11y experiments test-suites list -o json; gcx agento11y experiments test-suites cases list <suite-id> <version> -o json; gcx agento11y experiments list-trials <run-id> -o json; gcx agento11y experiments pull <run-id> -d ./exports/<run-id>`,
 	}
 
-	agento11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, modelRatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
+	agento11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, modelRatesCmd, modelCardsCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
 
 	return []*cobra.Command{agento11yCmd}
 }
@@ -157,32 +164,36 @@ func (p *Agento11yProvider) TypedRegistrations() []adapter.Registration {
 
 	return []adapter.Registration{
 		{
-			Factory:     evaluators.NewLazyFactory(),
-			Descriptor:  evalDesc,
-			GVK:         evalDesc.GroupVersionKind(),
-			Schema:      evaluators.EvaluatorSchema,
-			URLTemplate: "/a/grafana-agento11y-app/evaluators/{name}",
+			Factory:      evaluators.NewLazyFactory(),
+			Descriptor:   evalDesc,
+			GroupAliases: []string{"sigil.ext.grafana.app"},
+			GVK:          evalDesc.GroupVersionKind(),
+			Schema:       evaluators.EvaluatorSchema,
+			URLTemplate:  "/a/grafana-agento11y-app/evaluators/{name}",
 		},
 		{
-			Factory:     rules.NewLazyFactory(),
-			Descriptor:  ruleDesc,
-			GVK:         ruleDesc.GroupVersionKind(),
-			Schema:      rules.RuleSchema,
-			URLTemplate: "/a/grafana-agento11y-app/rules/{name}",
+			Factory:      rules.NewLazyFactory(),
+			Descriptor:   ruleDesc,
+			GroupAliases: []string{"sigil.ext.grafana.app"},
+			GVK:          ruleDesc.GroupVersionKind(),
+			Schema:       rules.RuleSchema,
+			URLTemplate:  "/a/grafana-agento11y-app/rules/{name}",
 		},
 		{
-			Factory:     guards.NewLazyFactory(),
-			Descriptor:  guardDesc,
-			GVK:         guardDesc.GroupVersionKind(),
-			Schema:      guards.HookRuleSchema,
-			URLTemplate: "/a/grafana-agento11y-app/guards/{name}",
+			Factory:      guards.NewLazyFactory(),
+			Descriptor:   guardDesc,
+			GroupAliases: []string{"sigil.ext.grafana.app"},
+			GVK:          guardDesc.GroupVersionKind(),
+			Schema:       guards.HookRuleSchema,
+			URLTemplate:  "/a/grafana-agento11y-app/guards/{name}",
 		},
 		{
-			Factory:     collections.NewLazyFactory(),
-			Descriptor:  collectionDesc,
-			GVK:         collectionDesc.GroupVersionKind(),
-			Schema:      collections.CollectionSchema,
-			URLTemplate: "/a/grafana-agento11y-app/collections/{name}",
+			Factory:      collections.NewLazyFactory(),
+			Descriptor:   collectionDesc,
+			GroupAliases: []string{"sigil.ext.grafana.app"},
+			GVK:          collectionDesc.GroupVersionKind(),
+			Schema:       collections.CollectionSchema,
+			URLTemplate:  "/a/grafana-agento11y-app/collections/{name}",
 		},
 	}
 }

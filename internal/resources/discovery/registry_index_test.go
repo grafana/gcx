@@ -598,6 +598,47 @@ func TestRegistryIndex_LookupAllVersionsForPartialGVK(t *testing.T) {
 	}
 }
 
+func TestRegistryIndex_GroupAliases(t *testing.T) {
+	canonical := resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: "current.alias-test.app", Version: "v1"},
+		Kind:         "Widget", Singular: "widget", Plural: "widgets",
+	}
+	resources.RegisterGroupAliases(canonical.GroupVersionKind(), []string{"legacy.alias-test.app"})
+	v2 := canonical
+	v2.GroupVersion.Version = "v2"
+	unrelated := canonical
+	unrelated.Kind, unrelated.Singular, unrelated.Plural = "Other", "other", "others"
+	index := discovery.NewRegistryIndex()
+	for _, desc := range []resources.Descriptor{canonical, v2, unrelated} {
+		index.RegisterStatic(desc, nil)
+	}
+	for _, tt := range []struct {
+		name    string
+		partial resources.PartialGVK
+		want    resources.Descriptors
+	}{
+		{"short", resources.PartialGVK{Resource: "widgets", Group: "legacy"}, resources.Descriptors{canonical}},
+		{"long", resources.PartialGVK{Resource: "widgets", Group: "legacy.alias-test.app"}, resources.Descriptors{canonical}},
+		{"exact version", resources.PartialGVK{Resource: "widgets", Group: "legacy", Version: "v1"}, resources.Descriptors{canonical}},
+		{"unaliased version", resources.PartialGVK{Resource: "widgets", Group: "legacy", Version: "v2"}, nil},
+		{"unrelated kind", resources.PartialGVK{Resource: "others", Group: "legacy"}, nil},
+		{"unrelated group", resources.PartialGVK{Resource: "widgets", Group: "unknown"}, nil},
+		{"unqualified", resources.PartialGVK{Resource: "widgets"}, resources.Descriptors{canonical, v2}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := index.LookupAllVersionsForPartialGVK(tt.partial)
+			require.Equal(t, len(tt.want) > 0, ok)
+			assert.ElementsMatch(t, tt.want, got)
+			preferred, ok := index.LookupPartialGVK(tt.partial)
+			require.Equal(t, len(tt.want) > 0, ok)
+			if ok {
+				assert.Equal(t, canonical, preferred)
+			}
+		})
+	}
+	assert.Len(t, index.GetDescriptors(), 3)
+}
+
 func TestRegistryIndex_RegisterStatic(t *testing.T) {
 	sloDesc := resources.Descriptor{
 		GroupVersion: schema.GroupVersion{Group: "slo.ext.grafana.app", Version: "v1alpha1"},
@@ -1240,4 +1281,39 @@ func TestRegistryIndex_StaticFallbackFirstRegistrationWins(t *testing.T) {
 	all, ok := idx.LookupAllVersionsForPartialGVK(gvk)
 	require.True(t, ok)
 	assert.ElementsMatch(t, resources.Descriptors{first, second}, all)
+}
+
+func TestRegistryIndex_QualifiedGroupPrecedence(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		group       string
+		version     string
+		descriptors resources.Descriptors
+	}{
+		{
+			name: "unknown group does not match empty group", group: "unknown", version: "v1",
+			descriptors: resources.Descriptors{
+				{GroupVersion: schema.GroupVersion{Version: "v1"}, Kind: "Widget", Plural: "widgets"},
+			},
+		},
+		{
+			name: "known group does not fall through to another kind", group: "example.app", version: "v2",
+			descriptors: resources.Descriptors{
+				{GroupVersion: schema.GroupVersion{Group: "example.app", Version: "v1"}, Kind: "Widget", Plural: "widgets"},
+				{GroupVersion: schema.GroupVersion{Group: "example.app", Version: "v2"}, Kind: "OtherWidget", Plural: "widgets"},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			index := discovery.NewRegistryIndex()
+			for _, desc := range tt.descriptors {
+				index.RegisterStatic(desc, nil)
+			}
+			partial := resources.PartialGVK{Resource: "widgets", Group: tt.group, Version: tt.version}
+			_, ok := index.LookupPartialGVK(partial)
+			assert.False(t, ok)
+			_, ok = index.LookupAllVersionsForPartialGVK(partial)
+			assert.False(t, ok)
+		})
+	}
 }

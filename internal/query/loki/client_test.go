@@ -231,7 +231,11 @@ func TestClient_Patterns(t *testing.T) {
 		capturedPath = r.URL.Path
 		capturedQuery = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},{"pattern":"<_> started <_>","samples":[[1711839260,3]]}]}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":[
+{"pattern":"<_> started <_>","samples":[[1711839260,3]]},
+{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},
+{"pattern":"frequent <_>","samples":[[1711839260,5]]}
+]}`))
 	}))
 	defer server.Close()
 
@@ -250,11 +254,12 @@ func TestClient_Patterns(t *testing.T) {
 	assert.Equal(t, strconv.FormatInt(end.UnixNano(), 10), capturedQuery.Get("end"))
 	assert.Equal(t, "10s", capturedQuery.Get("step"))
 
-	require.Len(t, resp.Data, 2)
-	assert.Equal(t, "<_> level=error <_>", resp.Data[0].Pattern)
-	assert.Equal(t, "error", resp.Data[0].Level)
-	assert.Equal(t, [][]int64{{1711839260, 1}, {1711839270, 2}}, resp.Data[0].Samples)
-	assert.Empty(t, resp.Data[1].Level, "level is optional")
+	assert.Equal(t, "success", resp.Status)
+	assert.Equal(t, []loki.Pattern{
+		{Pattern: "frequent <_>", Samples: [][]int64{{1711839260, 5}}, TotalCount: 5},
+		{Pattern: "<_> level=error <_>", Level: "error", Samples: [][]int64{{1711839260, 1}, {1711839270, 2}}, TotalCount: 3},
+		{Pattern: "<_> started <_>", Samples: [][]int64{{1711839260, 3}}, TotalCount: 3},
+	}, resp.Data)
 }
 
 func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {
@@ -270,10 +275,11 @@ func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {
 	client, err := loki.NewClient(cfg)
 	require.NoError(t, err)
 
-	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+	resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
 	require.NoError(t, err)
 
 	assert.NotContains(t, capturedRawQuery, "step=")
+	assert.Equal(t, []loki.Pattern{}, resp.Data, "an empty data array must not become null")
 }
 
 func TestClient_Patterns_RejectsReversedTimeRange(t *testing.T) {

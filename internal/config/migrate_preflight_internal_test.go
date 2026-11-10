@@ -29,6 +29,7 @@ func newLayeredMigrationFixture(t *testing.T) layeredMigrationFixture {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CONFIG_DIRS", systemRoot)
 	t.Setenv(ConfigFileEnvVar, "")
@@ -371,20 +372,23 @@ func TestLoadLayeredConsolidatedWarningPreservesCredentialStoreBlocker(t *testin
 	store := withFakeKeychain(t)
 	store.getErr = credentials.ErrUnavailable
 	fixture := newLayeredMigrationFixture(t)
-	writeLayeredMigrationFixture(t, fixture.user, `
+	require.NoError(t, os.MkdirAll(filepath.Dir(fixture.user), 0o700))
+	writePrivateMigrationFixture(t, fixture.user, []byte(`
 contexts:
   prod:
     grafana:
       server: https://prod.example
       token: keychain:gcx:prod:grafana-token
 current-context: prod
-`)
+`))
 	writeLayeredMigrationFixture(t, fixture.local, `
 contexts:
   staging:
     grafana:
       server: https://staging.example
 `)
+
+	require.True(t, trustedDiscoveredUserLegacySource(fixture.user), "the fixture must be a trusted user source")
 
 	var warnings bytes.Buffer
 	ctx := ContextWithWarningWriter(t.Context(), &warnings)
@@ -532,7 +536,7 @@ current-context: prod
 `
 	writeLayeredMigrationFixture(t, fixture.user, user)
 	writeLayeredMigrationFixture(t, fixture.local, local)
-	require.NoError(t, os.WriteFile(fixture.user+legacyBackupSuffix, []byte(staleBackup), 0o600))
+	writePrivateMigrationFixture(t, fixture.user+legacyBackupSuffix, []byte(staleBackup))
 
 	_, err := LoadLayered(t.Context(), "")
 	var incomplete *layeredMigrationIncompleteError

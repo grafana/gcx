@@ -4,6 +4,7 @@ import (
 	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	"github.com/grafana/gcx/internal/providers"
 	adaptivelogs "github.com/grafana/gcx/internal/providers/logs/adaptive"
+	logsarchive "github.com/grafana/gcx/internal/providers/logs/archive"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/signals"
 	"github.com/spf13/cobra"
@@ -107,6 +108,7 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx logs query-patterns -d UID '{job="varlogs"}' -o json`,
 			},
 		},
+		ExtraCommands: []signals.CommandBuilder{logsarchive.Commands},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivelogs.Commands,
 			Use:   "adaptive",

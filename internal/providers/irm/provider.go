@@ -43,6 +43,7 @@ See ` + docs.IRMInvoice + `.`,
 
 	oncallCmd.AddCommand(
 		newIntegrationsCmd(loader),
+		newPersonalNotificationRulesCmd(loader),
 		newEscalationChainsCmd(loader),
 		newEscalationPoliciesCmd(loader),
 		newSchedulesCmd(loader),

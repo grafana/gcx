@@ -347,6 +347,10 @@ This replaces the old format (`{Kind}/{Name}.{ext}`) to make the API version
 and group unambiguous, which is important when multiple versions of the same
 resource type are pulled simultaneously.
 
+`adapter.PullFieldsStripper` applies each registration's optional `PullStripFields`
+list to saved manifests. Providers declare spec keys that cannot be restored.
+Get and list retain these fields. The generic command does not import providers.
+
 ### Pipeline Wiring
 
 ```
@@ -356,7 +360,7 @@ PUSH pipeline (cmd/gcx/resources/push.go):
   → pusher.Push() calls Process() on each resource before Create/Update
 
 PULL pipeline (cmd/gcx/resources/pull.go):
-  PullRequest{Processors: [ServerFieldsStripper{}], ...}
+  PullRequest{Processors: [ServerFieldsStripper{}, adapter.PullFieldsStripper{}], ...}
   → puller.Pull() calls Process() on each resource after fetching from API
 ```
 
@@ -386,6 +390,13 @@ ResourceAdapter interface
 `adapter.Factory` is `func(ctx context.Context) (ResourceAdapter, error)` — a lazy
 constructor that is only called on first use and its result cached for the router's
 lifetime.
+
+SLO definitions and reports match `spec.name` through their registered natural-key
+extractor, which slugifies names. Both generic resource push and the deprecated
+SLO push commands reject multiple remote matches instead of choosing one; supply
+an explicit `metadata.name` UUID to disambiguate. Legacy push only matches names
+when the UUID is omitted and caches remote resources across its file batch,
+including successful writes. Its dry-run remains a local manifest preview.
 
 ### Adapter-owned read and mutation policies
 
@@ -500,6 +511,19 @@ adapters use `adapter.BuildRegistration[T, C]` instead.
 
 This replaces the old pattern where providers called `adapter.Register()` directly
 in their `init()` functions alongside `providers.Register()`.
+
+`Registration.GroupAliases` accepts old API groups for an exact kind and version.
+Unlike `Aliases` (resource names), it applies to manifests and group-qualified
+selectors. Registration adds aliases to `resources` without extra discovery entries.
+File filtering, push, and delete accept old manifests; discovery accepts full and
+short group names. Descriptor matching uses the same GVK normalisation as routing,
+including per-plugin datasource groups. Output uses the descriptor's group.
+
+Agent Observability uses `agento11y.ext.grafana.app/v1alpha1` for `evaluators`,
+`evalrules`, `hookrules`, and `collections`. Its `sigil.ext.grafana.app` alias keeps
+old manifests and selectors such as `evalrules.sigil` working. Resource commands
+warn on stderr when an old group is used in a selector or a selected local manifest.
+Warnings name the replacement group and do not change stdout.
 
 ### ResourceClientRouter
 

@@ -1,0 +1,3 @@
+SLUG     NAME         STATUS  REGION  URL
+example  Example      active  eu      https://example.grafana.net
+dev      Development                  

@@ -49,7 +49,7 @@ mise run build       # Build to bin/gcx
 mise run tests       # Run all tests with race detection
 mise run lint        # Run golangci-lint
 mise run gate        # lint + tests + build (no docs) — fast pre-push gate for code changes
-mise run all         # lint + tests + build + docs
+mise run all         # lint + tests + build + docker:build + docs
 mise run docs        # Build Grafana website docs (requires Docker)
 ```
 
