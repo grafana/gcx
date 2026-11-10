@@ -96,9 +96,6 @@ backend's own line limits, so it can undercount a busy time range.`,
 			if err := dsquery.ValidateLimit(limit); err != nil {
 				return err
 			}
-			if limit == 0 {
-				cmdio.Warning(cmd.ErrOrStderr(), "%s", dsquery.LokiZeroLimitNotice)
-			}
 
 			expr, err := shared.ResolveExpr(args, 0)
 			if err != nil {
@@ -142,13 +139,17 @@ backend's own line limits, so it can undercount a busy time range.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
+			graphHinted := false
 			if shared.IO.OutputFormat == "graph" {
 				if summary, ok := graphLimitHint(limit, countEntries(resp)); ok {
 					cmdio.EmitHint(cmd.ErrOrStderr(), summary, "")
+					graphHinted = true
 				}
 			}
-
-			dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			// The graph hint already covers --limit; a second hint would repeat it.
+			if !graphHinted {
+				dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			}
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,

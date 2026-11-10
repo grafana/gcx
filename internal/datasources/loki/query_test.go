@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/datasources/loki"
@@ -15,6 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// oneLogLine is a Grafana Loki frame with a single log line.
+const oneLogLine = `{"results":{"A":{"frames":[{"schema":{"fields":[` +
+	`{"name":"labels","type":"other"},{"name":"Time","type":"time"},{"name":"Line","type":"string"}]},` +
+	`"data":{"values":[[{"job":"varlogs"}],[1711893600000],["hello"]]}}]}}}`
 
 // executeQuery runs the query command under a root with buffered streams, so
 // output stays out of the test log. It returns stderr for assertions.
@@ -42,11 +48,13 @@ func TestQueryCmd_LimitValidation(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
 		limit        string
+		output       string
 		wantMaxLines any
-		wantNotice   bool
+		wantHint     string // substring of the one expected stderr line; empty means none
 	}{
-		{name: "positive limit reaches maxLines", limit: "7", wantMaxLines: float64(7)},
-		{name: "zero omits maxLines and warns", limit: "0", wantNotice: true},
+		{name: "positive limit reaches maxLines", limit: "7", output: "json", wantMaxLines: float64(7)},
+		{name: "zero omits maxLines and hints", limit: "0", output: "json", wantHint: "backend default limit"},
+		{name: "zero with graph hints once", limit: "0", output: "graph", wantHint: "chart may not cover the whole range"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotQuery map[string]any
@@ -71,7 +79,7 @@ func TestQueryCmd_LimitValidation(t *testing.T) {
 						return
 					}
 					gotQuery = body.Queries[0]
-					_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+					_, _ = w.Write([]byte(oneLogLine))
 				default:
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 					http.NotFound(w, r)
@@ -88,7 +96,7 @@ contexts:
       token: test-token
       org-id: 1
 `, server.URL)))
-			stderr, err := executeQuery(loader, "-d", "loki-uid", "--limit", tt.limit, "-o", "json", `{job="varlogs"}`)
+			stderr, err := executeQuery(loader, "-d", "loki-uid", "--limit", tt.limit, "-o", tt.output, `{job="varlogs"}`)
 
 			require.NoError(t, err)
 			require.NotNil(t, gotQuery)
@@ -97,11 +105,13 @@ contexts:
 			} else {
 				assert.Equal(t, tt.wantMaxLines, gotQuery["maxLines"])
 			}
-			if tt.wantNotice {
-				assert.Contains(t, stderr, "backend default limit")
-			} else {
-				assert.NotContains(t, stderr, "backend default limit")
+			if tt.wantHint == "" {
+				assert.NotContains(t, stderr, "limit")
+				return
 			}
+			lines := strings.Split(strings.TrimSpace(stderr), "\n")
+			require.Len(t, lines, 1, "want exactly one hint, got %q", stderr)
+			assert.Contains(t, lines[0], tt.wantHint)
 		})
 	}
 }
