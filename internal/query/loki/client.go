@@ -159,6 +159,13 @@ func (c *Client) executeQuery(ctx context.Context, body []byte, operation string
 // Labels returns all label names. An optional query (LogQL stream selector)
 // scopes the result to matching streams; empty means unscoped.
 func (c *Client) Labels(ctx context.Context, datasourceUID, query string) (*LabelsResponse, error) {
+	return c.LabelsInRange(ctx, datasourceUID, query, time.Time{}, time.Time{})
+}
+
+// LabelsInRange is Labels restricted to streams seen between start and end.
+// A zero start or end is omitted, leaving that bound to the backend's default
+// label window.
+func (c *Client) LabelsInRange(ctx context.Context, datasourceUID, query string, start, end time.Time) (*LabelsResponse, error) {
 	apiPath := c.buildLabelsPath(datasourceUID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
@@ -166,11 +173,17 @@ func (c *Client) Labels(ctx context.Context, datasourceUID, query string) (*Labe
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	q := httpReq.URL.Query()
 	if query != "" {
-		q := httpReq.URL.Query()
 		q.Set("query", query)
-		httpReq.URL.RawQuery = q.Encode()
 	}
+	if !start.IsZero() {
+		q.Set("start", strconv.FormatInt(start.UnixNano(), 10))
+	}
+	if !end.IsZero() {
+		q.Set("end", strconv.FormatInt(end.UnixNano(), 10))
+	}
+	httpReq.URL.RawQuery = q.Encode()
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
