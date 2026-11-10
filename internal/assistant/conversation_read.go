@@ -151,11 +151,18 @@ func (c *Client) readUIConversationMessages(ctx context.Context, id string, shar
 	if err := c.doTranscriptRequest(ctx, "conversation messages", endpoint, &envelope); err != nil {
 		return nil, err
 	}
-	if len(envelope.Data) == 0 || bytes.Equal(bytes.TrimSpace(envelope.Data), []byte("null")) {
+	return DecodeUIMessages(envelope.Data)
+}
+
+// DecodeUIMessages decodes the `data` payload of an aisdk
+// `/chats/{id}/ui-messages?thread=main` response. Each message keeps its text
+// parts as content blocks and the full part list in Parts.
+func DecodeUIMessages(data json.RawMessage) ([]ChatMessage, error) {
+	if len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return nil, errors.New("assistant UI messages response is missing data")
 	}
 	var collection uiMessageCollection
-	if err := json.Unmarshal(envelope.Data, &collection); err != nil {
+	if err := json.Unmarshal(data, &collection); err != nil {
 		return nil, fmt.Errorf("decode Assistant UI messages response: %w", err)
 	}
 	if collection.Thread != "main" {
