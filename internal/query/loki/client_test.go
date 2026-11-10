@@ -224,19 +224,54 @@ func TestQuery_SendsMaxLines(t *testing.T) {
 	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
 }
 
-func TestQueryType(t *testing.T) {
-	start, end := time.Unix(1, 0), time.Unix(2, 0)
+func TestQueryRequestBody(t *testing.T) {
+	logQuery := func(c *loki.Client, req loki.QueryRequest) error {
+		_, err := c.Query(context.Background(), "loki-uid", req)
+		return err
+	}
+	metricQuery := func(c *loki.Client, req loki.QueryRequest) error {
+		_, err := c.MetricQuery(context.Background(), "loki-uid", req)
+		return err
+	}
+	const logExpr, metricExpr = `{job="grafana"}`, `count_over_time({job="grafana"}[1h])`
+	start, end := time.UnixMilli(1000), time.UnixMilli(2000)
+
 	for _, tt := range []struct {
-		name   string
-		metric bool
-		req    loki.QueryRequest
-		want   string
+		name          string
+		run           func(*loki.Client, loki.QueryRequest) error
+		req           loki.QueryRequest
+		wantQueryType string
+		wantFrom      string
+		wantTo        string
+		wantInterval  float64
+		wantMaxLines  any // nil means the field is absent
 	}{
-		{name: "metric query without a range is instant", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`, Limit: 10}, want: "instant"},
-		{name: "metric query with a range is range", metric: true, req: loki.QueryRequest{Query: `count_over_time({job="grafana"}[1h])`, Start: start, End: end, Limit: 10}, want: "range"},
-		// Loki rejects instant log queries.
-		{name: "log query without a range stays range", req: loki.QueryRequest{Query: `{job="grafana"}`}, want: "range"},
-		{name: "log query with a range is range", req: loki.QueryRequest{Query: `{job="grafana"}`, Start: start, End: end}, want: "range"},
+		{
+			name: "metric query without a range is instant over the last minute", run: metricQuery,
+			req:           loki.QueryRequest{Query: metricExpr, Limit: 10},
+			wantQueryType: "instant", wantFrom: "now-1m", wantTo: "now", wantInterval: 60000,
+		},
+		{
+			name: "metric instant query ignores step", run: metricQuery,
+			req:           loki.QueryRequest{Query: metricExpr, Step: 5 * time.Minute},
+			wantQueryType: "instant", wantFrom: "now-1m", wantTo: "now", wantInterval: 60000,
+		},
+		{
+			name: "metric range query sends bounds and step", run: metricQuery,
+			req:           loki.QueryRequest{Query: metricExpr, Start: start, End: end, Step: 5 * time.Minute, Limit: 10},
+			wantQueryType: "range", wantFrom: "1000", wantTo: "2000", wantInterval: 300000,
+		},
+		{
+			// Loki rejects instant log queries.
+			name: "log query without a range stays range over the last minute", run: logQuery,
+			req:           loki.QueryRequest{Query: logExpr, Limit: 10},
+			wantQueryType: "range", wantFrom: "now-1m", wantTo: "now", wantInterval: 60000, wantMaxLines: float64(10),
+		},
+		{
+			name: "log range query sends bounds and step", run: logQuery,
+			req:           loki.QueryRequest{Query: logExpr, Start: start, End: end, Step: 5 * time.Minute},
+			wantQueryType: "range", wantFrom: "1000", wantTo: "2000", wantInterval: 300000,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotBody []byte
@@ -249,24 +284,24 @@ func TestQueryType(t *testing.T) {
 
 			client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
 			require.NoError(t, err)
-			if tt.metric {
-				_, err = client.MetricQuery(context.Background(), "loki-uid", tt.req)
-			} else {
-				_, err = client.Query(context.Background(), "loki-uid", tt.req)
-			}
-			require.NoError(t, err)
+			require.NoError(t, tt.run(client, tt.req))
 
 			var payload struct {
 				Queries []map[string]any `json:"queries"`
+				From    string           `json:"from"`
+				To      string           `json:"to"`
 			}
 			require.NoError(t, json.Unmarshal(gotBody, &payload))
 			require.Len(t, payload.Queries, 1)
-			assert.Equal(t, tt.want, payload.Queries[0]["queryType"])
+			q := payload.Queries[0]
+
+			assert.Equal(t, tt.wantQueryType, q["queryType"])
+			assert.Equal(t, tt.wantFrom, payload.From)
+			assert.Equal(t, tt.wantTo, payload.To)
+			assert.InDelta(t, tt.wantInterval, q["intervalMs"], 0)
+			assert.Equal(t, tt.wantMaxLines, q["maxLines"])
 			// Grafana ignores the legacy field, so sending it only misleads.
-			assert.NotContains(t, payload.Queries[0], "instant")
-			if tt.metric {
-				assert.NotContains(t, payload.Queries[0], "maxLines", "line limits do not apply to metric queries")
-			}
+			assert.NotContains(t, q, "instant")
 		})
 	}
 }
