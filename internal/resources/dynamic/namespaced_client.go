@@ -21,6 +21,8 @@ import (
 const defaultMaxConcurrentGetRequests = 10
 
 // NamespacedClient is a dynamic client with a namespace and a discovery registry.
+// It sends requests for cluster-scoped descriptors without the namespace,
+// and it refuses writes to cluster-scoped descriptors.
 type NamespacedClient struct {
 	namespace                string
 	client                   dynamic.Interface
@@ -74,12 +76,12 @@ func (c *NamespacedClient) List(
 	ctx context.Context, desc resources.Descriptor, opts metav1.ListOptions,
 ) (*unstructured.UnstructuredList, error) {
 	if opts.Limit > 0 {
-		res, err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).List(ctx, opts)
+		res, err := c.resource(desc).List(ctx, opts)
 		return res, ParseStatusError(err)
 	}
 
 	pager := pager.New(func(ctx context.Context, opts metav1.ListOptions) (runtime.Object, error) {
-		return c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).List(ctx, opts)
+		return c.resource(desc).List(ctx, opts)
 	})
 
 	res := unstructured.UnstructuredList{
@@ -148,7 +150,7 @@ func (c *NamespacedClient) GetMultiple(
 func (c *NamespacedClient) Get(
 	ctx context.Context, desc resources.Descriptor, name string, opts metav1.GetOptions,
 ) (*unstructured.Unstructured, error) {
-	res, err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).Get(ctx, name, opts)
+	res, err := c.resource(desc).Get(ctx, name, opts)
 	return res, ParseStatusError(err)
 }
 
@@ -156,7 +158,11 @@ func (c *NamespacedClient) Get(
 func (c *NamespacedClient) Create(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions,
 ) (*unstructured.Unstructured, error) {
-	res, err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).Create(ctx, obj, opts)
+	if err := resources.CheckClusterScopedMutation(desc, "create"); err != nil {
+		return nil, err
+	}
+
+	res, err := c.resource(desc).Create(ctx, obj, opts)
 	return res, ParseStatusError(err)
 }
 
@@ -164,7 +170,11 @@ func (c *NamespacedClient) Create(
 func (c *NamespacedClient) Update(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.UpdateOptions,
 ) (*unstructured.Unstructured, error) {
-	res, err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).Update(ctx, obj, opts)
+	if err := resources.CheckClusterScopedMutation(desc, "update"); err != nil {
+		return nil, err
+	}
+
+	res, err := c.resource(desc).Update(ctx, obj, opts)
 	return res, ParseStatusError(err)
 }
 
@@ -172,7 +182,11 @@ func (c *NamespacedClient) Update(
 func (c *NamespacedClient) Delete(
 	ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions,
 ) error {
-	err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).Delete(ctx, name, opts)
+	if err := resources.CheckClusterScopedMutation(desc, "delete"); err != nil {
+		return err
+	}
+
+	err := c.resource(desc).Delete(ctx, name, opts)
 	return ParseStatusError(err)
 }
 
@@ -180,6 +194,22 @@ func (c *NamespacedClient) Delete(
 func (c *NamespacedClient) Apply(
 	ctx context.Context, desc resources.Descriptor, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions,
 ) (*unstructured.Unstructured, error) {
-	res, err := c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).Apply(ctx, name, obj, opts)
+	if err := resources.CheckClusterScopedMutation(desc, "apply"); err != nil {
+		return nil, err
+	}
+
+	res, err := c.resource(desc).Apply(ctx, name, obj, opts)
 	return res, ParseStatusError(err)
+}
+
+// resource returns the dynamic resource interface for desc.
+// Cluster-scoped kinds are served at /apis/<group>/<version>/<plural>,
+// so the namespace is added only for namespaced kinds.
+func (c *NamespacedClient) resource(desc resources.Descriptor) dynamic.ResourceInterface {
+	res := c.client.Resource(desc.GroupVersionResource())
+	if desc.ClusterScoped {
+		return res
+	}
+
+	return res.Namespace(c.namespace)
 }

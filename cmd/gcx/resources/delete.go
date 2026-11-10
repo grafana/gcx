@@ -243,8 +243,16 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 }
 
 func rejectUnsupportedDelete(filters resources.Filters) error {
+	return rejectUnsupportedMutation(filters, "delete")
+}
+
+func rejectUnsupportedEdit(filters resources.Filters) error {
+	return rejectUnsupportedMutation(filters, "edit")
+}
+
+func rejectUnsupportedMutation(filters resources.Filters, operation string) error {
 	for _, filter := range filters {
-		if err := adapter.CheckMutation(filter.Descriptor, "delete"); err != nil {
+		if err := adapter.CheckMutation(filter.Descriptor, operation); err != nil {
 			return err
 		}
 	}

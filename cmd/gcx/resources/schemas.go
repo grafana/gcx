@@ -43,7 +43,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "list-types [RESOURCE_SELECTOR]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "List available Grafana API resource types",
-		Long:  "List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector.",
+		Long:  "List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector. The wide, JSON and YAML outputs show each type's scope: Namespaced or Cluster. Cluster-scoped types are read-only: get and pull work, push, edit and delete are refused.",
 		Example: `
 	gcx resources list-types
 	gcx resources list-types -o wide
@@ -162,6 +162,7 @@ func descriptorToMap(d resources.Descriptor) map[string]any {
 		"kind":     d.Kind,
 		"singular": d.Singular,
 		"plural":   d.Plural,
+		"scope":    d.Scope(),
 	}
 }
 
@@ -184,6 +185,7 @@ func descriptorsToNested(descs resources.Descriptors, schemas map[string]map[str
 			"kind":     d.Kind,
 			"plural":   d.Plural,
 			"singular": d.Singular,
+			"scope":    d.Scope(),
 		}
 
 		if schemas != nil {
@@ -236,7 +238,7 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 
 	var t *style.TableBuilder
 	if c.wide {
-		t = style.NewTable("GROUP", "VERSION", "PLURAL", "SINGULAR", "KIND")
+		t = style.NewTable("GROUP", "VERSION", "PLURAL", "SINGULAR", "KIND", "SCOPE")
 	} else {
 		t = style.NewTable("GROUP", "VERSION", "PLURAL")
 	}
@@ -249,7 +251,8 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 				sanitizeCell(gv.Version, noTruncate),
 				sanitizeCell(r.Plural, noTruncate),
 				sanitizeCell(r.Singular, noTruncate),
-				sanitizeCell(r.Kind, noTruncate))
+				sanitizeCell(r.Kind, noTruncate),
+				r.Scope())
 		} else {
 			t.Row(
 				sanitizeCell(gv.Group, noTruncate),

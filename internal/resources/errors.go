@@ -36,3 +36,27 @@ type DeprecatedResourceError struct {
 func (err DeprecatedResourceError) Error() string {
 	return fmt.Sprintf("apiVersion %q is deprecated; use %q instead", err.Used, err.Alternative)
 }
+
+// ClusterScopedMutationError reports a write to a cluster-scoped kind.
+// gcx reads cluster-scoped kinds but does not write them yet.
+type ClusterScopedMutationError struct {
+	Descriptor Descriptor
+	Operation  string
+}
+
+func (e *ClusterScopedMutationError) Error() string {
+	return fmt.Sprintf(
+		"cannot %s %s: the kind is cluster-scoped, and gcx supports only read operations (get, pull) on cluster-scoped kinds",
+		e.Operation, e.Descriptor.String(),
+	)
+}
+
+// CheckClusterScopedMutation returns a ClusterScopedMutationError when desc is
+// cluster-scoped. It returns nil for namespaced kinds.
+func CheckClusterScopedMutation(desc Descriptor, operation string) error {
+	if !desc.ClusterScoped {
+		return nil
+	}
+
+	return &ClusterScopedMutationError{Descriptor: desc, Operation: operation}
+}

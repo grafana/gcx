@@ -316,10 +316,11 @@ func (r *RegistryIndex) Update(ctx context.Context, groups []*metav1.APIGroup, l
 			)
 
 			descriptors[gv] = append(desc, resources.Descriptor{
-				GroupVersion: gv,
-				Kind:         res.Kind,
-				Plural:       res.Name,
-				Singular:     res.SingularName,
+				GroupVersion:  gv,
+				Kind:          res.Kind,
+				Plural:        res.Name,
+				Singular:      res.SingularName,
+				ClusterScoped: !res.Namespaced,
 			})
 
 			if _, ok := kindNames[res.Kind]; !ok {

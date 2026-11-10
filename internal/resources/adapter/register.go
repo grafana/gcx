@@ -87,8 +87,13 @@ func ExampleForGVK(gvk schema.GroupVersionKind) json.RawMessage {
 }
 
 // CheckMutation applies a registered resource's mutation policy without loading
-// configuration or instantiating its adapter. Unregistered resources are allowed.
+// configuration or instantiating its adapter. It refuses every mutation of a
+// cluster-scoped kind. Other unregistered resources are allowed.
 func CheckMutation(desc resources.Descriptor, operation string) error {
+	if err := resources.CheckClusterScopedMutation(desc, operation); err != nil {
+		return err
+	}
+
 	gvk := resources.NormalizeGVK(desc.GroupVersionKind())
 	for _, reg := range registrations {
 		if reg.GVK == gvk && reg.CheckMutation != nil {

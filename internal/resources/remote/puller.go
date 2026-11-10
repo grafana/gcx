@@ -133,10 +133,15 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	// If no filters are provided, we need to pull all available resources.
 	if filters.IsEmpty() {
 		// When pulling all resources, we need to use preferred versions.
+		// Cluster-scoped kinds are read-only in gcx, so they are pulled only
+		// when a selector names them. A pulled tree must stay pushable.
 		preferred := p.registry.PreferredResources()
 
 		filters = make(resources.Filters, 0, len(preferred))
 		for _, r := range preferred {
+			if r.ClusterScoped {
+				continue
+			}
 			filters = append(filters, resources.Filter{
 				Type:       resources.FilterTypeAll,
 				Descriptor: r,
