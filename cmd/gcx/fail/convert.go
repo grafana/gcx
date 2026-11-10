@@ -1021,6 +1021,17 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 			},
 		}, true
 	}
+	if clusterErr, ok := errors.AsType[*resources.ClusterScopedMutationError](err); ok {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: gcxerrors.SummaryInvalidCommandUsage,
+			Suggestions: []string{
+				"Read the resources instead: gcx resources get " + clusterErr.Descriptor.Plural,
+				"Save the resources to disk: gcx resources pull " + clusterErr.Descriptor.Plural,
+			},
+			ExitCode: new(gcxerrors.ExitUsageError),
+		}, true
+	}
 	invalidSelectorErr := &resources.InvalidSelectorError{}
 	if errors.As(err, invalidSelectorErr) {
 		return &gcxerrors.DetailedError{
