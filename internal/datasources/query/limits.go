@@ -12,9 +12,21 @@ import (
 const (
 	// DefaultLokiLimit is the default result cap for Loki queries when --limit
 	// is not explicitly provided. A smaller value avoids overwhelming output;
-	// use --limit 0 for no cap or --limit N for a custom value.
+	// use --limit 0 for the backend default or --limit N for a custom value.
 	DefaultLokiLimit = 50
+
+	// LokiZeroLimitNotice is the stderr hint for --limit 0. Scripted callers
+	// never read help text, and the backend cap can cut results short silently.
+	LokiZeroLimitNotice = "--limit 0 uses the Loki backend default limit, so results may be incomplete. Use a LogQL metric query for counts."
 )
+
+// ValidateLimit rejects a negative --limit. Zero is valid: gcx sends no cap.
+func ValidateLimit(limit int) error {
+	if limit < 0 {
+		return fmt.Errorf("--limit must be >= 0, got %d", limit)
+	}
+	return nil
+}
 
 // SurfaceRowLimits reports to the user (on stderr, w) when a SQL query's results
 // were capped. It handles two independent truncation sources:
@@ -36,17 +48,20 @@ func SurfaceRowLimits(w io.Writer, resp *querysql.QueryResponse, capped bool, ef
 	}
 }
 
-// SurfaceLogLimit warns when Loki fills the requested limit; the response does
-// not tell us whether more matching lines remain.
+// SurfaceLogLimit hints when a log result may be incomplete. With --limit 0 the
+// backend applies its own cap; a full --limit page may have more lines. The
+// response cannot tell either case from a complete result. Call it only after
+// loki.Client.Query succeeds: Query rejects metric LogQL, where line limits do
+// not apply.
 func SurfaceLogLimit(w io.Writer, resp *loki.QueryResponse, limit int) {
-	if limit <= 0 {
-		return
-	}
 	count := 0
 	for _, stream := range resp.Data.Result {
 		count += len(stream.Values)
 	}
-	if count >= limit {
+	switch {
+	case limit == 0 && count > 0:
+		cmdio.EmitHint(w, LokiZeroLimitNotice, "")
+	case limit > 0 && count >= limit:
 		cmdio.EmitHint(w, fmt.Sprintf("query reached --limit %d; results may be incomplete. Increase --limit to retrieve more log lines", limit), "")
 	}
 }
