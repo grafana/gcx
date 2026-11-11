@@ -78,11 +78,9 @@ On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope 
 
 Looking up your stack's details through the Collector app only needs the Viewer role.
 
-### Grafana Assistant
+`gcx instrumentation clusters list` checks Kubernetes monitoring through the Collector app, so it needs both `grafana-collector-app:read` and `grafana-collector-app:admin`.
 
-{{< admonition type="note" >}}
-`gcx setup status` doesn't currently check Assistant access, so a passing status check doesn't mean Assistant commands work.
-{{< /admonition >}}
+### Grafana Assistant
 
 The Assistant Investigation User role is included in the Editor and Admin basic roles. Viewers don't have it.
 
@@ -220,32 +218,3 @@ To fix an authorization error:
 1. Send the output and the error message to your Grafana administrator. They can grant the missing action, or assign you a role that includes it.
 
 Refer to [roles and permissions](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/) for role assignment guidance.
-
-## Permissions to check instrumentation status
-
-`gcx setup status` and `gcx instrumentation clusters list` check Kubernetes monitoring through the Collector app. To run them, you need both `grafana-collector-app:read` and `grafana-collector-app:admin`.
-
-`gcx setup status` reports `true` or `false` for each product it can check. `false` means `gcx` checked and the product isn't set up.
-
-If `gcx` can't check a product, for example because of a permissions error, the state is **unknown**. Unknown can appear as `unknown` in a text table, or as `enabled: null` in JSON and YAML.
-
-The `fleet-management` row also shows unknown when `gcx` can't read the state of the Collector app, because its status depends on that app.
-
-### Use status checks in scripts and agents
-
-When a check fails, the rest of the status document is still returned, with the same `type`, `schema_version`, and `products` fields. You can parse it as usual and treat `null` values as unknown.
-
-To get the failure details in the output itself, run the command in agent mode or with `--json`. The output then includes an `error` object with these fields:
-
-| Field | Description |
-| --- | --- |
-| `summary` | A short description of the failure. |
-| `exitCode` | The exit code the command returns. |
-| `details`, `suggestions`, `docsLink` | Optional. Present when `gcx` has more to say. |
-
-These options remove the error object from the filtered output, so `gcx` also writes the error text to `stderr`:
-
-- `-o yaml`, and `-o json` outside agent mode.
-- `--jq`.
-- `--json <fields>` when the field list doesn't include `error`.
-- `--json list`.
