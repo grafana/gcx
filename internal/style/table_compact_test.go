@@ -1,20 +1,22 @@
-package style
+package style_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/style"
 )
 
 // TestTableBuilder_CompactStyledHasNoBorders exercises renderStyled directly:
 // tests run without a TTY, so Render always takes the plain path.
 func TestTableBuilder_CompactStyledHasNoBorders(t *testing.T) {
-	tb := NewTable("NAME", "STATUS").Compact()
+	tb := style.NewTable("NAME", "STATUS").Compact()
 	tb.Row("prod-eu", "OK")
 	tb.Row("prod-us", "DEGRADED")
 
 	var buf bytes.Buffer
-	if err := tb.renderStyled(&buf); err != nil {
+	if err := tb.RenderStyled(&buf); err != nil {
 		t.Fatalf("renderStyled() error: %v", err)
 	}
 	out := buf.String()
