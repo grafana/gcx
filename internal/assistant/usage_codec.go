@@ -48,19 +48,112 @@ func (c *UsageTextCodec) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
+	WriteLimitsReached(&out, usage)
 	if usage.Admin != nil {
 		if err := c.writeAdmin(&out, usage.Admin, rows); err != nil {
 			return err
 		}
-	} else {
-		for _, row := range rows {
-			if row.scope != "user" && row.limit > 0 && row.total >= row.limit {
-				fmt.Fprintf(&out, "\nShared %s limit reached. Contact your administrator.\n", strings.TrimSuffix(strings.ToLower(row.name), "s"))
-			}
+		if err := writePendingLimitRequests(&out, usage.LimitRequestGroups); err != nil {
+			return err
 		}
 	}
 	_, err := io.WriteString(dst, out.String())
 	return err
+}
+
+// WriteLimitsReached replaces the "contact your administrator" dead end with
+// what blocks the caller and, when admins accept requests, how to ask. It
+// reports whether it wrote a block.
+func WriteLimitsReached(out io.Writer, usage Usage) bool {
+	mine := usage.MyLimitRequests
+	reached := usage.LimitsReached()
+	for _, limit := range reached {
+		pending := mine.Pending(limit)
+		month, limitValue := usage.Tokens.Month, usage.Tokens.enforcedLimit()
+		if pending != nil {
+			month, limitValue = pending.Period, pending.LimitAtRequest
+		}
+		var headline, detail string
+		switch limit {
+		case LimitActiveUsers:
+			headline = "You can't use Assistant this month."
+			detail = fmt.Sprintf("All %d Assistant seats on this stack are taken. Seats open again on %s.", limitValue, usageResetDate(month))
+		case LimitStackTokens:
+			headline = "This stack has used all its Assistant tokens this month."
+			detail = fmt.Sprintf("The stack's limit is %s tokens. It resets on %s.", compactUsageNumber(limitValue), usageResetDate(month))
+		default:
+			headline = "You've used all your Assistant tokens this month."
+			detail = fmt.Sprintf("Your limit is %s tokens. It resets on %s.", compactUsageNumber(limitValue), usageResetDate(month))
+		}
+		var action string
+		switch {
+		case pending != nil:
+			action = fmt.Sprintf("You asked your admins on %s. You'll get a Grafana notification when they respond.", pending.CreatedAt.UTC().Format("Jan 2"))
+		case mine != nil && mine.RequestsEnabled:
+			action = style.ColorMutedText("Ask your admins:") + " gcx assistant limit-requests create " + limit + " --note \"<why>\""
+		default:
+			action = "Contact your Assistant Admins to raise it."
+		}
+		writeLimitBlock(out, headline, detail, action)
+	}
+	if usage.InvestigationsReached() {
+		writeLimitBlock(out, "This stack has used all its investigations this month.",
+			fmt.Sprintf("The limit is %d investigations. It resets on %s.", usage.Investigations.enforcedLimit(), usageResetDate(usage.Investigations.Month)),
+			"Contact your Assistant Admins to raise it.")
+	}
+	return len(reached) > 0 || usage.InvestigationsReached()
+}
+
+func writeLimitBlock(out io.Writer, headline, detail, action string) {
+	fmt.Fprintln(out, "\n"+style.ColorCell("✗ "+headline, false, true))
+	fmt.Fprintln(out, "  "+detail)
+	fmt.Fprintln(out, "  "+action)
+}
+
+// usageResetDate is the first day of the month after month (YYYY-MM), in UTC.
+func usageResetDate(month string) string {
+	start, err := time.Parse("2006-01", month)
+	if err != nil {
+		return "the first of next month (UTC)"
+	}
+	return start.AddDate(0, 1, 0).Format("Jan 2") + " (UTC)"
+}
+
+func writePendingLimitRequests(out *strings.Builder, groups []LimitRequestGroup) error {
+	if groups == nil {
+		return nil
+	}
+	if len(groups) == 0 {
+		fmt.Fprintln(out, "\nNo pending limit requests.")
+		return nil
+	}
+	fmt.Fprintln(out, "\n"+usageHeading("PENDING LIMIT REQUESTS"))
+	if err := WriteLimitRequestGroups(out, groups); err != nil {
+		return err
+	}
+	fmt.Fprintln(out, style.ColorMutedText("Review requests: gcx assistant limit-requests list"))
+	return nil
+}
+
+// WriteLimitRequestGroups renders a group count line and table, most requests first.
+func WriteLimitRequestGroups(out io.Writer, groups []LimitRequestGroup) error {
+	total := 0
+	for _, group := range groups {
+		total += group.PendingCount
+	}
+	fmt.Fprintln(out, style.ColorMutedText(fmt.Sprintf("%d pending %s in %d %s", total, plural(total, "request"), len(groups), plural(len(groups), "group"))))
+	table := style.NewTable("LIMIT", "SCOPE", "REQUESTS").Compact()
+	for _, group := range groups {
+		table.Row(LimitLabel(group.LimitKey), group.ScopeLabel(), strconv.Itoa(group.PendingCount))
+	}
+	return table.Render(out)
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return noun
+	}
+	return noun + "s"
 }
 
 func usageHeading(text string) string {

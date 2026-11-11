@@ -188,6 +188,7 @@ func (s *streamState) handleStatusFailed(statusUpdate A2AStatusUpdate) {
 	if statusUpdate.Status.Message != nil {
 		s.result.ErrorMessage = ExtractTextFromParts(statusUpdate.Status.Message.Parts)
 	}
+	s.result.LimitReached = isLimitRefusal(statusUpdate.Status.Message)
 	if s.onEvent != nil && (!s.failedStatusEmitted || statusUpdate.Final) {
 		s.onEvent(StreamEvent{
 			Type:      "status",
@@ -373,6 +374,7 @@ func (s *streamState) handleTaskCompleted(task A2ATask) {
 
 func (s *streamState) handleTaskFailed(task A2ATask) {
 	s.result.Failed = true
+	s.result.LimitReached = s.result.LimitReached || isLimitRefusal(task.Status.Message)
 	if s.onEvent != nil && !s.failedStatusEmitted {
 		s.onEvent(StreamEvent{
 			Type:      "status",
@@ -451,6 +453,7 @@ func processA2ASSEStream(ctx context.Context, body io.Reader, timeout int, logge
 				Failed:            true,
 				ErrorMessage:      event.Error.Message,
 				ErrorEventEmitted: errorEventEmitted,
+				LimitReached:      event.Error.Data == limitErrorKind,
 			}
 		}
 

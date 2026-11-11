@@ -239,6 +239,15 @@ type StreamResult struct {
 	ErrorMessage      string
 	Response          string
 	ErrorEventEmitted bool
+	// LimitReached reports that a monthly Assistant limit refused the request.
+	LimitReached bool
+}
+
+// limitErrorKind is the error kind the server gives a monthly limit refusal.
+const limitErrorKind = "ga:resource-limit-exceeded"
+
+func isLimitRefusal(message *A2AMessage) bool {
+	return message != nil && message.Metadata["errorKind"] == limitErrorKind
 }
 
 // TokenRefresher is called before each API request to ensure the token is fresh.

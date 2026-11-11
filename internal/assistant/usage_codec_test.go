@@ -227,19 +227,21 @@ func TestUsageSharedLimitNotice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 			require.NoError(t, (&assistant.UsageTextCodec{}).Encode(&out, assistant.Usage{
-				Tokens:         assistant.MonthlyUsage{Total: tc.total, Limit: 100, Scope: "stack", EffectiveLimit: tc.effective},
-				Investigations: assistant.MonthlyUsage{Total: tc.total, Limit: 100, EffectiveLimit: tc.effective},
+				Tokens:         assistant.MonthlyUsage{Total: tc.total, Limit: 100, Month: "2026-12", Scope: "stack", EffectiveLimit: tc.effective},
+				Investigations: assistant.MonthlyUsage{Total: tc.total, Limit: 100, Month: "2026-12", EffectiveLimit: tc.effective},
 			}))
 			assert.NotContains(t, out.String(), "ORGANIZATION")
 			assert.NotContains(t, out.String(), "SCOPE")
 			assert.NotContains(t, out.String(), "Investigations")
 			assert.NotContains(t, out.String(), "Tokens")
 			if tc.wantNotice {
-				assert.Contains(t, out.String(), "Shared investigation limit reached. Contact your administrator.")
-				assert.Contains(t, out.String(), "Shared token limit reached. Contact your administrator.")
+				// Without limit requests on the stack, there is nothing to run.
+				assert.Contains(t, out.String(), "✗ This stack has used all its investigations this month.\n  The limit is 100 investigations. It resets on Jan 1 (UTC).\n  Contact your Assistant Admins to raise it.")
+				assert.Contains(t, out.String(), "✗ This stack has used all its Assistant tokens this month.\n  The stack's limit is 100 tokens. It resets on Jan 1 (UTC).\n  Contact your Assistant Admins to raise it.")
 			} else {
-				assert.NotContains(t, out.String(), "Contact your administrator")
+				assert.NotContains(t, out.String(), "✗")
 			}
+			assert.NotContains(t, out.String(), "limit-requests create")
 		})
 	}
 }

@@ -90,6 +90,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	cmd.AddCommand(promptCommand(loader))
 	cmd.AddCommand(conversationCommand(loader))
 	cmd.AddCommand(usageCommand(loader))
+	cmd.AddCommand(limitRequestsCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
 	cmd.AddCommand(watcherscmd.Commands(loader))
@@ -255,7 +256,11 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 
 	result := c.ChatWithApproval(ctx, message, streamOpts, em.approvalHandler(logger))
 
-	return em.finish(result, opts.timeout)
+	err = em.finish(result, opts.timeout)
+	if result.Failed && result.LimitReached && em.mode == modeHuman {
+		explainLimit(ctx, errW, configOpts)
+	}
+	return err
 }
 
 // ResolveClientOptions loads the gcx config and returns assistant

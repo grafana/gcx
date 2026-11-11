@@ -43,7 +43,9 @@ func usageCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Get Assistant usage and limits",
 		Long: `Show your Grafana Assistant usage and monthly limits.
 
-Admins also see organization usage and users at or above 80% of their token limit.
+Admins also see organization usage, users at or above 80% of their token limit,
+and pending requests to raise a limit. When a seat, token, or investigation limit
+blocks you, the output names it and the command that asks your admins to raise it.
 JSON groups metrics into yourUsage and orgUsage, with users needing attention
 inside orgUsage.`,
 		Args: cobra.NoArgs,
@@ -74,6 +76,9 @@ inside orgUsage.`,
 				if _, denied := errors.AsType[*assistanthttp.ForbiddenError](err); !denied {
 					return err
 				}
+			}
+			if err := assistant.FetchLimitContext(ctx, client, usage); err != nil {
+				return err
 			}
 			if opts.IO.OutputFormat != "text" {
 				return opts.IO.Encode(cmd.OutOrStdout(), usage.JSONView())
