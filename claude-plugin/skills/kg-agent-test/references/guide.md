@@ -2,7 +2,7 @@
 
 This skill measures what the Knowledge Graph does for an agent working with your Grafana Cloud stack through gcx. You ask questions you know the answers to, each several times with the graph and several times without it, and compare correctness, time and tokens question by question.
 
-It takes one to two hours, mostly unattended, and costs roughly $15 to $45 of model usage for five questions at five runs each. Everything runs on your machine against your stack. Nothing is sent to Grafana unless you choose to share the scorecard at the end.
+It takes one to two hours, mostly unattended. It uses your own agent's model, so what it costs depends on your model and plan: the pilot in Step 3 shows how many tokens a run takes on your stack before you commit to the full set. Everything runs on your machine against your stack. Nothing is sent to Grafana unless you choose to share the scorecard at the end.
 
 In the commands below, `$SKILL` is this skill's folder, `~/.agents/skills/kg-agent-test` after `gcx agent skills install kg-agent-test`. Run them from your own working directory.
 
@@ -24,7 +24,7 @@ Copy the template (`cp $SKILL/questions.example.json my-questions.json`) and fil
 | Incident root cause | An alert fired at `<time>`: what caused it? | The question that matters most. Needs a past incident with a written root cause; delete it if you don't have one |
 | Control | How many `<service>` replicas were available? | A plain telemetry question. The graph shouldn't help here, and if it makes things worse you want to know |
 
-At five runs per question per side that's 50 runs: roughly $8 to $15 with a Sonnet-class model, or $15 to $40 with an Opus-class one. The incident question is the expensive one.
+At five runs per question per side that's 50 runs. The incident question uses the most tokens.
 
 The template also has optional extras (callers, dependencies, a cache blast radius, a labelled namespace lookup, nodes, failing dependencies), marked `"optional": true`. Run them with `--all` if you want more coverage. Both sides usually answer these correctly, so they mostly show speed and can't separate the two on accuracy. In our tests, 8 of 12 questions were answered correctly on every run by both sides; a set made mostly of those says little.
 
@@ -51,7 +51,7 @@ The question we most want you to try is the hardest one: an alert from a past in
 - Pick an incident with a written root cause, such as a post-incident review, where the cause sat somewhere other than the service that alerted.
 - Pin the time window to the incident, and take the answer from the review: the root cause, the mechanism that connected it to the symptom, and how it reached the alert. Never take it from the agent or the graph.
 - `block_commands` stops both configurations reading the incident itself (`gcx irm`), so the agent has to work it out.
-- Incident questions cost more per run (roughly $1 to $3) and vary more.
+- Incident questions take several times the tokens of other questions, and vary more.
 
 Please share these results especially. They tell us most about where the graph helps when it matters.
 
@@ -83,7 +83,7 @@ python3 $SKILL/kgkit/run.py my-questions.json --out results/pilot/ --only <one q
 python3 $SKILL/kgkit/run.py my-questions.json --out results/
 ```
 
-The dry run prints the exact prompts. The pilot runs one question once on each side, so a setup problem costs one run rather than fifty; score it before the full run.
+The dry run prints the exact prompts and the number of runs. The pilot runs one question once on each side, so a setup problem costs one run rather than fifty. Score it before the full run: its `report.md` shows each run's tokens, so you can estimate the full set (runs planned × tokens per run) and judge what that means on your plan.
 
 Both configurations use the same question, window and notes, with no line about sources. The with-graph prompt adds one line saying the graph is available through `gcx kg` and to start with it (`--graph-prompt first`, the default). That measures what the graph adds when the agent uses it. Two other settings answer different questions:
 
@@ -98,11 +98,13 @@ What the runner does for every run:
 - Lets the agent run only gcx, through a small wrapper (`$SKILL/kgkit/bin/gcx`) that logs every command.
 - Keeps the test read-only in both configurations. The wrapper refuses any gcx command that would change your stack or start something on it (create, update, delete, apply, push, silence, resolve, run, snapshot and the like), plus `gcx api` and `gcx assistant`, which can do either. It uses gcx's own command list to tell a command's verb from the arguments after it, so a service called `api` or `test` isn't mistaken for one.
 - In the without-graph configuration, also refuses `gcx kg`, queries on the graph's `asserts:` recording rules, the Knowledge Graph datasource, and the graph's resource types under `gcx resources`. Telemetry tools stay available in both, including `gcx appo11y services map`, which reads Tempo's service-graph metrics rather than the graph.
-- Alternates which configuration goes first, and caps each run's spend (`--budget-usd`, default $3).
+- Alternates which configuration goes first, and stops any run that goes past `--budget-usd` (default 3). Claude Code works that figure out from list prices, so it's a cap on runaway runs, not your bill.
 - Runs one at a time and waits 15 seconds after each (`--parallel 1`, `--pause 15`), so the test adds about one agent's worth of queries to your stack. Keep it that way on a production stack.
 - Records a run whose agent process fails or times out as `failed`, so a wrong gcx version or a bad flag shows up instead of producing empty results.
 
 Five runs per question per side is the default (`--reps`). With three, one odd run moves a question's score by a third.
+
+The default model is `claude-opus-5-5` (`--model`). Stronger models make more use of the graph, so testing with a weaker one understates what it adds. Use a full model ID rather than an alias such as `opus`, so the pilot and the full run can't end up on different models. To match the agent you actually use, pass its model instead.
 
 ## Step 4: Score
 
@@ -131,7 +133,7 @@ This reads every run's full transcript and the wrapper log, then:
 ```bash
 python3 $SKILL/kgkit/share.py results/scorecard.json --questions my-questions.json --dry-run
 python3 $SKILL/kgkit/share.py results/scorecard.json --questions my-questions.json \
-  --agent "Claude Code 2.1, sonnet" --contact you@example.com --comments "what surprised you"
+  --agent "Claude Code 2.1, claude-opus-5-5" --contact you@example.com --comments "what surprised you"
 ```
 
 The script checks the scorecard holds only the fields `score.py` writes, checks that no service name or alias from your questions file appears anywhere in what it would send (including your comments), prints the exact payload, and sends only after you type `yes`. Contact and comments are optional; tell us especially if the graph didn't help. `--dry-run` never sends. An agent can pass `--yes` once it has shown you the dry-run output and you've agreed.

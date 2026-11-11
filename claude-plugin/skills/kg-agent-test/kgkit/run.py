@@ -7,7 +7,7 @@ MCP servers, CLAUDE.md or memory, and can run nothing except gcx (through the
 skill's logging wrapper) and read the files gcx writes into that directory.
 
 usage:
-  python3 kgkit/run.py questions.json --out results/ [--reps 5] [--model sonnet]
+  python3 kgkit/run.py questions.json --out results/ [--reps 5] [--model claude-opus-5-5]
                        [--effort high] [--parallel 1] [--pause 15] [--budget-usd 3] [--only Q1,Q2]
                        [--graph-prompt first|available|none]
                        [--configs with-graph,without-graph] [--dry-run]
@@ -148,7 +148,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--reps", type=int, default=5,
                     help="runs per question per configuration; with 3, one odd run moves a question's score by a third")
-    ap.add_argument("--model", default="sonnet")
+    ap.add_argument("--model", default="claude-opus-5-5",
+                    help="a full model ID, so the pilot and the full run use the same model; stronger models "
+                         "make more use of the graph, so a weaker one understates what it adds")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--parallel", type=int, default=1,
                     help="runs at a time; keep at 1 on a production stack so the test doesn't add noticeable query load")

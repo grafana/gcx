@@ -43,9 +43,11 @@ directory, so their questions and results stay there.
 - **Don't send anything without an explicit yes.** Sharing is optional. Show the
   user the exact payload first (`share.py --dry-run`), and only then run it with
   `--yes` if they say so.
-- **Tell the user what the runs will spend before starting.** The dry run
-  prints the run count; budget roughly $0.15 to $0.40 of model usage per run,
-  more for incident questions.
+- **Don't quote a price.** What a run costs depends on the user's model and
+  plan (a Claude subscription and API billing differ), so never estimate it in
+  dollars. Before running, tell them the number of runs and the per-run cap
+  (`--budget-usd`). After the pilot, estimate the full run in tokens from the
+  pilot's own usage, and let them judge what that means on their plan.
 
 ## Steps
 
@@ -70,9 +72,12 @@ directory, so their questions and results stay there.
    services but no relationships, questions from it test the gap: keep them
    only if the user wants that measured, and say so in the summary.
 5. **Dry run, then a pilot, then run.** `python3 $SKILL/kgkit/run.py my-questions.json --out results/ --dry-run`
-   shows the prompts and run count; get the user's OK on spend. Then run one
-   question once on each side (`--only <id> --reps 1`) and score it, to catch
-   setup problems cheaply. Then run the full set without `--only`.
+   shows the prompts and run count. Then, with the user's OK, run one question
+   once on each side (`--out results/pilot/ --only <id> --reps 1`) and score it,
+   to catch setup problems cheaply. From the pilot's `report.md`, add up each
+   run's output, fresh input and cache-read tokens, and tell the user roughly
+   how many tokens the full set would use (runs planned × tokens per pilot run).
+   Harder questions use more. Get their OK, then run the full set without `--only`.
 6. **Score and summarise.** `python3 $SKILL/kgkit/score.py my-questions.json --out results/`.
    Show the user `results/summary.md`: a headline, a summary table for the
    questions where the agent used the graph, one row per question with each
