@@ -89,6 +89,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	loader.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(loader))
 	cmd.AddCommand(conversationCommand(loader))
+	cmd.AddCommand(usageCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
 	cmd.AddCommand(watcherscmd.Commands(loader))
