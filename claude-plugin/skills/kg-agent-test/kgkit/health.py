@@ -13,6 +13,11 @@ with relationships. Writes results/health.json and prints a rating:
   red    a question's service is missing from the graph or has no
          relationships, or the stack check failed: fix that first, or pick
          another question (a test against a broken map measures the break)
+
+Optional: add "graph_groups" to the questions file to check connectivity per
+business unit, platform or team, e.g.
+  "graph_groups": {"property": "<label>", "env": "production", "values": ["<a>", "<b>"]}
+Two queries per value, so keep the list short on a production stack.
 """
 import argparse, json, os, subprocess, sys
 
@@ -82,6 +87,46 @@ def graph_neighbours(name, env, window, context):
             n = len(body.get("rows", [])) if key == "rows" else len(body.get("edges", []))
             return n, " ".join(sub)
     return None, None
+
+
+def names_in(body):
+    """Collect entity names from a graph query body, whichever shape gcx returns."""
+    found = set()
+
+    def walk(x):
+        if isinstance(x, dict):
+            if isinstance(x.get("name"), str):
+                found.add(x["name"])
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(body.get("rows") if "rows" in body else body.get("entities", body))
+    return found
+
+
+def group_connectivity(groups, window, context):
+    """For each value of a grouping property (a business unit, platform or team label), count the
+    services the graph holds and how many of them have any relationship. One group can be well
+    connected while another has none, and questions drawn from the second test the gap, not the graph."""
+    prop, env = groups["property"], groups.get("env")
+    env_filter = f', env:"{env}"' if env else ""
+    out = []
+    for value in groups["values"]:
+        match = f'(s:Service {{{prop}:"{value}"{env_filter}}})'
+        counts = []
+        for q in (f"MATCH {match} RETURN s LIMIT 2000", f"MATCH {match}-[r]-(d) RETURN s LIMIT 2000"):
+            n = None
+            for sub, key in ((["kg", "graph", "query"], "rows"), (["kg", "entities", "query"], "entities")):
+                code, text = gcx(sub + [q, "--from", window["from"], "--to", window["to"], "-o", "json"], context)
+                body = first_json(text, key)
+                if code == 0 and body is not None:
+                    n = len(names_in(body))
+                    break
+            counts.append(n)
+        out.append({"property": prop, "value": value, "env": env, "services": counts[0], "connected": counts[1]})
+    return out
 
 
 def main():
@@ -159,8 +204,19 @@ def main():
         summary_bits.append(f"{r['service']} ({r['env']}): {r['graph_edges_in_env']} relationships in the graph"
                             + (f", {len(r['warnings'])} warning(s)" if r["warnings"] else "")
                             + (f", {len(r['failures'])} failure(s)" if r["failures"] else "") + ".")
+    groups = []
+    if spec.get("graph_groups"):
+        groups = group_connectivity(spec["graph_groups"], window, ctx)
+        for g in groups:
+            if g["services"] is None:
+                worse("amber")
+                notes.append(f"Couldn't count services for {g['property']}={g['value']}.")
+            elif g["services"] and not g["connected"]:
+                worse("amber")
+                notes.append(f"{g['property']}={g['value']}: {g['services']} services in the graph, none with relationships. "
+                             "Questions from this group test the gap, not the graph; label them as such.")
     result = {"rating": rating, "summary": " ".join(summary_bits), "notes": notes,
-              "stack_checks": stack.get("checks"), "services": per_service}
+              "stack_checks": stack.get("checks"), "services": per_service, "groups": groups}
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "health.json"), "w") as fh:
         json.dump(result, fh, indent=1)
@@ -171,6 +227,8 @@ def main():
     for r in per_service:
         for w in r["warnings"] + r["failures"]:
             print(f" - {r['service']} ({r['env']}): {w}")
+    for g in groups:
+        print(f" - {g['property']}={g['value']}: {g['connected']} of {g['services']} services have relationships")
     return 0 if rating != "red" else 1
 
 

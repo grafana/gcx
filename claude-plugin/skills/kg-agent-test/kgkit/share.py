@@ -29,14 +29,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Exactly the fields score.py writes. Anything else in the file stops the send.
 TOP_LEVEL = {
     "kit_version": "str", "agent": "str", "claude_version": "str", "model": "str",
-    "effort": "str", "gcx_version": "str", "graph_health": "str",
+    "effort": "str", "gcx_version": "str", "graph_prompt": "str", "graph_health": "str",
     "runs_recorded": "num", "runs_discarded_for_leakage": "num",
-    "questions": "list", "questions_won_on_cost_and_time": "num",
+    "questions": "list", "questions_graph_used": "num", "questions_faster_with_graph": "num",
     "questions_compared": "num", "comments": "str",
 }
 CONFIGS = ("without-graph", "with-graph")
-PER_CONFIG = {"runs", "correct", "partly", "wrong", "no_answer",
-              "median_cost_usd", "median_seconds", "median_gcx_calls"}
+PER_CONFIG = {"runs", "correct", "partly", "wrong", "no_answer", "failed",
+              "median_seconds", "median_output_tokens", "median_fresh_input_tokens",
+              "median_gcx_calls", "median_graph_calls"}
 KNOWN_TYPES = {"callers", "dependencies", "blast-radius", "finding-the-right-system", "control"}
 HEALTH = {"green", "amber", "red", "not-checked"}
 # Version and model strings are short and made of these characters only.
