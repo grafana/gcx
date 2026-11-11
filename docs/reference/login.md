@@ -299,9 +299,7 @@ that do not consistently honour the configured organisation.
 
 `gcx cloud` commands (stack management), `gcx k6` with a service account
 token, and `gcx sm` when it falls back to the direct Synthetic Monitoring API
-need a Grafana Cloud platform credential in addition to Grafana instance auth.
-`gcx irm`, `gcx slo`, and `gcx fleet` go through their plugins on the stack and
-don't use it. A
+need a Grafana Cloud platform credential in addition to Grafana instance auth. A
 [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/)
 has the widest compatibility and is recommended for automation. Direct Cloud
 OAuth is available interactively but remains experimental, and some Cloud
