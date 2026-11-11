@@ -17,6 +17,13 @@ type UsageMetric struct {
 // PersonalUsageView contains only metrics scoped to the current user.
 type PersonalUsageView struct {
 	Metrics map[string]UsageMetric `json:"metrics"`
+	// LimitsReached names the limit keys blocking the caller that an admin
+	// may raise; ask with gcx assistant limit-requests create <limit>.
+	LimitsReached []string `json:"limitsReached,omitempty"`
+	// PendingLimitRequests are the caller's requests still waiting on an admin.
+	PendingLimitRequests []LimitRequest `json:"pendingLimitRequests,omitempty"`
+	// LimitRequestsEnabled is omitted when the stack does not serve limit requests.
+	LimitRequestsEnabled *bool `json:"limitRequestsEnabled,omitempty"`
 }
 
 // OrganizationUsageView contains shared metrics and users needing attention.
@@ -24,6 +31,7 @@ type OrganizationUsageView struct {
 	Metrics               map[string]UsageMetric `json:"metrics"`
 	UsersNeedingAttention []UsageMember          `json:"usersNeedingAttention"`
 	TeamDataPartial       bool                   `json:"teamDataPartial,omitempty"`
+	PendingLimitRequests  []LimitRequestGroup    `json:"pendingLimitRequests,omitempty"`
 }
 
 // UsageView mirrors the personal and organization sections of the terminal view.
@@ -36,7 +44,11 @@ type UsageView struct {
 // every caller; only the users-needing-attention list requires administrator
 // access, and it is null when that data is unavailable.
 func (usage Usage) JSONView() UsageView {
-	view := UsageView{YourUsage: PersonalUsageView{Metrics: make(map[string]UsageMetric)}}
+	view := UsageView{YourUsage: PersonalUsageView{Metrics: make(map[string]UsageMetric), LimitsReached: usage.LimitsReached()}}
+	if mine := usage.MyLimitRequests; mine != nil {
+		view.YourUsage.PendingLimitRequests = mine.Requests
+		view.YourUsage.LimitRequestsEnabled = &mine.RequestsEnabled
+	}
 	org := &OrganizationUsageView{Metrics: make(map[string]UsageMetric)}
 	for _, row := range usageSummaryRows(usage) {
 		key := strings.ToLower(row.name)
@@ -50,6 +62,7 @@ func (usage Usage) JSONView() UsageView {
 	if usage.Admin != nil {
 		org.UsersNeedingAttention = usage.Admin.UsersNeedingAttention()
 		org.TeamDataPartial = usage.Admin.TeamDataPartial
+		org.PendingLimitRequests = usage.LimitRequestGroups
 	}
 	if usage.Admin != nil || len(org.Metrics) > 0 {
 		view.OrgUsage = org
@@ -82,6 +95,9 @@ func usageSummaryRows(usage Usage) []usageSummaryRow {
 			scope = counter.fallbackScope
 		}
 		rows = append(rows, usageSummaryRow{counter.name, scope, counter.usage.Month, counter.usage.Total, limit})
+	}
+	if seats := usage.Seats; seats != nil {
+		rows = append(rows, usageSummaryRow{"Seats", "stack", seats.Month, seats.Active, seats.Limit})
 	}
 	if admin := usage.Admin; admin != nil {
 		// Keep the caller endpoint's enforced cap when it reports this same bucket.

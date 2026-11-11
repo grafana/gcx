@@ -52,8 +52,10 @@ func TestUsageCommand(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
-				assert.Empty(t, r.URL.RawQuery)
 				path := strings.TrimPrefix(r.URL.Path, "/api/plugins/grafana-assistant-app/resources/api/v1/usage/")
+				if path != r.URL.Path {
+					assert.Empty(t, r.URL.RawQuery)
+				}
 				mu.Lock()
 				requests[path]++
 				mu.Unlock()

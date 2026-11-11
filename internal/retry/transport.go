@@ -1,7 +1,9 @@
 package retry
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -173,9 +175,10 @@ func (t *Transport) shouldRetry(req *http.Request, resp *http.Response, err erro
 		return isTransientConnectionError(err)
 	}
 
-	// 429 Too Many Requests: always retry regardless of method.
+	// 429 Too Many Requests: retry regardless of method, unless the server
+	// says retrying cannot help, as for a monthly usage limit.
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return true
+		return !declinesRetry(resp)
 	}
 
 	// 502/503/504: only retry idempotent methods.
@@ -280,6 +283,23 @@ func isTransientConnectionError(err error) bool {
 	}
 
 	return false
+}
+
+// declinesRetry reports whether a JSON error body sets "retryable": false.
+// It reads at most 64KB and leaves the whole body readable for the caller.
+func declinesRetry(resp *http.Response) bool {
+	if resp.Body == nil || !strings.Contains(resp.Header.Get("Content-Type"), "json") {
+		return false
+	}
+	head, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+	var body struct {
+		Retryable *bool `json:"retryable"`
+	}
+	return json.Unmarshal(head, &body) == nil && body.Retryable != nil && !*body.Retryable
 }
 
 // drainAndClose reads up to 4KB from the body and closes it, allowing the

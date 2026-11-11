@@ -43,6 +43,7 @@ type AdminUsage struct {
 	ThisMonth                UsageTimeRange   `json:"thisMonth"`
 	StackUsedThisMonthTokens int64            `json:"stackUsedThisMonthTokens"`
 	Members                  []UsageMember    `json:"members"`
+	Teams                    []UsageTeam      `json:"teams"`
 	StackTotalLimitMtok      int64            `json:"stackTotalLimitMtok,omitempty"`
 	DefaultLimits            map[string]int64 `json:"defaultLimits"`
 	TeamDataPartial          bool             `json:"teamDataPartial,omitempty"`

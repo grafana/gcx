@@ -23,6 +23,8 @@
   "gcx assistant investigations pause",
   "gcx assistant investigations resume",
   "gcx assistant investigations share",
+  "gcx assistant limit-requests dismiss",
+  "gcx assistant limit-requests raise",
   "gcx assistant prompt",
   "gcx assistant watchers archive",
   "gcx assistant watchers pause",

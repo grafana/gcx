@@ -123,6 +123,46 @@ func TestTransport_429WithoutRetryAfter(t *testing.T) {
 	assert.Equal(t, int32(3), attempts.Load())
 }
 
+func TestTransport_429RetryableField(t *testing.T) {
+	limitBody := `{"name":"RESOURCE_LIMIT_EXCEEDED","message":"Monthly investigation limit reached","retryable":false,"details":{"limit":{"key":"investigations"}}}` + strings.Repeat(" ", 70<<10)
+	for _, tc := range []struct {
+		name, contentType, body string
+		wantAttempts            int32
+	}{
+		{"retryable false stops", "application/json; charset=utf-8", limitBody, 1},
+		{"retryable true retries", "application/json", `{"retryable":true}`, 2},
+		{"no retryable field retries", "application/json", `{"message":"slow down"}`, 2},
+		{"non-JSON body retries", "text/plain", `{"retryable":false}`, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if attempts.Add(1) == 1 {
+					w.Header().Set("Content-Type", tc.contentType)
+					w.WriteHeader(http.StatusTooManyRequests)
+					_, _ = io.WriteString(w, tc.body)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+			client := &http.Client{Transport: &retry.Transport{Base: http.DefaultTransport, MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond}}
+
+			resp, err := client.Do(newPostRequest(t, srv.URL, strings.NewReader(`{}`)))
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.wantAttempts, attempts.Load())
+			if tc.wantAttempts == 1 {
+				assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+				assert.Equal(t, tc.body, string(body), "the caller reads the whole error body")
+			}
+		})
+	}
+}
+
 func TestTransport_TransientServerError(t *testing.T) {
 	for _, code := range []int{502, 503, 504} {
 		t.Run(http.StatusText(code), func(t *testing.T) {
