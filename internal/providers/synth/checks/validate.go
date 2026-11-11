@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -69,13 +70,13 @@ func AllProbesOffline(probeNames []string, onlineMap map[string]bool) bool {
 // Only validates checks of type "http"; all other types return nil immediately.
 // Returns nil on success (2xx/3xx/4xx responses are acceptable — only 5xx and
 // connection errors are reported). This is advisory — callers should warn, not fail.
-func ValidateHTTPTarget(checkType, target string, timeout time.Duration) error {
+func ValidateHTTPTarget(ctx context.Context, checkType, target string, timeout time.Duration) error {
 	if checkType != "http" {
 		return nil
 	}
 
 	// No retry: this is an advisory reachability probe.
-	client := httputils.NewClient(httputils.ClientOpts{Timeout: timeout, DisableRetry: true})
+	client := httputils.NewClient(ctx, httputils.ClientOpts{Timeout: timeout, DisableRetry: true})
 	resp, err := client.Head(target) //nolint:noctx // advisory validation, timeout is set on the client
 	if err != nil {
 		return fmt.Errorf("target %q is unreachable: %w", target, err)

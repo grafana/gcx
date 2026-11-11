@@ -105,7 +105,7 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 		return 0, err
 	}
 
-	client, err := newBootdataHTTPClient(cfg)
+	client, err := newBootdataHTTPClient(ctx, cfg)
 	if err != nil {
 		return 0, err
 	}
@@ -166,7 +166,7 @@ func buildBootdataURL(server string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func newBootdataHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
+func newBootdataHTTPClient(ctx context.Context, cfg GrafanaConfig) (*http.Client, error) {
 	// No retry: discovery is optional (callers fall back to the org
 	// namespace) and runs on most commands, so it must fail fast.
 	opts := httputils.ClientOpts{Timeout: 5 * time.Second, DisableRetry: true}
@@ -178,5 +178,5 @@ func newBootdataHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
 		opts.TLSConfig = tlsCfg
 	}
 
-	return httputils.NewClient(opts), nil
+	return httputils.NewClient(ctx, opts), nil
 }

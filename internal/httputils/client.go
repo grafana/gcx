@@ -38,7 +38,12 @@ type ClientOpts struct {
 
 // NewClient returns a configured *http.Client.
 // Middlewares are applied in order, wrapping the base transport.
-func NewClient(opts ClientOpts) *http.Client {
+//
+// Reads context for configuration:
+//   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware as the
+//     innermost layer, ahead of opts.Middlewares, for full request/response body
+//     dumps (includes raw credentials — see --insecure-log-http-payload).
+func NewClient(ctx context.Context, opts ClientOpts) *http.Client {
 	timeout := opts.Timeout
 	if timeout == 0 {
 		timeout = 60 * time.Second
@@ -46,6 +51,11 @@ func NewClient(opts ClientOpts) *http.Client {
 	middlewares := opts.Middlewares
 	if middlewares == nil {
 		middlewares = []Middleware{LoggingMiddleware}
+	}
+	if PayloadLogging(ctx) {
+		// The first middleware sits closest to the base transport, so the dump
+		// runs last and shows every header that reaches the wire.
+		middlewares = append([]Middleware{RequestResponseLoggingMiddleware}, middlewares...)
 	}
 
 	rt := WireTransport(NewTransport(opts.TLSConfig))
@@ -77,13 +87,7 @@ func NewDefaultClient(ctx context.Context) *http.Client {
 // *tls.Config for mTLS or custom CA scenarios. When tlsConfig is nil it
 // behaves identically to NewDefaultClient.
 func NewDefaultClientWithTLS(ctx context.Context, tlsConfig *tls.Config) *http.Client {
-	opts := ClientOpts{TLSConfig: tlsConfig}
-	if PayloadLogging(ctx) {
-		// NewClient applies the first middleware closest to the base transport,
-		// so the dump runs last and shows every header that reaches the wire.
-		opts.Middlewares = []Middleware{RequestResponseLoggingMiddleware, LoggingMiddleware}
-	}
-	return NewClient(opts)
+	return NewClient(ctx, ClientOpts{TLSConfig: tlsConfig})
 }
 
 // NewTransport returns an *http.Transport with sensible defaults.

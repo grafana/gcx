@@ -37,7 +37,7 @@ func TestListOrgs(t *testing.T) {
 				_, _ = fmt.Fprint(w, tc.body)
 			}))
 			defer srv.Close()
-			client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+			client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "test-token")
 			require.NoError(t, err)
 			got, err := client.ListOrgs(context.Background())
 			if tc.fail {

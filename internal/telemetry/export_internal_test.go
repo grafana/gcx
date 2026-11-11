@@ -47,7 +47,7 @@ func TestExportPostsJSONToEndpointOverride(t *testing.T) {
 	t.Setenv(envEndpoint, server.URL+"/gcx-usage-report")
 
 	event := testEvent()
-	Export(event)
+	Export(t.Context(), event)
 
 	select {
 	case r := <-requests:
@@ -95,7 +95,7 @@ func TestExportCarriesErrorSignalAndAuthFields(t *testing.T) {
 	event.HTTPStatus = 403
 	event.K8sReason = "NotFound"
 	event.GrafanaAuthMethod = "token"
-	Export(event)
+	Export(t.Context(), event)
 
 	select {
 	case body := <-bodies:
@@ -125,7 +125,7 @@ func TestExportCarriesParseErrorFields(t *testing.T) {
 	event.ParseErrorKind = "unknown_command"
 	event.ParseErrorToken = "<redacted>"
 	event.ParseErrorDistance = -1
-	Export(event)
+	Export(t.Context(), event)
 
 	select {
 	case body := <-bodies:
@@ -145,13 +145,13 @@ func TestExportSwallowsFailures(t *testing.T) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	t.Setenv(envEndpoint, server.URL)
-	Export(testEvent())
+	Export(t.Context(), testEvent())
 
 	server.Close()
-	Export(testEvent())
+	Export(t.Context(), testEvent())
 
 	t.Setenv(envEndpoint, "://not a url")
-	Export(testEvent())
+	Export(t.Context(), testEvent())
 }
 
 // A retryable failure (503) must produce exactly one request: the export runs
@@ -166,7 +166,7 @@ func TestExportMakesSingleAttempt(t *testing.T) {
 	defer server.Close()
 	t.Setenv(envEndpoint, server.URL)
 
-	Export(testEvent())
+	Export(t.Context(), testEvent())
 
 	assert.EqualValues(t, 1, attempts.Load())
 }
@@ -186,7 +186,7 @@ func TestExportReturnsPromptlyWhenReceiverHangs(t *testing.T) {
 	t.Setenv(envEndpoint, server.URL)
 
 	start := time.Now()
-	Export(testEvent())
+	Export(t.Context(), testEvent())
 	// Generous slack over exportTimeout to avoid flakes on loaded machines.
 	assert.Less(t, time.Since(start), 3*exportTimeout)
 }
