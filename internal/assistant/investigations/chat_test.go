@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/investigations"
@@ -18,6 +19,10 @@ import (
 func TestGetChatThread(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
+		if strings.HasSuffix(r.URL.Path, "/chats/chat-1") {
+			writeJSON(w, map[string]any{"data": map[string]any{"id": "chat-1", "engine": "legacy"}})
+			return
+		}
 		assert.Contains(t, r.URL.Path, "/chats/chat-1/all-messages")
 		writeJSON(w, map[string]any{
 			"data": map[string]any{

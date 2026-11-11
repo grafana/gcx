@@ -4,6 +4,11 @@
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its
   `--share-link` URL now opens an instant query in Explore too. (#1785)
+- `gcx logs query` and `gcx datasources loki query` now reject a negative
+  `--limit`, as generic `gcx datasources query` already did. A negative value
+  used to run with Loki's default line limit and exit 0. `--limit 0` still
+  sends no limit, so Loki's default line limit applies. The help now says so,
+  and a hint on stderr says that the results may be incomplete. (#1404)
 - Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
   evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
   dropped both fields without an error, so a `sequential` rule was created as
