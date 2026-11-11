@@ -81,7 +81,7 @@ Looking up your stack's details through the Collector app only needs the Viewer 
 ### Grafana Assistant
 
 {{< admonition type="note" >}}
-`gcx setup status` doesn't check Assistant access, so a passing status check doesn't mean Assistant commands work.
+`gcx setup status` doesn't currently check Assistant access, so a passing status check doesn't mean Assistant commands work.
 {{< /admonition >}}
 
 The Assistant Investigation User role is included in the Editor and Admin basic roles. Viewers don't have it.
