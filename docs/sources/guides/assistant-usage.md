@@ -13,57 +13,111 @@ weight: 110
 
 # Check Assistant usage and limits
 
-Use your configured Grafana Cloud context to read a current usage snapshot:
+Use `gcx assistant usage get` to check how much of your monthly Grafana Assistant allowance you've used. Administrators also see shared usage for the stack and the users who are close to their token limit.
+
+## Before you begin
+
+- [Configure a gcx context](../../configuration/) for a Grafana Cloud stack with Grafana Assistant enabled.
+- To see organization usage, make sure your identity has the `grafana-assistant-app.usage:read` permission.
+
+The command uses your selected context. Add `--context CONTEXT` to select another context.
+
+## View your usage
+
+To view your usage, run:
 
 ```shell
 gcx assistant usage get
 ```
 
-`YOUR USAGE` appears first. Capped counters show compact counts, a bar, the percentage used, and the remaining allowance. Limits are sorted by percentage used, with uncapped counters last. Rows have uniform text styling. Interactive terminals use blue bars, amber at 80%, and red at the limit. Piped output and `--no-color` use ASCII bars. Percentages above 100% remain visible while the bar stays full.
+The `YOUR USAGE` section shows only your personal counters:
 
-Your usage includes only personal counters: prompts, tokens when the server reports your own token usage, and investigations only if the server explicitly reports them for you. There is no scope column. Investigations currently share a stack-wide cap and appear under **Organization** for admins. Other users see a short notice when a shared limit is reached, without shared counters being presented as their own usage. When the token endpoint reports a shared bucket instead of your own usage, the view does not invent a personal token count.
+- Prompts.
+- Tokens, when Grafana reports your own token usage. If your token limit belongs to a shared bucket, no personal token count appears.
+- Investigations, only when Grafana reports them for you. Investigations currently share a stack-wide limit, so they usually appear in the organization section instead.
 
-## Automatic administrator view
+For each counter with a limit, the output shows the count, a usage bar, the percentage used, and the remaining allowance. Counters are sorted by percentage used, and counters without a limit appear last. Usage above 100% shows the actual percentage, and the bar stays full.
 
-When your identity has `grafana-assistant-app.usage:read`, the same command also shows an `ORGANIZATION` section for the **selected stack**, including its authoritative token usage and cap, shared investigations, and any reported service-account pool usage. This is not a total across all stacks in the organization. Each shared bucket appears once, under **Organization**.
+In an interactive terminal, bars are blue, turn amber at 80%, and turn red at the limit. When you pipe the output or use `--no-color`, bars use ASCII characters.
 
-The attention list shows only users at or above **80% of their effective per-user token cap**, sorted by percentage used. Users who have reached their limit appear first. Healthy users, uncapped users, and individual service accounts are omitted. Service accounts share a pool, so their individual usage is not compared against that pool's cap. A quiet stack gets a short message that no users are near their reported cap, rather than a leaderboard.
+If you don't have administrator access and a shared limit is reached, a short notice appears. Shared counters aren't shown as your own usage.
 
-By default, the text list shows at most 10 users and reports how many need attention in total. To display all users needing attention:
+### View organization usage
+
+If your identity has the `grafana-assistant-app.usage:read` permission, the command also shows an `ORGANIZATION` section for the selected stack. This section covers only the selected stack, not every stack in the organization. It includes:
+
+- Stack token usage and its limit.
+- Shared investigations.
+- Service account token pool usage, when reported.
+
+Each shared counter appears once, in this section.
+
+If you don't have the right permissions, the command shows only your usage. Other errors, such as authentication failures, unavailable endpoints, or invalid counters, make the command fail instead of reporting missing values as zero.
+
+### Identify users who need attention
+
+Below the counters, a list shows the users who need attention. These are users at or above 80% of their effective per-user token limit, sorted by percentage used, with users who have reached their limit first. 
+
+The list leaves out:
+
+- Users below 80% of their limit.
+- Users without a limit.
+- Individual service accounts. Service accounts share a pool, so their individual usage isn't compared against the pool's limit.
+
+If no users are close to their limit, a short message says so.
+
+By default, the list shows up to 10 users and reports the total number who need attention. To show all of them, run:
 
 ```shell
 gcx assistant usage get --top 0
 ```
 
-Review per-user limits in Grafana Assistant's **Usage** page. Incomplete team information is flagged because team-derived limits may be incomplete.
-
-An admin endpoint permission denial (403) produces just your usage. JSON omits `orgUsage` when admin access is unavailable. Other errors, including authentication failures, unavailable endpoints, and malformed counters, fail the command instead of displaying missing data as zero.
-
-## Scope and reporting details
-
-Periods are calendar months in UTC. Investigation bars use `effectiveLimit` when available, otherwise `limit`. A zero limit is labeled `No cap reported`; this does not guarantee unrestricted use, because legacy pricing prompt caps are not exposed by this API. The caller token endpoint reports one applicable scope. Admin access also exposes the stack token cap before it is reached. These counters describe usage limits, not a billing estimate.
+To review per-user limits, open the **Usage** page in Grafana Assistant. If team information is incomplete, the output flags it, because limits that come from teams might also be incomplete.
 
 ## Export usage
+
+To export usage as JSON, run:
 
 ```shell
 gcx assistant usage get -o json
 gcx assistant usage get --context my-stack -o json
 ```
 
-JSON mirrors the terminal's two sections:
+JSON output has the same two sections as the terminal view:
 
 - `yourUsage.metrics` contains your personal counters.
-- `orgUsage.metrics` contains shared counters and is included only for admins.
-- `orgUsage.usersNeedingAttention` is an array of users at or above 80% of their effective token cap, highest percentage first. No matches returns `[]`. It excludes healthy users, uncapped users, and service accounts.
+- `orgUsage.metrics` contains shared counters. It's included only when you have administrator access.
+- `orgUsage.usersNeedingAttention` lists users at or above 80% of their effective token limit, highest percentage first. If no users match, it's an empty array (`[]`). It leaves out users below 80%, users without a limit, and service accounts.
+- `orgUsage.teamDataPartial` is `true` when limits that come from teams might be incomplete.
 
-Each metric has `used`, `limit`, and `month`. Counts and limits are raw units; zero means no reported cap. For example, `yourUsage.metrics.tokens` describes your token allowance and `orgUsage.metrics.investigations` describes the shared investigation allowance. Service-account token pools, when reported, use `serviceAccountTokens`.
+Each metric has `used`, `limit`, and `month` fields. Counts and limits are in raw units, and a limit of `0` means no limit is reported. For example, `yourUsage.metrics.tokens` describes your token allowance, and `orgUsage.metrics.investigations` describes the shared investigation allowance. Service account token pools, when reported, use the `serviceAccountTokens` key.
 
-`--top` affects only text; JSON always includes all users needing attention. Agent output uses the same structure. `orgUsage.teamDataPartial`, when true, indicates incomplete team-derived limits. Member records retain exact API values: `usedThisMonthTokens` is a raw token count and `effectiveLimitMtok` is millions of tokens. YAML (`-o yaml`) retains the full authorized API snapshot.
+User records keep the values that the API returns:
 
-To extract just the users needing attention:
+- `usedThisMonthTokens` is a raw token count.
+- `effectiveLimitMtok` is in millions of tokens.
+
+The following behavior also applies to exported output:
+
+- `--top` affects only text output. JSON always includes every user who needs attention.
+- Agent mode output uses the same structure as JSON.
+- YAML output (`-o yaml`) contains the full API response that your identity can access.
+
+To extract only the users who need attention, run:
 
 ```shell
 gcx assistant usage get --jq '.orgUsage.usersNeedingAttention'
 ```
 
-The complete fetch has a fixed 30-second timeout. Admin access is detected automatically; there are no `--admin` or `--timeout` options.
+## Limits and reporting details
+
+The following applies:
+
+- Usage periods are calendar months in UTC.
+- Investigation bars use the effective limit when Grafana reports one, and the base limit otherwise.
+- A limit of zero appears as `No cap reported`. This doesn't guarantee unlimited use, because this API doesn't expose prompt limits from legacy pricing.
+- Your token counter reflects a single limit, either personal or shared.
+- With administrator access, you can see the stack token limit before the stack reaches it.
+- These counters describe usage limits. They aren't a billing estimate.
+- The command times out after 30 seconds.
+- The command detects administrator access automatically, so there are no `--admin` or `--timeout` flags.
