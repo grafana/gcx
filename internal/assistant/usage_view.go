@@ -32,27 +32,27 @@ type UsageView struct {
 	OrgUsage  *OrganizationUsageView `json:"orgUsage,omitempty"`
 }
 
-// JSONView groups metrics by ownership and includes only actionable users.
+// JSONView groups metrics by ownership. Shared counters appear in orgUsage for
+// every caller; only the users-needing-attention list requires administrator
+// access, and it is null when that data is unavailable.
 func (usage Usage) JSONView() UsageView {
 	view := UsageView{YourUsage: PersonalUsageView{Metrics: make(map[string]UsageMetric)}}
-	if usage.Admin != nil {
-		view.OrgUsage = &OrganizationUsageView{
-			Metrics:               make(map[string]UsageMetric),
-			UsersNeedingAttention: usage.Admin.UsersNeedingAttention(),
-			TeamDataPartial:       usage.Admin.TeamDataPartial,
-		}
-	}
+	org := &OrganizationUsageView{Metrics: make(map[string]UsageMetric)}
 	for _, row := range usageSummaryRows(usage) {
 		key := strings.ToLower(row.name)
 		metric := UsageMetric{Used: row.total, Limit: row.limit, Month: row.month}
 		if row.scope == "user" {
 			view.YourUsage.Metrics[key] = metric
-		} else if view.OrgUsage != nil {
-			if row.scope == "service_account" {
-				key = "serviceAccount" + row.name
-			}
-			view.OrgUsage.Metrics[key] = metric
+		} else {
+			org.Metrics[key] = metric
 		}
+	}
+	if usage.Admin != nil {
+		org.UsersNeedingAttention = usage.Admin.UsersNeedingAttention()
+		org.TeamDataPartial = usage.Admin.TeamDataPartial
+	}
+	if usage.Admin != nil || len(org.Metrics) > 0 {
+		view.OrgUsage = org
 	}
 	return view
 }

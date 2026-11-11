@@ -20,8 +20,6 @@ type MonthlyUsage struct {
 	Month          string `json:"month"`
 	Scope          string `json:"scope,omitempty"`
 	EffectiveLimit *int64 `json:"effectiveLimit,omitempty"`
-	DefaultLimit   *int64 `json:"defaultLimit,omitempty"`
-	SuggestUpgrade bool   `json:"suggestUpgrade,omitempty"`
 }
 
 // Usage contains the monthly limits displayed by Grafana Assistant.
@@ -37,7 +35,6 @@ type Usage struct {
 func FetchUsage(ctx context.Context, client *assistanthttp.Client) (*Usage, error) {
 	result := &Usage{}
 	group, ctx := errgroup.WithContext(ctx)
-	group.SetLimit(3)
 	for _, counter := range []struct {
 		path string
 		dst  *MonthlyUsage
@@ -55,7 +52,7 @@ func FetchUsage(ctx context.Context, client *assistanthttp.Client) (*Usage, erro
 				Limit *int64 `json:"limit"`
 			}](client, ctx, http.MethodGet, "/api/v1/usage/limits/"+counter.path, nil, "get "+counter.path+" usage")
 			if err != nil {
-				return fmt.Errorf("get %s usage: %w", counter.path, err)
+				return err
 			}
 			if *data == nil || (*data).Total == nil || (*data).Limit == nil {
 				return fmt.Errorf("%s usage response is missing required data, total, or limit", counter.path)

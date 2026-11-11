@@ -38,8 +38,6 @@ The `YOUR USAGE` section shows only your personal counters:
 
 For each counter with a limit, the output shows the count, a usage bar, the percentage used, and the remaining allowance. Counters are sorted by percentage used, and counters without a limit appear last. Usage above 100% shows the actual percentage, and the bar stays full.
 
-In an interactive terminal, bars are blue, turn amber at 80%, and turn red at the limit. When you pipe the output or use `--no-color`, bars use ASCII characters.
-
 If you don't have administrator access and a shared limit is reached, a short notice appears. Shared counters aren't shown as your own usage.
 
 ### View organization usage
@@ -48,7 +46,6 @@ If your identity has the `grafana-assistant-app.usage:read` permission, the comm
 
 - Stack token usage and its limit.
 - Shared investigations.
-- Service account token pool usage, when reported.
 
 Each shared counter appears once, in this section.
 
@@ -86,11 +83,11 @@ gcx assistant usage get --context my-stack -o json
 JSON output has the same two sections as the terminal view:
 
 - `yourUsage.metrics` contains your personal counters.
-- `orgUsage.metrics` contains shared counters. It's included only when you have administrator access.
-- `orgUsage.usersNeedingAttention` lists users at or above 80% of their effective token limit, highest percentage first. If no users match, it's an empty array (`[]`). It leaves out users below 80%, users without a limit, and service accounts.
+- `orgUsage.metrics` contains shared counters, such as shared investigations. It's included for every caller.
+- `orgUsage.usersNeedingAttention` lists users at or above 80% of their effective token limit, highest percentage first. It's `null` unless you have administrator access. If no users match, it's an empty array (`[]`). It leaves out users below 80%, users without a limit, and service accounts.
 - `orgUsage.teamDataPartial` is `true` when limits that come from teams might be incomplete.
 
-Each metric has `used`, `limit`, and `month` fields. Counts and limits are in raw units, and a limit of `0` means no limit is reported. For example, `yourUsage.metrics.tokens` describes your token allowance, and `orgUsage.metrics.investigations` describes the shared investigation allowance. Service account token pools, when reported, use the `serviceAccountTokens` key.
+Each metric has `used`, `limit`, and `month` fields. Counts and limits are in raw units, and a limit of `0` means no limit is reported. For example, `yourUsage.metrics.tokens` describes your token allowance, and `orgUsage.metrics.investigations` describes the shared investigation allowance.
 
 User records keep the values that the API returns:
 
@@ -100,8 +97,7 @@ User records keep the values that the API returns:
 The following behavior also applies to exported output:
 
 - `--top` affects only text output. JSON always includes every user who needs attention.
-- Agent mode output uses the same structure as JSON.
-- YAML output (`-o yaml`) contains the full API response that your identity can access.
+- Agent mode and YAML output use the same structure as JSON.
 
 To extract only the users who need attention, run:
 
@@ -114,7 +110,7 @@ gcx assistant usage get --jq '.orgUsage.usersNeedingAttention'
 The following applies:
 
 - Usage periods are calendar months in UTC.
-- Investigation bars use the effective limit when Grafana reports one, and the base limit otherwise.
+- Bars use the effective limit when Grafana reports one, and the base limit otherwise.
 - A limit of zero appears as `No cap reported`. This doesn't guarantee unlimited use, because this API doesn't expose prompt limits from legacy pricing.
 - Your token counter reflects a single limit, either personal or shared.
 - With administrator access, you can see the stack token limit before the stack reaches it.

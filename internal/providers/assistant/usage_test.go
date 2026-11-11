@@ -206,14 +206,13 @@ func assertUsageJSON(t *testing.T, data []byte, wantAdmin bool, wantCount int) {
 	assert.NotContains(t, result.YourUsage.Metrics, "investigations")
 	var sections map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(data, &sections))
+	require.NotNil(t, result.OrgUsage, "shared counters must be visible to every caller")
+	assert.Len(t, sections, 2)
 	if !wantAdmin {
-		assert.Nil(t, result.OrgUsage)
-		assert.Len(t, sections, 1)
-		assert.NotContains(t, sections, "orgUsage")
+		assert.Equal(t, assistant.UsageMetric{Used: 25, Limit: 100, Month: "2026-11"}, result.OrgUsage.Metrics["investigations"])
+		assert.Nil(t, result.OrgUsage.UsersNeedingAttention, "attention list is admin-only")
 		return
 	}
-	require.NotNil(t, result.OrgUsage)
-	assert.Len(t, sections, 2)
 	assert.Equal(t, assistant.UsageMetric{Used: 25, Limit: 100, Month: "2026-11"}, result.OrgUsage.Metrics["investigations"])
 	assert.Equal(t, assistant.UsageMetric{Used: 5000000, Limit: 10000000, Month: "2026-11"}, result.OrgUsage.Metrics["tokens"])
 	assert.True(t, result.OrgUsage.TeamDataPartial)

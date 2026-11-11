@@ -37,31 +37,15 @@ type UsageMember struct {
 	LimitSourceTeamUIDs             []string         `json:"limitSourceTeamUids,omitempty"`
 }
 
-// UsageTeam describes a team grant, not a shared team usage cap.
-type UsageTeam struct {
-	UID              string `json:"uid"`
-	Name             string `json:"name"`
-	MemberCount      int    `json:"memberCount"`
-	PerUserLimitMtok *int64 `json:"perUserLimitMtok,omitempty"`
-}
-
 // AdminUsage is the complete, unpaginated members snapshot from the Usage API.
 // Limits ending in Mtok are millions of tokens; usage counters are raw tokens.
 type AdminUsage struct {
-	GeneratedAt                      time.Time        `json:"generatedAt"`
-	SelectedRange                    UsageTimeRange   `json:"selectedRange"`
-	ThisMonth                        UsageTimeRange   `json:"thisMonth"`
-	StackUsedThisMonthTokens         int64            `json:"stackUsedThisMonthTokens"`
-	Teams                            []UsageTeam      `json:"teams"`
-	Members                          []UsageMember    `json:"members"`
-	StackTotalLimitMtok              int64            `json:"stackTotalLimitMtok,omitempty"`
-	StackTotalLimitSource            string           `json:"stackTotalLimitSource"`
-	StackDefaultPerUserLimitMtok     int64            `json:"stackDefaultPerUserLimitMtok,omitempty"`
-	StackDefaultPerUserLimitSource   string           `json:"stackDefaultPerUserLimitSource"`
-	ServiceAccountsSharedLimitMtok   int64            `json:"serviceAccountsSharedLimitMtok,omitempty"`
-	ServiceAccountsSharedLimitSource string           `json:"serviceAccountsSharedLimitSource"`
-	DefaultLimits                    map[string]int64 `json:"defaultLimits"`
-	TeamDataPartial                  bool             `json:"teamDataPartial,omitempty"`
+	ThisMonth                UsageTimeRange   `json:"thisMonth"`
+	StackUsedThisMonthTokens int64            `json:"stackUsedThisMonthTokens"`
+	Members                  []UsageMember    `json:"members"`
+	StackTotalLimitMtok      int64            `json:"stackTotalLimitMtok,omitempty"`
+	DefaultLimits            map[string]int64 `json:"defaultLimits"`
+	TeamDataPartial          bool             `json:"teamDataPartial,omitempty"`
 }
 
 // FetchAdminUsage reads the permission-gated snapshot used by the Usage page.
@@ -87,7 +71,7 @@ func FetchAdminUsage(ctx context.Context, client *assistanthttp.Client) (*AdminU
 	if !result.ThisMonth.End.After(result.ThisMonth.Start) {
 		return nil, errors.New("admin usage response contains an invalid monthly period")
 	}
-	limits := []int64{result.StackTotalLimitMtok, result.StackDefaultPerUserLimitMtok, result.ServiceAccountsSharedLimitMtok, result.DefaultLimits["stackTotalMtok"]}
+	limits := []int64{result.StackTotalLimitMtok, result.DefaultLimits["stackTotalMtok"]}
 	if result.StackUsedThisMonthTokens < 0 {
 		return nil, errors.New("admin usage response contains negative stack usage")
 	}
@@ -105,12 +89,6 @@ func FetchAdminUsage(ctx context.Context, client *assistanthttp.Client) (*AdminU
 		if limit < 0 || limit > math.MaxInt64/tokensPerMillion {
 			return nil, errors.New("admin usage response contains an invalid token limit")
 		}
-	}
-	if result.Members == nil {
-		result.Members = []UsageMember{}
-	}
-	if result.Teams == nil {
-		result.Teams = []UsageTeam{}
 	}
 	return &result, nil
 }

@@ -75,7 +75,7 @@ inside orgUsage.`,
 					return err
 				}
 			}
-			if cmdio.IsJSONFormat(opts.IO.OutputFormat) {
+			if opts.IO.OutputFormat != "text" {
 				return opts.IO.Encode(cmd.OutOrStdout(), usage.JSONView())
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), *usage)

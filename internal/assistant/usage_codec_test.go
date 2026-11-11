@@ -60,7 +60,7 @@ func TestUsageTextEffectiveLimit(t *testing.T) {
 func TestUsageAdminServiceAccountsAndEmpty(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{
 		{"empty", `{"members":[]}`, "No users at or above 80%"},
-		{"shared pool", `{"members":[{"id":"robot","userType":"service_account","usedThisMonthTokens":500,"effectiveLimitMtok":1}],"serviceAccountsSharedLimitMtok":2}`, "No users at or above 80%"},
+		{"shared pool", `{"members":[{"id":"robot","userType":"service_account","usedThisMonthTokens":500,"effectiveLimitMtok":1}]}`, "No users at or above 80%"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var admin assistant.AdminUsage
