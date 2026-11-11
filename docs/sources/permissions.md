@@ -163,7 +163,7 @@ When you sign in with OAuth, `gcx k6` commands go through the k6 plugin on your 
 | `plugins:k6-app:editor` | Read and write access to k6, with limited scopes. |
 | `plugins:k6-app:admin` | Admin access to everything in k6. |
 
-When you sign in with a service account token, `gcx` exchanges the token with the k6 API directly, and the token needs k6 access.
+When you sign in with a service account token, `gcx` exchanges the token with the k6 API directly. The service account needs the Admin basic role, and you also need a [Grafana Cloud credential](#choose-grafana-cloud-access-policy-scopes) with the `stacks:read` scope, which `gcx` uses to look up your stack.
 
 ### SLO
 
