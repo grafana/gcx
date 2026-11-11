@@ -95,7 +95,9 @@ An earlier version told the without-graph side to "answer from metrics, traces a
 What the runner does for every run:
 
 - Starts Claude Code in a new empty directory, with no plugins, skills, MCP servers, CLAUDE.md or memory, so nothing carries over between runs.
-- Lets the agent run only gcx, through a small wrapper (`$SKILL/kgkit/bin/gcx`) that logs every command. In the without-graph configuration, the wrapper refuses `gcx kg`, `gcx assistant`, `gcx api`, queries on the graph's `asserts:` recording rules, the Knowledge Graph datasource, and the graph's resource types under `gcx resources`. Telemetry tools stay available in both, including `gcx appo11y services map`, which reads Tempo's service-graph metrics rather than the graph.
+- Lets the agent run only gcx, through a small wrapper (`$SKILL/kgkit/bin/gcx`) that logs every command.
+- Keeps the test read-only in both configurations. The wrapper refuses any gcx command that would change your stack or start something on it (create, update, delete, apply, push, silence, resolve, run, snapshot and the like), plus `gcx api` and `gcx assistant`, which can do either. It uses gcx's own command list to tell a command's verb from the arguments after it, so a service called `api` or `test` isn't mistaken for one.
+- In the without-graph configuration, also refuses `gcx kg`, queries on the graph's `asserts:` recording rules, the Knowledge Graph datasource, and the graph's resource types under `gcx resources`. Telemetry tools stay available in both, including `gcx appo11y services map`, which reads Tempo's service-graph metrics rather than the graph.
 - Alternates which configuration goes first, and caps each run's spend (`--budget-usd`, default $3).
 - Runs one at a time and waits 15 seconds after each (`--parallel 1`, `--pause 15`), so the test adds about one agent's worth of queries to your stack. Keep it that way on a production stack.
 - Records a run whose agent process fails or times out as `failed`, so a wrong gcx version or a bad flag shows up instead of producing empty results.

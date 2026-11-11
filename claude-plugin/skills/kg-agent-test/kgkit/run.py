@@ -70,7 +70,27 @@ def child_env(real_gcx, config, log_path, context, workdir):
                TMPDIR=workdir)  # gcx writes large results to TMPDIR; keep them readable
     if context:
         env["KGKIT_CONTEXT"] = context
+    if COMMANDS_FILE:
+        env["KGKIT_COMMANDS"] = COMMANDS_FILE
     return env
+
+
+COMMANDS_FILE = None
+
+
+def write_command_list(real_gcx, out):
+    """gcx's own list of command paths, so the wrapper can tell a command's verb from
+    the arguments after it when it blocks commands that change the stack."""
+    p = subprocess.run([real_gcx, "commands", "--flat", "--jq", ".commands[].full_path"],
+                       capture_output=True, text=True, timeout=120)
+    paths = [json.loads(l) if l.startswith('"') else l for l in p.stdout.splitlines() if l.strip().startswith(('"gcx', "gcx"))]
+    if p.returncode != 0 or not paths:
+        print("warning: couldn't read gcx's command list; the wrapper will block more than it needs to", file=sys.stderr)
+        return None
+    path = os.path.join(os.path.abspath(out), "gcx-commands.txt")
+    with open(path, "w") as fh:
+        fh.write("\n".join(paths) + "\n")
+    return path
 
 
 def claude_cmd(prompt, args):
@@ -181,6 +201,8 @@ def main():
         return
 
     os.makedirs(os.path.join(args.out, "runs"), exist_ok=True)
+    global COMMANDS_FILE
+    COMMANDS_FILE = write_command_list(real_gcx, args.out)
     with open(os.path.join(args.out, "plan.json"), "w") as fh:
         json.dump({"questions_file": os.path.abspath(args.questions), "reps": args.reps, "model": args.model,
                    "effort": args.effort, "configs": configs, "gcx": real_gcx, "graph_prompt": args.graph_prompt,

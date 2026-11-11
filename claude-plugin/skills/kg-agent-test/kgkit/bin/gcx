@@ -2,8 +2,9 @@
 # Knowledge Graph agent test skill: gcx wrapper.
 #
 # Every gcx command the agent runs passes through here. It is logged to
-# $KGKIT_LOG, and in the "without-graph" configuration any command that would
-# reach the Knowledge Graph is refused before it runs.
+# $KGKIT_LOG. In every configuration, commands that would change the stack are
+# refused. In the "without-graph" configuration, any command that would reach
+# the Knowledge Graph is refused too.
 #
 #   KGKIT_REAL_GCX  path to the real gcx binary (required)
 #   KGKIT_MODE      with-graph | without-graph
@@ -15,15 +16,65 @@ log="${KGKIT_LOG:-/dev/null}"
 mode="${KGKIT_MODE:-with-graph}"
 
 blocked=""
-if [ "$mode" = "without-graph" ]; then
+
+# Read-only in every configuration. The test asks questions; it must never change the
+# stack it runs against. Look at the command path (the words before the first flag,
+# after any leading global flags) and refuse it if any word is a verb that writes,
+# starts something, or reconfigures gcx. Arguments after a flag, such as query
+# strings, are never matched.
+WRITE_VERBS=" acknowledge add add-conversations annotate apply apply-sourcemap archive cancel clear close
+  configure create delete delete-schedule delete-sourcemap deploy dismiss drop-rules edit emit escalate
+  exclude import include install login mode new open pause publish push remove remove-conversation reset
+  reset-token resolve restore resume run save scaffold serve set setup share signup silence start
+  start-maintenance stop-maintenance test test-run unacknowledge unarchive uninstall unresolve unset
+  unsilence update update-allowed-load-zones update-allowed-projects update-script update-templates
+  upsert use-context snapshot judge generate token "
+# whole command groups that can act on the stack or call it without a fixed verb
+WRITE_GROUPS=" api assistant "
+path=()
+skip_next=""
+for a in "$@"; do
+  if [ -n "$skip_next" ]; then skip_next=""; continue; fi
+  case "$a" in
+    --context|--config) skip_next=1; continue ;;   # global flags that take a value
+    --*=*|-v|-vv|-vvv|--verbose|--agent|--no-color|--no-truncate) continue ;;
+    -*) break ;;                                     # first command flag: the path has ended
+    *) path+=("$a") ;;
+  esac
+done
+# With gcx's own command list ($KGKIT_COMMANDS, one "gcx ..." path per line, written by
+# run.py), take the longest prefix of the path that is a real command, so service names
+# and query strings after it (a service called "api" or "test") are never mistaken for
+# verbs. Without the list, check every word of the path: stricter, never looser.
+words=("${path[@]}")
+if [ -n "$KGKIT_COMMANDS" ] && [ -f "$KGKIT_COMMANDS" ]; then
+  words=()
+  cand="gcx"
+  for w in "${path[@]}"; do
+    cand="$cand $w"
+    if grep -Fxq -- "$cand" "$KGKIT_COMMANDS"; then
+      words+=("$w")
+    else
+      break
+    fi
+  done
+fi
+for i in "${!words[@]}"; do
+  w="${words[$i]}"
+  if [ "$i" -eq 0 ]; then
+    case "$WRITE_GROUPS" in *" $w "*) blocked="gcx $w, which can change the stack or call any API" ;; esac
+  fi
+  case "$WRITE_VERBS" in *" $w "*) blocked="gcx ... $w, which changes the stack or starts something on it" ;; esac
+  [ -n "$blocked" ] && break
+done
+
+if [ -z "$blocked" ] && [ "$mode" = "without-graph" ]; then
   for a in "$@"; do
     case "$a" in
       kg|knowledge-graph) blocked="the Knowledge Graph (gcx $a)" ;;
       # the graph's own datasource and API groups, reachable through generic
       # commands such as gcx datasources query and gcx resources get (gcx 1.x)
       *knowledgegraph*|*kg.ext.grafana*|*kgatlas*|*kgschema*) blocked="the Knowledge Graph ($a)" ;;
-      assistant) blocked="Grafana Assistant (gcx assistant)" ;;
-      api) blocked="raw API access (gcx api)" ;;
       # recording rules the graph is built from; labels such as asserts_env on
       # ordinary series are left alone
       *asserts:*) blocked="Knowledge Graph recording rules (asserts: metrics)" ;;
@@ -47,7 +98,7 @@ status="ok"
 printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$status" "$(printf '%q ' "$@")" >> "$log"
 
 if [ -n "$blocked" ]; then
-  echo "error: this test configuration does not allow $blocked. Use metrics, traces, logs or other telemetry commands instead." >&2
+  echo "error: this test does not allow $blocked. It is read-only. Use metrics, traces, logs or other read commands instead." >&2
   exit 2
 fi
 

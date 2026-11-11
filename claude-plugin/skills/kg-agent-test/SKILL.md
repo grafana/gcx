@@ -33,6 +33,11 @@ directory, so their questions and results stay there.
 - **Prefer hard questions.** Multi-hop blast radius, hidden dependencies and
   incidents separate the two sides. Simple lookups are usually answered
   correctly by both, and only show speed.
+- **Never change the stack.** The test only reads. The wrapper refuses gcx
+  commands that write for the test agents; you follow the same rule yourself.
+  Run only the skill's scripts and read-only gcx commands (query, list, get,
+  status, diagnose), and never create, update, delete, silence or run anything
+  on the user's stack, even to "fix" a problem the health check finds.
 - **Go easy on the stack.** Runs go one at a time with a pause between them.
   Don't raise `--parallel` on a production stack.
 - **Don't send anything without an explicit yes.** Sharing is optional. Show the
