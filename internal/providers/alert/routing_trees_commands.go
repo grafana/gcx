@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -194,7 +193,7 @@ func (o *routingTreesWriteOpts) setup(flags *pflag.FlagSet) {
 
 func (o *routingTreesWriteOpts) Validate(cmd *cobra.Command) error {
 	if o.Filename == "" {
-		return fail.NewCommandUsageError(cmd, "--filename / -f is required", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--filename / -f is required", nil)
 	}
 	if err := validateAPIVersionFlag(cmd, o.APIVersion); err != nil {
 		return err
@@ -274,11 +273,11 @@ tree changed on the server since then, the update fails with a conflict.`,
 				return err
 			}
 			if obj.GetName() != name {
-				return fail.NewCommandUsageError(cmd,
+				return gcxerrors.NewCommandUsageError(cmd,
 					fmt.Sprintf("name argument %q does not match the manifest's metadata.name %q", name, obj.GetName()), nil)
 			}
 			if obj.GetResourceVersion() == "" {
-				usageErr := fail.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion", nil)
+				usageErr := gcxerrors.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion", nil)
 				usageErr.Suggestions = []string{
 					fmt.Sprintf("Fetch the current tree first: gcx alert routing-trees get %s -o yaml > tree.yaml", name),
 				}
@@ -407,7 +406,7 @@ func cancelledRoutingTreeDelete(name string) error {
 // group before any request.
 func validateAPIVersionFlag(cmd *cobra.Command, apiVersion string) error {
 	if _, err := native.ParseAPIVersion(routingTreesGroup, apiVersion); err != nil {
-		return fail.NewCommandUsageError(cmd, "--api-version: "+err.Error(), nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--api-version: "+err.Error(), nil)
 	}
 	return nil
 }
@@ -417,18 +416,18 @@ func validateAPIVersionFlag(cmd *cobra.Command, apiVersion string) error {
 func manifestVersion(cmd *cobra.Command, obj *unstructured.Unstructured, flagAPIVersion string) (string, error) {
 	gv, err := schema.ParseGroupVersion(obj.GetAPIVersion())
 	if err != nil || gv.Group != routingTreesGroup || gv.Version == "" {
-		return "", fail.NewCommandUsageError(cmd,
+		return "", gcxerrors.NewCommandUsageError(cmd,
 			fmt.Sprintf("manifest apiVersion %q must be %s/<version>", obj.GetAPIVersion(), routingTreesGroup), nil)
 	}
 	if obj.GetKind() != routingTreeKind {
-		return "", fail.NewCommandUsageError(cmd,
+		return "", gcxerrors.NewCommandUsageError(cmd,
 			fmt.Sprintf("manifest kind %q must be %s", obj.GetKind(), routingTreeKind), nil)
 	}
 	if flagAPIVersion != "" {
 		// validateAPIVersionFlag already rejected a bad group.
 		flagVersion, _ := native.ParseAPIVersion(routingTreesGroup, flagAPIVersion)
 		if flagVersion != gv.Version {
-			return "", fail.NewCommandUsageError(cmd,
+			return "", gcxerrors.NewCommandUsageError(cmd,
 				fmt.Sprintf("--api-version %q conflicts with the manifest's apiVersion %q; the manifest decides the version", flagAPIVersion, obj.GetAPIVersion()), nil)
 		}
 	}
