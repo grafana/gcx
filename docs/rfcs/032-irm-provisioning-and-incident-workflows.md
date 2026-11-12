@@ -1,4 +1,4 @@
-# RFC 030: IRM provisioning and incident workflows
+# RFC 032: IRM provisioning and incident workflows
 
 **Status**: proposed
 
