@@ -51,15 +51,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
 
-      - name: Upload release artifacts for Packslip
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-artifacts
-          path: |
-            dist/gcx_*.tar.gz
-            dist/gcx_*.zip
-          if-no-files-found: error
-
   packslip:
     needs: release
     permissions:
@@ -71,12 +62,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Download release artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: release-artifacts
-          path: dist
+          persist-credentials: false
 
       - name: Build active skill resources
         id: skills
@@ -90,16 +77,48 @@ jobs:
               puts "skill/#{name}=repo:#{path}"
             end
           ' | sort)"
+          delimiter="$(openssl rand -hex 16)"
           {
-            echo 'resources<<EOF'
+            echo "resources<<${delimiter}"
             echo "$resources"
-            echo EOF
+            echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
 
       - name: Publish signed Packslip manifest
+        id: packslip
         uses: jdx/packslip@4920350c39c234c7a969f9775040bd02829f1923 # v1.3.0
         with:
-          artifacts: dist/gcx_*.tar.gz dist/gcx_*.zip
+          download: gcx_*.tar.gz gcx_*.zip
           bin: gcx
           attest: true
+          upload: false
           resources: ${{ steps.skills.outputs.resources }}
+
+      - name: Upload Packslip bundle for publisher
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packslip-bundle
+          path: ${{ steps.packslip.outputs.bundle }}
+          if-no-files-found: error
+
+  publish-packslip:
+    needs: packslip
+    permissions:
+      contents: write
+    name: Publish Packslip bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Packslip bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packslip-bundle
+
+      - name: Upload Packslip bundle to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -f packslip.sigstore.json
+          gh release upload "$TAG" packslip.sigstore.json --repo "$REPOSITORY" --clobber

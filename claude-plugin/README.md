@@ -52,7 +52,9 @@ instance, verifying connectivity, and confirming your credentials are working.
 for gcx. The Claude plugin consumes that tree directly today, and the generic
 `.agents` installer exposed by `gcx agent skills install` reads from the same source.
 GitHub releases publish these skills as version-pinned Packslip resources, making
-them discoverable alongside the gcx release without downloading or running gcx.
+them discoverable and fetchable by Packslip-aware tools without first running
+gcx. Using a skill's gcx workflows still requires the gcx runtime; separate
+resource acquisition does not remove that runtime dependency.
 
 Claude-specific packaging remains under:
 
