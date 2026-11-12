@@ -38,5 +38,5 @@ func Error(stdout io.Writer, message string, args ...any) {
 func Info(stdout io.Writer, message string, args ...any) {
 	msg := fmt.Sprintf(message, args...)
 
-	fmt.Fprintln(stdout, Blue("🛈 ")+msg)
+	fmt.Fprintln(stdout, Blue("ℹ ")+msg)
 }

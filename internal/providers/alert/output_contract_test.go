@@ -423,7 +423,7 @@ func TestGroupsStatusOutputContract(t *testing.T) {
 		stdout, _, err := runCmdSplit(t, alert.NewGroupsStatusCommandForTest(loader),
 			[]string{"status"}, "")
 		require.NoError(t, err)
-		assert.Equal(t, "🛈 No alert rule groups found.\n", stdout)
+		assert.Equal(t, "ℹ No alert rule groups found.\n", stdout)
 	})
 
 	t.Run("agent mode non-empty result emits one JSON value", func(t *testing.T) {
