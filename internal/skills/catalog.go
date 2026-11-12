@@ -25,7 +25,7 @@ const (
 
 // CatalogEntry survives removal of the corresponding bundled skill directory.
 type CatalogEntry struct {
-	Status      Status `yaml:"status" json:"status"`
+	Status      Status `yaml:"status" json:"status,omitempty"`
 	Replacement string `yaml:"replacement,omitempty" json:"replacement,omitempty"`
 	Message     string `yaml:"message,omitempty" json:"message,omitempty"`
 }
@@ -72,11 +72,14 @@ func LoadCatalog(data []byte) (Catalog, error) {
 type SkillState struct {
 	CatalogEntry
 
-	Name             string `json:"name"`
-	Known            bool   `json:"-"`
-	ShortDescription string `json:"short_description"`
-	Installed        bool   `json:"installed"`
-	Present          bool   `json:"present"`
+	Name             string   `json:"name"`
+	ID               string   `json:"id,omitempty"`
+	Source           string   `json:"source,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
+	Known            bool     `json:"-"`
+	ShortDescription string   `json:"short_description"`
+	Installed        bool     `json:"installed"`
+	Present          bool     `json:"present"`
 }
 
 // Reconcile is read-only. It includes missing catalog entries and uncataloged

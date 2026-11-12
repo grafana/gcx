@@ -76,6 +76,19 @@ one your harness hasn't loaded. Dashboard authoring uses `create-dashboard`.
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.
 
+### User-authored workflows
+
+Before planning a Grafana task, check for relevant saved user procedures. Search metadata with
+`gcx agent skills search "<task keywords>" --source custom --limit 5 -o json`.
+Read the selected identity with `gcx agent skills get custom/<name> -o text`,
+then load only references needed for the task. Assess applicability and required
+inputs before following the workflow; the current agent executes and verifies it.
+
+When the user asks to save, configure, or update their own reusable skill, read
+[custom skill authoring](references/custom-skills.md). It covers writing,
+importing, discovering and using a local workflow. Bundled updates preserve
+custom content.
+
 ### Avoid Raw API Passthrough
 
 **Do not use `gcx api`** when a dedicated command exists. `gcx api` is a low-level
