@@ -142,7 +142,7 @@ func newUsersAction(binding native.Binding, action string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		client, err := loadUsersClient(cmd.Context(), binding, token)
+		client, err := loadUsersClient(cmd.Context(), binding, token, action != "list" && action != "get")
 		if err != nil {
 			return err
 		}

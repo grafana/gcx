@@ -10,7 +10,9 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -20,35 +22,51 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
-type configUpdateOptions struct {
-	IO                                                cmdio.Options
-	UserSync, GroupSync, RejectNonProvisioned, DryRun bool
+type settingsUpdateOptions struct {
+	IO                                                       cmdio.Options
+	UserSync, GroupSync, RejectNonProvisioned, DryRun, Force bool
 }
 
-func (o *configUpdateOptions) setup(flags *pflag.FlagSet) {
+func (o *settingsUpdateOptions) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &configMutationTextCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.BoolVar(&o.UserSync, "user-sync", false, "Set SCIM user sync; true enables, false disables; omit to keep unchanged")
 	flags.BoolVar(&o.GroupSync, "group-sync", false, "Set SCIM group sync; true enables, false disables; omit to keep unchanged")
 	flags.BoolVar(&o.RejectNonProvisioned, "reject-non-provisioned", false, "Set rejection of users that SCIM did not provision; true enables, false disables; omit to keep unchanged")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation when enabling rejection of users that SCIM did not provision")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Show current and proposed settings without a write")
 }
-func (o *configUpdateOptions) Validate(cmd *cobra.Command) error {
+func (o *settingsUpdateOptions) Validate(cmd *cobra.Command) error {
 	if !cmd.Flags().Changed("user-sync") && !cmd.Flags().Changed("group-sync") && !cmd.Flags().Changed("reject-non-provisioned") {
 		return fail.NewCommandUsageError(cmd, "set at least one SCIM setting flag", nil)
 	}
 	return o.IO.Validate()
 }
 
-func newConfigCommand(binding native.Binding) *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Short: "Manage SCIM sync settings"}
-	cmd.AddCommand(newConfigGetCommand(binding), newConfigUpdateCommand(binding))
+func (o *settingsUpdateOptions) confirmLockout(cmd *cobra.Command) error {
+	if o.DryRun || !cmd.Flags().Changed("reject-non-provisioned") || !o.RejectNonProvisioned {
+		return nil
+	}
+	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), o.Force, "Block sign-in for users that SCIM did not provision?")
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		exitCode := gcxerrors.ExitCancelled
+		return &gcxerrors.DetailedError{Summary: "settings update cancelled", ExitCode: &exitCode}
+	}
+	return nil
+}
+
+func newSettingsCommand(binding native.Binding) *cobra.Command {
+	cmd := &cobra.Command{Use: "settings", Short: "Manage SCIM sync settings"}
+	cmd.AddCommand(newSettingsGetCommand(binding), newSettingsUpdateCommand(binding))
 	return cmd
 }
-func newConfigGetCommand(binding native.Binding) *cobra.Command {
+func newSettingsGetCommand(binding native.Binding) *cobra.Command {
 	o := &cmdio.Options{}
-	cmd := &cobra.Command{Use: "get", Short: "Get SCIM sync settings", Args: cobra.NoArgs, Example: "  gcx scim config get -o json", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "get", Short: "Get SCIM sync settings", Args: cobra.NoArgs, Example: "  gcx scim settings get -o json", RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := o.Validate(); err != nil {
 			return err
 		}
@@ -70,10 +88,13 @@ func newConfigGetCommand(binding native.Binding) *cobra.Command {
 	o.BindFlags(cmd.Flags())
 	return cmd
 }
-func newConfigUpdateCommand(binding native.Binding) *cobra.Command {
-	o := &configUpdateOptions{}
-	cmd := &cobra.Command{Use: "update", Short: "Update selected SCIM sync settings", Long: "Update only the settings named by flags. Keep other settings unchanged.\nThe update uses the current resource version. A conflict requires a new attempt.\nUse --dry-run to show current and proposed settings without a write.", Args: cobra.NoArgs, Example: "  gcx scim config update --user-sync=true --dry-run", RunE: func(cmd *cobra.Command, _ []string) error {
+func newSettingsUpdateCommand(binding native.Binding) *cobra.Command {
+	o := &settingsUpdateOptions{}
+	cmd := &cobra.Command{Use: "update", Short: "Update selected SCIM sync settings", Long: "Update only the settings named by flags. Keep other settings unchanged.\nThe update uses the current resource version. A conflict requires a new attempt.\nUse --dry-run to show current and proposed settings without a write.\nEnabling --reject-non-provisioned can block sign-in and requires confirmation; use --force to skip it.", Args: cobra.NoArgs, Example: "  gcx scim settings update --user-sync=true --dry-run", RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := o.Validate(cmd); err != nil {
+			return err
+		}
+		if err := o.confirmLockout(cmd); err != nil {
 			return err
 		}
 		access, err := binding.Load(cmd.Context(), native.LoadOptions{})
@@ -122,7 +143,7 @@ func newConfigUpdateCommand(binding native.Binding) *cobra.Command {
 		}
 		updated, err := access.Client.Update(cmd.Context(), access.Descriptor, proposed, metav1.UpdateOptions{})
 		if apierrors.IsConflict(err) {
-			return fmt.Errorf("%w; SCIM config changed; run 'gcx scim config get' and apply the update again", err)
+			return fmt.Errorf("%w; SCIM config changed; run 'gcx scim settings get' and apply the update again", err)
 		}
 		if err != nil {
 			return err

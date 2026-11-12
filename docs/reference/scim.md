@@ -1,15 +1,15 @@
 # SCIM provisioning
 
-Use `gcx scim config` to read or update SCIM sync settings. These commands use
+Use `gcx scim settings` to read or update SCIM sync settings. These commands use
 Grafana's discovered native `SCIMConfig` API. The server must serve
 `scim.grafana.app`. The active context supplies Grafana authentication.
 The server controls access to these commands.
 
 ```bash
-gcx scim config get -o json
-gcx scim config update --user-sync=true --dry-run
-gcx scim config update --user-sync=true --group-sync=false
-gcx scim config update --reject-non-provisioned=true
+gcx scim settings get -o json
+gcx scim settings update --user-sync=true --dry-run
+gcx scim settings update --user-sync=true --group-sync=false
+gcx scim settings update --reject-non-provisioned=true
 gcx scim endpoint get -o json
 ```
 
@@ -18,6 +18,12 @@ setting. Other fields stay unchanged. The command reads the current resource
 version before the write. If the server reports a conflict, read the settings
 again and repeat the update. The command does not retry a conflict.
 
+Enabling `--reject-non-provisioned=true` can block sign-in for every user that
+SCIM did not provision. It requires confirmation. Use `--force` or
+`GCX_AUTO_APPROVE=true` to bypass the prompt. A declined prompt returns exit 5
+without a write. A dry run does not require confirmation. Other sync toggles
+do not require confirmation.
+
 `--dry-run` reads the current config and shows the changes without a write.
 Both a dry run and a write return the same mutation result. A dry run sets
 `dry_run` to `true`. Both results include the public settings in `current`
@@ -25,10 +31,10 @@ and `proposed`. The human default shows each changed value, for example
 `enableGroupSync: true -> false`. Use `-o json` or `-o yaml` for the structured
 result. Unknown fields stay private in both modes.
 
-`config get` returns a partial settings view with the resource identity and
+`settings get` returns a partial settings view with the resource identity and
 the three public sync settings under `settings`. It is not a resource manifest.
 It excludes unknown fields and annotations that can contain credentials.
-Use `gcx scim config update` to change these settings.
+Use `gcx scim settings update` to change these settings.
 
 `gcx scim endpoint get` shows the tenant base URL for an identity provider.
 It uses the active Grafana server URL and the namespace returned by the SCIM
@@ -56,8 +62,9 @@ gcx scim users deactivate 12345 --token-file ./scim-token --force
 ```
 
 The active context reads the SCIM config and resolves its tenant endpoint.
-User sync must be enabled. The command sends the service account token only
-to that endpoint. It does not follow redirects or use context authentication
+User sync must be enabled for writes. List and get do not require sync to be
+enabled in gcx. Grafana controls whether these reads succeed. The command
+sends the service account token only to that endpoint. It does not follow redirects or use context authentication
 for SCIM user requests. The service account needs permission to manage users.
 
 `list` fetches all matching pages. It fails if pagination stops early or repeats

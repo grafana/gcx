@@ -3,11 +3,13 @@ package scim //nolint:testpackage // Tests inject native bindings into private c
 import (
 	"bytes"
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/spf13/cobra"
@@ -60,7 +62,7 @@ func executeConfig(cmd *cobra.Command, args ...string) (string, error) {
 }
 func TestConfigReadRedactsUnknownFields(t *testing.T) {
 	c := &configClient{object: fixtureConfig()}
-	out, err := executeConfig(newConfigCommand(configBinding(c)), "get", "-o", "json")
+	out, err := executeConfig(newSettingsCommand(configBinding(c)), "get", "-o", "json")
 	require.NoError(t, err)
 	require.JSONEq(t, `{"name":"default","namespace":"stacks-12345","resourceVersion":"17","settings":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false}}`, out)
 	require.NotContains(t, out, "hidden")
@@ -68,7 +70,7 @@ func TestConfigReadRedactsUnknownFields(t *testing.T) {
 }
 func TestConfigUpdatePreservesOtherFields(t *testing.T) {
 	c := &configClient{object: fixtureConfig()}
-	out, err := executeConfig(newConfigCommand(configBinding(c)), "update", "--user-sync=false", "-o", "json")
+	out, err := executeConfig(newSettingsCommand(configBinding(c)), "update", "--user-sync=false", "-o", "json")
 	require.NoError(t, err)
 	require.Equal(t, 1, c.gets)
 	require.Equal(t, 1, c.writes)
@@ -87,7 +89,7 @@ func TestConfigUpdatePreservesOtherFields(t *testing.T) {
 }
 func TestConfigUpdateDryRun(t *testing.T) {
 	c := &configClient{object: fixtureConfig()}
-	out, err := executeConfig(newConfigCommand(configBinding(c)), "update", "--group-sync=false", "--reject-non-provisioned=true", "--dry-run", "-o", "json")
+	out, err := executeConfig(newSettingsCommand(configBinding(c)), "update", "--group-sync=false", "--reject-non-provisioned=true", "--dry-run", "-o", "json")
 	require.NoError(t, err)
 	require.Equal(t, 1, c.gets)
 	require.Zero(t, c.writes)
@@ -96,7 +98,7 @@ func TestConfigUpdateDryRun(t *testing.T) {
 }
 func TestConfigValidationBeforeLoad(t *testing.T) {
 	for _, args := range [][]string{{"update"}, {"update", "extra", "--user-sync"}, {"get", "extra"}} {
-		cmd := newConfigCommand(native.Func(func(context.Context, native.LoadOptions) (native.Access, error) {
+		cmd := newSettingsCommand(native.Func(func(context.Context, native.LoadOptions) (native.Access, error) {
 			t.Fatal("must validate before load")
 			return native.Access{}, nil
 		}))
@@ -106,7 +108,7 @@ func TestConfigValidationBeforeLoad(t *testing.T) {
 }
 func TestConfigConflictHasNoRetry(t *testing.T) {
 	c := &configClient{object: fixtureConfig(), conflict: true}
-	_, err := executeConfig(newConfigCommand(configBinding(c)), "update", "--user-sync=false")
+	_, err := executeConfig(newSettingsCommand(configBinding(c)), "update", "--user-sync=false")
 	require.Error(t, err)
 	require.True(t, apierrors.IsConflict(err))
 	require.ErrorContains(t, err, "apply the update again")
@@ -115,7 +117,7 @@ func TestConfigConflictHasNoRetry(t *testing.T) {
 func TestConfigMissingVersionPreventsWrite(t *testing.T) {
 	c := &configClient{object: fixtureConfig()}
 	c.object.SetResourceVersion("")
-	_, err := executeConfig(newConfigCommand(configBinding(c)), "update", "--user-sync=false")
+	_, err := executeConfig(newSettingsCommand(configBinding(c)), "update", "--user-sync=false")
 	require.ErrorContains(t, err, "resource version")
 	require.Zero(t, c.writes)
 }
@@ -149,7 +151,7 @@ func TestConfigUpdateResultShapes(t *testing.T) {
 			args = append(args, "--dry-run")
 			expected = `{"type":"gcx.mutation","schema_version":"1","action":"updated","target":{"kind":"SCIMConfig","name":"default","namespace":"stacks-12345"},"dry_run":true,"current":{"enableUserSync":true,"enableGroupSync":true,"rejectNonProvisionedUsers":false},"proposed":{"enableUserSync":false,"enableGroupSync":true,"rejectNonProvisionedUsers":false}}`
 		}
-		out, err := executeConfig(newConfigCommand(configBinding(c)), args...)
+		out, err := executeConfig(newSettingsCommand(configBinding(c)), args...)
 		require.NoError(t, err)
 		require.JSONEq(t, expected, out)
 		require.NotContains(t, out, "hidden")
@@ -172,14 +174,14 @@ func TestConfigUpdateHumanSummary(t *testing.T) {
 			args = append(args, "--dry-run")
 			expected = "Would update SCIM sync settings (dry run)\n  enableGroupSync: true -> false\n"
 		}
-		out, err := executeConfig(newConfigCommand(configBinding(c)), args...)
+		out, err := executeConfig(newSettingsCommand(configBinding(c)), args...)
 		require.NoError(t, err)
 		require.Equal(t, expected, out)
 	}
 }
 func TestConfigReadIsNotManifest(t *testing.T) {
 	c := &configClient{object: fixtureConfig()}
-	out, err := executeConfig(newConfigCommand(configBinding(c)), "get", "-o", "yaml")
+	out, err := executeConfig(newSettingsCommand(configBinding(c)), "get", "-o", "yaml")
 	require.NoError(t, err)
 	require.Contains(t, out, "settings:")
 	for _, field := range []string{"apiVersion:", "kind:", "metadata:", "spec:", "hidden"} {
@@ -187,10 +189,63 @@ func TestConfigReadIsNotManifest(t *testing.T) {
 	}
 }
 func TestConfigSettingFlagHelp(t *testing.T) {
-	cmd := newConfigUpdateCommand(native.Binding{})
+	cmd := newSettingsUpdateCommand(native.Binding{})
 	for _, name := range []string{"user-sync", "group-sync", "reject-non-provisioned"} {
 		flag := cmd.Flags().Lookup(name)
 		require.NotNil(t, flag)
 		require.Contains(t, flag.Usage, "true enables, false disables; omit to keep unchanged")
+	}
+}
+
+func TestSettingsUpdateLockoutConfirmation(t *testing.T) {
+	for _, tc := range []struct {
+		name, input                              string
+		args                                     []string
+		agent, autoApprove, wantError, cancelled bool
+		writes                                   int
+	}{
+		{name: "declined", input: "n\n", args: []string{"--reject-non-provisioned=true"}, wantError: true, cancelled: true},
+		{name: "confirmed", input: "y\n", args: []string{"--reject-non-provisioned=true"}, writes: 1},
+		{name: "force", args: []string{"--reject-non-provisioned=true", "--force"}, writes: 1},
+		{name: "auto approve", args: []string{"--reject-non-provisioned=true"}, autoApprove: true, writes: 1},
+		{name: "agent refuses", args: []string{"--reject-non-provisioned=true"}, agent: true, wantError: true},
+		{name: "dry run", args: []string{"--reject-non-provisioned=true", "--dry-run"}},
+		{name: "disable rejection", args: []string{"--reject-non-provisioned=false"}, writes: 1},
+		{name: "plain sync toggle", args: []string{"--user-sync=false"}, writes: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_MODE", strconv.FormatBool(tc.agent))
+			t.Setenv("GCX_AUTO_APPROVE", strconv.FormatBool(tc.autoApprove))
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+			c := &configClient{object: fixtureConfig()}
+			cmd := newSettingsCommand(configBinding(c))
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SetIn(strings.NewReader(tc.input))
+			cmd.SilenceUsage, cmd.SilenceErrors = true, true
+			cmd.SetArgs(append([]string{"update"}, tc.args...))
+			err := cmd.ExecuteContext(t.Context())
+			if tc.wantError {
+				require.Error(t, err)
+				require.Zero(t, c.gets)
+				require.Empty(t, stdout.String())
+				if tc.cancelled {
+					var detailed *gcxerrors.DetailedError
+					require.ErrorAs(t, err, &detailed)
+					require.NotNil(t, detailed.ExitCode)
+					require.Equal(t, gcxerrors.ExitCancelled, *detailed.ExitCode)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.writes, c.writes)
+			if c.written != nil && c.writes > 0 && tc.name != "plain sync toggle" {
+				value, _, readErr := unstructured.NestedBool(c.written.Object, "spec", "rejectNonProvisionedUsers")
+				require.NoError(t, readErr)
+				require.Equal(t, tc.name != "disable rejection", value)
+			}
+		})
 	}
 }

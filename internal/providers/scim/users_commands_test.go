@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -20,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 )
@@ -282,5 +285,53 @@ func TestUsersDryRunSubjectAndRequiredToken(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, out, "SCIM user (id=1)")
 		require.NotContains(t, out, `SCIM user ""`)
+	}
+}
+
+func TestUsersReadWithSyncDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		wantRead bool
+	}{
+		{name: "list", args: []string{"list"}, wantRead: true},
+		{name: "get", args: []string{"get", "1"}, wantRead: true},
+		{name: "create", args: []string{"create", "--user-name", "test", "--external-id", "test-id"}},
+		{name: "update", args: []string{"update", "1", "--display-name", "Test"}},
+		{name: "deactivate", args: []string{"deactivate", "1", "--force"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				assert.Equal(t, http.MethodGet, r.Method)
+				w.Header().Set("Content-Type", "application/scim+json")
+				if tc.name == "list" {
+					_, _ = io.WriteString(w, `{"schemas":["urn:ietf:params:scim:api:messages:2.0:ListResponse"],"totalResults":1,"startIndex":1,"itemsPerPage":1,"Resources":[{"id":"1","userName":"test"}]}`)
+				} else {
+					_, _ = io.WriteString(w, `{"id":"1","userName":"test"}`)
+				}
+			}))
+			defer server.Close()
+			item := fixtureConfig()
+			require.NoError(t, unstructured.SetNestedField(item.Object, false, "spec", "enableUserSync"))
+			binding := native.Fixed(native.Access{Client: &configClient{object: item}, Descriptor: configDescriptor(), Config: config.NamespacedRESTConfig{GrafanaURL: server.URL}})
+			args := slices.Clone(tc.args)
+			args = append(args, "--token-file", tokenPath(t), "-o", "json")
+			out, _, err := executeUsers(t, binding, "", args...)
+			if tc.wantRead {
+				require.NoError(t, err)
+				require.EqualValues(t, 1, calls.Load())
+				if tc.name == "list" {
+					require.JSONEq(t, `[{"id":"1","userName":"test"}]`, out)
+				} else {
+					require.JSONEq(t, `{"id":"1","userName":"test"}`, out)
+				}
+			} else {
+				require.ErrorContains(t, err, "SCIM user sync is disabled")
+				require.Zero(t, calls.Load())
+				require.Empty(t, out)
+			}
+		})
 	}
 }

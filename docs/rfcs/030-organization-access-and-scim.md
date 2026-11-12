@@ -52,9 +52,9 @@ gcx org service-accounts delete-token <service-account-id> <token-id> --force
 gcx org service-accounts add-role <service-account-id> <role-uid> --dry-run
 gcx org roles list --filter org.users
 
-gcx scim config get
-gcx scim config update --user-sync=true --group-sync=false --reject-non-provisioned=false --dry-run
-gcx scim config update --user-sync=true
+gcx scim settings get
+gcx scim settings update --user-sync=true --group-sync=false --reject-non-provisioned=false --dry-run
+gcx scim settings update --user-sync=true
 gcx scim endpoint get
 gcx scim users create --user-name test@example.com --external-id test-0001 --token-file ./scim-token
 gcx scim users list --token-file ./scim-token
@@ -112,15 +112,20 @@ display name alone. `org service-accounts add-role` adds one direct role
 assignment to one service account. It does not replace other assignments. The
 service account ID selects the recipient. The role UID selects the role.
 
-SCIM config uses the server-discovered `SCIMConfig` resource through the shared
+SCIM settings use the server-discovered `SCIMConfig` resource through the shared
 native binding. The update changes only flags supplied by the user and keeps
 the other fields. It accepts user sync, group sync, and rejection of users who
 were not provisioned. A dry run shows the current and proposed values. A
 conflict returns an error; it does not overwrite a concurrent update.
+Enabling rejection of users that SCIM did not provision requires the shared
+destructive confirmation. Dry runs do not prompt. Other sync toggles do not
+require confirmation.
 
 SCIM user commands call the SCIM user API with a service account identity.
 They preserve the server's user ID and return the server's resource fields.
-When user sync is off, the error points to `gcx scim config update
+List and get let the server answer when user sync is off. Writes require user
+sync.
+When a write finds sync off, the error points to `gcx scim settings update
 --user-sync=true`. The command does not turn sync on without a request.
 The deactivate command sets the user's active state to false. A live write test
 must use an owned test identity. It must record that Grafana keeps the user

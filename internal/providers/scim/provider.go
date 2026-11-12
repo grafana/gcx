@@ -27,6 +27,6 @@ func (p *SCIMProvider) Commands() []*cobra.Command {
 	cmd := &cobra.Command{Use: "scim", Short: p.ShortDesc()}
 	loader.BindFlags(cmd.PersistentFlags())
 	binding := native.Bind(loader, native.Config{Group: scimGroup, Resource: "config"})
-	cmd.AddCommand(newConfigCommand(binding), newEndpointCommand(binding), newUsersCommand(binding))
+	cmd.AddCommand(newSettingsCommand(binding), newEndpointCommand(binding), newUsersCommand(binding))
 	return []*cobra.Command{cmd}
 }

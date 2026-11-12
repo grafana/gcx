@@ -51,7 +51,7 @@ func readUserToken(r io.Reader) (string, error) {
 	return token, nil
 }
 
-func loadUsersClient(ctx context.Context, binding native.Binding, token string) (*usersClient, error) {
+func loadUsersClient(ctx context.Context, binding native.Binding, token string, requireUserSync bool) (*usersClient, error) {
 	access, err := binding.Load(ctx, native.LoadOptions{})
 	if err != nil {
 		return nil, err
@@ -60,12 +60,14 @@ func loadUsersClient(ctx context.Context, binding native.Binding, token string) 
 	if err != nil {
 		return nil, err
 	}
-	enabled, _, err := unstructured.NestedBool(item.Object, "spec", "enableUserSync")
-	if err != nil {
-		return nil, errors.New("invalid SCIM user sync setting: expected a boolean")
-	}
-	if !enabled {
-		return nil, errors.New("SCIM user sync is disabled; run 'gcx scim config update --user-sync=true'")
+	if requireUserSync {
+		enabled, _, err := unstructured.NestedBool(item.Object, "spec", "enableUserSync")
+		if err != nil {
+			return nil, errors.New("invalid SCIM user sync setting: expected a boolean")
+		}
+		if !enabled {
+			return nil, errors.New("SCIM user sync is disabled; run 'gcx scim settings update --user-sync=true'")
+		}
 	}
 	base, err := tenantEndpoint(access.Config.GrafanaURL, item.GetNamespace(), access.Descriptor.GroupVersion.Version)
 	if err != nil {
