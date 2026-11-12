@@ -50,6 +50,31 @@ func TestClient_GetStatus(t *testing.T) {
 	}
 }
 
+func TestClient_GetStatus_KgWriteAPIEnabled(t *testing.T) {
+	enabled, disabled := true, false
+	tests := []struct {
+		name string
+		body string
+		want *bool
+	}{
+		{name: "enabled", body: `{"status":"complete","enabled":true,"kgWriteApiEnabled":true}`, want: &enabled},
+		{name: "disabled", body: `{"status":"complete","enabled":true,"kgWriteApiEnabled":false}`, want: &disabled},
+		{name: "older server without the field", body: `{"status":"complete","enabled":true}`, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			status, err := newTestClient(t, server).GetStatus(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, status.KgWriteAPIEnabled)
+		})
+	}
+}
+
 // TestClient_Active is the load-bearing truth table for the KG activation
 // contract: only a definitive 404, an explicit enabled:false, or a
 // status other than StatusComplete (still onboarding) yields (false, nil);

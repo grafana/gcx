@@ -417,6 +417,11 @@ func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show Knowledge Graph stack status.",
+		Long: `Show Knowledge Graph stack status.
+
+kgWriteApiEnabled reports whether the Knowledge Graph write API accepts writes
+for this stack (used by gcx kg entities upsert and gcx kg relationships upsert).
+It is absent when the server does not report it yet.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
