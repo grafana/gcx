@@ -16,6 +16,7 @@ import (
 // SignalAuth holds resolved auth credentials for a single adaptive telemetry signal.
 type SignalAuth struct {
 	BaseURL    string
+	StackURL   string
 	TenantID   int
 	APIToken   string
 	HTTPClient *http.Client
@@ -28,12 +29,22 @@ type SignalAuth struct {
 // override remains supported only when LoadDirectProviderSnapshot has paired it
 // with a GRAFANA_CLOUD_TOKEN supplied in the same invocation.
 func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, signal string) (SignalAuth, error) {
+	return resolveSignalAuth(ctx, loader, signal, false)
+}
+
+// ResolveMetricsCloudAuth resolves the direct Adaptive Metrics API without a Grafana transport.
+func ResolveMetricsCloudAuth(ctx context.Context, loader *providers.ConfigLoader) (SignalAuth, error) {
+	return resolveSignalAuth(ctx, loader, "metrics", true)
+}
+
+func resolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, signal string, skipGrafanaTransport bool) (SignalAuth, error) {
 	endpointKey := signal + "-tenant-url"
 	snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
-		ProviderName:    "adaptive",
-		EndpointKeys:    []string{endpointKey},
-		CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
-		RejectAutoLocal: true,
+		ProviderName:         "adaptive",
+		EndpointKeys:         []string{endpointKey},
+		CredentialEnv:        "GRAFANA_CLOUD_TOKEN",
+		RejectAutoLocal:      true,
+		SkipGrafanaTransport: skipGrafanaTransport,
 	})
 	if err != nil {
 		return SignalAuth{}, err
@@ -59,6 +70,7 @@ func ResolveSignalAuth(ctx context.Context, loader *providers.ConfigLoader, sign
 
 	return SignalAuth{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
+		StackURL:   cloudCfg.Stack.URL,
 		TenantID:   tenantID,
 		APIToken:   cloudCfg.Token,
 		HTTPClient: httpClient,

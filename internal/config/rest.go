@@ -30,6 +30,8 @@ type NamespacedRESTConfig struct {
 	// to a proxy endpoint for OAuth mode. Use this for deep link URLs, not Host.
 	GrafanaURL string
 
+	authMode grafanaAuthMode
+
 	// oauthTransport holds a reference to the RefreshTransport when OAuth proxy
 	// mode is active, allowing callers to wire the OnRefresh callback after
 	// construction (Option C: call-site wiring).
@@ -45,6 +47,11 @@ type NamespacedRESTConfig struct {
 	// the source context was resolved. OAuth refresh callbacks can execute much
 	// later and reload only the owning layer, so they must not recompute it.
 	keychainPolicy keychainPolicy
+}
+
+// HasAuthentication reports whether the resolved config has a selected Grafana credential.
+func (n *NamespacedRESTConfig) HasAuthentication() bool {
+	return n.authMode != grafanaAuthUnknown
 }
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
@@ -521,6 +528,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		Config:                 rcfg,
 		Namespace:              namespace,
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
+		authMode:               authSelection.mode,
 		oauthTransport:         oauthTransport,
 		oauthCredentialBinding: oauthCredentialBinding,
 		keychainPolicy:         cfg.keychainPolicy,
