@@ -29,6 +29,8 @@ skills:
     status: active
   manage-dashboards:
     status: active
+  map-source-code:
+    status: active
   oncall-triage:
     status: active
   scaffold-project:
