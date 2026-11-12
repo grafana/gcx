@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -581,4 +583,76 @@ func incidentFormat(wide bool) string {
 		return "wide"
 	}
 	return "table"
+}
+
+func runListActivity(t *testing.T, handler http.HandlerFunc, args ...string) error {
+	t.Helper()
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	cmd := irm.NewListActivityCommand(fakeGrafanaConfigLoader{cfg: config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "stack-123",
+	}})
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(append([]string{"inc-1"}, args...))
+	return cmd.Execute()
+}
+
+func TestListActivityCommand_KindFilter(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantBody string
+	}{
+		{
+			name:     "no kind sends the unfiltered query",
+			wantBody: `{"query":{"incidentID":"inc-1","limit":50,"orderDirection":"ASC"}}`,
+		},
+		{
+			name:     "one kind",
+			args:     []string{"--kind", "keyUpdateAdded"},
+			wantBody: `{"query":{"activityKind":["keyUpdateAdded"],"incidentID":"inc-1","limit":50,"orderDirection":"ASC"}}`,
+		},
+		{
+			name:     "two kinds",
+			args:     []string{"--kind", "keyUpdateAdded", "--kind", "userNote"},
+			wantBody: `{"query":{"activityKind":["keyUpdateAdded","userNote"],"incidentID":"inc-1","limit":50,"orderDirection":"ASC"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body []byte
+			err := runListActivity(t, func(w http.ResponseWriter, r *http.Request) {
+				body, _ = io.ReadAll(r.Body)
+				writeJSON(w, map[string]any{"activityItems": []map[string]any{}})
+			}, tt.args...)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantBody, string(body))
+		})
+	}
+}
+
+func TestListActivityCommand_RejectsBlankKind(t *testing.T) {
+	for _, args := range [][]string{
+		{"--kind", ""},
+		{"--kind", "keyUpdateAdded", "--kind", " "},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			err := runListActivity(t, func(http.ResponseWriter, *http.Request) {
+				t.Error("API must not be called when --kind is blank")
+			}, args...)
+
+			var derr *fail.DetailedError
+			require.ErrorAs(t, err, &derr)
+			require.NotNil(t, derr.ExitCode)
+			assert.Equal(t, fail.ExitUsageError, *derr.ExitCode)
+		})
+	}
 }

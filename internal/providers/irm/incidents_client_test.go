@@ -879,7 +879,7 @@ func TestClient_QueryActivity(t *testing.T) {
 			defer server.Close()
 
 			c := newTestClient(t, server)
-			items, err := c.QueryActivity(t.Context(), tt.id, tt.limit)
+			items, err := c.QueryActivity(t.Context(), tt.id, tt.limit, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)

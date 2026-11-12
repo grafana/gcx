@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/shared"
@@ -604,6 +606,7 @@ func NewActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 type activityListOpts struct {
 	IO    cmdio.Options
 	Limit int
+	Kinds []string
 }
 
 func (o *activityListOpts) setup(flags *pflag.FlagSet) {
@@ -611,6 +614,20 @@ func (o *activityListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of activity items to return")
+	// StringArray rather than StringSlice: a slice flag turns --kind "" into
+	// no values, which would silently drop the filter.
+	flags.StringArrayVar(&o.Kinds, "kind", nil, "Filter to these activity kinds, for example keyUpdateAdded for status updates (repeatable)")
+}
+
+func (o *activityListOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if slices.ContainsFunc(o.Kinds, func(k string) bool { return strings.TrimSpace(k) == "" }) {
+		exitCode := fail.ExitUsageError
+		return &fail.DetailedError{Summary: "--kind must not be blank", ExitCode: &exitCode}
+	}
+	return nil
 }
 
 // NewListActivityCommand builds `incidents list-activity <incident-id>`.
@@ -623,9 +640,14 @@ func NewListActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list-activity <incident-id>",
 		Short: "List activity items for an incident.",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # List the activity timeline for an incident:
+  gcx irm incidents list-activity 123
+
+  # List only the status updates shared with the incident:
+  gcx irm incidents list-activity 123 --kind keyUpdateAdded`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -642,7 +664,7 @@ func NewListActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			items, err := client.QueryActivity(ctx, incidentID, opts.Limit)
+			items, err := client.QueryActivity(ctx, incidentID, opts.Limit, opts.Kinds)
 			if err != nil {
 				return err
 			}

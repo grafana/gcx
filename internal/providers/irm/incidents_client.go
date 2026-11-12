@@ -664,18 +664,20 @@ func (c *IncidentClient) UpdateStatus(ctx context.Context, id, status string) (*
 }
 
 // QueryActivity retrieves the activity timeline for an incident.
-func (c *IncidentClient) QueryActivity(ctx context.Context, incidentID string, limit int) ([]ActivityItem, error) {
+func (c *IncidentClient) QueryActivity(ctx context.Context, incidentID string, limit int, kinds []string) ([]ActivityItem, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
-	body, err := json.Marshal(map[string]any{
-		"query": map[string]any{
-			"incidentID":     incidentID,
-			"limit":          limit,
-			"orderDirection": "ASC",
-		},
-	})
+	query := map[string]any{
+		"incidentID":     incidentID,
+		"limit":          limit,
+		"orderDirection": "ASC",
+	}
+	if len(kinds) > 0 {
+		query["activityKind"] = kinds
+	}
+	body, err := json.Marshal(map[string]any{"query": query})
 	if err != nil {
 		return nil, fmt.Errorf("incidents: marshal activity request: %w", err)
 	}
