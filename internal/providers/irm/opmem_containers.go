@@ -19,6 +19,7 @@ func newOpMemContainersCmd(loader OpMemClientLoader, shared *opMemSharedOpts) *c
 	cmd.AddCommand(
 		newContainersGetCmd(loader, shared),
 		newContainersListEventsCmd(loader, shared),
+		newContainersUpsertModelCmd(loader, shared),
 	)
 	return cmd
 }

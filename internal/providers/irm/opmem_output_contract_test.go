@@ -12,6 +12,21 @@ func runOpMemTree(t *testing.T, build func() *cobra.Command, args ...string) (st
 	return runNounCmd(t, build, "", args...)
 }
 
+func TestOpMemUsageErrorEmitsNoResultDocument(t *testing.T) {
+	setAgentMode(t, true)
+	loader := &fakeOpMemLoader{op: &fakeOpMem{}}
+	stdout, _, err := runOpMemTree(t, func() *cobra.Command { return newOpMemCmd(loader) },
+		"containers", "upsert-model", "INC-1", "-f", "draft.json",
+		"--actor-kind", "robot", "--actor-id", "a")
+	requireUsageExit(t, err)
+	if stdout != "" {
+		t.Errorf("stdout must stay empty on a usage error, got %q", stdout)
+	}
+	if loader.loads != 0 {
+		t.Error("usage error must reject before any client load")
+	}
+}
+
 func TestContainersGetAgentModeOutputContract(t *testing.T) {
 	setAgentMode(t, true)
 	loader := &fakeOpMemLoader{op: &fakeOpMem{}}
