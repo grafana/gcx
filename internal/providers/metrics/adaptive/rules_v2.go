@@ -31,9 +31,9 @@ const (
 )
 
 // toRuleV2 converts a MetricRule. managed_by is not part of v2 and is not
-// sent; the server keeps the existing rule's value on an upsert. Rules that v2
-// cannot represent or would reject are refused here, so invalid input fails
-// before any request.
+// sent; a v2 upsert replaces the whole rule, so the stored value is cleared.
+// Rules that v2 cannot represent or would reject are refused here, so invalid
+// input fails before any request.
 func toRuleV2(r MetricRule) (ruleV2, error) {
 	out := ruleV2{Metric: r.Metric, MatchType: r.MatchType}
 	if r.Drop {
