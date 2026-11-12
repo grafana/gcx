@@ -22,6 +22,7 @@ var commandSkills = map[string][]string{
 	// covers, so suppress the inherited footer on the ruler subtree.
 	"gcx alert ruler": {},
 	"gcx irm":         {"oncall-triage"},
+	"gcx irm opmem":   {},
 	"gcx logs":        {"debug-with-grafana"},
 	"gcx metrics":     {"debug-with-grafana"},
 	"gcx traces":      {"debug-with-grafana"},

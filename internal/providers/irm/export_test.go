@@ -48,3 +48,5 @@ func NewTestListCommand(labels, statuses []string, severity, query, dateFrom, da
 	opts.setup(cmd.Flags())
 	return cmd
 }
+
+func NewTestOpMemCmd() *cobra.Command { return newOpMemCmd(nil) }

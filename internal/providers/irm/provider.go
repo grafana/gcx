@@ -63,6 +63,7 @@ See ` + docs.IRMInvoice + `.`,
 
 	irmCmd.AddCommand(oncallCmd)
 	irmCmd.AddCommand(newIncidentsCmd(loader))
+	irmCmd.AddCommand(newOpMemCmd(loader))
 
 	return []*cobra.Command{irmCmd}
 }

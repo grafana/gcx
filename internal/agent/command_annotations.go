@@ -299,6 +299,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm incidents severities list": {Cost: "small"},
 	"gcx irm incidents update":          {Cost: "small", Hint: "<id> --severity <label> --title <text>; the severity is the label, run `gcx irm incidents severities list` for the valid values"},
 
+	"gcx irm opmem containers get":         {Cost: "medium", Hint: "<container> -o json returns the full projection with observations, claims, evidence links, and actions; use --json for field selection"},
+	"gcx irm opmem containers list-events": {Cost: "medium", Hint: "<container> --since-revision <rev> fetches only the diff since a known revision; --page-size bounds one call"},
+
 	// -----------------------------------------------------------------------
 	// k6 provider
 	// -----------------------------------------------------------------------

@@ -29,6 +29,9 @@ example scenario for each code. The topic is generated from the ordered
   flags, unknown commands, and missing required flags. The instrumentation
   `ErrMutuallyExclusiveFlags` converter also assigns exit 2; the current setup
   validation does not emit this sentinel, so that branch is unit-tested only.
+  In the IRM message and opmem commands, a server that rejects the request
+  values (HTTP 400 or 422) gives exit 1 with the server's reason, so a caller
+  does not read the rejection as a flag mistake.
 - Exit code 3 (auth failure) covers HTTP 401/403 in the K8s, query, datasource,
   service, Fleet, GCOM, login, and the final concrete `HTTPStatusError` converters.
   This includes provider errors, Assistant helper errors, and raw `gcx api`
