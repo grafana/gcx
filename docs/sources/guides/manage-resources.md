@@ -5,16 +5,167 @@ labels:
     - cloud
     - enterprise
     - oss
-description: Use gcx to manage resources.
+description: Use gcx to search, inspect, edit, delete, pull, and push resources.
 keywords:
   - gcx
   - Grafana CLI
   - observability as code
   - telemetry
-weight: 3
+aliases:
+  - ../explore-modify-resources/
+weight: 2
 ---
 
 # Manage resources with `gcx`
+
+`gcx` allows you to interact with Grafana resources directly from your terminal. You can browse, inspect, update, and delete resources without using the Grafana UI, and move them between environments as files.
+
+Use this approach if you're an advanced user and want to manage resources more efficiently, or to integrate Grafana operations into automated workflows.
+
+## Available commands
+
+The `gcx resources` command group includes the following commands:
+
+| Command | Use it to | Refer to |
+| --- | --- | --- |
+| `gcx resources list-types` | List the resource types your Grafana instance serves | [Discover resource types](#discover-resource-types) |
+| `gcx resources list-examples` | Show example manifests for provider-backed resource types | [Discover resource types](#discover-resource-types) |
+| `gcx resources search` | Find resources by relevance to a phrase (experimental) | [Search resources by relevance](#search-resources-by-relevance) |
+| `gcx resources get` | Fetch resources from Grafana and display them | [Find and delete dashboards using incorrect data sources](#find-and-delete-dashboards-using-incorrect-data-sources) |
+| `gcx resources delete` | Delete resources by selector or from local files | [Find and delete dashboards using incorrect data sources](#find-and-delete-dashboards-using-incorrect-data-sources) |
+| `gcx resources edit` | Edit a remote resource in your default editor | [Edit remote resources](#edit-remote-resources) |
+| `gcx resources validate` | Check local files against a Grafana instance without writing them | [Validate and preview changes](#validate-and-preview-changes) |
+| `gcx resources pull` | Save resources from Grafana to local files | [Migrate resources between environments](#migrate-resources-between-environments), [Back up and restore resources](#back-up-and-restore-resources) |
+| `gcx resources push` | Create or update resources in Grafana from local files | [Validate and preview changes](#validate-and-preview-changes), [Migrate resources between environments](#migrate-resources-between-environments) |
+
+For every flag of each command, refer to the [CLI reference](../../cli-reference/#gcx-resources).
+
+## Discover resource types
+
+To list the resource types that your Grafana instance serves, including provider-backed types such as SLOs and Synthetic Monitoring checks, run:
+
+```shell
+gcx resources list-types
+```
+
+This command requires a connection to Grafana. It also fetches each type's schema, so add `--no-schema` for faster results. Pass a selector to filter the list, and use `-o wide`, `-o json`, or `-o yaml` for more detail:
+
+```shell
+gcx resources list-types incidents -o json
+```
+
+To write a manifest from scratch, start from an example. Without arguments, `list-examples` lists every resource type that has an example. Pass a selector to show the examples for that type:
+
+```shell
+gcx resources list-examples
+gcx resources list-examples slo -o yaml
+```
+
+## Search resources by relevance
+
+Use the experimental `gcx resources search` command to find ranked matches from a phrase:
+
+```shell
+gcx resources search "kubernetes memory problems"
+```
+Search returns top matches, without pagination or an exhaustive resource inventory. Scores rank matches in the response. 
+
+### Prerequisites
+
+You need to enable the Grafana global hybrid search endpoint to use `gcx resources search`.
+
+- On supported Grafana Cloud stacks, `gcx resources search` can combine text and semantic matching.
+- On self-managed deployments with the endpoint, only use text matching. Semantic matching isn't available on-premises.
+
+Your deployment must have default resource types, or you must select types with `--resource`.
+
+### Search for specific resources
+
+Select resource types and exact folder UIDs for a narrower search:
+
+```shell
+gcx resources search "memory" \
+  --resource dashboards.dashboard.grafana.app \
+  --resource folders.folder.grafana.app \
+  --folder team-platform \
+  --limit 10
+gcx resources search "memory" --folder general
+```
+
+Repeat `--resource` to search your selected types instead of the server defaults.
+
+Repeat `--folder` to match any listed folder UID. Folders match exactly, without descendants; `general` or `--folder ''` selects the root folder. The default limit is 50, and the maximum is 200.
+
+Use `-o wide` to see matching text, or `-o json` or `-o yaml` for the full response:
+
+```shell
+gcx resources search "memory" -o wide
+gcx resources search "memory" -o json
+```
+
+## Find and delete dashboards using incorrect data sources
+
+To identify and remove production dashboards relying on non-production data sources, use the command below to list dashboard UIDs along with the data source UIDs used in their panels:
+
+```shell
+gcx resources get dashboards --context prod | jq '.items | map({ uid: .metadata.name, datasources: .spec.panels | map(.datasource.uid)  })'
+[
+   {
+      "uid": "important-production-dashboard",
+      "datasources": [
+         "mimir-prod"
+      ]
+   },
+   {
+      "uid": "test-dashboard-from-dev",
+      "datasources": [
+         "mimir-dev"
+      ]
+   },
+   {
+      "uid": "test-dashboard-from-stg",
+      "datasources": [
+         "mimir-stg"
+      ]
+   }
+]
+```
+
+Next, identify the dashboards that are using unexpected data sources, and delete them:
+
+```shell
+gcx resources delete dashboards/test-dashboard-from-stg,test-dashboard-from-dev
+✔ 2 resources deleted, 0 errors
+```
+
+## Edit remote resources
+
+You can edit resources directly from the default editor, without having to pull them first. To do so, run:
+
+```shell
+gcx resources edit dashboard/edit-me-please
+```
+
+This command opens the default editor set in the `EDITOR` environment variable, or falls back to 'vi' for Linux and 'notepad' for Windows.
+
+After the editor process terminates, the resource is updated in the Grafana instance targeted by the current context. Edition is cancelled if no changes are written to the file, or if the file after edition is empty.
+
+## Validate and preview changes
+
+Before you push local files, check them against the target Grafana instance. `gcx resources validate` reads resources from disk and asks Grafana to validate each one, without creating or updating anything:
+
+```shell
+gcx resources validate --path ./resources
+gcx resources validate dashboards folders -o json
+```
+
+To preview the outcome of a push, add `--dry-run`:
+
+```shell
+gcx resources push --path ./resources --dry-run
+```
+
+Both commands use server-side dry-run. Resources that aren't known to support server-side dry-run aren't sent, and the summary reports them as skipped instead of verified. If you know a resource honors server-side dry-run, add it with `--assume-server-dry-run`, for example `--assume-server-dry-run alertrules.rules.alerting.grafana.app`.
 
 ## Migrate resources between environments
 
@@ -39,28 +190,27 @@ Configure this path with the `--path`/`-p` flags.
 
 ## Name pulled files by title
 
-By default, `gcx resources pull` names each file using the resource's
-`metadata.name` (usually its UID). Use `--filename-by=title` for readable filenames:
+By default, `gcx resources pull` names each file after the resource's `metadata.name`, which is usually a generated UID such as `adkg9x2`. These names are hard to recognize when you browse a directory or review a Git diff.
+
+To name files after the resource title instead, add `--filename-by=title`:
 
 ```shell
 gcx resources pull dashboards --filename-by=title --path ./dashboard-backup
 ```
 
-For example, a dashboard titled `Ventas Overview` becomes `ventas-overview.json`
-inside its usual resource-type directory. Resources without a usable title fall
-back to `metadata.name`. The resource contents retain their original identity,
-so push, validate, and serve use these files normally.
+For example, a dashboard titled `Ventas Overview` is saved as `ventas-overview.json` instead of `adkg9x2.json`. Only the filename changes: the file still contains the original `metadata.name`, so `push` and `validate` treat it exactly like a file pulled by name.
 
-Title mode checks filename conflicts against the current pull and existing
-destination files. It preserves files that belong to other resources. See the
-[file naming rules](https://github.com/grafana/gcx/blob/main/docs/design/naming.md#92-file-naming)
-for the full algorithm.
+### How titles become filenames
 
-`gcx resources pull` does not remove old files. Title-mode pull warns on stderr
-when it finds another file for the same resource at a different path, such as
-after a rename or a change of naming mode. Reading resources also warns when skipping duplicate
-identities. Pull into a clean directory or remove stale files (for example, with
-`git rm`) before pushing.
+`gcx` converts the title to lowercase letters, digits, and hyphens, and limits it to 100 characters. If a resource has no usable title, `gcx` uses its `metadata.name` instead.
+
+If two resources produce the same filename, for example two dashboards titled `Overview`, `gcx` appends each resource's `metadata.name` to keep them apart, such as `overview-adkg9x2.json` and `overview-b71fq0m.json`. `gcx` never overwrites a file that belongs to a different resource. For the complete rules, refer to the [file naming rules](https://github.com/grafana/gcx/blob/main/docs/design/naming.md#92-file-naming).
+
+### Remove stale files before you push
+
+`gcx resources pull` writes files but never deletes them. If a resource is renamed, or you switch between `--filename-by=name` and `--filename-by=title`, the directory can end up with two files for the same resource: the old one and the new one.
+
+`gcx` warns on `stderr` when it finds such duplicates. Before you push, remove the outdated files, for example with `git rm`, or pull into an empty directory.
 
 ## Back up and restore resources
 
