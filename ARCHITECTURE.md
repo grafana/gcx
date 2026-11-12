@@ -44,6 +44,8 @@ group name, for both native resources and provider adapters.
 
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
+Experimental `resources search` uses Grafana's global search API and returns ranked matches instead of resource manifests. See the [client API layer](docs/architecture/client-api-layer.md).
+
 ### 2. Provider System
 
 Pluggable adapters for Grafana Cloud products. Each provider is a self-contained package under `internal/providers/` that contributes CLI commands and optionally bridges into the resources pipeline.
@@ -70,6 +72,10 @@ Provider (internal/providers/slo/)
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
 **Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see RFC 026 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
+
+Machine Learning uses the Grafana ML plugin proxy. Its jobs, holidays, and outlier detectors share typed adapters with the resource pipeline. Alerts require a parent ID and use parent-scoped commands. ML writes use `ClientDeps.GrafanaURL` for the public stack URL and `BaseURL` for transport, including OAuth proxy routing.
+
+Resource declarations can require unique natural-key matches and name the explicit identifier used in recovery messages. The generic matcher reads that policy from the adapter registry.
 
 **Deep-dive:** [resource and provider patterns](docs/architecture/patterns.md). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 

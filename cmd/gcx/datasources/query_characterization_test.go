@@ -39,6 +39,8 @@ type fakeGrafana struct {
 	// test can break InfluxDB's second lookup without breaking the first.
 	failDatasourceGetAfter int
 	queryStatus            int
+	// queryBody, when set, replaces the default success body for query POSTs.
+	queryBody string
 
 	mu             sync.Mutex
 	datasourceGets int
@@ -111,6 +113,8 @@ func (f *fakeGrafana) serve(w http.ResponseWriter, r *http.Request) {
 
 func (f *fakeGrafana) successBody(path string) string {
 	switch {
+	case f.queryBody != "":
+		return f.queryBody
 	case strings.Contains(path, "/api/datasources/proxy/uid/"):
 		return `{"flamebearer":{"names":[],"levels":[],"numTicks":0,"maxSelf":0}}`
 	case f.dsType == "prometheus":
@@ -228,6 +232,34 @@ func TestGenericQueryCharacterization_LokiLimit(t *testing.T) {
 	assert.InDelta(t, float64(7), q["maxLines"], 0, "--limit must reach maxLines")
 }
 
+func TestGenericQueryCharacterization_LokiZeroLimitUsesBackendDefault(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "loki", queryBody: `{"results":{"A":{"frames":[{"schema":{"fields":[` +
+		`{"name":"labels","type":"other"},{"name":"Time","type":"time"},{"name":"Line","type":"string"}]},` +
+		`"data":{"values":[[{"job":"varlogs"}],[1711893600000],["hello"]]}}]}}}`}
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", `{job="varlogs"}`,
+		"--from", "now-1h", "--to", "now", "--limit", "0", "-o", "json")
+
+	require.NoError(t, err)
+	_, body := f.seenPost()
+	assert.NotContains(t, firstQuery(t, body), "maxLines")
+	assert.Contains(t, stderr, "backend default limit")
+}
+
+func TestGenericQueryCharacterization_LokiZeroLimitSkipsMetricQuery(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "loki", queryBody: `{"results":{"A":{"frames":[{"schema":{"fields":[` +
+		`{"name":"Time","type":"time"},{"name":"Value","type":"number"}]},` +
+		`"data":{"values":[[1711893600000],[3]]}}]}}}`}
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", `count_over_time({job="varlogs"}[5m])`,
+		"--from", "now-1h", "--to", "now", "--limit", "0", "-o", "json")
+
+	require.ErrorContains(t, err, "metrics instead of log streams")
+	assert.NotContains(t, stderr, "backend default limit", "line limits do not apply to metric LogQL")
+}
+
 func TestGenericQueryCharacterization_PinotDefaultLimit(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
 
@@ -254,6 +286,19 @@ func TestGenericQueryCharacterization_PinotLimit(t *testing.T) {
 	q := firstQuery(t, body)
 	assert.Equal(t, "SELECT 1 FROM events LIMIT 7", q["pinotQlCode"],
 		"--limit must reach the Pinot SQL LIMIT, not a hardcoded 100")
+}
+
+func TestGenericQueryCharacterization_PinotZeroLimitRemainsSupported(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"--limit", "0", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events", q["pinotQlCode"])
 }
 
 func TestGenericQueryCharacterization_PinotExplicitLimit50(t *testing.T) {

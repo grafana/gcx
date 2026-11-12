@@ -1,5 +1,35 @@
 ## Unreleased
 
+- `gcx logs metrics` with no time flags now runs an instant query and returns
+  one value per series. It used to run a range query over the last minute and
+  return two points per series, so summing them doubled counts. Its
+  `--share-link` URL now opens an instant query in Explore too. (#1785)
+- `gcx logs query` and `gcx datasources loki query` now reject a negative
+  `--limit`, as generic `gcx datasources query` already did. A negative value
+  used to run with Loki's default line limit and exit 0. `--limit 0` still
+  sends no limit, so Loki's default line limit applies. The help now says so,
+  and a hint on stderr says that the results may be incomplete. (#1404)
+- Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
+  evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
+  dropped both fields without an error, so a `sequential` rule was created as
+  `parallel` and its tag keys were lost. `rules get` and `rules list` with
+  `-o json` or `-o yaml`, and `gcx resources pull`, now include both, so a
+  pulled rule keeps them when pushed back. A file that leaves either field
+  out still gets the server default on create and keeps the stored value on
+  update; `filterable_tag_keys: []` clears the keys.
+- `gcx setup status` reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled, names the missing permission when
+  known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC
+  paths from auth diagnostics. It exits 3 on auth failures and 1 on other
+  probe failures instead of 4. The
+  `fleet-management` row also has `enabled: null` when the plugin state is
+  unknown, and the JSON document gains an optional `error` object. (#1699)
+- Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a
+  false value from the request, so the API applied its default of `true`, and
+  `checks update` switched a full-metrics check back to basic metrics.
+  `checks get` and `checks list` now also show `basicMetricsOnly: false`, so
+  a get and update round trip keeps full metrics. A spec that leaves the field
+  out still gets the API default (#1395)
 - Anonymous usage statistics for `gcx signup` now record the last step it
   reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
   `gcx signup` reports its HTTP status. The one-time telemetry notice is shown

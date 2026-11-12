@@ -13,7 +13,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -43,8 +42,9 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &overridesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &overridesTableCodec{Wide: true})
+	table := overridesTable()
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -89,62 +89,50 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// overridesTableCodec renders MetricsGeneratorConfig as a tabular table.
-type overridesTableCodec struct {
-	Wide bool
+type overridesRow struct {
+	name, collection, interval, serviceGraphs, spanMetrics, sgDimensions, smDimensions string
 }
 
-func (c *overridesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func overridesTable() cmdio.TableAdapter[MetricsGeneratorConfig, overridesRow] {
+	return cmdio.TableAdapter[MetricsGeneratorConfig, overridesRow]{
+		Table: cmdio.Table[overridesRow]{Columns: []cmdio.Column[overridesRow]{
+			{Header: "NAME", Content: func(r overridesRow) string { return r.name }},
+			{Header: "COLLECTION", Content: func(r overridesRow) string { return r.collection }},
+			{Header: "INTERVAL", Content: func(r overridesRow) string { return r.interval }},
+			{Header: "SERVICE GRAPHS", Content: func(r overridesRow) string { return r.serviceGraphs }},
+			{Header: "SPAN METRICS", Content: func(r overridesRow) string { return r.spanMetrics }},
+			{Header: "SG DIMENSIONS", Visible: cmdio.WideOnly, Content: func(r overridesRow) string { return r.sgDimensions }},
+			{Header: "SM DIMENSIONS", Visible: cmdio.WideOnly, Content: func(r overridesRow) string { return r.smDimensions }},
+		}},
+		Rows: func(cfg MetricsGeneratorConfig) ([]overridesRow, error) {
+			collection := "enabled"
+			if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.DisableCollection {
+				collection = "disabled"
+			}
+
+			interval := "-"
+			if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.CollectionInterval != "" {
+				interval = cfg.MetricsGenerator.CollectionInterval
+			}
+
+			serviceGraphs := "disabled"
+			spanMetrics := "disabled"
+			var sgDimensions, smDimensions string
+
+			if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.Processor != nil {
+				if cfg.MetricsGenerator.Processor.ServiceGraphs != nil {
+					serviceGraphs = "enabled"
+					sgDimensions = strings.Join(cfg.MetricsGenerator.Processor.ServiceGraphs.Dimensions, ", ")
+				}
+				if cfg.MetricsGenerator.Processor.SpanMetrics != nil {
+					spanMetrics = "enabled"
+					smDimensions = strings.Join(cfg.MetricsGenerator.Processor.SpanMetrics.Dimensions, ", ")
+				}
+			}
+
+			return []overridesRow{{cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics, sgDimensions, smDimensions}}, nil
+		},
 	}
-	return "table"
-}
-
-func (c *overridesTableCodec) Encode(w io.Writer, v any) error {
-	cfg, ok := v.(MetricsGeneratorConfig)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected MetricsGeneratorConfig")
-	}
-
-	collection := "enabled"
-	if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.DisableCollection {
-		collection = "disabled"
-	}
-
-	interval := "-"
-	if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.CollectionInterval != "" {
-		interval = cfg.MetricsGenerator.CollectionInterval
-	}
-
-	serviceGraphs := "disabled"
-	spanMetrics := "disabled"
-	var sgDimensions, smDimensions string
-
-	if cfg.MetricsGenerator != nil && cfg.MetricsGenerator.Processor != nil {
-		if cfg.MetricsGenerator.Processor.ServiceGraphs != nil {
-			serviceGraphs = "enabled"
-			sgDimensions = strings.Join(cfg.MetricsGenerator.Processor.ServiceGraphs.Dimensions, ", ")
-		}
-		if cfg.MetricsGenerator.Processor.SpanMetrics != nil {
-			spanMetrics = "enabled"
-			smDimensions = strings.Join(cfg.MetricsGenerator.Processor.SpanMetrics.Dimensions, ", ")
-		}
-	}
-
-	if c.Wide {
-		t := style.NewTable("NAME", "COLLECTION", "INTERVAL", "SERVICE GRAPHS", "SPAN METRICS", "SG DIMENSIONS", "SM DIMENSIONS")
-		t.Row(cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics, sgDimensions, smDimensions)
-		return t.Render(w)
-	}
-
-	t := style.NewTable("NAME", "COLLECTION", "INTERVAL", "SERVICE GRAPHS", "SPAN METRICS")
-	t.Row(cfg.GetResourceName(), collection, interval, serviceGraphs, spanMetrics)
-	return t.Render(w)
-}
-
-func (c *overridesTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------

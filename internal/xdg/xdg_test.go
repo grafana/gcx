@@ -35,8 +35,9 @@ func TestStateHome_DefaultsToHomeLocalState(t *testing.T) {
 }
 
 func TestConfigDirs_EnvOverride(t *testing.T) {
-	t.Setenv("XDG_CONFIG_DIRS", "/a:/b")
-	assert.Equal(t, []string{"/a", "/b"}, xdg.ConfigDirs())
+	dirs := []string{filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")}
+	t.Setenv("XDG_CONFIG_DIRS", dirs[0]+string(os.PathListSeparator)+dirs[1])
+	assert.Equal(t, dirs, xdg.ConfigDirs())
 }
 
 func TestConfigDirs_Default(t *testing.T) {

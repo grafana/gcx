@@ -224,6 +224,88 @@ func TestQuery_SendsMaxLines(t *testing.T) {
 	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
 }
 
+func TestQueryRequestBody(t *testing.T) {
+	logQuery := func(c *loki.Client, req loki.QueryRequest) error {
+		_, err := c.Query(context.Background(), "loki-uid", req)
+		return err
+	}
+	metricQuery := func(c *loki.Client, req loki.QueryRequest) error {
+		_, err := c.MetricQuery(context.Background(), "loki-uid", req)
+		return err
+	}
+	const logExpr, metricExpr = `{job="grafana"}`, `count_over_time({job="grafana"}[1h])`
+	start, end := time.UnixMilli(1000), time.UnixMilli(2000)
+
+	for _, tt := range []struct {
+		name          string
+		run           func(*loki.Client, loki.QueryRequest) error
+		req           loki.QueryRequest
+		wantQueryType string
+		wantFrom      string
+		wantTo        string
+		wantInterval  float64
+		wantMaxLines  any // nil means the field is absent
+	}{
+		{
+			name: "metric query without a range is instant over the last minute", run: metricQuery,
+			req:           loki.QueryRequest{Query: metricExpr, Limit: 10},
+			wantQueryType: "instant", wantFrom: "now-1m", wantTo: "now", wantInterval: 60000,
+		},
+		{
+			name: "metric instant query ignores step", run: metricQuery,
+			req:           loki.QueryRequest{Query: metricExpr, Step: 5 * time.Minute},
+			wantQueryType: "instant", wantFrom: "now-1m", wantTo: "now", wantInterval: 60000,
+		},
+		{
+			name: "metric range query sends bounds and step", run: metricQuery,
+			req:           loki.QueryRequest{Query: metricExpr, Start: start, End: end, Step: 5 * time.Minute, Limit: 10},
+			wantQueryType: "range", wantFrom: "1000", wantTo: "2000", wantInterval: 300000,
+		},
+		{
+			// Loki rejects instant log queries.
+			name: "log query without a range stays range over the last minute", run: logQuery,
+			req:           loki.QueryRequest{Query: logExpr, Limit: 10},
+			wantQueryType: "range", wantFrom: "now-1m", wantTo: "now", wantInterval: 60000, wantMaxLines: float64(10),
+		},
+		{
+			name: "log range query sends bounds and step", run: logQuery,
+			req:           loki.QueryRequest{Query: logExpr, Start: start, End: end, Step: 5 * time.Minute},
+			wantQueryType: "range", wantFrom: "1000", wantTo: "2000", wantInterval: 300000,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody []byte
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotBody, _ = io.ReadAll(r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+			}))
+			defer server.Close()
+
+			client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+			require.NoError(t, err)
+			require.NoError(t, tt.run(client, tt.req))
+
+			var payload struct {
+				Queries []map[string]any `json:"queries"`
+				From    string           `json:"from"`
+				To      string           `json:"to"`
+			}
+			require.NoError(t, json.Unmarshal(gotBody, &payload))
+			require.Len(t, payload.Queries, 1)
+			q := payload.Queries[0]
+
+			assert.Equal(t, tt.wantQueryType, q["queryType"])
+			assert.Equal(t, tt.wantFrom, payload.From)
+			assert.Equal(t, tt.wantTo, payload.To)
+			assert.InDelta(t, tt.wantInterval, q["intervalMs"], 0)
+			assert.Equal(t, tt.wantMaxLines, q["maxLines"])
+			// Grafana ignores the legacy field, so sending it only misleads.
+			assert.NotContains(t, q, "instant")
+		})
+	}
+}
+
 func TestClient_Patterns(t *testing.T) {
 	var capturedPath string
 	var capturedQuery url.Values
@@ -231,7 +313,11 @@ func TestClient_Patterns(t *testing.T) {
 		capturedPath = r.URL.Path
 		capturedQuery = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},{"pattern":"<_> started <_>","samples":[[1711839260,3]]}]}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":[
+{"pattern":"<_> started <_>","samples":[[1711839260,3]]},
+{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},
+{"pattern":"frequent <_>","samples":[[1711839260,5]]}
+]}`))
 	}))
 	defer server.Close()
 
@@ -250,11 +336,12 @@ func TestClient_Patterns(t *testing.T) {
 	assert.Equal(t, strconv.FormatInt(end.UnixNano(), 10), capturedQuery.Get("end"))
 	assert.Equal(t, "10s", capturedQuery.Get("step"))
 
-	require.Len(t, resp.Data, 2)
-	assert.Equal(t, "<_> level=error <_>", resp.Data[0].Pattern)
-	assert.Equal(t, "error", resp.Data[0].Level)
-	assert.Equal(t, [][]int64{{1711839260, 1}, {1711839270, 2}}, resp.Data[0].Samples)
-	assert.Empty(t, resp.Data[1].Level, "level is optional")
+	assert.Equal(t, "success", resp.Status)
+	assert.Equal(t, []loki.Pattern{
+		{Pattern: "frequent <_>", Samples: [][]int64{{1711839260, 5}}, TotalCount: 5},
+		{Pattern: "<_> level=error <_>", Level: "error", Samples: [][]int64{{1711839260, 1}, {1711839270, 2}}, TotalCount: 3},
+		{Pattern: "<_> started <_>", Samples: [][]int64{{1711839260, 3}}, TotalCount: 3},
+	}, resp.Data)
 }
 
 func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {
@@ -270,10 +357,11 @@ func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {
 	client, err := loki.NewClient(cfg)
 	require.NoError(t, err)
 
-	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+	resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
 	require.NoError(t, err)
 
 	assert.NotContains(t, capturedRawQuery, "step=")
+	assert.Equal(t, []loki.Pattern{}, resp.Data, "an empty data array must not become null")
 }
 
 func TestClient_Patterns_RejectsReversedTimeRange(t *testing.T) {
@@ -376,4 +464,43 @@ func TestMetricQueryPreservesSampleValues(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestClientTagsRequestsAsGCX(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Query-Tags")
+		_, _ = w.Write([]byte(`{"streams":0,"chunks":0,"bytes":0,"entries":0}`))
+	}))
+	defer srv.Close()
+
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	_, err = client.IndexStats(context.Background(), "uid", `{app="x"}`, time.Now().Add(-time.Hour), time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, "Source=gcx", got)
+}
+
+func TestClientIndexStats(t *testing.T) {
+	var gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query().Get("query")
+		_, _ = w.Write([]byte(`{"streams":2,"chunks":3,"bytes":4096,"entries":5}`))
+	}))
+	defer srv.Close()
+
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	now := time.Now()
+	stats, err := client.IndexStats(context.Background(), "uid", `{app="x"}`, now.Add(-time.Hour), now)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/datasources/uid/uid/resources/index/stats", gotPath)
+	assert.Equal(t, `{app="x"}`, gotQuery)
+	assert.Equal(t, uint64(4096), stats.Bytes)
+
+	_, err = client.IndexStats(context.Background(), "uid", `{app="x"}`, now, now.Add(-time.Hour))
+	require.Error(t, err)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 
@@ -17,6 +18,30 @@ import (
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
+
+// queryTagsHeader carries Loki query tags. Loki records "Source=<value>" in its
+// query logs, which is how gcx traffic is told apart from the assistant and
+// MCP traffic when sizing the cost guardrail.
+const queryTagsHeader = "X-Query-Tags"
+
+// queryTagsTransport tags every Loki request as coming from gcx unless the
+// caller already set tags.
+type queryTagsTransport struct {
+	base http.RoundTripper
+}
+
+func (t *queryTagsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if req.Header.Get(queryTagsHeader) != "" {
+		return base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set(queryTagsHeader, "Source=gcx")
+	return base.RoundTrip(clone)
+}
 
 type Client struct {
 	restConfig  config.NamespacedRESTConfig
@@ -34,6 +59,8 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
+	httpClient.Transport = &queryTagsTransport{base: httpClient.Transport}
+
 	return &Client{
 		restConfig:  cfg,
 		httpClient:  httpClient,
@@ -42,7 +69,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, true)
+	body, err := buildLogQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +97,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 // MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
 // Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
 func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, false)
+	body, err := buildMetricQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +110,29 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	return convertMetricResponse(grafanaResp), nil
 }
 
-// buildQueryBody builds the Grafana datasource query API request body shared by
-// Query and MetricQuery. includeMaxLines controls whether req.Limit is sent as
-// maxLines — MetricQuery results are time-series, not log lines, so it doesn't apply.
-func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeMaxLines bool) ([]byte, error) {
+// buildLogQueryBody builds the request body for a log query. Loki rejects
+// instant log queries, so a log query with no time range runs as a range query
+// over the last minute.
+func buildLogQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	return queryBody(datasourceUID, req, "range", req.Limit)
+}
+
+// buildMetricQueryBody builds the request body for a metric query. With no
+// time range it is an instant query. Line limits do not apply.
+func buildMetricQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	queryType := "instant"
+	if req.IsRange() {
+		queryType = "range"
+	}
+	return queryBody(datasourceUID, req, queryType, 0)
+}
+
+// queryBody builds the Grafana datasource query API request body. Grafana's
+// Loki datasource reads queryType and ignores the legacy instant field. With no
+// time range the request covers the last minute: Grafana evaluates an instant
+// query at "to", and "from" still feeds $__range and the step. A maxLines of 0
+// omits the field.
+func queryBody(datasourceUID string, req QueryRequest, queryType string, maxLines int) ([]byte, error) {
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -95,36 +141,28 @@ func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeM
 		},
 		"expr":       req.Query,
 		"intervalMs": 60000,
+		"queryType":  queryType,
 	}
-
-	var from, to string
+	from, to := "now-1m", "now"
 	if req.IsRange() {
 		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
 		to = strconv.FormatInt(req.End.UnixMilli(), 10)
 		if req.Step > 0 {
 			query["intervalMs"] = req.Step.Milliseconds()
 		}
-	} else {
-		from = "now-1m"
-		to = "now"
-		query["instant"] = true
+	}
+	if maxLines > 0 {
+		query["maxLines"] = maxLines
 	}
 
-	if includeMaxLines && req.Limit > 0 {
-		query["maxLines"] = req.Limit
-	}
-
-	bodyMap := map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"queries": []any{query},
 		"from":    from,
 		"to":      to,
-	}
-
-	body, err := json.Marshal(bodyMap)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-
 	return body, nil
 }
 
@@ -276,6 +314,7 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 // given time range; Loki rejects pipeline stages and metric expressions. step
 // (a duration like "15s" or a float number of seconds) is optional; pass "" to
 // let Loki choose a bucket size.
+// Returned patterns carry a gcx-derived totalCount and sort by total descending, then pattern text, rather than backend order.
 //
 // The result is what the backend retained, not a complete inventory: Loki
 // prunes low-volume patterns and caps results, and retention varies by
@@ -328,7 +367,27 @@ func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, star
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	summarizePatterns(result.Data)
 	return &result, nil
+}
+
+func summarizePatterns(patterns []Pattern) {
+	for i := range patterns {
+		var total int64
+		for _, sample := range patterns[i].Samples {
+			if len(sample) >= 2 {
+				total += sample[1]
+			}
+		}
+		patterns[i].TotalCount = total
+	}
+	sort.Slice(patterns, func(i, j int) bool {
+		if patterns[i].TotalCount != patterns[j].TotalCount {
+			return patterns[i].TotalCount > patterns[j].TotalCount
+		}
+		// Break ties by text so backend ordering cannot make identical results awkward to diff.
+		return patterns[i].Pattern < patterns[j].Pattern
+	})
 }
 
 func (c *Client) buildLabelsPath(datasourceUID string) string {

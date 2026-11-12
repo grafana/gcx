@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -1330,7 +1329,7 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 	o.Start = today
 	o.End = endDate
 
-	o.IO.RegisterCustomCodec("table", &finalShiftTableCodec{})
+	cmdio.RegisterTable(&o.IO, finalShiftTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Start, "start", o.Start, "Start date (YYYY-MM-DD)")
@@ -1800,27 +1799,14 @@ func alertRichToEnvelope(api *alertAPI, rich *AlertRich, groupID, namespace stri
 	}, nil
 }
 
-type finalShiftTableCodec struct{ noDecodeCodec }
-
-func (c *finalShiftTableCodec) Format() format.Format { return "table" }
-
-func (c *finalShiftTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]FlatShift)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []FlatShift")
+func finalShiftTable() cmdio.Table[FlatShift] {
+	return cmdio.Table[FlatShift]{
+		Columns: []cmdio.Column[FlatShift]{
+			{Header: "USER_PK", Content: func(s FlatShift) string { return s.UserPK }},
+			{Header: "EMAIL", Content: func(s FlatShift) string { return s.UserEmail }},
+			{Header: "USERNAME", Content: func(s FlatShift) string { return s.UserUsername }},
+			{Header: "START", Content: func(s FlatShift) string { return s.ShiftStart[:min(len(s.ShiftStart), 16)] }},
+			{Header: "END", Content: func(s FlatShift) string { return s.ShiftEnd[:min(len(s.ShiftEnd), 16)] }},
+		},
 	}
-
-	t := style.NewTable("USER_PK", "EMAIL", "USERNAME", "START", "END")
-	for _, item := range items {
-		start := item.ShiftStart
-		if len(start) > 16 {
-			start = start[:16]
-		}
-		end := item.ShiftEnd
-		if len(end) > 16 {
-			end = end[:16]
-		}
-		t.Row(item.UserPK, item.UserEmail, item.UserUsername, start, end)
-	}
-	return t.Render(w)
 }

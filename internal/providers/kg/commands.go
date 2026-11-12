@@ -24,7 +24,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/spf13/cobra"
@@ -418,6 +417,11 @@ func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show Knowledge Graph stack status.",
+		Long: `Show Knowledge Graph stack status.
+
+kgWriteApiEnabled reports whether the Knowledge Graph write API accepts writes
+for this stack (used by gcx kg entities upsert and gcx kg relationships upsert).
+It is absent when the server does not report it yet.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -530,9 +534,13 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 		`  gcx kg prom-rules upsert -f rules.yaml
 
   # Validate against the backend and preview the diff without uploading:
-  gcx kg prom-rules upsert -f rules.yaml --dry-run`,
+  gcx kg prom-rules upsert -f rules.yaml --dry-run
+
+  # Skip remote PromQL validation for rules too expensive to validate in time:
+  gcx kg prom-rules upsert -f rules.yaml --skip-promql-eval`,
 		Kind,
 		"Knowledge Graph rules uploaded",
+		true,
 		runPromRulesDryRun,
 		(*Client).UploadPromRules,
 	)
@@ -681,8 +689,13 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
   gcx kg model-rules upsert -f model-rules.yaml --dry-run`,
 		"ModelRules",
 		"Model rules uploaded",
-		runModelRulesDryRun,
-		(*Client).UploadModelRules,
+		false,
+		func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte, _ bool) error {
+			return runModelRulesDryRun(cmd, ioOpts, client, data)
+		},
+		func(client *Client, ctx context.Context, yamlContent string, _ bool) error {
+			return client.UploadModelRules(ctx, yamlContent)
+		},
 	)
 
 	listOpts := &modelRulesListOpts{}
@@ -1468,14 +1481,22 @@ func unifiedYAMLDiff(remote, local string) (string, error) {
 // ---------------------------------------------------------------------------
 
 type rulesCreateOpts struct {
-	File   string
-	DryRun bool
-	IO     cmdio.Options
+	File           string
+	DryRun         bool
+	SkipPromQLEval bool
+	IO             cmdio.Options
 }
 
-func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string) {
+func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string, withSkipPromQLEval bool) {
 	flags.StringVarP(&o.File, "file", "f", "", "Input file (YAML), or '-' for stdin.")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate against the backend and show a diff without uploading.")
+	if withSkipPromQLEval {
+		flags.BoolVar(&o.SkipPromQLEval, "skip-promql-eval", false,
+			"Skip the backend's remote PromQL validation (each expression is otherwise executed against the stack's "+
+				"metrics datasource). Use for expensive rules that time out. Syntax and Asserts metadata checks still run, "+
+				"so a rule that parses but is invalid is accepted and fails later at ruler evaluation. Backends without "+
+				"support for the parameter ignore it and validate as before.")
+	}
 	o.IO.RegisterCustomCodec("text", &RulesDryRunTextCodec{SuccessMsg: successMsg})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
@@ -1486,12 +1507,15 @@ func (o *rulesCreateOpts) setup(flags *pflag.FlagSet, successMsg string) {
 // stdin) and both support --dry-run (validate + client-side diff, no writes).
 // dryRun runs the validate/diff path; upload performs the real PUT; kind names
 // the mutated resource in the result document and successMsg is the human
-// one-liner printed after a real upsert.
+// one-liner printed after a real upsert. withSkipPromQLEval registers
+// --skip-promql-eval and passes its value to dryRun and upload; commands
+// without the flag always receive false.
 func newRulesUpsertCommand(
 	loader RESTConfigLoader,
 	short, example, kind, successMsg string,
-	dryRun func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error,
-	upload func(client *Client, ctx context.Context, yamlContent string) error,
+	withSkipPromQLEval bool,
+	dryRun func(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte, skipPromQLEval bool) error,
+	upload func(client *Client, ctx context.Context, yamlContent string, skipPromQLEval bool) error,
 ) *cobra.Command {
 	opts := &rulesCreateOpts{}
 	createCmd := &cobra.Command{
@@ -1515,16 +1539,16 @@ func newRulesUpsertCommand(
 				return err
 			}
 			if opts.DryRun {
-				return dryRun(cmd, &opts.IO, client, data)
+				return dryRun(cmd, &opts.IO, client, data, opts.SkipPromQLEval)
 			}
-			if err := upload(client, cmd.Context(), string(data)); err != nil {
+			if err := upload(client, cmd.Context(), string(data), opts.SkipPromQLEval); err != nil {
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(),
 				cmdio.NewSingleMutation("upserted", cmdio.MutationTarget{Kind: kind}))
 		},
 	}
-	opts.setup(createCmd.Flags(), successMsg)
+	opts.setup(createCmd.Flags(), successMsg, withSkipPromQLEval)
 	_ = createCmd.MarkFlagRequired("file")
 	return createCmd
 }
@@ -1591,7 +1615,7 @@ func runModelRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Clie
 }
 
 // runPromRulesDryRun is the prom-rules counterpart to runModelRulesDryRun.
-func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte) error {
+func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Client, data []byte, skipPromQLEval bool) error {
 	ctx := cmd.Context()
 
 	var local Rule
@@ -1602,7 +1626,7 @@ func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Clien
 		return errors.New("prom-rules file has no name")
 	}
 
-	if err := client.ValidatePromRules(ctx, string(data)); err != nil {
+	if err := client.ValidatePromRules(ctx, string(data), skipPromQLEval); err != nil {
 		return err
 	}
 
@@ -1803,23 +1827,31 @@ func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
 		// nothing on stdout (an advisory note goes to stderr).
 		return nil
 	}
-	rawRules, _ := group["rules"].([]any)
-	t := style.NewTable("SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP")
-	for _, r := range rawRules {
-		rule, _ := r.(map[string]any)
-		if rule == nil {
-			continue
-		}
-		t.Row(
-			stringField(rule["selector"]),
-			stringField(rule["target_label"]),
-			joinStringSlice(rule["join_labels"]),
-			joinStringSlice(rule["ranked_choice"]),
-			stringField(rule["replacement"]),
-			boolField(rule["drop"]),
-		)
+	return relabelRuleTable().Codec(cmdio.FormatTable).Encode(w, group)
+}
+
+func relabelRuleTable() cmdio.TableAdapter[map[string]any, map[string]any] {
+	return cmdio.TableAdapter[map[string]any, map[string]any]{
+		Table: cmdio.Table[map[string]any]{Columns: []cmdio.Column[map[string]any]{
+			{Header: "SELECTOR", Content: func(r map[string]any) string { return stringField(r["selector"]) }},
+			{Header: "TARGET LABEL", Content: func(r map[string]any) string { return stringField(r["target_label"]) }},
+			{Header: "JOIN LABELS", Content: func(r map[string]any) string { return joinStringSlice(r["join_labels"]) }},
+			{Header: "RANKED CHOICE", Content: func(r map[string]any) string { return joinStringSlice(r["ranked_choice"]) }},
+			{Header: "REPLACEMENT", Content: func(r map[string]any) string { return stringField(r["replacement"]) }},
+			{Header: "DROP", Content: func(r map[string]any) string { return boolField(r["drop"]) }},
+		}},
+		Rows: func(group map[string]any) ([]map[string]any, error) {
+			rawRules, _ := group["rules"].([]any)
+			rules := make([]map[string]any, 0, len(rawRules))
+			for _, r := range rawRules {
+				rule, _ := r.(map[string]any)
+				if rule != nil {
+					rules = append(rules, rule)
+				}
+			}
+			return rules, nil
+		},
 	}
-	return t.Render(w)
 }
 
 func (c *RelabelRuleTableCodec) Decode(_ io.Reader, _ any) error {
@@ -1863,8 +1895,8 @@ func joinStringSlice(v any) string {
 func newEntitiesCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "entities",
-		Short: "Manage Knowledge Graph entities.",
-		Long: `Manage Knowledge Graph entities.
+		Short: "List and look up Knowledge Graph entities with their type, scope and properties; also upsert and delete custom ones.",
+		Long: `List, look up and manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
 properties — the labels used to build PromQL/Loki queries); it is cheap and is
@@ -2830,35 +2862,27 @@ type cypherOpts struct {
 }
 
 func (o *cypherOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CypherTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, cypherTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-// CypherTableCodec renders a CypherSearchResponse as a table of entities.
-type CypherTableCodec struct{}
-
-func (c *CypherTableCodec) Format() format.Format { return "table" }
-
-func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
-	resp, ok := v.(*CypherSearchResponse)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
+func cypherTable() cmdio.TableAdapter[*CypherSearchResponse, CypherEntity] {
+	return cmdio.TableAdapter[*CypherSearchResponse, CypherEntity]{
+		Table: cmdio.Table[CypherEntity]{Columns: []cmdio.Column[CypherEntity]{
+			{Header: "TYPE", Content: func(e CypherEntity) string { return e.Type }},
+			{Header: "NAME", Content: func(e CypherEntity) string { return e.Name }},
+			{Header: "SCOPE", Content: func(e CypherEntity) string {
+				parts := make([]string, 0, len(e.Scope))
+				for k, val := range e.Scope {
+					parts = append(parts, fmt.Sprintf("%s=%v", k, val))
+				}
+				sort.Strings(parts)
+				return strings.Join(parts, ", ")
+			}},
+		}},
+		Rows: func(resp *CypherSearchResponse) ([]CypherEntity, error) { return resp.Entities, nil },
 	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE")
-	for _, e := range resp.Entities {
-		var parts []string
-		for k, val := range e.Scope {
-			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
-		}
-		sort.Strings(parts)
-		t.Row(e.Type, e.Name, strings.Join(parts, ", "))
-	}
-	return t.Render(w)
-}
-
-func (c *CypherTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -3305,7 +3329,7 @@ func (c *DescribeTextCodec) Decode(_ io.Reader, _ any) error {
 func newDescribeCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "meta",
-		Short: "Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.",
+		Short: "Show what the Knowledge Graph contains: entity and relationship types, valid env/namespace/site values, and telemetry query configs.",
 	}
 	cmd.AddCommand(
 		newDescribeSchemaCmd(loader),
@@ -3323,25 +3347,26 @@ func newDescribeSchemaCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "schema",
-		Short: "Show entity types, properties, and relationships.",
+		Short: "Show entity types, their properties and the relationships between them (last hour by default; --from/--to for older data).",
 		Long: `Show the entity types with their properties, and the relationships between
 them as 'A --TYPE--> B', for the requested window (the last hour by default;
 pass --from/--to for older data, the same window as your queries).
 
 The JSON output nests everything under .schema: .schema.entityTypes[] is
 {type, properties} and .schema.relationships[] is a string. Filter it with the
-built-in --jq rather than an external parser; -o text prints one line per type.`,
+built-in --jq rather than an external parser; -o text prints one line per type
+with its properties, then one line with every relationship.`,
 		Example: `  # Show the schema for an incident window
   gcx kg meta schema --from <start> --to <end>
+
+  # Print one line per entity type with its properties, then every relationship
+  gcx kg meta schema --since 1h -o text
 
   # List the properties of one entity type
   gcx kg meta schema --since 1h --jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'
 
   # List the relationships that involve one entity type
-  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'
-
-  # Print one line per entity type with its properties
-  gcx kg meta schema --since 1h -o text`,
+  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -3374,7 +3399,7 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
 		Use:   "scopes",
-		Short: "Show all valid env/namespace/site filter values.",
+		Short: "List the environments, namespaces and sites the stack has (last hour by default; --from/--to for older data).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

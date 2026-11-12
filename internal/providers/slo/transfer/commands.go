@@ -122,7 +122,9 @@ func PushCommand[T adapter.ResourceNamer](binding providers.BoundResource[T], la
 		Long: fmt.Sprintf(`Push %s from files.
 
 Deprecated: use gcx resources push %s -p PATH instead.
-Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.
+Writes update an existing metadata.name UUID; an unknown UUID creates a new resource.
+Without a UUID, a unique matching spec.name updates that resource and no match creates a new one; several matches fail.
+Name matching uses slugified spec.name: lowercase with punctuation converted to hyphens.
 Manifests may omit apiVersion and kind; this command supplies its resource type.
 This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
 The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.`, label, selector),
@@ -138,6 +140,7 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 			client, registry := pipeline(crud)
 			tracked := &pushClient{PushClient: client, label: label}
 			pusher := remote.NewPusher(tracked, registry)
+			lookup := nameLookup{client: client, desc: crud.Descriptor}
 			result := newPushBatchResult(opts.DryRun)
 			fail := func(file string, remaining int, target cmdio.MutationTarget, cause error) error {
 				result.Summary.Failed++
@@ -194,6 +197,13 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 				target.Name, target.UID = name, item.Name()
 				outcome := pushItemResult{Action: "dry-run", Name: name, UUID: item.Name(), File: file}
 				if !opts.DryRun {
+					if item.Name() == "" {
+						uuid, err := lookup.findUUID(ctx, &item.Object)
+						if err != nil {
+							return fail(file, len(paths)-i-1, target, err)
+						}
+						item.Object.SetName(uuid)
+					}
 					_, err := pusher.Push(ctx, remote.PushRequest{
 						Resources: items, MaxConcurrency: 1, StopOnError: true,
 						NoPushFailureLog: true, IncludeManaged: true,
@@ -204,6 +214,9 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 					}
 					outcome.Action, outcome.UUID = tracked.action, tracked.result.GetName()
 				}
+				if lookup.items != nil {
+					lookup.items[outcome.UUID] = *tracked.result.DeepCopy()
+				}
 				result.Items = append(result.Items, outcome)
 				result.Summary.Succeeded++
 			}
@@ -212,6 +225,42 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 	}
 	opts.setup(cmd.Flags(), label)
 	return cmd
+}
+
+type nameLookup struct {
+	client remote.PushLister
+	desc   resources.Descriptor
+	items  map[string]unstructured.Unstructured
+}
+
+func (l *nameLookup) findUUID(ctx context.Context, obj *unstructured.Unstructured) (string, error) {
+	extractor := adapter.GetNaturalKeyExtractor(l.desc.GroupVersionKind())
+	key, ok := extractor(obj)
+	if !ok {
+		return "", nil
+	}
+	if l.items == nil {
+		listed, err := l.client.List(ctx, l.desc, metav1.ListOptions{})
+		if err != nil {
+			return "", err
+		}
+		l.items = make(map[string]unstructured.Unstructured, len(listed.Items))
+		for _, existing := range listed.Items {
+			l.items[existing.GetName()] = existing
+		}
+	}
+	var uuid string
+	for _, existing := range l.items {
+		existingKey, ok := extractor(&existing)
+		if !ok || existingKey != key {
+			continue
+		}
+		if uuid != "" {
+			return "", fmt.Errorf("multiple %s resources have natural key %q; specify metadata.name UUID", l.desc.Kind, key)
+		}
+		uuid = existing.GetName()
+	}
+	return uuid, nil
 }
 
 // PullCommand delegates fetching and file writing to the resource pipeline,
@@ -282,7 +331,7 @@ func pipeline[T adapter.ResourceNamer](crud *adapter.TypedCRUD[T]) (*adapter.Res
 
 // pushClient captures the successful pipeline write for the legacy receipt.
 // Exposing only PushClient deliberately excludes the optional PushLister,
-// preserving UUID-only upsert in legacy commands without changing generic pushes.
+// so an unknown explicit UUID creates instead of falling back to a name match.
 type pushClient struct {
 	remote.PushClient
 

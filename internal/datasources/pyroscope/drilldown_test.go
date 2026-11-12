@@ -2,6 +2,7 @@ package pyroscope_test
 
 import (
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -48,6 +49,47 @@ func TestProfilesDrilldownURL_NoServiceNameNoExtraFiltersUsesAllExploration(t *t
 	assert.Empty(t, q.Get("var-filters"))
 }
 
+func TestProfilesDrilldownURL_ServiceNameRepresentability(t *testing.T) {
+	for _, tc := range []struct {
+		name, service string
+		ok            bool
+	}{
+		{"ordinary service", "front/end", true},
+		{"unicode service", "café 🚀", true},
+		{"quoted service", "front\"end", false},
+		{"backslash in service", `front\nend`, false},
+		{"newline in service", "front\nend", false},
+		{"tab in service", "front\tend", false},
+		{"empty service", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			selector := `{service_name=` + strconv.Quote(tc.service) + `}`
+			for _, ids := range [][]string{nil, {"550e8400-e29b-41d4-a716-446655440000"}} {
+				link, ok := pyroscope.ProfilesDrilldownURL("https://example.test", "pyro", selector, "cpu", nil, nil, ids, nil, time.Time{}, time.Time{})
+				require.Equal(t, tc.ok, ok)
+				if !ok {
+					assert.Empty(t, link)
+					continue
+				}
+				u, err := url.Parse(link)
+				require.NoError(t, err)
+				assert.Equal(t, tc.service, u.Query().Get("var-serviceName"))
+			}
+		})
+	}
+}
+
+func TestProfilesDrilldownURL_ProfileID(t *testing.T) {
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	link, ok := pyroscope.ProfilesDrilldownURL("https://example.test", "pyro", `{service_name="frontend",env="prod"}`, "cpu", nil, nil, []string{id}, nil, time.Time{}, time.Time{})
+	require.True(t, ok)
+	u, err := url.Parse(link)
+	require.NoError(t, err)
+	assert.Equal(t, "flame-graph", u.Query().Get("explorationType"))
+	assert.Equal(t, id, u.Query().Get("var-profileIdSelector"))
+	assert.Equal(t, "env|=|prod", u.Query().Get("var-filters"))
+}
+
 func TestProfilesDrilldownURL_SpanSelector(t *testing.T) {
 	got, ok := pyroscope.ProfilesDrilldownURL("https://stack.grafana.net", "pyro-uid",
 		`{service_name="frontend"}`, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", []string{"aaa", "bbb"}, nil, nil, nil, time.Time{}, time.Time{})
@@ -64,7 +106,8 @@ func TestProfilesDrilldownURL_FallbackCases(t *testing.T) {
 		traceIDs, profileIDs, stacktrace []string
 	}{
 		"trace-id forces fallback":                                  {"https://stack.grafana.net", "pyro-uid", `{service_name="frontend"}`, "cpu", []string{"4bf92f3577b34da6a3ce929d0e0e4736"}, nil, nil},
-		"profile-id forces fallback":                                {"https://stack.grafana.net", "pyro-uid", `{service_name="frontend"}`, "cpu", nil, []string{"550e8400-e29b-41d4-a716-446655440000"}, nil},
+		"multiple profile IDs force fallback":                       {"https://stack.grafana.net", "pyro-uid", `{service_name="frontend"}`, "cpu", nil, []string{"550e8400-e29b-41d4-a716-446655440000", "7c9e6679-7425-40de-944b-e07fc1f90ae7"}, nil},
+		"profile ID without service forces fallback":                {"https://stack.grafana.net", "pyro-uid", `{}`, "cpu", nil, []string{"550e8400-e29b-41d4-a716-446655440000"}, nil},
 		"stacktrace-selector forces fallback":                       {"https://stack.grafana.net", "pyro-uid", `{service_name="frontend"}`, "cpu", nil, nil, []string{"main.handler"}},
 		"extra filters without service_name have no representation": {"https://stack.grafana.net", "pyro-uid", `{env="prod"}`, "cpu", nil, nil, nil},
 		"missing host falls back":                                   {"", "pyro-uid", `{service_name="frontend"}`, "cpu", nil, nil, nil},

@@ -2,13 +2,25 @@
 
 ## Overview
 
-gcx has three distinct client paths to Grafana. The primary path uses the
+gcx uses distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
 Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path uses
 the Grafana OpenAPI generated client (`grafana-openapi-client-go`) for
-non-resource operations like health checks and datasource listing. A third path
-uses `rest.HTTPClientFor` directly to execute datasource-specific queries
-(PromQL, LogQL) against Grafana's `/apis` query endpoints.
+non-resource operations like health checks and datasource listing. Direct HTTP
+clients use `rest.HTTPClientFor` for datasource queries and global resource search
+against their respective `/apis` endpoints.
+
+---
+
+## Global Resource Search
+
+Experimental `gcx resources search` uses the selected context's namespace and
+authenticated HTTP transport to call
+`/apis/search.grafana.app/v0alpha1/namespaces/{namespace}/global/search/hybrid`.
+If the caller selects no resource types, Grafana uses its configured defaults.
+The response contains ranked matches with scores and matching text.
+See the [resource exploration guide](../sources/guides/explore-modify-resources.md)
+for usage.
 
 ---
 
@@ -206,15 +218,16 @@ client := dynamic.NewNamespacedClient(namespace, myDynamicClient)
 
 Embeds `*NamespacedClient` and adds automatic version re-fetching. Grafana
 resources can carry a `status.conversion.storedVersion` field indicating the
-actual stored API version differs from the requested version. When that field is
-present, `VersionedClient` re-fetches the resource using the stored version.
+actual stored API version differs from the requested version. `VersionedClient`
+re-fetches that version only when `status.conversion.failed` is true. Successful
+conversions retain the requested representation, including schema v2 dashboard layouts.
 
 **Flow for a List operation:**
 ```
 1. Call NamespacedClient.List(ctx, desc, opts)      → initial list in requested version
-2. For each item, check status.conversion.storedVersion
-3. Items without storedVersion → kept as-is
-4. Items with storedVersion X  → grouped by new Descriptor{version=X}
+2. For each item, check status.conversion.failed and storedVersion
+3. Successful conversions or items without storedVersion → kept as-is
+4. Failed conversions with storedVersion X → grouped by new Descriptor{version=X}
 5. Call NamespacedClient.GetMultiple for each group  → re-fetch at correct version
 6. Return merged list
 ```

@@ -3,6 +3,7 @@ package notifier //nolint:testpackage // State tests need direct access to the u
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -40,7 +41,7 @@ func TestSaveState_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stat() error = %v", err)
 	}
-	if got := info.Mode().Perm(); got != 0o600 {
+	if got := info.Mode().Perm(); runtime.GOOS != "windows" && got != 0o600 {
 		t.Fatalf("state file perms = %v, want 0600", got)
 	}
 

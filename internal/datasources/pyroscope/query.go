@@ -69,6 +69,7 @@ type pyroscopeQueryOpts struct {
 func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	// Register pprof and dot before shared.Setup so they appear in the -o help string.
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
+	opts.shared.IO.MarkArtifactFormat("pprof") // -o pprof writes a file; stdout carries the artifact receipt
 	opts.shared.IO.RegisterCustomCodec("dot", &dotCodec{})
 	cmdio.RegisterCSV(&opts.shared.IO)
 	opts.shared.Setup(flags, true)
@@ -78,7 +79,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
 	flags.Int64Var(&opts.MaxNodes, "max-nodes", 0, fmt.Sprintf("Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, %d for all other formats)", defaultMaxNodes))
 	flags.StringSliceVar(&opts.ProfileIDs, "profile-id", nil, "Drill down to specific profile UUIDs from exemplar queries (repeatable)")
-	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)")
+	flags.StringSliceVar(&opts.SpanIDs, "span-id", nil, "Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o dot)")
 	flags.StringSliceVar(&opts.TraceIDs, "trace-id", nil, "Only query samples with these 32-character hex trace IDs (repeatable)")
 	flags.StringSliceVar(&opts.StacktraceSelector, "stacktrace-selector", nil, "Only query locations with these function names, starting from the root (repeatable)")
 	flags.StringVar(&opts.PprofPath, "pprof-path", "", "Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)")
@@ -116,9 +117,6 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 	}
 	if len(opts.TraceIDs) > 0 && len(opts.ProfileIDs) > 0 {
 		return errors.New("--trace-id and --profile-id cannot be used together")
-	}
-	if len(opts.SpanIDs) > 0 && opts.shared.IO.OutputFormat == "pprof" {
-		return errors.New("--span-id is not supported with -o pprof")
 	}
 	if len(opts.SpanIDs) > 0 && opts.shared.IO.OutputFormat == "dot" {
 		return errors.New("--span-id is not supported with -o dot")
@@ -254,7 +252,7 @@ func (opts *pyroscopeQueryOpts) stackTraceSelector() *pyroscope.StackTraceSelect
 	return &pyroscope.StackTraceSelector{CallSite: locs}
 }
 
-// resolveMaxNodes returns the effective MaxNodes for non-pprof formats.
+// resolveMaxNodes returns the effective MaxNodes for the selected output format.
 // pprof output is left at MaxNodes=0 (server default / unlimited). DOT
 // output is also left at 0: the server then renders a 100-node call graph
 // from a 512-node source profile, which keeps the text digestible.
@@ -262,7 +260,7 @@ func (opts *pyroscopeQueryOpts) resolveMaxNodes(flags *pflag.FlagSet) int64 {
 	if flags.Changed("max-nodes") {
 		return opts.MaxNodes
 	}
-	if opts.shared.IO.OutputFormat == "dot" {
+	if opts.shared.IO.OutputFormat == "dot" || opts.shared.IO.OutputFormat == "pprof" {
 		return 0
 	}
 	return defaultMaxNodes
@@ -283,10 +281,10 @@ EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Use --drilldown-link or
---open-drilldown for the equivalent Grafana Profiles Drilldown URL (falls
-back to the Explore URL for --profile-id/--stacktrace-selector, which have no
-Drilldown equivalent). --trace-id has no representation in either, so no
-link is built for it.`,
+--open-drilldown for the equivalent Grafana Profiles Drilldown URL. A single
+--profile-id opens its scoped flame graph; multiple profile IDs, a stacktrace
+selector, or label selectors the app cannot represent fall back to Explore.
+--trace-id has no representation in either, so no link is built for it.`,
 		Example: `
   # Profile query with explicit datasource UID
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
@@ -377,6 +375,18 @@ link is built for it.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
+			req := pyroscope.QueryRequest{
+				LabelSelector:      expr,
+				ProfileTypeID:      opts.ProfileType,
+				Start:              start,
+				End:                end,
+				MaxNodes:           opts.resolveMaxNodes(cmd.Flags()),
+				ProfileIDs:         opts.ProfileIDs,
+				SpanIDs:            opts.SpanIDs,
+				TraceIDs:           opts.TraceIDs,
+				StackTraceSelector: opts.stackTraceSelector(),
+			}
+
 			if opts.shared.IO.OutputFormat == "pprof" {
 				dest := opts.PprofPath
 				if dest == "" {
@@ -385,18 +395,12 @@ link is built for it.`,
 				if _, err := os.Stat(dest); err == nil && !opts.PprofOverwrite {
 					return fmt.Errorf("%s already exists; use --pprof-overwrite to overwrite", dest)
 				}
-				data, err := client.Pprof(ctx, datasourceUID, pyroscope.PprofRequest{
-					LabelSelector: expr,
-					ProfileTypeID: opts.ProfileType,
-					Start:         start,
-					End:           end,
-					MaxNodes:      opts.MaxNodes,
-					TraceIDs:      opts.TraceIDs,
-				})
+				req.Format = pyroscope.ProfileFormatPprof
+				resp, err := client.Query(ctx, datasourceUID, req)
 				if err != nil {
 					return fmt.Errorf("pprof fetch failed: %w", err)
 				}
-				if err := os.WriteFile(dest, data, 0o600); err != nil {
+				if err := os.WriteFile(dest, resp.Pprof, 0o600); err != nil {
 					return fmt.Errorf("writing pprof profile: %w", err)
 				}
 				warnPprofSkipsLinks(cmd, share, drilldown)
@@ -414,17 +418,6 @@ link is built for it.`,
 
 			isDot := opts.shared.IO.OutputFormat == "dot"
 
-			req := pyroscope.QueryRequest{
-				LabelSelector:      expr,
-				ProfileTypeID:      opts.ProfileType,
-				Start:              start,
-				End:                end,
-				MaxNodes:           opts.resolveMaxNodes(cmd.Flags()),
-				ProfileIDs:         opts.ProfileIDs,
-				SpanIDs:            opts.SpanIDs,
-				TraceIDs:           opts.TraceIDs,
-				StackTraceSelector: opts.stackTraceSelector(),
-			}
 			if isDot {
 				req.Format = pyroscope.ProfileFormatDot
 			}

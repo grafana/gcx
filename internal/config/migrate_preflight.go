@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"reflect"
 	"strings"
 
@@ -241,14 +240,7 @@ func reconstructInterruptedLegacyLayers(layers []migrationLayer) ([]migrationLay
 			continue
 		}
 		backupPath := layer.source.Path + legacyBackupSuffix
-		info, err := os.Lstat(backupPath)
-		if err != nil {
-			return nil, fmt.Errorf("inspect migration backup %s: %w", backupPath, err)
-		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-			return nil, fmt.Errorf("migration backup %s is not a private regular file", backupPath)
-		}
-		contents, err := os.ReadFile(backupPath)
+		contents, err := readPrivateLegacyBackup(backupPath)
 		if err != nil {
 			return nil, fmt.Errorf("read migration backup %s: %w", backupPath, err)
 		}

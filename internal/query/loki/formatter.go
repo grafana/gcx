@@ -202,43 +202,16 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 }
 
 // FormatPatternsTable formats a PatternsResponse as a table with PATTERN and
-// SAMPLES columns, sorted by total sample count descending (the most frequent
-// pattern first). The API has no sum field, so the total is computed
-// client-side from each pattern's samples.
+// SAMPLES columns, preserving the order and totals prepared by Client.Patterns.
 func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 	if len(resp.Data) == 0 {
 		fmt.Fprintln(w, "No patterns returned for this selector and range (the backend may prune low-volume patterns or hold no pattern data for it)")
 		return nil
 	}
 
-	type row struct {
-		pattern string
-		total   int64
-	}
-	rows := make([]row, 0, len(resp.Data))
-	for _, p := range resp.Data {
-		var total int64
-		for _, sample := range p.Samples {
-			if len(sample) >= 2 {
-				total += sample[1]
-			}
-		}
-		rows = append(rows, row{pattern: p.Pattern, total: total})
-	}
-	// Break ties on total by pattern text so the row order is fully
-	// deterministic — sort.Slice alone leaves equal-total patterns in an
-	// unspecified relative order, which can flip between otherwise-identical
-	// runs and make table output flaky to diff.
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].total != rows[j].total {
-			return rows[i].total > rows[j].total
-		}
-		return rows[i].pattern < rows[j].pattern
-	})
-
 	t := style.NewTable("PATTERN", "SAMPLES")
-	for _, r := range rows {
-		t.Row(r.pattern, strconv.FormatInt(r.total, 10))
+	for _, p := range resp.Data {
+		t.Row(p.Pattern, strconv.FormatInt(p.TotalCount, 10))
 	}
 	return t.Render(w)
 }

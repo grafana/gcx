@@ -95,14 +95,43 @@ The last typed converter matches concrete `gcxerrors.HTTPStatusError` values
 with `errors.As`, after domain-specific converters. HTTP 401 means
 `Authentication failed` (exit 3); 403 means `Authorization failed` (exit 3);
 404 means `Resource not found`; 409 means `Resource conflict`; other statuses
-mean `API error` (exit 1). Parsed server messages and trace IDs appear once in
+mean `API error` (exit 1). The exact HTTP 400 server message
+`Authentication to data source failed` reports `Authentication failed` (exit 3)
+with datasource credential and ruler configuration guidance instead of a login suggestion.
+Parsed server messages and trace IDs appear once in
 details, with caller context. Transport `Message` text and the method set stay
 unchanged. `gcx api` retains its complete raw body.
+
+Assistant plugin HTTP 403 errors use Assistant-specific permission suggestions
+and the roles-and-permissions documentation (exit 3). Calling clients supply a
+known required action: investigation read operations name
+`grafana-assistant-app.investigations:read`. A valid `details.requiredPermission`
+or top-level `requiredPermission` in the response body takes precedence over the
+caller-supplied action. Operations without a known action get general
+permission guidance. Route refusals use the Assistant converter's
+plugin-route-denied branch before operation-specific guidance. The shared
+`PluginRouteDeniedError` conversion requires a known action and role, which the
+Assistant client does not have for refused routes. A 403 alone does not identify
+`plugins.app:access` as missing. The runnable diagnostic is `gcx api /api/access-control/user/actions`; suggestions do not
+direct users to `gcx setup status`, which does not check Assistant access.
 
 Synthetic Monitoring token discovery is classified by cause: missing Cloud
 credentials or stack configuration is authentication failure, register/install
 permission denial is authorization failure, and service/network outages remain
 API/network errors. Details identify the token discovery failure.
+
+#### Agent Observability plugin availability
+
+Agent Observability's client recognizes Grafana's plugin API `Plugin not found`
+HTTP 404 response from `/api/plugins/grafana-agento11y-app/resources` and returns
+a typed `PluginUnavailableError`. The `convertAgento11yPluginUnavailable` converter
+in `cmd/gcx/fail/convert.go` reports `Endpoint not available`, names the plugin,
+and suggests checking that Agent Observability is installed and enabled on the
+selected instance with `gcx api /api/plugins/grafana-agento11y-app/settings`.
+A 403 from this diagnostic indicates a permission failure, not proof that the
+plugin is absent.
+Non-CLI callers retain an unrendered error, and other HTTP 404
+responses retain their resource or API error handling.
 
 #### Fleet Management HTTP errors
 
@@ -111,7 +140,11 @@ from instrumentation and Fleet provider clients before the shared transport
 converter and generic fallback.
 
 - HTTP 401 → `Authentication failed`, exit 3, with credential recovery suggestions.
-- HTTP 403 → `Authorization failed`, exit 3, with role/action checks.
+- HTTP 403 → `Authorization failed`, exit 3, with role/action checks. Known
+  required route actions are named in details. Fleet auth failures omit raw
+  response bodies and RPC paths; permission hints use
+  `gcx api /api/access-control/user/actions` rather than referring back to setup
+  status.
 - HTTP 404 → `Resource not found` only when the response is Connect JSON with
   `"code":"not_found"`; every other 404 means `Endpoint not available`, including
   missing plugins, proxy routes, and unknown RPC paths.
@@ -129,11 +162,13 @@ For ID-based lookups with no name match, the original typed resource failure is 
 
 #### Error details and duplicate causes
 
-Fleet and GCOM errors render caller operation, parsed server message, error code
-when available, and HTTP status/trace ID once in details. Raw response text is
-the fallback when no server message parses. They omit `Parent` because it would
-repeat those details. Filesystem errors likewise render the full wrapped syscall
-error once in details, preserving operation, path, and cause.
+Fleet errors and GCOM errors render caller operation, parsed server
+message, error code when available, and HTTP status/trace ID once in details.
+Raw response text is the fallback when no server message parses, except for
+Fleet HTTP 401/403 errors, which omit raw-body fallback and the `[path]` suffix.
+They omit `Parent` because it would repeat those details. Filesystem errors
+likewise render the full wrapped syscall error once in details, preserving
+operation, path, and cause.
 
 GCOM create/update 409 with code `InvalidArgument` remains `Invalid stack request`
 (exit 2); other 409s remain `Resource conflict`, including delete protection with
@@ -148,6 +183,17 @@ stream. The stderr fallback appears only if the stdout write itself fails.
 (Historical note: the original NC-003 design made in-band JSON additive to
 the stderr output; the implementation intentionally converged on
 either/or in `reportError`, `cmd/gcx/main.go`.)
+
+An explicit human-format `-o` (`text`, `wide`, `yaml`, …) overrides agent mode
+for errors as it does for results: the failure is rendered on **stderr** as it
+is with `--agent=false`, and stdout carries no error document. Agent mode
+without `-o`, `-o json`, `-o agents`, `--json` and `--jq` keep the in-band
+document. So do artifact commands where `-o` does not select the stdout
+format: it selects the file format (`resources pull`, `resources edit`,
+`-o pprof`) or is not a format at all (`dev lint new -o <dir>`), and stdout
+stays JSON there. Failures before the command runs (an unknown flag, invalid
+arguments) keep the in-band document too, because the explicit format is
+recorded only once flag parsing has succeeded.
 
 The envelope carries collision-resistant discriminators:
 `{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused
@@ -211,19 +257,20 @@ not in the summary.
 |---|---|
 | `Invalid command usage` | Wrong flags, conflicting flags, missing required args or flags |
 | `Invalid configuration` | Bad or unparseable config file, unresolvable context, missing non-credential settings (e.g. SM URL, Cloud stack slug) |
-| `Authentication failed` | gcx has no credential, or the server rejected it: HTTP 401, expired or missing token, missing Cloud credentials or an SM token whose auto-discovery cannot start. Suggestions point at `gcx login` or setting a token |
+| `Authentication failed` | gcx has no credential, or the server rejected it: HTTP 401, expired or missing token, missing Cloud credentials or an SM token whose auto-discovery cannot start. Suggestions point at `gcx login` or setting a token. The shared transport converter also recognizes the exact datasource-authentication HTTP 400 message; its remediation concerns the datasource connection |
 | `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
 | `Keychain unavailable` | The OS keychain cannot be reached, so gcx cannot store or use the credential without an explicit plaintext-storage opt-out |
 | `OS credential store access is restricted` | The credential store is available, but the current execution session cannot write to it |
-| `Authorization failed` | The credential was accepted but lacks permission: HTTP 403, access-policy scope errors (Adaptive Logs `invalid scope` regardless of 401/403). Suggestions point at roles, access-policy scopes, or `gcx setup status`, not `gcx login` |
+| `Authorization failed` | The credential was accepted but lacks permission: HTTP 403, access-policy scope errors (Adaptive Logs and Logs Archive `invalid scope` regardless of 401/403), and a provider's permission denial tunneled through a non-403 datasource response (BigQuery returns googleapi `accessDenied` inside an HTTP 400). Suggestions point at roles, access-policy scopes, or `gcx setup status`, not `gcx login`; for a tunneled denial they point at the datasource's own credential, not the Grafana one |
 | `Resource not found` | 404 or client-side not-found detection |
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s, including delete protection) |
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
-| `Invalid query` | The datasource rejected a query or query request (HTTP 400), including query-language parse errors |
+| `Invalid query` | The datasource rejected a query or query request (HTTP 400), including query-language parse errors, but not a 400 whose body reports a permission denial — that is `Authorization failed` |
+| `Query blocked` | gcx refused to run a query before execution because a cost guardrail (for example the Grafana Cloud Loki query policy) judged it too expensive or impossible to assess in agent mode. Not an API rejection: no request ran. Details carry the estimate and reasons; suggestions say how to narrow the query |
 | `Unsupported Grafana version` | The Grafana server is older than gcx supports (exit code 6) |
 | `Partial failure` | Some batch operations failed, or a mutation saved a write before a later stage failed (exit code 4); preserve counts or saved identity in details |
 | `Network error` | Connection refused, DNS failure, server unreachable, timeouts |
-| `API error` | Non-404/403 HTTP error from backend |
+| `API error` | Non-404/403 HTTP error from backend, or a failed Logs Archive bucket check (HTTP 403 with field errors), where the customer's bucket refused Grafana's principal |
 | `Endpoint not available` | The requested API route, resource type, or API version is absent on this deployment (e.g. an experimental or Cloud-only endpoint, or no Kubernetes-style `/apis`), as opposed to a missing resource instance |
 | `Operation cancelled` | The user cancelled (exit code 5): Ctrl-C or another context cancellation, or Cancel on a browser login's consent page |
 | `File not found` | A local file or directory does not exist |

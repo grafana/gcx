@@ -2,6 +2,7 @@ package datasources_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,4 +101,29 @@ func TestGetByUID_ReturnsTypedNotFoundError(t *testing.T) {
 	assert.Equal(t, "missing", apiErr.Identifier)
 	assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
 	assert.Equal(t, "Datasource not found", apiErr.Message)
+}
+
+func TestNumericIDByUID(t *testing.T) {
+	for _, tc := range []struct{ name, body, want string }{
+		{name: "valid", body: `{"id":42,"uid":"prom"}`},
+		{name: "missing numeric ID", body: `{"uid":"prom"}`, want: "positive numeric ID"},
+		{name: "wrong UID", body: `{"id":42,"uid":"other"}`, want: "matching UID"},
+		{name: "invalid response", body: `invalid`, want: "decode datasource numeric ID"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/datasources/uid/prom", r.URL.Path)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			client := datasources.NewClientWithHTTP(srv.URL, srv.Client())
+			id, err := client.NumericIDByUID(t.Context(), "prom")
+			if tc.want != "" {
+				require.ErrorContains(t, err, tc.want)
+			} else {
+				require.NoError(t, err)
+				require.EqualValues(t, 42, id)
+			}
+		})
+	}
 }

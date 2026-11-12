@@ -76,6 +76,52 @@ jobs:
       - name: Tests
         run: mise run tests
 
+  windows:
+    name: Windows (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build gcx.exe
+        run: |
+          New-Item -ItemType Directory -Path bin -Force | Out-Null
+          go build -buildvcs=false -o bin/gcx.exe ./cmd/gcx/
+
+      - name: Check built executable
+        run: ./bin/gcx.exe --version
+
+      - name: Test installer with PowerShell 7
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/install_test.ps1
+
+      - name: Test installer with Windows PowerShell 5.1
+        if: ${{ !cancelled() && matrix.os == 'windows-latest' }}
+        shell: powershell
+        run: ./scripts/install_test.ps1
+
+      - name: Vet Windows files
+        if: ${{ !cancelled() }}
+        run: go vet ./...
+
+      - name: Run Go tests
+        if: ${{ !cancelled() }}
+        run: go test ./...
+        env:
+          GCX_AGENT_MODE: "false"
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest

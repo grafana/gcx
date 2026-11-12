@@ -260,9 +260,9 @@ func TestLayeredConflictRecoveryReusesCallerHeldLock(t *testing.T) {
 }
 
 func TestLayeredConflictRecoveryInsideDiscoveredPolicyMutation(t *testing.T) {
-	for _, clear := range []bool{false, true} {
+	for _, clearPolicy := range []bool{false, true} {
 		name := "set"
-		if clear {
+		if clearPolicy {
 			name = "clear"
 		}
 		t.Run(name, func(t *testing.T) {
@@ -280,7 +280,7 @@ func TestLayeredConflictRecoveryInsideDiscoveredPolicyMutation(t *testing.T) {
 			}
 			on := "on"
 			value := &on
-			if clear {
+			if clearPolicy {
 				value = nil
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
@@ -294,7 +294,7 @@ func TestLayeredConflictRecoveryInsideDiscoveredPolicyMutation(t *testing.T) {
 			raw, err := os.ReadFile(path)
 			require.NoError(t, err)
 			require.Contains(t, string(raw), "current-context: updated")
-			if clear {
+			if clearPolicy {
 				require.NotContains(t, string(raw), "credentials:")
 			} else {
 				var persisted Config

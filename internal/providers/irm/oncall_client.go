@@ -26,7 +26,8 @@ const (
 	// BasePath is the plugin resources root for the IRM app.
 	BasePath = "/api/plugins/grafana-irm-app/resources"
 
-	integrationsPath = "alert_receive_channels/"
+	notificationPoliciesPath = "notification_policies/"
+	integrationsPath         = "alert_receive_channels/"
 	// integrationTemplatesPath addresses the alert templates of an
 	// integration. The templates live behind their own collection, keyed by
 	// the integration ID, and never travel inside the Integration object.
@@ -226,6 +227,12 @@ func (e *resourceNotFoundError) Error() string {
 }
 
 func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string) (*T, error) {
+	return getResourceWithNotFound[T](ctx, c, basePath, id, resourceType,
+		&resourceNotFoundError{resourceType: resourceType, id: id})
+}
+
+// getResourceWithNotFound lets a resource opt in to a typed missing-object error.
+func getResourceWithNotFound[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string, notFound error) (*T, error) {
 	resp, err := c.DoRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: get %s: %w", resourceType, err)
@@ -233,7 +240,7 @@ func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, reso
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &resourceNotFoundError{resourceType: resourceType, id: id}
+		return nil, notFound
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, providers.HandleErrorResponse(resp)

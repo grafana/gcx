@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/assistant/watchers"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
@@ -26,6 +27,7 @@ import (
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -48,19 +50,16 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	// A signup that failed after the browser step renders its own failure and
 	// then the recovery. Checked before DetailedError extraction, which would
 	// otherwise return the inner error without the recovery.
-	var signupErr *login.SignupIncompleteError
-	if errors.As(err, &signupErr) {
+	if signupErr, ok := errors.AsType[*login.SignupIncompleteError](err); ok {
 		return signupIncompleteDetailedError(signupErr)
 	}
 
 	// Match value-typed DetailedError returns (e.g. `return gcxerrors.DetailedError{...}`).
-	var val gcxerrors.DetailedError
-	if errors.As(err, &val) {
+	if val, ok := errors.AsType[gcxerrors.DetailedError](err); ok {
 		return &val
 	}
 	// Match pointer-typed DetailedError returns (e.g. `return &gcxerrors.DetailedError{...}`).
-	var ptr *gcxerrors.DetailedError
-	if errors.As(err, &ptr) {
+	if ptr, ok := errors.AsType[*gcxerrors.DetailedError](err); ok {
 		return ptr
 	}
 
@@ -82,10 +81,12 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCloudOrgsErrors,                      // Organisation discovery auth failures
 		convertAuthErrors,                           // Auth-related (expired tokens)
 		convertPluginRouteDenied,                    // Plugin proxy refused a route: name the missing action
+		convertAgento11yPluginUnavailable,           // Explicit missing Agent Observability plugin
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
 		convertWatcherUnavailableErrors,             // Missing Watcher read capability
+		convertAssistantForbiddenErrors,             // Assistant plugin permissions
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
@@ -425,6 +426,21 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return detailedErr, true
 }
 
+func convertAgento11yPluginUnavailable(err error) (*gcxerrors.DetailedError, bool) {
+	if _, ok := errors.AsType[*agento11yhttp.PluginUnavailableError](err); !ok {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Parent:  err,
+		Summary: gcxerrors.SummaryEndpointNotAvailable,
+		Details: err.Error(),
+		Suggestions: []string{
+			"Confirm the selected instance with gcx config current-context",
+			"Check that Agent Observability is installed and enabled: gcx api /api/plugins/grafana-agento11y-app/settings",
+		},
+	}, true
+}
+
 // convertUnavailableEndpoint renders a route-absent response from an endpoint
 // flagged Cloud-only and/or experimental (via APIError.WithAvailability) into
 // an actionable, hedged error. It is datasource-agnostic: any client that marks
@@ -494,11 +510,19 @@ func convertQueryErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Suggestions: queryErrorSuggestions(apiErr),
 	}
 
-	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
+	switch {
+	case apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden:
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 		detailedErr.DocsLink = docs.ServiceAccounts
-	} else if link := queryErrorDocsLink(apiErr); link != "" {
-		detailedErr.DocsLink = link
+	case apiErr.IsPermissionError():
+		// The denial came from the provider behind the datasource, so the
+		// exit code must still say "authorization", but the Grafana
+		// service-account docs would send the reader to the wrong credential.
+		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
+	default:
+		if link := queryErrorDocsLink(apiErr); link != "" {
+			detailedErr.DocsLink = link
+		}
 	}
 
 	return detailedErr, true
@@ -522,9 +546,20 @@ func queryErrorDocsLink(apiErr *queryerror.APIError) string {
 }
 
 func queryErrorSummary(apiErr *queryerror.APIError) string {
-	switch apiErr.StatusCode {
-	case http.StatusUnauthorized:
+	// A credential the endpoint rejected outright is an authentication
+	// failure whatever the body says, so 401 is settled before the message
+	// is consulted.
+	if apiErr.StatusCode == http.StatusUnauthorized {
 		return gcxerrors.SummaryAuthenticationFailed
+	}
+	// A permission denial tunneled through a non-403 status (see
+	// APIError.IsPermissionError) would otherwise be reported as an invalid
+	// query or a generic API error.
+	if apiErr.IsPermissionError() {
+		return gcxerrors.SummaryAuthorizationFailed
+	}
+
+	switch apiErr.StatusCode {
 	case http.StatusForbidden:
 		return gcxerrors.SummaryAuthorizationFailed
 	case http.StatusBadRequest:
@@ -542,6 +577,18 @@ func queryErrorSummary(apiErr *queryerror.APIError) string {
 func queryErrorContext(apiErr *queryerror.APIError) string {
 	if language := queryErrorLanguage(apiErr); apiErr.StatusCode == http.StatusBadRequest && apiErr.IsParseError() && language != "" {
 		return fmt.Sprintf("Invalid %s query (HTTP %d)", language, apiErr.StatusCode)
+	}
+
+	// Name the real cause rather than the HTTP status the provider's denial
+	// arrived under, which is what made this read as a syntax problem. 401 is
+	// excluded alongside 403: queryErrorSummary settles it as an
+	// authentication failure before reading the message, so naming an upstream
+	// permission denial here would contradict the summary.
+	if apiErr.IsPermissionError() &&
+		apiErr.StatusCode != http.StatusForbidden &&
+		apiErr.StatusCode != http.StatusUnauthorized {
+		return fmt.Sprintf("%s denied the request (HTTP %d, permission denied upstream)",
+			queryErrorDatasourceName(apiErr.Datasource), apiErr.StatusCode)
 	}
 
 	subject := queryErrorDatasourceName(apiErr.Datasource) + " request"
@@ -565,6 +612,21 @@ func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 		return grafanaAuthSuggestions(apiErr.StatusCode)
 	}
 
+	// Point at the datasource's own credential, not the Grafana one: the
+	// upstream message above already names the permission that is missing.
+	if apiErr.IsPermissionError() {
+		suggestions := []string{
+			"Inspect the datasource's configured identity: gcx datasources get <uid> -o json",
+			"The datasource's own credential was denied upstream — your Grafana credential is not the problem",
+			"Grant the datasource's service account the permission named above",
+		}
+		if apiErr.Datasource == "bigquery" {
+			suggestions = append(suggestions,
+				"BigQuery needs roles/bigquery.jobUser to run queries, plus roles/bigquery.metadataViewer on the project to list datasets, tables and columns")
+		}
+		return suggestions
+	}
+
 	suggestions := []string{}
 	if apiErr.IsParseError() && strings.Contains(strings.ToLower(apiErr.Message), "expecting string") {
 		if example := queryErrorStringLiteralExample(apiErr); example != "" {
@@ -581,6 +643,8 @@ func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 
 func queryErrorDatasourceName(datasource string) string {
 	switch datasource {
+	case "bigquery":
+		return "BigQuery"
 	case "loki":
 		return "Loki"
 	case "prometheus":
@@ -784,7 +848,7 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// traces/metrics) because the logs client returns a typed APIError that this converter
 	// catches before convertCloudConfigErrors runs.
 	_, htmlScopeResponse := htmlResponseDetails(apiErr.APIUserMessage(), "", apiErr.HTTPStatusCode())
-	if !htmlScopeResponse && apiErr.APIServiceName() == "Adaptive Logs" &&
+	if !htmlScopeResponse && isAdaptiveLogsScopedService(apiErr.APIServiceName()) &&
 		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
 		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
 		return &gcxerrors.DetailedError{
@@ -808,6 +872,10 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return detailedErr, true
+}
+
+func isAdaptiveLogsScopedService(service string) bool {
+	return service == "Adaptive Logs" || service == "Logs Archive"
 }
 
 func serviceAPIErrorSummary(apiErr serviceAPIError) string {
@@ -944,8 +1012,7 @@ func joinErrorDetails(parts ...string) string {
 }
 
 func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
-	var unsupported *resources.UnsupportedResourceError
-	if errors.As(err, &unsupported) {
+	if _, ok := errors.AsType[*resources.UnsupportedResourceError](err); ok {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: gcxerrors.SummaryEndpointNotAvailable,
@@ -1040,8 +1107,7 @@ func isEmittedError(err error) bool {
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
-	var basicErr *login.BasicAuthCheckError
-	if errors.As(err, &basicErr) {
+	if basicErr, ok := errors.AsType[*login.BasicAuthCheckError](err); ok {
 		detail := &gcxerrors.DetailedError{
 			Parent:      err,
 			Summary:     gcxerrors.SummaryAPIError,
@@ -1070,18 +1136,15 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return detail, true
 	}
 
-	var gcomErr *login.GCOMStackError
-	if errors.As(err, &gcomErr) {
+	if gcomErr, ok := errors.AsType[*login.GCOMStackError](err); ok {
 		return convertGCOMStackError(gcomErr), true
 	}
 
-	var healthErr *login.HealthCheckError
-	if errors.As(err, &healthErr) {
+	if healthErr, ok := errors.AsType[*login.HealthCheckError](err); ok {
 		return convertHealthCheckError(healthErr), true
 	}
 
-	var k8sErr *login.K8sDiscoveryError
-	if errors.As(err, &k8sErr) {
+	if k8sErr, ok := errors.AsType[*login.K8sDiscoveryError](err); ok {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: gcxerrors.SummaryEndpointNotAvailable,
@@ -1096,8 +1159,7 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	// Delegate VersionCheckError to convertVersionErrors so ExitCode and copy
 	// stay consistent with VersionIncompatibleError raised from other call sites.
-	var versionErr *login.VersionCheckError
-	if errors.As(err, &versionErr) {
+	if versionErr, ok := errors.AsType[*login.VersionCheckError](err); ok {
 		if d, ok := convertVersionErrors(versionErr.Cause); ok {
 			d.Parent = err
 			return d, true
@@ -1370,6 +1432,27 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
+func convertAssistantForbiddenErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var forbidden *assistanthttp.ForbiddenError
+	if !errors.As(err, &forbidden) {
+		return nil, false
+	}
+	detailed, _ := convertHTTPStatusErrors(err)
+	detailed.Suggestions = []string{
+		"Inspect your allowed actions: gcx api /api/access-control/user/actions",
+	}
+	switch {
+	case providers.IsPluginRouteDenied(forbidden.Status, []byte(forbidden.ServerMessage)):
+		detailed.Suggestions = append(detailed.Suggestions, "Ask a Grafana admin to check the permission required by this Assistant plugin route")
+	default:
+		if permission := forbidden.RequiredPermission(); permission != "" {
+			detailed.Suggestions = append(detailed.Suggestions, "Ask a Grafana admin to grant a role that includes "+permission)
+		}
+	}
+	detailed.DocsLink = docs.RolesAndPermissions
+	return detailed, true
+}
+
 // convertFleetHTTPErrors classifies Fleet Connect and plugin-proxy failures.
 // Only a Connect not_found response identifies an absent resource on HTTP 404.
 func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
@@ -1378,29 +1461,52 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 	operation := wrappedTypedErrorContext(err, httpErr)
-	if operation == "" {
-		operation = httpErr.Path
-	} else if httpErr.Path != "" {
-		operation += " [" + httpErr.Path + "]"
+	var message, code, traceID string
+	switch httpErr.Status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		message, code, traceID = parsedResponseErrorFields(httpErr.Body)
+		message = errorMessageWithCode(message, code)
+		if message == "" {
+			if httpErr.Status == http.StatusUnauthorized {
+				message = "Fleet Management rejected the credentials"
+			} else {
+				message = "Fleet Management denied the request; check the required route actions"
+			}
+		}
+		if httpErr.Status == http.StatusForbidden && httpErr.RequiredAction != "" {
+			message += "; this Fleet Management operation requires the " + httpErr.RequiredAction + " action"
+		}
+	default:
+		if operation == "" {
+			operation = httpErr.Path
+		} else if httpErr.Path != "" {
+			operation += " [" + httpErr.Path + "]"
+		}
+		message, code, traceID = responseErrorFields(httpErr.Body)
+		message = errorMessageWithCode(message, code)
 	}
-	message, code, traceID := responseErrorFields(httpErr.Body)
 	detailed := &gcxerrors.DetailedError{
 		Summary: httpStatusSummary(httpErr.Status),
-		Details: httpFailureDetails(operation, errorMessageWithCode(message, code), httpErr.Status, traceID),
+		Details: httpFailureDetails(operation, message, httpErr.Status, traceID),
 	}
 	switch httpErr.Status {
-	case http.StatusUnauthorized:
-		detailed.Suggestions = []string{"Verify the token has not expired: gcx config view", reauthSuggestion}
-		detailed.DocsLink = docs.ServiceAccounts
+	case http.StatusUnauthorized, http.StatusForbidden:
 		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
-	case http.StatusForbidden:
-		detailed.Suggestions = []string{
-			"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
-			"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
-			"Check what your login holds: gcx setup status",
+		if httpErr.Status == http.StatusUnauthorized {
+			detailed.Suggestions = []string{"Verify the token has not expired: gcx config view", reauthSuggestion}
+			detailed.DocsLink = docs.ServiceAccounts
+		} else {
+			detailed.Suggestions = []string{
+				"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
+				"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
+				"Inspect your allowed actions: gcx api /api/access-control/user/actions",
+			}
+			if httpErr.RequiredAction != "" {
+				detailed.Suggestions = append(detailed.Suggestions,
+					"Ask a stack admin to grant the "+httpErr.RequiredAction+" action to your user or service account")
+			}
+			detailed.DocsLink = docs.RolesAndPermissions
 		}
-		detailed.DocsLink = docs.RolesAndPermissions
-		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
 	case http.StatusNotFound:
 		if !fleet.IsResourceNotFoundBody(httpErr.Body) {
 			detailed.Summary = gcxerrors.SummaryEndpointNotAvailable

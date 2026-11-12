@@ -59,7 +59,7 @@ func TestDryRunCallsCheckRulesInsteadOfMutation(t *testing.T) {
 
 		case r.Method == http.MethodPost:
 			createCalled.Add(1)
-			w.Header().Set("Etag", `"etag-v2"`)
+			w.Header().Set("ETag", `"etag-v2"`)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(MetricRule{Metric: "my-metric"}); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -67,7 +67,7 @@ func TestDryRunCallsCheckRulesInsteadOfMutation(t *testing.T) {
 
 		case r.Method == http.MethodPut:
 			updateCalled.Add(1)
-			w.Header().Set("Etag", `"etag-v2"`)
+			w.Header().Set("ETag", `"etag-v2"`)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(MetricRule{Metric: "my-metric"}); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -140,7 +140,7 @@ func newTestEtagClient(t *testing.T, server *httptest.Server) *Client {
 
 func writeJSONEtag(w http.ResponseWriter, v any, etag string) {
 	if etag != "" {
-		w.Header().Set("Etag", etag)
+		w.Header().Set("ETag", etag)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
@@ -165,7 +165,7 @@ func TestEtagManagerLazyFetch(t *testing.T) {
 		case http.MethodPost:
 			// CreateRule: verify If-Match was set (meaning ETag was fetched first).
 			assert.Equal(t, `"etag-v1"`, r.Header.Get("If-Match"))
-			w.Header().Set("Etag", `"etag-v2"`)
+			w.Header().Set("ETag", `"etag-v2"`)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(MetricRule{Metric: "my-metric"}); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -217,7 +217,7 @@ func TestEtagManagerRetryOn412(t *testing.T) {
 			}
 			// Second attempt — succeed with new ETag.
 			assert.Equal(t, `"etag-v2"`, r.Header.Get("If-Match"))
-			w.Header().Set("Etag", `"etag-v3"`)
+			w.Header().Set("ETag", `"etag-v3"`)
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(MetricRule{Metric: "my-metric"}); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -77,6 +77,11 @@ range, not a complete inventory: Loki prunes low-volume patterns and caps the
 number returned, and retention depends on the deployment, so a long --since
 does not guarantee complete coverage of that window.
 
+Patterns are sorted by total sample count descending, then by pattern text.
+JSON and YAML add totalCount, the sum of each pattern's sample counts.
+Table and wide output show this total in SAMPLES.
+The total describes the returned samples, not all logs in the window.
+
 Default time range is the last hour when no time flags are given. --step is
 optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 (e.g., 1.5); when omitted, Loki chooses the bucket size.`,

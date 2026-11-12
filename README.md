@@ -2,7 +2,7 @@
 
 <p>
 <a href="https://github.com/grafana/gcx/actions/workflows/ci.yaml"><img src="https://github.com/grafana/gcx/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
-<a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go" alt="Go"></a>
+<a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.27+-00ADD8?logo=go" alt="Go"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 <img src="https://img.shields.io/badge/status-generally%20available-green" alt="Generally Available">
 </p>
@@ -87,6 +87,7 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 | Product | Command | Examples |
 |---------|---------|----------|
+| **Machine Learning** | `gcx ml` | `ml jobs list`, `ml holidays list`, `ml outlier-detectors list` |
 | **SLOs** | `gcx slo` | `slo definitions list`, `slo reports list` |
 | **Synthetic Monitoring** | `gcx synthetic-monitoring` | `synthetic-monitoring checks list`, `synthetic-monitoring probes list`, `synthetic-monitoring probes deploy` |
 | **IRM** | `gcx irm` | `irm oncall schedules list`, `irm oncall integrations list`, `irm incidents list`, `irm incidents create -f incident.yaml` |
@@ -110,7 +111,7 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 ### Install `gcx`
 
-> For other installation options such as the binary or Go install, refer to the main [Installation](/docs/sources/installation) doc.
+> For other installation options such as the binary or Go install, refer to the main [Installation](docs/sources/installation.md) doc.
 
 The quickest way to install `gcx` in Linux or macOS is with the script, which downloads the latest release, verifies the SHA-256 checksum, and installs to `~/.local/bin`.
 
@@ -125,6 +126,22 @@ curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh
 ```
 
 To upgrade, run the same command again, then check `gcx --version`. 
+
+#### Windows
+
+Run this command in PowerShell 7 or Windows PowerShell 5.1:
+
+```powershell
+irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
+gcx --version
+```
+
+The installer checks the SHA-256 checksum. It installs `gcx.exe` in
+`$env:LOCALAPPDATA\gcx\bin` and adds that directory to your user `PATH`.
+Run the command again to upgrade. Use `GCX_VERSION` or `GCX_INSTALL_DIR` to
+select a version or directory. See the [Windows install guide](docs/sources/installation.md#install-on-windows)
+for manual ZIP installation and uninstall steps. For WSL, use the Linux
+installer inside WSL.
 
 #### Homebrew
 
@@ -251,7 +268,7 @@ While the alerting example uses the Grafana Assistant, which requires Grafana Cl
 
 - **Resource GitOps**. Pull writable resource types to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`).
 - **Explore your data**. Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`).
-- **Bring Assistant context into your agent**. Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`).
+- **Bring Assistant context into your agent**. Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`). Legacy transcript JSON preserves tool calls, results, durations, thinking blocks, and panel artifacts.
 - **Look up product docs**. Search and read Grafana documentation from the terminal (`gcx docs search`, `gcx docs get`).
 - **SLO management**. Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`).
 - **Onboarding & setup**. Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`).
@@ -281,6 +298,8 @@ gcx metrics metadata
 
 # LogQL queries
 gcx logs query '{app="nginx"} |= "error"' --since 1h
+# Use a LogQL metric query for complete counts
+gcx logs metrics 'count_over_time({app="nginx"}[1h])'
 gcx logs labels
 gcx logs series --match '{app="nginx"}'
 ```
@@ -335,6 +354,12 @@ gcx resources pull folders -p ./resources -o yaml
 
 # Push local changes back to Grafana
 gcx resources push -p ./resources
+
+# Include the resource identities returned by successful writes
+gcx resources push -p ./resources --include-successes -o json
+
+# An aborted push returns completed identities and a nonzero exit
+gcx resources push -p ./resources --include-successes -o json --on-error abort
 
 # Preview changes without applying
 gcx resources push -p ./resources --dry-run
@@ -479,6 +504,8 @@ gcx api /api/dashboards/uid/my-dashboard/versions -o yaml
 # Compare two dashboard JSONs before pushing
 gcx api /api/dashboards/calculate-diff -X POST -d @diff-request.json
 ```
+
+`gcx api` accepts paths on the configured Grafana stack. It rejects absolute URLs.
 
 ## Usage statistics
 

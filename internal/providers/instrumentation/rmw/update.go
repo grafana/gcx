@@ -60,8 +60,7 @@ func Update[T any](
 		}
 
 		// ConflictError from setFn is never retried.
-		var ce ConflictError
-		if errors.As(err, &ce) {
+		if _, ok := errors.AsType[ConflictError](err); ok {
 			return err
 		}
 

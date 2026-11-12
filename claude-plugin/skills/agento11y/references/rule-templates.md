@@ -57,6 +57,37 @@ evaluator_ids:
   - tool_correctness
 ```
 
+## Sequential — Gate an LLM Judge Behind a Cheap Check
+
+`execution_mode: sequential` runs `evaluator_ids` in order, and each evaluator must pass before the next one runs. The default, `parallel`, runs every evaluator independently. Put a deterministic evaluator first so the LLM judge only scores generations that pass it. Every evaluator except the last needs a pass condition on its outputs (`pass_threshold`, `pass_value` or `pass_match`). To switch a rule back, update it with `execution_mode: parallel`; leaving the field out keeps the current mode.
+
+```yaml
+rule_id: gated_helpfulness
+enabled: true
+selector: user_visible_turn
+sample_rate: 0.1
+execution_mode: sequential
+evaluator_ids:
+  - non_empty_response   # deterministic gate, runs first
+  - helpfulness_judge    # llm_judge, runs only when the gate passes
+```
+
+## Tagged — Break Down Scores by Generation Tags
+
+`filterable_tag_keys` lists up to 10 generation tag keys to expose as labels on evaluation score metrics: `team` becomes `agento11y_eval_tag_team`. The keys don't change which generations the rule matches. Keep the number of distinct tag values small to limit metric series. To remove the keys, update the rule with `filterable_tag_keys: []`; leaving the field out keeps the current keys.
+
+```yaml
+rule_id: quality_by_team
+enabled: true
+selector: all_assistant_generations
+sample_rate: 0.1
+evaluator_ids:
+  - helpfulness_judge
+filterable_tag_keys:
+  - environment
+  - team
+```
+
 ## Model-Specific — Filter by Provider or Model
 
 Match keys support glob patterns. Use to segment evaluation by the model that produced the generation — useful when comparing providers or rolling out evaluators only to specific model versions.

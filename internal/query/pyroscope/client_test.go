@@ -442,22 +442,27 @@ func TestClient_Pprof(t *testing.T) {
 		return b
 	}()
 
+	wrapped := protowire.AppendTag(nil, 1, protowire.BytesType)
+	wrapped = protowire.AppendBytes(wrapped, fakeProfileProto)
+	response := protowire.AppendTag(nil, 5, protowire.BytesType)
+	response = protowire.AppendBytes(response, wrapped)
+
 	tests := []struct {
 		name     string
-		req      pyroscope.PprofRequest
+		req      pyroscope.QueryRequest
 		handler  http.HandlerFunc
 		wantGzip bool
 		wantErr  bool
 	}{
 		{
 			name: "returns gzip-compressed profile proto",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{service_name="frontend"}`,
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeProfile")
+				assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/SelectMergeStacktraces")
 				assert.Equal(t, "application/proto", r.Header.Get("Content-Type"))
 
 				// Decode the request proto and verify key fields.
@@ -485,13 +490,13 @@ func TestClient_Pprof(t *testing.T) {
 				}
 
 				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
+				_, _ = w.Write(response)
 			},
 			wantGzip: true,
 		},
 		{
 			name: "max_nodes field encoded when set",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 				MaxNodes:      512,
@@ -518,13 +523,13 @@ func TestClient_Pprof(t *testing.T) {
 				}
 				assert.True(t, foundMaxNodes, "max_nodes field (5) should be present")
 				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
+				_, _ = w.Write(response)
 			},
 			wantGzip: true,
 		},
 		{
 			name: "trace_id_selector fields encoded when set",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 				TraceIDs:      []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"},
@@ -536,7 +541,7 @@ func TestClient_Pprof(t *testing.T) {
 				for len(b) > 0 {
 					num, typ, n := protowire.ConsumeTag(b)
 					b = b[n:]
-					if num == 8 && typ == protowire.BytesType {
+					if num == 10 && typ == protowire.BytesType {
 						v, n := protowire.ConsumeString(b)
 						b = b[n:]
 						traceIDs = append(traceIDs, v)
@@ -550,13 +555,13 @@ func TestClient_Pprof(t *testing.T) {
 				}
 				assert.Equal(t, []string{"4bf92f3577b34da6a3ce929d0e0e4736", "7c9e66797425440de944be07fc1f90ae"}, traceIDs)
 				w.Header().Set("Content-Type", "application/proto")
-				_, _ = w.Write(fakeProfileProto)
+				_, _ = w.Write(response)
 			},
 			wantGzip: true,
 		},
 		{
 			name: "server error is surfaced",
-			req: pyroscope.PprofRequest{
+			req: pyroscope.QueryRequest{
 				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
 				LabelSelector: `{}`,
 			},
@@ -574,7 +579,8 @@ func TestClient_Pprof(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			got, err := client.Pprof(context.Background(), "test-uid", tt.req)
+			tt.req.Format = pyroscope.ProfileFormatPprof
+			got, err := client.Query(context.Background(), "test-uid", tt.req)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -584,12 +590,178 @@ func TestClient_Pprof(t *testing.T) {
 
 			if tt.wantGzip {
 				// Verify the response is gzip-compressed and decompresses to our proto.
-				gz, err := gzip.NewReader(bytes.NewReader(got))
+				gz, err := gzip.NewReader(bytes.NewReader(got.Pprof))
 				require.NoError(t, err, "response should be gzip-compressed")
 				decompressed, err := io.ReadAll(gz)
 				require.NoError(t, err)
 				assert.Equal(t, fakeProfileProto, decompressed)
 			}
+		})
+	}
+}
+
+func TestClient_PprofRequestFormatAndProfileIDs(t *testing.T) {
+	profileIDs := []string{"550e8400-e29b-41d4-a716-446655440000", "7c9e6679-7425-40de-944b-e07fc1f90ae7"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		var formats []uint64
+		var gotIDs []string
+		for len(body) > 0 {
+			num, typ, n := protowire.ConsumeTag(body)
+			if !assert.Positive(t, n) {
+				return
+			}
+			body = body[n:]
+			switch num {
+			case 6:
+				assert.Equal(t, protowire.VarintType, typ)
+				value, n := protowire.ConsumeVarint(body)
+				if !assert.Positive(t, n) {
+					return
+				}
+				formats = append(formats, value)
+				body = body[n:]
+			case 8:
+				assert.Equal(t, protowire.BytesType, typ)
+				value, n := protowire.ConsumeString(body)
+				if !assert.Positive(t, n) {
+					return
+				}
+				gotIDs = append(gotIDs, value)
+				body = body[n:]
+			default:
+				n := protowire.ConsumeFieldValue(num, typ, body)
+				if !assert.Positive(t, n) {
+					return
+				}
+				body = body[n:]
+			}
+		}
+		assert.Equal(t, []uint64{4}, formats, "request must explicitly select PROFILE_FORMAT_PPROF")
+		assert.Equal(t, profileIDs, gotIDs)
+		wrapped := protowire.AppendTag(nil, 1, protowire.BytesType)
+		wrapped = protowire.AppendBytes(wrapped, nil)
+		response := protowire.AppendTag(nil, 5, protowire.BytesType)
+		response = protowire.AppendBytes(response, wrapped)
+		_, _ = w.Write(response)
+	}))
+	defer server.Close()
+
+	result, err := newTestClient(t, server).Query(context.Background(), "test-uid", pyroscope.QueryRequest{
+		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+		LabelSelector: `{}`,
+		ProfileIDs:    profileIDs,
+		Format:        pyroscope.ProfileFormatPprof,
+	})
+	require.NoError(t, err)
+	gz, err := gzip.NewReader(bytes.NewReader(result.Pprof))
+	require.NoError(t, err)
+	defer gz.Close()
+	profile, err := io.ReadAll(gz)
+	require.NoError(t, err)
+	require.Empty(t, profile)
+}
+
+func TestClient_PprofSpanIDs(t *testing.T) {
+	spanIDs := []string{"870c8691c64ab32d", "00f067aa0ba902b7"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/datasources/proxy/uid/test-uid/querier.v1.QuerierService/SelectMergeStacktraces", r.URL.Path)
+		assert.Equal(t, "application/proto", r.Header.Get("Content-Type"))
+		body, err := io.ReadAll(r.Body)
+		if !assert.NoError(t, err) {
+			return
+		}
+		var gotIDs []string
+		var format uint64
+		for len(body) > 0 {
+			num, typ, n := protowire.ConsumeTag(body)
+			if !assert.Positive(t, n) {
+				return
+			}
+			body = body[n:]
+			switch num {
+			case 11:
+				if !assert.Equal(t, protowire.BytesType, typ) {
+					return
+				}
+				value, n := protowire.ConsumeString(body)
+				if !assert.Positive(t, n) {
+					return
+				}
+				gotIDs = append(gotIDs, value)
+				body = body[n:]
+			case 6:
+				if !assert.Equal(t, protowire.VarintType, typ) {
+					return
+				}
+				value, n := protowire.ConsumeVarint(body)
+				if !assert.Positive(t, n) {
+					return
+				}
+				format = value
+				body = body[n:]
+			default:
+				n := protowire.ConsumeFieldValue(num, typ, body)
+				if !assert.Positive(t, n) {
+					return
+				}
+				body = body[n:]
+			}
+		}
+		assert.Equal(t, spanIDs, gotIDs)
+		assert.Equal(t, uint64(4), format)
+		wrapped := protowire.AppendTag(nil, 1, protowire.BytesType)
+		wrapped = protowire.AppendBytes(wrapped, nil)
+		response := protowire.AppendTag(nil, 5, protowire.BytesType)
+		response = protowire.AppendBytes(response, wrapped)
+		_, _ = w.Write(response)
+	}))
+	defer server.Close()
+
+	result, err := newTestClient(t, server).Query(context.Background(), "test-uid", pyroscope.QueryRequest{
+		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+		LabelSelector: `{}`,
+		SpanIDs:       spanIDs,
+		Format:        pyroscope.ProfileFormatPprof,
+	})
+	require.NoError(t, err)
+	gz, err := gzip.NewReader(bytes.NewReader(result.Pprof))
+	require.NoError(t, err)
+	defer gz.Close()
+	profile, err := io.ReadAll(gz)
+	require.NoError(t, err)
+	require.Empty(t, profile)
+}
+
+func TestClient_PprofInvalidResponse(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    []byte
+		wantErr string
+	}{
+		{name: "missing pprof wrapper", wantErr: "pprof response missing PprofProfile; backend may not support PROFILE_FORMAT_PPROF"},
+		{name: "empty pprof profile message", body: []byte{0x2a, 0x00}, wantErr: "pprof response contains an empty PprofProfile: missing profile data"},
+		{name: "malformed outer tag", body: []byte{0x80}, wantErr: "invalid pprof response"},
+		{name: "truncated pprof wrapper", body: []byte{0x2a, 0x02, 0x0a}, wantErr: "invalid pprof response"},
+		{name: "malformed inner tag", body: []byte{0x2a, 0x01, 0x80}, wantErr: "invalid pprof response"},
+		{name: "truncated profile wrapper", body: []byte{0x2a, 0x02, 0x0a, 0x01}, wantErr: "invalid pprof response"},
+		{name: "malformed unknown field", body: []byte{0x0a, 0x02}, wantErr: "invalid pprof response"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/proto")
+				_, _ = w.Write(tt.body)
+			}))
+			defer server.Close()
+
+			got, err := newTestClient(t, server).Query(context.Background(), "test-uid", pyroscope.QueryRequest{Format: pyroscope.ProfileFormatPprof})
+			require.ErrorContains(t, err, tt.wantErr)
+			if tt.name == "empty pprof profile message" {
+				assert.NotContains(t, err.Error(), "backend may not support")
+			}
+			assert.Nil(t, got)
 		})
 	}
 }

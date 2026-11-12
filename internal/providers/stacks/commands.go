@@ -29,8 +29,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &stackTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, stackTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Org, "org", "", "Organisation slug (required)")
@@ -92,8 +91,8 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &stackTableCodec{Wide: true})
+	o.IO.RegisterCustomCodec("table", stackGetTable().Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec("wide", stackGetTable().Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }

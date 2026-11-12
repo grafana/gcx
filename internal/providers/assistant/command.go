@@ -89,6 +89,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	loader.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(promptCommand(loader))
 	cmd.AddCommand(conversationCommand(loader))
+	cmd.AddCommand(usageCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
 	cmd.AddCommand(watcherscmd.Commands(loader))
@@ -224,6 +225,14 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	// Validate context ID if provided
 	if contextID != "" {
 		notice, err := c.ValidateCLIContext(ctx, contextID)
+		if engineErr, ok := errors.AsType[*assistant.UnsupportedEngineError](err); ok {
+			return gcxerrors.DetailedError{
+				Summary: "Unsupported conversation",
+				Details: fmt.Sprintf("Conversation %s runs on the %q chat engine. gcx sends prompts over A2A, "+
+					"which adds replies only to legacy conversations today.", contextID, engineErr.Engine),
+				Suggestions: []string{`Start a new conversation instead: gcx assistant prompt "<message>"`},
+			}
+		}
 		if err != nil {
 			return err
 		}
