@@ -66,6 +66,7 @@
   "gcx irm incidents activity add",
   "gcx irm incidents close",
   "gcx irm incidents open",
+  "gcx irm incidents share",
   "gcx irm oncall alert-groups acknowledge",
   "gcx irm oncall alert-groups resolve",
   "gcx irm oncall alert-groups silence",
