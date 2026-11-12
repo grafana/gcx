@@ -40,6 +40,9 @@ func (o *messageShareOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *messageShareOpts) Validate() error {
+	if o.flags.Changed("drafted-by-agent") && strings.TrimSpace(o.DraftedByAgent) == "" {
+		return opMemUsage("--drafted-by-agent must not be blank; omit it when the user wrote the message")
+	}
 	if strings.TrimSpace(o.DraftedByAgentName) != "" && strings.TrimSpace(o.DraftedByAgent) == "" {
 		exitCode := fail.ExitUsageError
 		return &fail.DetailedError{Summary: "--drafted-by-agent-name requires --drafted-by-agent", ExitCode: &exitCode}
@@ -228,6 +231,15 @@ func runIncidentShare(cmd *cobra.Command, incidentID string, opts *messageShareO
 	})
 	if err != nil {
 		return err
+	}
+	if response.MessageID == "" {
+		exitCode := fail.ExitGeneralError
+		return &fail.DetailedError{
+			Summary:     "the server returned no message id",
+			Details:     "The server accepted the request but did not say which status update it saved. The update may already have been saved.",
+			ExitCode:    &exitCode,
+			Suggestions: []string{"Run gcx irm incidents list-activity " + incidentID + " --kind keyUpdateAdded --limit 100 before sending again"},
+		}
 	}
 	return opts.IO.Encode(cmd.OutOrStdout(), messageReceipt{Type: "gcx.irm.message_receipt", SchemaVersion: "1", IncidentID: incidentID, MessageID: response.MessageID})
 }

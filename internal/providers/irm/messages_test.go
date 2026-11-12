@@ -120,6 +120,8 @@ func TestIncidentShareCommand(t *testing.T) {
 		{name: "blank body", args: []string{"INC-1", "--body", " "}, invalid: true},
 		{name: "missing body", args: []string{"INC-1"}, invalid: true},
 		{name: "agent name only", args: []string{"INC-1", "--body", "finding", "--drafted-by-agent-name", "Codex"}, invalid: true},
+		{name: "blank agent", args: []string{"INC-1", "--body", "finding", "--drafted-by-agent", " "}, invalid: true},
+		{name: "empty agent", args: []string{"INC-1", "--body", "finding", "--drafted-by-agent", ""}, invalid: true},
 		{name: "invalid timeout", args: []string{"INC-1", "--body", "finding", "--timeout", "0s"}, invalid: true},
 		{name: "blank see", args: []string{"INC-1", "--body", "finding", "--see", " "}, invalid: true},
 		{name: "see prefix", args: []string{"INC-1", "--body", "finding", "--see", "See: dashboard:db"}, invalid: true},
@@ -168,6 +170,24 @@ func TestIncidentShareCommand(t *testing.T) {
 				t.Error("message has model revision")
 			}
 		})
+	}
+}
+
+func TestIncidentShareRefusesReplyWithoutMessageID(t *testing.T) {
+	setAgentMode(t, true)
+	api := &fakeOpMem{messageResponse: &createMessageResponse{}}
+	loader := &fakeOpMemLoader{op: api}
+	stdout, _, err := runOpMemTree(t, func() *cobra.Command { return newIncidentShareCmd(loader) }, "INC-7", "--body", "finding")
+	assertDetailedExit(t, err, fail.ExitGeneralError)
+	if api.calls != 1 {
+		t.Errorf("calls=%d; want one send", api.calls)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q; want no receipt without a message id", stdout)
+	}
+	var derr *fail.DetailedError
+	if errors.As(err, &derr) && !strings.Contains(strings.Join(derr.Suggestions, " "), "gcx irm incidents list-activity INC-7 --kind keyUpdateAdded --limit 100") {
+		t.Errorf("suggestions = %q; want the list-activity check for INC-7", derr.Suggestions)
 	}
 }
 
