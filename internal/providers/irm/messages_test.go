@@ -124,6 +124,7 @@ func TestIncidentShareCommand(t *testing.T) {
 		{name: "empty agent", args: []string{"INC-1", "--body", "finding", "--drafted-by-agent", ""}, invalid: true},
 		{name: "invalid timeout", args: []string{"INC-1", "--body", "finding", "--timeout", "0s"}, invalid: true},
 		{name: "blank see", args: []string{"INC-1", "--body", "finding", "--see", " "}, invalid: true},
+		{name: "empty see", args: []string{"INC-1", "--body", "finding", "--see", ""}, invalid: true},
 		{name: "see prefix", args: []string{"INC-1", "--body", "finding", "--see", "See: dashboard:db"}, invalid: true},
 		{name: "indented lowercase see prefix", args: []string{"INC-1", "--body", "finding", "--see", "  see:dashboard:db"}, invalid: true},
 		{name: "see prefix on dry run", args: []string{"INC-1", "--body", "finding", "--see", "SEE: dashboard:db", "--dry-run"}, invalid: true},
@@ -163,9 +164,7 @@ func TestIncidentShareCommand(t *testing.T) {
 				t.Errorf("agent=%+v", req.DraftedBy)
 			}
 			doc := decodeSingleJSONValue(t, stdout)
-			if doc["type"] != "gcx.irm.message_receipt" || doc["message_id"] != "upd-1" || doc["incident_id"] != "INC-1" {
-				t.Errorf("receipt=%v", doc)
-			}
+			assertShareReceipt(t, doc, "INC-1", "upd-1")
 			if _, exists := doc["revision"]; exists {
 				t.Error("message has model revision")
 			}
@@ -334,8 +333,20 @@ func TestIncidentShareSendsWhenDigestMatches(t *testing.T) {
 	if req := reqAs[createMessageRequest](t, api.reqs, 0); !reflect.DeepEqual(req, want) {
 		t.Errorf("request = %+v; want %+v", req, want)
 	}
-	if doc := decodeSingleJSONValue(t, stdout); doc["type"] != "gcx.irm.message_receipt" || doc["message_id"] != "upd-1" {
-		t.Errorf("receipt=%v", doc)
+	assertShareReceipt(t, decodeSingleJSONValue(t, stdout), "INC-1", "upd-1")
+}
+
+// assertShareReceipt checks the shared single-mutation shape that output.md
+// § 12.1 requires, plus the message id that only a share has.
+func assertShareReceipt(t *testing.T, doc map[string]any, incidentID, messageID string) {
+	t.Helper()
+	want := map[string]any{
+		"type": "gcx.mutation", "schema_version": "1", "action": "share",
+		"target":  map[string]any{"kind": "Incident", "id": incidentID},
+		"changed": true, "message_id": messageID,
+	}
+	if !reflect.DeepEqual(doc, want) {
+		t.Errorf("receipt = %v; want %v", doc, want)
 	}
 }
 

@@ -616,7 +616,7 @@ func (o *activityListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of activity items to return")
 	// StringArray rather than StringSlice: a slice flag turns --kind "" into
 	// no values, which would silently drop the filter.
-	flags.StringArrayVar(&o.Kinds, "kind", nil, "Filter to these activity kinds, for example keyUpdateAdded for status updates (repeatable)")
+	flags.StringArrayVar(&o.Kinds, "kind", nil, "Show only activity of this kind, for example keyUpdateAdded for status updates. Repeat the flag to show any of several kinds. Each value must be an exact kind name")
 }
 
 func (o *activityListOpts) Validate() error {

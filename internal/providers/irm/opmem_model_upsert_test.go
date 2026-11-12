@@ -185,7 +185,7 @@ func TestUpsertModelWritesFreshContainerInOrder(t *testing.T) {
 	}
 	wantReceipt := decodeSingleJSONValue(t, `{
 	 "type": "gcx.irm.opmem.model_upsert", "schema_version": "1", "status": "saved", "container": "INC-1",
-	 "model_revision": "0", "revision": "8",
+	 "revision": "8",
 	 "entities": {"o1": "obs-1", "o2": "obs-2", "h1": "clm-3", "i1": "clm-4", "a1": "act-7", "a2": "act-8"},
 	 "reused": {},
 	 "evidence_links": [
@@ -307,7 +307,7 @@ func TestUpsertModelStopsAtFirstFailureThenConverges(t *testing.T) {
 	}
 	wantStopped := decodeSingleJSONValue(t, `{
 	 "type": "gcx.irm.opmem.model_upsert", "schema_version": "1", "status": "stopped", "container": "INC-1",
-	 "model_revision": "0", "revision": "2",
+	 "revision": "2",
 	 "entities": {"o1": "obs-1", "o2": "obs-2"},
 	 "reused": {}, "evidence_links": [], "skipped_links": [],
 	 "stopped_at": {"action": "create-claim", "ref": "h1"},
@@ -363,7 +363,7 @@ func TestUpsertModelDryRunListsPlannedWrites(t *testing.T) {
 	}
 	want := decodeSingleJSONValue(t, `{
 	 "type": "gcx.irm.opmem.model_upsert", "schema_version": "1", "status": "planned", "container": "INC-1",
-	 "model_revision": "0", "revision": "0",
+	 "revision": "0",
 	 "entities": {}, "reused": {}, "evidence_links": [], "skipped_links": [],
 	 "planned": [
 	  {"action": "create-observation", "ref": "o1"},
@@ -457,7 +457,7 @@ func TestUpsertModelTreatsOnlyMissingContainerAsEmpty(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if posts != 1 || receipt["status"] != "saved" || receipt["model_revision"] != nil || receipt["revision"] != "1" {
+			if posts != 1 || receipt["status"] != "saved" || receipt["revision"] != "1" {
 				t.Errorf("posts=%d receipt=%v", posts, receipt)
 			}
 		})

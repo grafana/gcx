@@ -1,9 +1,7 @@
 package irm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -49,11 +47,7 @@ type createMessageResponse struct {
 }
 
 func (c *irmResourceClient) CreateMessage(ctx context.Context, req createMessageRequest) (*createMessageResponse, error) {
-	encoded, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("marshal message: %w", err)
-	}
-	return do[createMessageResponse](ctx, c, http.MethodPost, "/messages", nil, bytes.NewReader(encoded), mapMessageHTTPError)
+	return post[createMessageResponse](ctx, c, "/messages", req, mapMessageHTTPError)
 }
 
 func (l *configLoader) LoadMessages(ctx context.Context, timeout time.Duration) (MessageAPI, error) {

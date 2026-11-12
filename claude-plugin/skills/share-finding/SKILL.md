@@ -242,8 +242,8 @@ ask; never pass the digest of a preview the user has not seen. Any other text
 needs a new preview and approval. Effective OAuth user authentication is
 required; never bypass the OAuth or proxy gates.
 
-A `gcx.irm.message_receipt` with a `message_id` confirms the update; tell the
-user immediately. For **Skip update**, leave the message unposted and continue.
+A `gcx.mutation` receipt with `action: share` and a `message_id` confirms the
+update; tell the user immediately. For **Skip update**, leave the message unposted and continue.
 On any other outcome, never retry automatically, because delivery has no
 idempotency key; follow [publish-recovery.md](references/publish-recovery.md).
 An ambiguous send is not an intentional skip.

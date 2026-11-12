@@ -13,8 +13,8 @@ user can make that choice.
 
 ## Message delivery
 
-A `gcx.irm.message_receipt` with a `message_id` confirms Incident storage, not
-Slack delivery. A failed attempt may still have made a request. Do not resend a
+A `gcx.mutation` receipt with `action: share` and a `message_id` confirms
+Incident storage, not Slack delivery. A failed attempt may still have made a request. Do not resend a
 delivered update to recover a model failure. Missing confirmation is not proof
 that no message exists.
 
@@ -35,6 +35,9 @@ Read the exit code and error summary to decide what happened:
   reason. If the body is too long, ask the user for shorter wording and preview
   it again. If the incident was not found, confirm the incident with the user.
   Never reword or redirect the update yourself.
+- **Exit 1 with `Endpoint not available`** means the request never reached the
+  IRM sharing API, so nothing was saved. The API may be off on this stack. Stop
+  and report it; do not check the incident's activity or resend.
 - **Exit 1 with HTTP 5xx, exit 5, a timeout, a connection reset, or no receipt**
   is uncertain. The update may already be saved, and delivery has no
   idempotency key. Do not resend. If Step 0 showed the incident as resolved

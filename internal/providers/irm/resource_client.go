@@ -21,12 +21,12 @@ func newIRMResourceClient(httpClient *http.Client, endpoint string) *irmResource
 	return &irmResourceClient{httpClient: httpClient, endpoint: endpoint}
 }
 
-func post[Resp any](ctx context.Context, c *irmResourceClient, path string, body any) (*Resp, error) {
+func post[Resp any](ctx context.Context, c *irmResourceClient, path string, body any, mapHTTPError func(*http.Response, string) error) (*Resp, error) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("irm: marshal request: %w", err)
 	}
-	return do[Resp](ctx, c, http.MethodPost, path, nil, bytes.NewReader(encoded), mapOpMemHTTPError)
+	return do[Resp](ctx, c, http.MethodPost, path, nil, bytes.NewReader(encoded), mapHTTPError)
 }
 
 func get[Resp any](ctx context.Context, c *irmResourceClient, path string, query url.Values) (*Resp, error) {

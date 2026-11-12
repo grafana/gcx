@@ -234,7 +234,6 @@ type modelUpsertReceipt struct {
 	SchemaVersion string            `json:"schema_version"`
 	Status        string            `json:"status"`
 	Container     string            `json:"container"`
-	ModelRevision *string           `json:"model_revision"`
 	Revision      *string           `json:"revision"`
 	Entities      map[string]string `json:"entities"`
 	Reused        map[string]string `json:"reused"`
@@ -258,7 +257,6 @@ func (p upsertPlan) receipt(container, status string) modelUpsertReceipt {
 		SchemaVersion: "1",
 		Status:        status,
 		Container:     container,
-		ModelRevision: optionalRevision(p.modelRevision),
 		Revision:      optionalRevision(p.modelRevision),
 		Entities:      p.known,
 		Reused:        p.reused,

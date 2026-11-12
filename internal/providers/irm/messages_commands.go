@@ -59,7 +59,7 @@ func (o *messageShareOpts) Validate() error {
 	if o.flags.Changed("expect-digest") && strings.TrimSpace(o.ExpectDigest) == "" {
 		return opMemUsage("--expect-digest must not be blank; give the digest printed by --dry-run")
 	}
-	if o.See == "" {
+	if !o.flags.Changed("see") {
 		return nil
 	}
 	if strings.TrimSpace(o.See) == "" {
@@ -146,10 +146,9 @@ type messagePreview struct {
 }
 
 type messageReceipt struct {
-	Type          string `json:"type"`
-	SchemaVersion string `json:"schema_version"`
-	IncidentID    string `json:"incident_id"`
-	MessageID     string `json:"message_id"`
+	cmdio.SingleMutation `yaml:",inline"`
+
+	MessageID string `json:"message_id"`
 }
 
 func newIncidentShareCmd(loader SharingClientLoader) *cobra.Command {
@@ -241,5 +240,8 @@ func runIncidentShare(cmd *cobra.Command, incidentID string, opts *messageShareO
 			Suggestions: []string{"Run gcx irm incidents list-activity " + incidentID + " --kind keyUpdateAdded --limit 100 before sending again"},
 		}
 	}
-	return opts.IO.Encode(cmd.OutOrStdout(), messageReceipt{Type: "gcx.irm.message_receipt", SchemaVersion: "1", IncidentID: incidentID, MessageID: response.MessageID})
+	receipt := messageReceipt{SingleMutation: cmdio.NewSingleMutation("share", cmdio.MutationTarget{Kind: "Incident", ID: incidentID}), MessageID: response.MessageID}
+	changed := true
+	receipt.Changed = &changed
+	return opts.IO.Encode(cmd.OutOrStdout(), receipt)
 }
