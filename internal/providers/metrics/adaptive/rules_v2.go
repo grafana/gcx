@@ -30,9 +30,10 @@ const (
 	labelModeDrop   = "drop"
 )
 
-// toRuleV2 converts a MetricRule. Fields v2 does not model (managed_by) are
-// dropped. Rules that v2 cannot represent or would reject are refused here,
-// so invalid input fails before any request.
+// toRuleV2 converts a MetricRule. managed_by is not part of v2 and is not
+// sent; the server keeps the existing rule's value on an upsert. Rules that v2
+// cannot represent or would reject are refused here, so invalid input fails
+// before any request.
 func toRuleV2(r MetricRule) (ruleV2, error) {
 	out := ruleV2{Metric: r.Metric, MatchType: r.MatchType}
 	if r.Drop {
@@ -47,7 +48,7 @@ func toRuleV2(r MetricRule) (ruleV2, error) {
 	}
 
 	if len(r.Aggregations) == 0 {
-		return ruleV2{}, errors.New("an aggregation rule needs at least one aggregation (--aggregations)")
+		return ruleV2{}, errors.New("an aggregation rule needs at least one aggregation")
 	}
 	out.Action = actionAggregate
 	out.Functions = r.Aggregations

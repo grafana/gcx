@@ -168,7 +168,7 @@ func proxyRefusal(c ruleCall, status int, body []byte) error {
 	var er providers.ErrorResponse
 	_ = json.Unmarshal(body, &er)
 	cause := fmt.Errorf("grafana plugin proxy refused the request (status %d): %s", status, er.ErrorMessage())
-	if status == http.StatusForbidden {
+	if providers.IsPluginRouteDenied(status, body) {
 		return &providers.PluginRouteDeniedError{Action: c.action, Role: roleFor(c.action), Cause: cause}
 	}
 	return cause
@@ -339,7 +339,8 @@ func (b *rulesBackend) Validate(_ context.Context, rules []*MetricRule) error {
 	return adapter.ErrDryRunUnverified
 }
 
-// Create is an unconditional upsert, as the v2 API defines it.
+// Create writes unconditionally, because the v2 API only upserts. Callers that
+// must not replace an existing rule check for it first.
 func (b *rulesBackend) Create(ctx context.Context, rule *MetricRule) (*MetricRule, error) {
 	return b.put(ctx, "create rule", rule)
 }

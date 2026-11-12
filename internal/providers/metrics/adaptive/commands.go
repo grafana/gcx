@@ -759,6 +759,16 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 				return err
 			}
 
+			// The v2 write is an unconditional upsert, so the fail-if-exists
+			// contract of create needs a read first. The read and write are not
+			// atomic; a concurrent create can still be replaced.
+			switch _, err := crud.Get(ctx, opts.Metric); {
+			case err == nil:
+				return fmt.Errorf("a rule for %s already exists; use 'rules update %s' to change it", opts.Metric, opts.Metric)
+			case !errors.Is(err, ErrRuleNotFound):
+				return err
+			}
+
 			created, err := crud.Create(ctx, &adapter.TypedObject[MetricRule]{Spec: rule})
 			if err != nil {
 				return err
@@ -928,16 +938,25 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			if err := crud.Delete(ctx, metric); err != nil {
+			// The v2 delete succeeds whether or not the rule existed, so a read
+			// first is the only way to report whether anything changed.
+			_, err = crud.Get(ctx, metric)
+			changed := err == nil
+			switch {
+			case changed:
+				if err := crud.Delete(ctx, metric); err != nil {
+					return err
+				}
+				if opts.Segment != "" {
+					cmdio.Success(stderr, "Deleted rule for %s in segment %s.", metric, opts.Segment)
+				} else {
+					cmdio.Success(stderr, "Deleted rule for %s.", metric)
+				}
+			case errors.Is(err, ErrRuleNotFound):
+				cmdio.Info(stderr, "No rule for %s; nothing to delete.", metric)
+			default:
 				return err
 			}
-
-			if opts.Segment != "" {
-				cmdio.Success(stderr, "Deleted rule for %s in segment %s.", metric, opts.Segment)
-			} else {
-				cmdio.Success(stderr, "Deleted rule for %s.", metric)
-			}
-			changed := true
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "rule", Name: metric, Namespace: opts.Segment})
 			result.Changed = &changed
 			return opts.Encode(cmd.OutOrStdout(), result)

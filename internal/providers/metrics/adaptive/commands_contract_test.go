@@ -109,11 +109,14 @@ func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasPrefix(r.URL.Path, rulesV2Prefix):
+		case strings.HasPrefix(r.URL.Path, rulesV2Prefix+"/"):
 			if r.Method == http.MethodDelete {
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"metric":%q,"action":"drop"}`, strings.TrimPrefix(r.URL.Path, rulesV2Prefix+"/"))
+		case r.URL.Path == rulesV2Prefix:
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"rules":[]}`)
 		case r.URL.Path == "/aggregations/recommendations":

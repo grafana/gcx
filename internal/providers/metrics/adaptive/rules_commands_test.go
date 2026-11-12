@@ -340,13 +340,7 @@ func TestRulesCreate(t *testing.T) {
 			wantWire: &wireRule{Metric: "m", MatchType: "exact", Action: "drop"},
 			wantJSON: `{"metric":"m","match_type":"exact","drop":true}`,
 		},
-		{
-			name:     "replaces an existing rule",
-			args:     []string{"--metric", "a_metric", "--drop"},
-			seed:     []wireRule{ruleA},
-			wantWire: &wireRule{Metric: "a_metric", MatchType: "exact", Action: "drop"},
-			wantJSON: `{"metric":"a_metric","match_type":"exact","drop":true}`,
-		},
+		{name: "fails when the rule exists", args: []string{"--metric", "a_metric", "--drop"}, seed: []wireRule{ruleA}, wantErr: "a rule for a_metric already exists"},
 		{name: "both label kinds", args: []string{"--metric", "m", "--aggregations", "sum", "--keep-labels", "a", "--drop-labels", "b"}, wantErr: "both dropped and kept labels", noReqs: true},
 		{name: "no labels", args: []string{"--metric", "m", "--aggregations", "sum"}, wantErr: "no labels to aggregate on", noReqs: true},
 		{name: "drop with aggregations", args: []string{"--metric", "m", "--drop", "--aggregations", "sum"}, wantErr: "drop and aggregate", noReqs: true},
@@ -379,7 +373,7 @@ func TestRulesCreate(t *testing.T) {
 				stored, ok := f.stored("default", tt.wantWire.Metric)
 				require.True(t, ok)
 				assert.Equal(t, *tt.wantWire, stored)
-				assert.Empty(t, f.requests("", "GET"), "create must not read first")
+				assert.Len(t, f.requests(tr.via, "GET"), 1)
 
 				puts := f.applied(tr.via, "PUT")
 				require.Len(t, puts, 1)
@@ -546,13 +540,17 @@ func TestRulesDelete(t *testing.T) {
 		})
 	})
 
-	t.Run("is idempotent for a missing rule", func(t *testing.T) {
-		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
+	t.Run("a missing rule sends no delete and reports no change", func(t *testing.T) {
+		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
-			res := run("rules", "delete", "nope", "--force")
+			res := run("rules", "delete", "nope", "--force", "-o", "json")
 			require.NoError(t, res.err)
-			assert.Len(t, f.applied(tr.via, "DELETE"), 1)
-			assert.Empty(t, f.applied(tr.via, "GET"), "delete must not read first")
+			doc, ok := decodeOneJSONValue(t, res.stdout).(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, false, doc["changed"])
+			assert.Contains(t, res.stderr, "nothing to delete")
+			assert.NotContains(t, res.stderr, "Deleted rule")
+			assert.Empty(t, f.requests("", "DELETE"))
 		})
 	})
 
@@ -565,6 +563,7 @@ func TestRulesDelete(t *testing.T) {
 			doc, ok := decodeOneJSONValue(t, res.stdout).(map[string]any)
 			require.True(t, ok)
 			assert.Equal(t, "deleted", doc["action"])
+			assert.Equal(t, true, doc["changed"])
 			target, _ := doc["target"].(map[string]any)
 			assert.Equal(t, "rule", target["kind"])
 			assert.Equal(t, "a_metric", target["name"])
@@ -733,16 +732,17 @@ func TestRulesTransport(t *testing.T) {
 	t.Run("route denied without direct access names the missing action", func(t *testing.T) {
 		for verb, tc := range map[string]struct {
 			args   []string
+			method string
 			action string
 			role   string
 		}{
-			"read":   {[]string{"rules", "list"}, "grafana-adaptive-metrics-app.rules:read", "Rules Reader"},
-			"write":  {[]string{"rules", "create", "--metric", "m", "--drop"}, "grafana-adaptive-metrics-app.rules:write", "Rules Editor"},
-			"delete": {[]string{"rules", "delete", "m", "--force"}, "grafana-adaptive-metrics-app.rules:delete", "Rules Editor"},
+			"read":   {[]string{"rules", "list"}, "", "grafana-adaptive-metrics-app.rules:read", "Rules Reader"},
+			"write":  {[]string{"rules", "create", "--metric", "m", "--drop"}, "PUT", "grafana-adaptive-metrics-app.rules:write", "Rules Editor"},
+			"delete": {[]string{"rules", "delete", "a_metric", "--force"}, "DELETE", "grafana-adaptive-metrics-app.rules:delete", "Rules Editor"},
 		} {
 			t.Run(verb, func(t *testing.T) {
-				f := newFakeRules(t)
-				f.fail(viaProxy, "", 403, routeDeniedBody)
+				f := newFakeRules(t).seed("default", ruleA)
+				f.fail(viaProxy, tc.method, 403, routeDeniedBody)
 				res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), false, tc.args...)
 				require.Error(t, res.err)
 				var denied *providers.PluginRouteDeniedError
@@ -752,6 +752,15 @@ func TestRulesTransport(t *testing.T) {
 				assert.Contains(t, res.err.Error(), "direct access unavailable")
 			})
 		}
+	})
+
+	t.Run("app access denied without direct access names the missing permission", func(t *testing.T) {
+		f := newFakeRules(t)
+		f.fail(viaProxy, "", 403, `{"title":"Access denied","message":"You'll need additional permissions to perform this action. Permissions needed: plugins.app:access"}`)
+		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), false, "rules", "list")
+		require.ErrorContains(t, res.err, "plugins.app:access")
+		var denied *providers.PluginRouteDeniedError
+		require.NotErrorAs(t, res.err, &denied)
 	})
 
 	t.Run("both transports rejected reports both", func(t *testing.T) {
