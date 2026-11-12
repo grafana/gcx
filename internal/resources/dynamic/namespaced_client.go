@@ -158,10 +158,6 @@ func (c *NamespacedClient) Get(
 func (c *NamespacedClient) Create(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions,
 ) (*unstructured.Unstructured, error) {
-	if err := resources.CheckClusterScopedMutation(desc, "create"); err != nil {
-		return nil, err
-	}
-
 	res, err := c.resource(desc).Create(ctx, obj, opts)
 	return res, ParseStatusError(err)
 }
@@ -170,10 +166,6 @@ func (c *NamespacedClient) Create(
 func (c *NamespacedClient) Update(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.UpdateOptions,
 ) (*unstructured.Unstructured, error) {
-	if err := resources.CheckClusterScopedMutation(desc, "update"); err != nil {
-		return nil, err
-	}
-
 	res, err := c.resource(desc).Update(ctx, obj, opts)
 	return res, ParseStatusError(err)
 }
@@ -182,10 +174,6 @@ func (c *NamespacedClient) Update(
 func (c *NamespacedClient) Delete(
 	ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions,
 ) error {
-	if err := resources.CheckClusterScopedMutation(desc, "delete"); err != nil {
-		return err
-	}
-
 	err := c.resource(desc).Delete(ctx, name, opts)
 	return ParseStatusError(err)
 }
@@ -194,10 +182,6 @@ func (c *NamespacedClient) Delete(
 func (c *NamespacedClient) Apply(
 	ctx context.Context, desc resources.Descriptor, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions,
 ) (*unstructured.Unstructured, error) {
-	if err := resources.CheckClusterScopedMutation(desc, "apply"); err != nil {
-		return nil, err
-	}
-
 	res, err := c.resource(desc).Apply(ctx, name, obj, opts)
 	return res, ParseStatusError(err)
 }

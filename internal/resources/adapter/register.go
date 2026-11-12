@@ -90,7 +90,7 @@ func ExampleForGVK(gvk schema.GroupVersionKind) json.RawMessage {
 // configuration or instantiating its adapter. It refuses every mutation of a
 // cluster-scoped kind. Other unregistered resources are allowed.
 func CheckMutation(desc resources.Descriptor, operation string) error {
-	if err := resources.CheckClusterScopedMutation(desc, operation); err != nil {
+	if err := resources.CheckClusterScopedOperation(desc, operation); err != nil {
 		return err
 	}
 

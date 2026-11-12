@@ -12,13 +12,16 @@ import (
 )
 
 type FetchRequest struct {
-	Config             config.NamespacedRESTConfig
-	Warn               io.Writer
-	StopOnError        bool
-	ExcludeManaged     bool
-	ExcludeReadOnly    bool
-	ExpectSingleTarget bool
-	Processors         []remote.Processor
+	Config          config.NamespacedRESTConfig
+	Warn            io.Writer
+	StopOnError     bool
+	ExcludeManaged  bool
+	ExcludeReadOnly bool
+	// ExcludeClusterScoped leaves cluster-scoped kinds out when no selector
+	// is given. See remote.PullRequest.ExcludeClusterScoped.
+	ExcludeClusterScoped bool
+	ExpectSingleTarget   bool
+	Processors           []remote.Processor
 	// Limit caps the number of items per resource type. Zero means no limit.
 	// Set to 1 for field discovery (--json ?) to avoid full list operations.
 	Limit              int64
@@ -82,14 +85,15 @@ func fetchResources(ctx context.Context, opts FetchRequest, args []string, valid
 	}
 
 	req := remote.PullRequest{
-		Filters:            filters,
-		Resources:          &res.Resources,
-		Processors:         opts.Processors,
-		ExcludeManaged:     opts.ExcludeManaged,
-		StopOnError:        opts.StopOnError || sels.IsSingleTarget(),
-		Limit:              opts.Limit,
-		IdentityOnlyDelete: opts.IdentityOnlyDelete,
-		ExcludeReadOnly:    opts.ExcludeReadOnly,
+		Filters:              filters,
+		Resources:            &res.Resources,
+		Processors:           opts.Processors,
+		ExcludeManaged:       opts.ExcludeManaged,
+		StopOnError:          opts.StopOnError || sels.IsSingleTarget(),
+		Limit:                opts.Limit,
+		IdentityOnlyDelete:   opts.IdentityOnlyDelete,
+		ExcludeReadOnly:      opts.ExcludeReadOnly,
+		ExcludeClusterScoped: opts.ExcludeClusterScoped,
 	}
 
 	summary, err := pull.Pull(ctx, req)

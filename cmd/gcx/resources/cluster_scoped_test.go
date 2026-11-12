@@ -54,6 +54,7 @@ func newClusterScopedFixture(t *testing.T) *clusterScopedFixture {
 	work := t.TempDir()
 	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", filepath.Join(work, "discovery"))
+	t.Setenv("GCX_OPENAPI_CACHE_DIR", filepath.Join(work, "openapi"))
 	agent.ResetForTesting()
 
 	systemSchema := unstructured.Unstructured{Object: map[string]any{
@@ -93,6 +94,12 @@ func newClusterScopedFixture(t *testing.T) *clusterScopedFixture {
 				{Name: "kgschemas", SingularName: "kgschema", Namespaced: true, Kind: "KgSchema", Verbs: verbs},
 				{Name: "systemkgschemas", SingularName: "systemkgschema", Namespaced: false, Kind: "SystemKgSchema", Verbs: verbs},
 			}}
+		case "/openapi/v3":
+			result = map[string]any{"paths": map[string]any{
+				"apis/" + clusterTestGV: map[string]any{"serverRelativeURL": "/openapi/v3/apis/" + clusterTestGV},
+			}}
+		case "/openapi/v3/apis/" + clusterTestGV:
+			result = openAPIDocument("KgSchema", "SystemKgSchema")
 		case "/apis/" + clusterTestGV + "/systemkgschemas":
 			f.recordGet(r.URL.Path)
 			result = &unstructured.UnstructuredList{Object: map[string]any{"apiVersion": clusterTestGV, "kind": "SystemKgSchemaList"}, Items: []unstructured.Unstructured{systemSchema}}
@@ -125,6 +132,22 @@ func newClusterScopedFixture(t *testing.T) *clusterScopedFixture {
 	return f
 }
 
+// openAPIDocument returns an OpenAPI v3 document with an inline spec schema
+// for each kind in the test group.
+func openAPIDocument(kinds ...string) map[string]any {
+	schemas := map[string]any{}
+	for _, kind := range kinds {
+		schemas[kind] = map[string]any{
+			"x-kubernetes-group-version-kind": []any{map[string]any{"group": clusterTestGroup, "version": clusterTestVersion, "kind": kind}},
+			"properties": map[string]any{"spec": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"title": map[string]any{"type": "string"}},
+			}},
+		}
+	}
+	return map[string]any{"components": map[string]any{"schemas": schemas}}
+}
+
 func (f *clusterScopedFixture) recordGet(path string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -151,18 +174,24 @@ func TestClusterScoped_ListTypesShowsScope(t *testing.T) {
 	assert.Regexp(t, `systemkgschemas\s+systemkgschema\s+SystemKgSchema\s+Cluster`, stdout.String())
 	assert.Regexp(t, `kgschemas\s+kgschema\s+KgSchema\s+Namespaced`, stdout.String())
 
-	cmd = listTypesCmd(f.config)
-	stdout = runClusterScopedCmd(t, cmd, "-o", "json", "--no-schema")
-	require.NoError(t, cmd.ExecuteContext(t.Context()))
-	var nested map[string]map[string][]map[string]any
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &nested))
-	scopes := map[string]any{}
-	for _, entry := range nested[clusterTestGroup][clusterTestVersion] {
-		plural, ok := entry["plural"].(string)
-		require.True(t, ok)
-		scopes[plural] = entry["scope"]
+	// The default path fetches schemas, which can drop entries, so check it
+	// as well as --no-schema.
+	for _, args := range [][]string{{"-o", "json"}, {"-o", "json", "--no-schema"}} {
+		cmd = listTypesCmd(f.config)
+		stdout = runClusterScopedCmd(t, cmd, args...)
+		require.NoError(t, cmd.ExecuteContext(t.Context()), args)
+		var nested map[string]map[string][]map[string]any
+		require.NoError(t, json.Unmarshal(stdout.Bytes(), &nested), args)
+		scopes := map[string]any{}
+		for _, entry := range nested[clusterTestGroup][clusterTestVersion] {
+			plural, ok := entry["plural"].(string)
+			require.True(t, ok)
+			scopes[plural] = entry["scope"]
+			_, hasSchema := entry["schema"]
+			assert.Equal(t, len(args) == 2, hasSchema, "schema for %s with %v", plural, args)
+		}
+		assert.Equal(t, map[string]any{"kgschemas": "Namespaced", "systemkgschemas": "Cluster"}, scopes, args)
 	}
-	assert.Equal(t, map[string]any{"kgschemas": "Namespaced", "systemkgschemas": "Cluster"}, scopes)
 }
 
 func TestClusterScoped_GetUsesClusterURL(t *testing.T) {
@@ -188,22 +217,35 @@ func TestClusterScoped_GetUsesClusterURL(t *testing.T) {
 	}
 }
 
+func TestClusterScoped_GetWithoutSelectorListsClusterScopedKinds(t *testing.T) {
+	f := newClusterScopedFixture(t)
+	cmd := getCmd(f.config)
+	// Provider adapters are also read and fail against this server, so
+	// ignore their errors; this case checks only the native kinds.
+	stdout := runClusterScopedCmd(t, cmd, "-o", "json", "--on-error", "ignore")
+	require.NoError(t, cmd.ExecuteContext(t.Context()))
+	assert.Contains(t, stdout.String(), `"core"`)
+	assert.Contains(t, stdout.String(), `"custom"`)
+
+	gets, writes := f.requests()
+	assert.ElementsMatch(t, []string{
+		"/apis/" + clusterTestGV + "/systemkgschemas",
+		"/apis/" + clusterTestGV + "/namespaces/default/kgschemas",
+	}, gets)
+	assert.Empty(t, writes)
+}
+
 func TestClusterScoped_Pull(t *testing.T) {
-	t.Run("selector writes a manifest without a namespace", func(t *testing.T) {
+	t.Run("selector is refused before reading", func(t *testing.T) {
 		f := newClusterScopedFixture(t)
 		destination := filepath.Join(t.TempDir(), "resources")
 		cmd := pullCmd(f.config)
 		runClusterScopedCmd(t, cmd, "systemkgschemas", "--path", destination, "-o", "json")
-		require.NoError(t, cmd.ExecuteContext(t.Context()))
-
-		data, err := os.ReadFile(filepath.Join(destination, "systemkgschemas."+clusterTestVersion+"."+clusterTestGroup, "core.json"))
-		require.NoError(t, err)
-		var obj map[string]any
-		require.NoError(t, json.Unmarshal(data, &obj))
-		metadata, ok := obj["metadata"].(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, "core", metadata["name"])
-		assert.NotContains(t, metadata, "namespace")
+		assertClusterScopedUsageError(t, cmd.ExecuteContext(t.Context()), "pull")
+		require.NoDirExists(t, destination)
+		gets, writes := f.requests()
+		assert.Empty(t, gets)
+		assert.Empty(t, writes)
 	})
 
 	t.Run("no selector skips cluster-scoped kinds", func(t *testing.T) {
@@ -222,18 +264,20 @@ func TestClusterScoped_Pull(t *testing.T) {
 	})
 }
 
-func TestClusterScoped_WritesRefused(t *testing.T) {
-	assertRefused := func(t *testing.T, err error, operation string) {
-		t.Helper()
-		var scopeErr *resources.ClusterScopedMutationError
-		require.ErrorAs(t, err, &scopeErr)
-		assert.Equal(t, operation, scopeErr.Operation)
-		detailed := fail.ErrorToDetailedError(err)
-		assert.Equal(t, gcxerrors.SummaryInvalidCommandUsage, detailed.Summary)
-		require.NotNil(t, detailed.ExitCode)
-		assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
-	}
+// assertClusterScopedUsageError checks that err refuses operation on a
+// cluster-scoped kind as a usage error (exit 2).
+func assertClusterScopedUsageError(t *testing.T, err error, operation string) {
+	t.Helper()
+	var scopeErr *resources.ClusterScopedOperationError
+	require.ErrorAs(t, err, &scopeErr)
+	assert.Equal(t, operation, scopeErr.Operation)
+	detailed := fail.ErrorToDetailedError(err)
+	assert.Equal(t, gcxerrors.SummaryInvalidCommandUsage, detailed.Summary)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+}
 
+func TestClusterScoped_WritesRefused(t *testing.T) {
 	t.Run("edit refuses before reading or opening the editor", func(t *testing.T) {
 		f := newClusterScopedFixture(t)
 		marker := filepath.Join(t.TempDir(), "editor-called")
@@ -241,7 +285,7 @@ func TestClusterScoped_WritesRefused(t *testing.T) {
 		t.Setenv("VISUAL", "")
 		cmd := editCmd(f.config)
 		runClusterScopedCmd(t, cmd, "systemkgschemas/core")
-		assertRefused(t, cmd.ExecuteContext(t.Context()), "edit")
+		assertClusterScopedUsageError(t, cmd.ExecuteContext(t.Context()), "edit")
 		require.NoFileExists(t, marker)
 		gets, writes := f.requests()
 		assert.Empty(t, gets)
@@ -252,7 +296,7 @@ func TestClusterScoped_WritesRefused(t *testing.T) {
 		f := newClusterScopedFixture(t)
 		cmd := deleteCmd(f.config)
 		runClusterScopedCmd(t, cmd, "systemkgschemas/core", "--yes")
-		assertRefused(t, cmd.ExecuteContext(t.Context()), "delete")
+		assertClusterScopedUsageError(t, cmd.ExecuteContext(t.Context()), "delete")
 		gets, writes := f.requests()
 		assert.Empty(t, gets)
 		assert.Empty(t, writes)
@@ -270,6 +314,24 @@ func TestClusterScoped_WritesRefused(t *testing.T) {
 		err := cmd.ExecuteContext(t.Context())
 		require.Error(t, err)
 		assert.Contains(t, stdout.String(), "cluster-scoped", "stderr: %s", stderr.String())
+		_, writes := f.requests()
+		assert.Empty(t, writes)
+	})
+
+	t.Run("push --on-error abort exits as a resource failure", func(t *testing.T) {
+		f := newClusterScopedFixture(t)
+		dir := t.TempDir()
+		manifest := `{"apiVersion":"` + clusterTestGV + `","kind":"SystemKgSchema","metadata":{"name":"core"},"spec":{"title":"Core schema"}}`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "core.json"), []byte(manifest), 0o600))
+		cmd := pushCmd(f.config)
+		runClusterScopedCmd(t, cmd, "--path", dir, "-o", "json", "--on-error", "abort")
+		err := cmd.ExecuteContext(t.Context())
+		var scopeErr *resources.ClusterScopedOperationError
+		require.ErrorAs(t, err, &scopeErr)
+		detailed := fail.ErrorToDetailedError(err)
+		require.NotNil(t, detailed)
+		require.NotNil(t, detailed.ExitCode)
+		assert.Equal(t, gcxerrors.ExitPartialFailure, *detailed.ExitCode)
 		_, writes := f.requests()
 		assert.Empty(t, writes)
 	})

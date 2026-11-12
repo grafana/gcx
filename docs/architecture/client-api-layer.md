@@ -182,8 +182,8 @@ descriptors (`Descriptor.ClusterScoped`). Those requests go to
 c.resource(desc).<op>()  // .Namespace(c.namespace) only when the kind is namespaced
 ```
 
-`Create`, `Update`, `Delete` and `Apply` refuse cluster-scoped descriptors with
-`resources.ClusterScopedMutationError` and send no request.
+The client does not refuse writes to cluster-scoped descriptors.
+`adapter.CheckMutation()` refuses them before any caller reaches the client.
 
 **Operations provided:**
 

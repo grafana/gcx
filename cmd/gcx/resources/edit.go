@@ -156,7 +156,7 @@ The edition will be cancelled if no changes are written to the file or if the fi
 				Warn:               cmd.ErrOrStderr(),
 				StopOnError:        true,
 				ExpectSingleTarget: true,
-			}, args, rejectUnsupportedEdit)
+			}, args, func(f resources.Filters) error { return rejectUnsupportedMutation(f, "edit") })
 			if err != nil {
 				return err
 			}
