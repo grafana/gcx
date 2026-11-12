@@ -22,3 +22,5 @@ slo-optimize
 synth-check-status
 synth-investigate-check
 synth-manage-checks
+load-op-context
+share-finding

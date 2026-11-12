@@ -27,6 +27,8 @@ skills:
     status: active
   investigate-alert:
     status: active
+  load-op-context:
+    status: active
   manage-dashboards:
     status: active
   oncall-triage:
@@ -34,6 +36,8 @@ skills:
   scaffold-project:
     status: active
   setup-gcx:
+    status: active
+  share-finding:
     status: active
   slo-check-status:
     status: active

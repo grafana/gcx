@@ -61,8 +61,9 @@ Do not add distributable gcx skills under repo-local `.agents/skills/`. Tools
 that follow the `.agents` convention treat that path as repo-context guidance
 for working on this repository, not as a globally installable skill bundle.
 
-Skills are triggered automatically when you describe what you want. You do not
-need to invoke them by name. The table below is the current inventory of the
+Most skills trigger automatically when you describe what you want. The internal
+`load-op-context` and `share-finding` skills run only when you invoke them
+by name. The table below is the current inventory of the
 canonical portable skill bundle.
 
 | Skill | Purpose |
@@ -91,6 +92,8 @@ canonical portable skill bundle.
 | `synth-manage-checks` | Create, update, pull, push, and delete Synthetic Monitoring checks |
 | `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 | `gcx-demo` | Run a narrated, read-only demo tour of gcx across every Grafana Cloud product area — for customer or colleague presentations |
+| `load-op-context` | Internal: catch up on a shared incident investigation from its operational model. Slash command only |
+| `share-finding` | Internal: share an investigation finding with the incident team and save its operational model. Slash command only |
 
 ## Skill Lifecycle
 
