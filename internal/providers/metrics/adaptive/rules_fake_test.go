@@ -98,6 +98,8 @@ func (f *fakeRules) seed(segment string, rules ...wireRule) *fakeRules {
 	return f
 }
 
+// fail makes matching requests fail with status and body. A zero status drops
+// the connection without a response.
 func (f *fakeRules) fail(via, method string, status int, body string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -217,9 +219,19 @@ func (f *fakeRules) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer f.mu.Unlock()
 		f.reqs = append(f.reqs, fakeReq{Via: via, Method: r.Method, Path: rest, Query: r.URL.Query(), Auth: r.Header.Get("Authorization"), Body: body, Status: rec.status})
 	}()
+	orig := w
 	w = rec
 
 	if fl, ok := f.failureFor(via, r.Method); ok {
+		if fl.Status == 0 {
+			conn, _, err := http.NewResponseController(orig).Hijack()
+			if err != nil {
+				f.t.Errorf("drop connection: %v", err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(fl.Status)
 		fmt.Fprint(w, fl.Body)

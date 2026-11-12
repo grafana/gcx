@@ -591,7 +591,7 @@ type rulesListOpts struct {
 	cmdio.Options
 
 	Segment string
-	Limit   int64
+	Limit   int
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -599,8 +599,8 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.RegisterCustomCodec("table", &rulesTableCodec{wide: false})
 	o.RegisterCustomCodec("wide", &rulesTableCodec{wide: true})
 	o.BindFlags(flags)
+	o.BindListLimit(flags, &o.Limit, "rules", 50)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
 }
 
 func (h *metricsHelper) rulesListCommand() *cobra.Command {
@@ -619,7 +619,7 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				return err
 			}
 
-			fetchLimit := opts.Limit
+			fetchLimit := int64(opts.Limit)
 			if fetchLimit > 0 {
 				fetchLimit++
 			}
@@ -632,7 +632,7 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				rules[i] = typedObjs[i].Spec
 			}
 
-			rules, meta := cmdio.TruncatePagedList(rules, int(opts.Limit))
+			rules, meta := cmdio.TruncatePagedList(rules, opts.Limit)
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), cmdio.AttachListMeta(meta, os.Args))
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
 
@@ -975,13 +975,13 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if c.wide {
-		fmt.Fprintln(tw, "METRIC\tMATCH TYPE\tDROP LABELS\tKEEP LABELS\tAGGREGATIONS\tDROP\tINTERVAL\tDELAY\tMANAGED BY")
+		fmt.Fprintln(tw, "METRIC\tMATCH TYPE\tDROP LABELS\tKEEP LABELS\tAGGREGATIONS\tDROP\tINTERVAL\tDELAY")
 	} else {
 		fmt.Fprintln(tw, "METRIC\tMATCH TYPE\tDROP LABELS\tKEEP LABELS\tAGGREGATIONS")
 	}
 	for _, r := range rules {
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\n",
 				r.Metric,
 				defaultStr(r.MatchType),
 				strings.Join(r.DropLabels, ","),
@@ -990,7 +990,6 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 				r.Drop,
 				r.AggregationInterval,
 				r.AggregationDelay,
-				r.ManagedBy,
 			)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",

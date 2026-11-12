@@ -31,20 +31,24 @@ const (
 )
 
 // toRuleV2 converts a MetricRule. Fields v2 does not model (managed_by) are
-// dropped. A rule that sets both keep and drop labels has no v2 form and is
-// rejected here with the message the v1 API used.
+// dropped. Rules that v2 cannot represent or would reject are refused here,
+// so invalid input fails before any request.
 func toRuleV2(r MetricRule) (ruleV2, error) {
 	out := ruleV2{Metric: r.Metric, MatchType: r.MatchType}
 	if r.Drop {
 		if len(r.Aggregations) > 0 || len(r.KeepLabels) > 0 || len(r.DropLabels) > 0 {
 			return ruleV2{}, errors.New("cannot drop and aggregate metric at the same time")
 		}
+		if r.AggregationInterval != "" || r.AggregationDelay != "" {
+			return ruleV2{}, errors.New("a drop rule cannot set an aggregation interval or delay")
+		}
 		out.Action = actionDrop
-		out.Interval = r.AggregationInterval
-		out.Delay = r.AggregationDelay
 		return out, nil
 	}
 
+	if len(r.Aggregations) == 0 {
+		return ruleV2{}, errors.New("an aggregation rule needs at least one aggregation (--aggregations)")
+	}
 	out.Action = actionAggregate
 	out.Functions = r.Aggregations
 	out.Interval = r.AggregationInterval

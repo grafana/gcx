@@ -14,9 +14,9 @@ import (
 	"sync"
 
 	adaptiveauth "github.com/grafana/gcx/internal/auth/adaptive"
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 const (
@@ -102,15 +102,14 @@ func newRulesBackend(ctx context.Context, loader *providers.ConfigLoader, segmen
 			return &rulesEndpoint{baseURL: sa.BaseURL, http: sa.HTTPClient, tenantID: sa.TenantID, token: sa.APIToken}, nil
 		},
 	}
+	// Any Grafana config or client failure leaves the direct path to decide: a
+	// context whose Grafana credential is withheld or unusable may still carry a
+	// working Cloud token.
 	deps, _, err := providers.LoadGrafanaDepsWithLoader(ctx, loader)
-	if err != nil {
-		if _, ok := errors.AsType[config.ValidationError](err); !ok {
-			return nil, err
-		}
-		b.proxyErr = err
-		return b, nil
+	b.proxyErr = err
+	if err == nil {
+		b.proxy = &rulesEndpoint{baseURL: deps.BaseURL, http: deps.HTTP}
 	}
-	b.proxy = &rulesEndpoint{baseURL: deps.BaseURL, http: deps.HTTP}
 	return b, nil
 }
 
@@ -120,7 +119,6 @@ type ruleCall struct {
 	directPath string
 	body       []byte
 	action     string
-	role       string
 }
 
 func (b *rulesBackend) segmentPath() string {
@@ -130,7 +128,7 @@ func (b *rulesBackend) segmentPath() string {
 	return url.PathEscape(b.segment)
 }
 
-func (b *rulesBackend) v2Call(method, suffix string, body []byte, action, role string) ruleCall {
+func (b *rulesBackend) v2Call(method, suffix string, body []byte, action string) ruleCall {
 	seg := "/segments/" + b.segmentPath()
 	return ruleCall{
 		method:     method,
@@ -138,7 +136,6 @@ func (b *rulesBackend) v2Call(method, suffix string, body []byte, action, role s
 		directPath: rulesDirectRoot + seg + suffix,
 		body:       body,
 		action:     action,
-		role:       role,
 	}
 }
 
@@ -147,68 +144,54 @@ func (b *rulesBackend) directEndpoint(ctx context.Context) (*rulesEndpoint, erro
 	return b.direct, b.directErr
 }
 
-func (b *rulesBackend) skipReason(method string) (error, bool) {
+func (b *rulesBackend) skipReason(action string) (error, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	err, ok := b.proxySkip[method]
+	err, ok := b.proxySkip[action]
 	return err, ok
 }
 
-func (b *rulesBackend) markSkip(method string, err error) {
+func (b *rulesBackend) markSkip(action string, err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.proxySkip[method] = err
+	b.proxySkip[action] = err
+}
+
+func roleFor(action string) string {
+	if action == rulesReadAction {
+		return rulesReadRole
+	}
+	return rulesEditRole
 }
 
 func proxyRefusal(c ruleCall, status int, body []byte) error {
 	var er providers.ErrorResponse
 	_ = json.Unmarshal(body, &er)
 	cause := fmt.Errorf("grafana plugin proxy refused the request (status %d): %s", status, er.ErrorMessage())
-	if status == http.StatusForbidden && c.action != "" {
-		return &providers.PluginRouteDeniedError{Action: c.action, Role: c.role, Cause: cause}
+	if status == http.StatusForbidden {
+		return &providers.PluginRouteDeniedError{Action: c.action, Role: roleFor(c.action), Cause: cause}
 	}
 	return cause
 }
 
-type proxyOutcome struct {
-	status int
-	body   []byte
-	err    error
-	// refused is why the direct path must be used; nil when the proxy answered.
-	refused error
-	done    bool
-}
-
-// sendViaProxy tries the plugin proxy. When done is false the caller falls back
-// to the direct path and refused explains why.
-func (b *rulesBackend) sendViaProxy(ctx context.Context, c ruleCall) proxyOutcome {
-	if b.proxy == nil {
-		return proxyOutcome{refused: b.proxyErr}
-	}
-	if skipErr, skip := b.skipReason(c.method + c.action); skip {
-		return proxyOutcome{refused: skipErr}
-	}
-	status, body, err := b.proxy.do(ctx, c.method, c.proxyPath, c.body)
-	if err != nil {
-		return proxyOutcome{err: err, done: true}
-	}
-	if !providers.IsPluginProxyUnavailable(status, body) {
-		return proxyOutcome{status: status, body: body, done: true}
-	}
-	refused := proxyRefusal(c, status, body)
-	b.markSkip(c.method+c.action, refused)
-	return proxyOutcome{refused: refused}
-}
-
 // send issues one call, preferring the plugin proxy. The direct path is taken
 // only when the proxy is unconfigured or refused the request before it reached
-// the backend, so a request is never applied twice.
+// the backend. A proxy transport error is returned as is, because the backend
+// may already have applied the request.
 func (b *rulesBackend) send(ctx context.Context, c ruleCall) (int, []byte, error) {
-	out := b.sendViaProxy(ctx, c)
-	if out.done {
-		return out.status, out.body, out.err
+	proxyErr := b.proxyErr
+	if b.proxy != nil {
+		if skipErr, skip := b.skipReason(c.action); skip {
+			proxyErr = skipErr
+		} else {
+			status, body, err := b.proxy.do(ctx, c.method, c.proxyPath, c.body)
+			if err != nil || !providers.IsPluginProxyUnavailable(status, body) {
+				return status, body, err
+			}
+			proxyErr = proxyRefusal(c, status, body)
+			b.markSkip(c.action, proxyErr)
+		}
 	}
-	proxyErr := out.refused
 
 	ep, err := b.directEndpoint(ctx)
 	if err != nil {
@@ -223,7 +206,7 @@ func (b *rulesBackend) send(ctx context.Context, c ruleCall) (int, []byte, error
 	if err != nil {
 		return 0, nil, err
 	}
-	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && proxyErr != nil {
+	if b.proxy != nil && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
 		return 0, nil, fmt.Errorf("%w; direct access also failed: %w", proxyErr, ruleError("authorize", status, body))
 	}
 	return status, body, nil
@@ -265,7 +248,7 @@ func (b *rulesBackend) List(ctx context.Context, limit int64) ([]MetricRule, err
 		if token != "" {
 			q.Set("page_token", token)
 		}
-		status, body, err := b.send(ctx, b.v2Call(http.MethodGet, "/rules?"+q.Encode(), nil, rulesReadAction, rulesReadRole))
+		status, body, err := b.send(ctx, b.v2Call(http.MethodGet, "/rules?"+q.Encode(), nil, rulesReadAction))
 		if err != nil {
 			return nil, err
 		}
@@ -296,7 +279,7 @@ func (b *rulesBackend) Get(ctx context.Context, metric string) (*MetricRule, err
 	if err := validateRuleRef(b.segment, metric, true); err != nil {
 		return nil, err
 	}
-	status, body, err := b.send(ctx, b.v2Call(http.MethodGet, "/rules/"+url.PathEscape(metric), nil, rulesReadAction, rulesReadRole))
+	status, body, err := b.send(ctx, b.v2Call(http.MethodGet, "/rules/"+url.PathEscape(metric), nil, rulesReadAction))
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +309,7 @@ func (b *rulesBackend) put(ctx context.Context, op string, rule *MetricRule) (*M
 	if err != nil {
 		return nil, fmt.Errorf("adaptive-metrics: %s: marshal: %w", op, err)
 	}
-	status, body, err := b.send(ctx, b.v2Call(http.MethodPut, "/rules/"+url.PathEscape(rule.Metric), data, rulesWriteAction, rulesEditRole))
+	status, body, err := b.send(ctx, b.v2Call(http.MethodPut, "/rules/"+url.PathEscape(rule.Metric), data, rulesWriteAction))
 	if err != nil {
 		return nil, err
 	}
@@ -339,6 +322,21 @@ func (b *rulesBackend) put(ctx context.Context, op string, rule *MetricRule) (*M
 	}
 	out := fromRuleV2(echoed)
 	return &out, nil
+}
+
+// Validate checks rules against what the v2 API accepts, without a request.
+// The API has no validation endpoint, so rules that pass are reported as
+// unverified rather than valid.
+func (b *rulesBackend) Validate(_ context.Context, rules []*MetricRule) error {
+	for _, r := range rules {
+		if err := validateRuleRef(b.segment, r.Metric, true); err != nil {
+			return err
+		}
+		if _, err := toRuleV2(*r); err != nil {
+			return fmt.Errorf("rule %q: %w", r.Metric, err)
+		}
+	}
+	return adapter.ErrDryRunUnverified
 }
 
 // Create is an unconditional upsert, as the v2 API defines it.
@@ -358,7 +356,7 @@ func (b *rulesBackend) Delete(ctx context.Context, metric string) error {
 	if err := validateRuleRef(b.segment, metric, true); err != nil {
 		return err
 	}
-	status, body, err := b.send(ctx, b.v2Call(http.MethodDelete, "/rules/"+url.PathEscape(metric), nil, rulesDeleteAction, rulesEditRole))
+	status, body, err := b.send(ctx, b.v2Call(http.MethodDelete, "/rules/"+url.PathEscape(metric), nil, rulesDeleteAction))
 	if err != nil {
 		return err
 	}

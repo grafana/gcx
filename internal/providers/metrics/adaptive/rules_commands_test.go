@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (
@@ -125,6 +127,13 @@ func TestRulesList(t *testing.T) {
 		})
 	})
 
+	t.Run("negative limit is rejected before any request", func(t *testing.T) {
+		f := newFakeRules(t)
+		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true, cloud: true}), false, "rules", "list", "--limit", "-1")
+		require.ErrorContains(t, res.err, "invalid --limit -1")
+		assert.Empty(t, f.requests("", ""))
+	})
+
 	t.Run("limit zero follows every page", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
@@ -207,11 +216,12 @@ func TestRulesList(t *testing.T) {
 			assert.Contains(t, table.stdout, "METRIC")
 			assert.Contains(t, table.stdout, "a_metric")
 			assert.Contains(t, table.stdout, "sum,count")
-			assert.NotContains(t, table.stdout, "MANAGED BY")
+			assert.NotContains(t, table.stdout, "INTERVAL")
 
 			wide := run("rules", "list", "-o", "wide")
 			require.NoError(t, wide.err)
-			assert.Contains(t, wide.stdout, "MANAGED BY")
+			assert.Contains(t, wide.stdout, "INTERVAL")
+			assert.NotContains(t, wide.stdout, "MANAGED BY")
 			assert.Contains(t, wide.stdout, "1m")
 
 			yml := run("rules", "list", "-o", "yaml")
@@ -342,7 +352,8 @@ func TestRulesCreate(t *testing.T) {
 		{name: "drop with aggregations", args: []string{"--metric", "m", "--drop", "--aggregations", "sum"}, wantErr: "drop and aggregate", noReqs: true},
 		{name: "invalid metric", args: []string{"--metric", ".."}, wantErr: "invalid metric", noReqs: true},
 		{name: "missing metric flag", args: []string{"--drop"}, wantErr: "metric", noReqs: true},
-		{name: "server rejects the rule", args: []string{"--metric", "m", "--drop-labels", "pod"}, wantErr: "requires at least one function"},
+		{name: "no aggregations", args: []string{"--metric", "m", "--drop-labels", "pod"}, wantErr: "at least one aggregation", noReqs: true},
+		{name: "drop with interval", args: []string{"--metric", "m", "--drop", "--aggregation-interval", "1m"}, wantErr: "interval or delay", noReqs: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -469,7 +480,7 @@ func TestRulesUpdate(t *testing.T) {
 		},
 		{name: "no flags", args: []string{"a_metric"}, seed: []wireRule{ruleA}, wantErr: "specify at least one flag", noWrites: true, noReqs: true},
 		{name: "invalid metric", args: []string{"..", "--drop"}, wantErr: "invalid metric", noWrites: true, noReqs: true},
-		{name: "server rejects the rule", args: []string{"a_metric", "--aggregations", ""}, seed: []wireRule{ruleA}, wantErr: "requires at least one function", noWrites: true},
+		{name: "emptied aggregations", args: []string{"a_metric", "--aggregations", ""}, seed: []wireRule{ruleA}, wantErr: "at least one aggregation", noWrites: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -699,6 +710,26 @@ func TestRulesTransport(t *testing.T) {
 		})
 	}
 
+	t.Run("does not fall back when the proxy connection fails", func(t *testing.T) {
+		f := newFakeRules(t)
+		f.fail(viaProxy, "PUT", 0, "")
+		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true, cloud: true}), false, "rules", "create", "--metric", "m", "--drop")
+		require.Error(t, res.err)
+		assert.NotEmpty(t, f.requests(viaProxy, "PUT"))
+		assert.Empty(t, f.requests(viaDirect, ""))
+		assert.Zero(t, f.gcomCalls())
+	})
+
+	t.Run("direct auth failure without grafana config is reported as is", func(t *testing.T) {
+		f := newFakeRules(t)
+		f.fail(viaDirect, "", 403, `{"error":"forbidden"}`)
+		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{cloud: true}), false, "rules", "list")
+		require.ErrorContains(t, res.err, "status 403: forbidden")
+		assert.NotContains(t, res.err.Error(), "grafana config")
+		var invalid config.ValidationError
+		assert.NotErrorAs(t, res.err, &invalid)
+	})
+
 	t.Run("route denied without direct access names the missing action", func(t *testing.T) {
 		for verb, tc := range map[string]struct {
 			args   []string
@@ -751,4 +782,53 @@ func TestRulesTransport(t *testing.T) {
 		assert.NotErrorAs(t, res.err, &invalid, "the direct failure must lead, not the Grafana config error")
 		assert.Empty(t, f.requests("", ""))
 	})
+}
+
+func TestRuleAdapter_DryRun(t *testing.T) {
+	manifest := func(spec map[string]any) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": metrics.RuleAPIVersion,
+			"kind":       metrics.RuleKind,
+			"metadata":   map[string]any{"name": spec["metric"]},
+			"spec":       spec,
+		}}
+	}
+	tests := []struct {
+		name    string
+		spec    map[string]any
+		wantErr string
+	}{
+		{"valid rule is unverified", map[string]any{"metric": "m", "aggregations": []any{"sum"}, "drop_labels": []any{"pod"}}, ""},
+		{"both label kinds", map[string]any{"metric": "m", "aggregations": []any{"sum"}, "drop_labels": []any{"pod"}, "keep_labels": []any{"job"}}, "both dropped and kept labels"},
+		{"drop with interval", map[string]any{"metric": "m", "drop": true, "aggregation_interval": "1m"}, "interval or delay"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakeRules(t)
+			a, err := metrics.NewRuleAdapterFactory(f.loader(t, fakeConfig{grafana: true, cloud: true}))(t.Context())
+			require.NoError(t, err)
+
+			_, createErr := a.Create(t.Context(), manifest(tt.spec), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+			_, updateErr := a.Update(t.Context(), manifest(tt.spec), metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}})
+			for _, err := range []error{createErr, updateErr} {
+				if tt.wantErr == "" {
+					require.ErrorIs(t, err, adapter.ErrDryRunUnverified)
+				} else {
+					require.ErrorContains(t, err, tt.wantErr)
+					require.NotErrorIs(t, err, adapter.ErrDryRunUnverified)
+				}
+			}
+			assert.Empty(t, f.requests("", ""))
+		})
+	}
+}
+
+func TestRuleExample_IsValid(t *testing.T) {
+	f := newFakeRules(t)
+	a, err := metrics.NewRuleAdapterFactory(f.loader(t, fakeConfig{grafana: true}))(t.Context())
+	require.NoError(t, err)
+	var obj unstructured.Unstructured
+	require.NoError(t, json.Unmarshal(metrics.RuleExample(), &obj.Object))
+	_, err = a.Create(t.Context(), &obj, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.ErrorIs(t, err, adapter.ErrDryRunUnverified)
 }

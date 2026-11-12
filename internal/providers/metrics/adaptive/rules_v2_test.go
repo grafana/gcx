@@ -53,6 +53,9 @@ func TestToRuleV2_Errors(t *testing.T) {
 	}{
 		{"both label kinds", MetricRule{Metric: "m", Aggregations: []string{"sum"}, KeepLabels: []string{"a"}, DropLabels: []string{"b"}}, "both dropped and kept labels"},
 		{"no labels", MetricRule{Metric: "m", Aggregations: []string{"sum"}}, "no labels to aggregate on"},
+		{"no aggregations", MetricRule{Metric: "m", KeepLabels: []string{"a"}}, "at least one aggregation"},
+		{"drop with interval", MetricRule{Metric: "m", Drop: true, AggregationInterval: "1m"}, "interval or delay"},
+		{"drop with delay", MetricRule{Metric: "m", Drop: true, AggregationDelay: "5m"}, "interval or delay"},
 		{"drop with aggregations", MetricRule{Metric: "m", Drop: true, Aggregations: []string{"sum"}}, "drop and aggregate"},
 		{"drop with keep labels", MetricRule{Metric: "m", Drop: true, KeepLabels: []string{"a"}}, "drop and aggregate"},
 		{"drop with drop labels", MetricRule{Metric: "m", Drop: true, DropLabels: []string{"a"}}, "drop and aggregate"},

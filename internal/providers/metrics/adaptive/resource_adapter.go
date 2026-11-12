@@ -53,7 +53,6 @@ func RuleExample() json.RawMessage {
 			"metric":       "my-metric",
 			"match_type":   "exact",
 			"drop_labels":  []string{"pod", "container"},
-			"keep_labels":  []string{"job", "instance"},
 			"aggregations": []string{"sum", "count"},
 		},
 	}
@@ -78,19 +77,16 @@ func NewRuleTypedCRUD(ctx context.Context, loader *providers.ConfigLoader, segme
 	if err != nil {
 		return nil, err
 	}
-	return newRuleTypedCRUD(backend), nil
-}
-
-func newRuleTypedCRUD(backend *rulesBackend) *adapter.TypedCRUD[MetricRule] {
 	return &adapter.TypedCRUD[MetricRule]{
 		ListFn:     backend.List,
 		GetFn:      backend.Get,
 		CreateFn:   backend.Create,
 		UpdateFn:   backend.Update,
-		DeleteFn:   func(ctx context.Context, name string) error { return backend.Delete(ctx, name) },
+		DeleteFn:   backend.Delete,
+		ValidateFn: backend.Validate,
 		Namespace:  "default",
 		Descriptor: ruleDescriptorVar,
-	}
+	}, nil
 }
 
 // NewRuleAdapterFactory returns an adapter.Factory for adaptive metrics aggregation rules.
