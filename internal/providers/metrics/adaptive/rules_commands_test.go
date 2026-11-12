@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	metrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -745,6 +746,9 @@ func TestRulesTransport(t *testing.T) {
 		f := newFakeRules(t)
 		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{}), false, "rules", "list")
 		require.Error(t, res.err)
+		assert.Contains(t, res.err.Error(), "plugin proxy is unavailable")
+		var invalid config.ValidationError
+		assert.NotErrorAs(t, res.err, &invalid, "the direct failure must lead, not the Grafana config error")
 		assert.Empty(t, f.requests("", ""))
 	})
 }

@@ -212,6 +212,11 @@ func (b *rulesBackend) send(ctx context.Context, c ruleCall) (int, []byte, error
 
 	ep, err := b.directEndpoint(ctx)
 	if err != nil {
+		if b.proxy == nil {
+			// proxyErr is deliberately not wrapped: a Grafana config error would
+			// otherwise take over error rendering and hide the direct failure.
+			return 0, nil, fmt.Errorf("%w (the Grafana plugin proxy is unavailable: %v)", err, proxyErr) //nolint:errorlint // See above.
+		}
 		return 0, nil, fmt.Errorf("%w; direct access unavailable: %w", proxyErr, err)
 	}
 	status, body, err := ep.do(ctx, c.method, c.directPath, c.body)
