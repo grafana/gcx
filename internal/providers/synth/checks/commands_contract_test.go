@@ -1037,7 +1037,7 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 		wantStdout string
 		checkEmpty bool
 	}{
-		{name: "human default keeps prose notice", wantStdout: "🛈 No checks found.\n"},
+		{name: "human default keeps prose notice", wantStdout: "ℹ No checks found.\n"},
 		{name: "agent mode emits one empty JSON document", agentMode: true, checkEmpty: true},
 	}
 
@@ -1321,7 +1321,7 @@ func TestChecksTimelineContract(t *testing.T) {
 
 		// --since default (6h) exceeds check age (30m) → clamped.
 		assert.Contains(t, stderr, "window adjusted to match")
-		assert.Equal(t, "🛈 No time-series data available for check 42.\n", stdout)
+		assert.Equal(t, "ℹ No time-series data available for check 42.\n", stdout)
 	})
 
 	t.Run("agent mode emits one JSON document even with no data", func(t *testing.T) {
