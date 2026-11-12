@@ -11,7 +11,7 @@ keywords:
   - Grafana CLI
   - observability as code
   - telemetry
-weight: 4
+weight: 7
 ---
 
 # Diagnose missing telemetry with `gcx`

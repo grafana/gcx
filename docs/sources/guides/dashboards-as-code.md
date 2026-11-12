@@ -10,7 +10,7 @@ keywords:
   - gcx
   - Grafana CLI
   - observability as code
-weight: 1
+weight: 4
 ---
 
 # Manage dashboards as code with `gcx` 
