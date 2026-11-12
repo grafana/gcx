@@ -159,7 +159,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 					IdentityOnlyDelete: true,
 					StopOnError:        opts.OnError.StopOnError(),
 					ExcludeReadOnly:    true,
-				}, args, rejectUnsupportedDelete)
+				}, args, func(f resources.Filters) error { return rejectUnsupportedMutation(f, "delete") })
 				if err != nil {
 					return err
 				}
@@ -242,21 +242,46 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
-func rejectUnsupportedDelete(filters resources.Filters) error {
-	return rejectUnsupportedMutation(filters, "delete")
-}
-
-func rejectUnsupportedEdit(filters resources.Filters) error {
-	return rejectUnsupportedMutation(filters, "edit")
-}
-
+// rejectUnsupportedMutation refuses a mutation that a resolved filter does not
+// allow. A refusal for a cluster-scoped kind is a usage error, because the
+// selector names it.
 func rejectUnsupportedMutation(filters resources.Filters, operation string) error {
 	for _, filter := range filters {
 		if err := adapter.CheckMutation(filter.Descriptor, operation); err != nil {
-			return err
+			return clusterScopedUsageError(err)
 		}
 	}
 	return nil
+}
+
+// rejectClusterScoped returns a filter check that refuses operation for every
+// cluster-scoped kind that a selector names.
+func rejectClusterScoped(operation string) func(resources.Filters) error {
+	return func(filters resources.Filters) error {
+		for _, filter := range filters {
+			if err := resources.CheckClusterScopedOperation(filter.Descriptor, operation); err != nil {
+				return clusterScopedUsageError(err)
+			}
+		}
+		return nil
+	}
+}
+
+// clusterScopedUsageError wraps a ClusterScopedOperationError in a usage error
+// (exit 2). Other errors are returned unchanged.
+func clusterScopedUsageError(err error) error {
+	scopeErr, ok := errors.AsType[*resources.ClusterScopedOperationError](err)
+	if !ok {
+		return err
+	}
+
+	return &gcxerrors.UsageError{
+		Message: scopeErr.Error(),
+		Cause:   err,
+		Suggestions: []string{
+			"Read the resources instead: gcx resources get " + scopeErr.Descriptor.Plural,
+		},
+	}
 }
 
 func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors, warn io.Writer) error {

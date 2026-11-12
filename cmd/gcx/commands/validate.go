@@ -20,7 +20,7 @@ func validateAgainstLive(ctx context.Context, cfg config.NamespacedRESTConfig, c
 		return nil, fmt.Errorf("failed to discover resources: %w", err)
 	}
 
-	// Cluster-scoped kinds are read-only in gcx, so the catalog of
+	// gcx supports only get on cluster-scoped kinds, so the catalog of
 	// manageable types does not cover them.
 	var liveDescs resources.Descriptors
 	for _, desc := range reg.SupportedResources().Sorted() {

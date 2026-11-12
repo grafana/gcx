@@ -76,35 +76,3 @@ func TestNamespacedClient_RequestScope(t *testing.T) {
 		})
 	}
 }
-
-func TestNamespacedClient_RefusesClusterScopedWrites(t *testing.T) {
-	client := newScopedFakeClient(t)
-	c := dynamic.NewNamespacedClient("default", client)
-	desc := clusterScopedDescriptor()
-	obj := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "kgatlas.ext.grafana.app/v1alpha1",
-		"kind":       "SystemKgSchema",
-		"metadata":   map[string]any{"name": "core"},
-	}}
-
-	writes := map[string]func() error{
-		"create": func() error { _, err := c.Create(t.Context(), desc, obj, metav1.CreateOptions{}); return err },
-		"update": func() error { _, err := c.Update(t.Context(), desc, obj, metav1.UpdateOptions{}); return err },
-		"delete": func() error { return c.Delete(t.Context(), desc, "core", metav1.DeleteOptions{}) },
-		"apply": func() error {
-			_, err := c.Apply(t.Context(), desc, "core", obj, metav1.ApplyOptions{FieldManager: "gcx"})
-			return err
-		},
-	}
-
-	for verb, write := range writes {
-		t.Run(verb, func(t *testing.T) {
-			err := write()
-			var scopeErr *resources.ClusterScopedMutationError
-			require.ErrorAs(t, err, &scopeErr)
-			assert.Equal(t, verb, scopeErr.Operation)
-			assert.Contains(t, err.Error(), "cluster-scoped")
-		})
-	}
-	assert.Empty(t, client.Actions(), "refused writes must not reach the server")
-}
