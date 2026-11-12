@@ -54,8 +54,7 @@ func checkEscalationPolicyTeam(ctx context.Context, c OnCallAPI, p *EscalationPo
 	}
 
 	_, err := c.GetTeam(ctx, teamID(p))
-	var missing *resourceNotFoundError
-	if !errors.As(err, &missing) {
+	if _, missing := errors.AsType[*resourceNotFoundError](err); !missing {
 		return nil
 	}
 
