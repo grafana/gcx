@@ -29,6 +29,7 @@ type containersGetOpts struct {
 }
 
 func (o *containersGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("yaml")
 	setupOpMemReadIO(&o.IO, flags)
 }
 

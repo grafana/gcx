@@ -138,10 +138,10 @@ type containerBody struct {
 }
 
 type containerEnvelope struct {
-	containerBody
-
 	Type          string `json:"type"`
 	SchemaVersion string `json:"schema_version"`
+	//nolint:embeddedstructfieldcheck
+	containerBody `yaml:",inline"`
 }
 
 func orEmpty[T any](s []T) []T {
