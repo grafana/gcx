@@ -1,5 +1,9 @@
 ## Unreleased
 
+- `gcx logs metrics` with no time flags now runs an instant query and returns
+  one value per series. It used to run a range query over the last minute and
+  return two points per series, so summing them doubled counts. Its
+  `--share-link` URL now opens an instant query in Explore too. (#1785)
 - `gcx logs query` and `gcx datasources loki query` now reject a negative
   `--limit`, as generic `gcx datasources query` already did. A negative value
   used to run with Loki's default line limit and exit 0. `--limit 0` still

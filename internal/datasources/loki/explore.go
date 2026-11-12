@@ -41,10 +41,16 @@ func MetricsExploreURL(host string, query dsquery.ExploreQuery) string {
 
 	from, to := dsquery.ShortExploreRange(query.From, query.To)
 
+	// Explore prefers queryType over the legacy instant and range pair. Keep
+	// sending all three so older Grafana still reads the mode.
+	queryType := "range"
+	if query.Instant {
+		queryType = "instant"
+	}
 	q := map[string]any{
 		"refId":      "A",
 		"expr":       query.Expr,
-		"queryType":  "range",
+		"queryType":  queryType,
 		"instant":    query.Instant,
 		"range":      !query.Instant,
 		"editorMode": "code",
