@@ -168,6 +168,7 @@
  "gcx assistant investigations pause": "finite",
  "gcx assistant investigations resume": "finite",
  "gcx assistant investigations share": "finite",
+ "gcx assistant usage get": "finite",
  "gcx assistant watchers list": "finite",
  "gcx assistant watchers list-versions": "finite",
  "gcx assistant watchers versions get": "finite",

@@ -18,6 +18,7 @@ type TableBuilder struct {
 	rows          [][]string
 	colWidths     []int // per-column fixed widths (0 = auto); only applied in renderStyled
 	multilineCell bool  // when true, plain-renderer flattens \n in cells to ", "
+	compact       bool  // borderless, content-sized layout for dense summaries
 }
 
 // NewTable creates a new table with the given column headers.
@@ -33,6 +34,13 @@ func NewTable(headers ...string) *TableBuilder {
 // The slice may be shorter than the column count; trailing columns default to 0.
 func (tb *TableBuilder) ColumnWidths(widths []int) *TableBuilder {
 	tb.colWidths = widths
+	return tb
+}
+
+// Compact renders a borderless table sized to its contents instead of stretching
+// across the terminal. Plain output retains the same aligned columns.
+func (tb *TableBuilder) Compact() *TableBuilder {
+	tb.compact = true
 	return tb
 }
 
@@ -121,7 +129,7 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 			switch {
 			case row == table.HeaderRow:
 				s = headerStyle
-			case row%2 == 0:
+			case tb.compact || row%2 == 0:
 				s = evenRowStyle
 			default:
 				s = oddRowStyle
@@ -131,6 +139,24 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 			}
 			return s
 		})
+	if tb.compact {
+		naturalWidth := 0
+		for col, header := range tb.headers {
+			cellWidth := lipgloss.Width(header)
+			for _, row := range tb.rows {
+				if col < len(row) {
+					cellWidth = max(cellWidth, lipgloss.Width(row[col]))
+				}
+			}
+			naturalWidth += cellWidth + 2
+		}
+		t.BorderTop(false).BorderBottom(false).BorderLeft(false).BorderRight(false).
+			BorderColumn(false).BorderRow(false).Width(min(width, naturalWidth))
+		// Styling was resolved against stdout above. Preserve it when a compact
+		// overview composes this table through an intermediate strings.Builder.
+		_, err := fmt.Fprintln(w, t)
+		return err
+	}
 
 	_, err := lipgloss.Fprintln(w, t)
 	return err
