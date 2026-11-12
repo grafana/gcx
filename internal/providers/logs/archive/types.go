@@ -113,8 +113,9 @@ type StreamCreate struct {
 	StreamSelector       string `json:"stream_selector"`
 }
 
-// The API replaces the whole stream, so every field must be set; the signal
-// cannot change.
+// The API replaces the whole stream, so every field must be set. The
+// destination and signal cannot change: ArchiveDestinationID carries the
+// current destination, which older API versions require and newer ones ignore.
 type StreamUpdate struct {
 	ArchiveDestinationID string `json:"archive_destination_id"`
 	Name                 string `json:"name"`
