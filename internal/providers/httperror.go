@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
 )
@@ -47,6 +48,47 @@ func IsPluginRouteDenied(statusCode int, body []byte) bool {
 	}
 	var errResp ErrorResponse
 	return json.Unmarshal(body, &errResp) == nil && errResp.ErrorMessage() == pluginRouteDeniedMessage
+}
+
+// pluginProxyRejections are the exact messages Grafana returns when it
+// rejects a plugin-proxy request before anything reaches the plugin backend,
+// keyed by HTTP status. Backend responses never use these messages, so a match
+// guarantees the request was not applied.
+var pluginProxyRejections = map[int][]string{ //nolint:gochecknoglobals // Static lookup table.
+	http.StatusNotFound: {
+		"Plugin not found",
+		"Plugin setting not found",
+		"Plugin is not enabled",
+		"plugin route match not found",
+	},
+	http.StatusForbidden: {
+		pluginRouteDeniedMessage,
+		"You'll need additional permissions to perform this action.",
+	},
+}
+
+// IsPluginProxyUnavailable reports whether a response is Grafana's plugin proxy
+// itself refusing the request: the plugin is missing or disabled, it has no
+// matching route, or the caller lacks access to the plugin or route. Callers
+// that have a direct fallback can retry safely, because the plugin backend never
+// saw the request. Statuses are matched together with Grafana's fixed messages;
+// a plugin backend's own 403 or 404 returns false.
+func IsPluginProxyUnavailable(statusCode int, body []byte) bool {
+	messages, ok := pluginProxyRejections[statusCode]
+	if !ok {
+		return false
+	}
+	var errResp ErrorResponse
+	if json.Unmarshal(body, &errResp) != nil {
+		return false
+	}
+	msg := errResp.ErrorMessage()
+	for _, m := range messages {
+		if strings.HasPrefix(msg, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud

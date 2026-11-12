@@ -97,6 +97,8 @@ func decodeOneJSONValue(t *testing.T, stdout string) any {
 	return first
 }
 
+const rulesV2Prefix = "/adaptive-metrics/api/v2/segments/default/rules"
+
 // fakeMetricsAPI serves the Adaptive Metrics endpoints exercised by the
 // apply, delete, and list commands. Rule mutations for metrics listed in
 // failMetrics return HTTP 500.
@@ -107,6 +109,13 @@ func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasPrefix(r.URL.Path, rulesV2Prefix):
+			if r.Method == http.MethodDelete {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"rules":[]}`)
 		case r.URL.Path == "/aggregations/recommendations":
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, recs)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -618,7 +619,11 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			fetchLimit := opts.Limit
+			if fetchLimit > 0 {
+				fetchLimit++
+			}
+			typedObjs, err := crud.List(ctx, fetchLimit)
 			if err != nil {
 				return err
 			}
@@ -627,6 +632,8 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				rules[i] = typedObjs[i].Spec
 			}
 
+			rules, meta := cmdio.TruncatePagedList(rules, int(opts.Limit))
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), cmdio.AttachListMeta(meta, os.Args))
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
 
 			// Always encode, even when empty: agent mode and explicit
@@ -662,6 +669,10 @@ func (h *metricsHelper) rulesGetCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			if err := validateRuleRef(opts.Segment, args[0], true); err != nil {
 				return err
 			}
 
@@ -724,9 +735,7 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			ctx := cmd.Context()
-			crud, err := NewRuleTypedCRUD(ctx, h.loader, opts.Segment)
-			if err != nil {
+			if err := validateRuleRef(opts.Segment, opts.Metric, true); err != nil {
 				return err
 			}
 
@@ -739,6 +748,15 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 				Drop:                opts.Drop,
 				AggregationInterval: opts.AggregationInterval,
 				AggregationDelay:    opts.AggregationDelay,
+			}
+			if _, err := toRuleV2(rule); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, err := NewRuleTypedCRUD(ctx, h.loader, opts.Segment)
+			if err != nil {
+				return err
 			}
 
 			created, err := crud.Create(ctx, &adapter.TypedObject[MetricRule]{Spec: rule})
@@ -802,6 +820,9 @@ func (h *metricsHelper) rulesUpdateCommand() *cobra.Command {
 				!flags.Changed("aggregations") && !flags.Changed("drop") &&
 				!flags.Changed("aggregation-interval") && !flags.Changed("aggregation-delay") {
 				return errors.New("specify at least one flag to update")
+			}
+			if err := validateRuleRef(opts.Segment, args[0], true); err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()
@@ -887,6 +908,9 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 			}
 
 			metric := args[0]
+			if err := validateRuleRef(opts.Segment, metric, true); err != nil {
+				return err
+			}
 			stderr := cmd.ErrOrStderr()
 
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
