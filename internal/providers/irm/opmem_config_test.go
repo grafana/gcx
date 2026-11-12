@@ -116,10 +116,10 @@ func TestRequireSharingOAuthReportsMissingContext(t *testing.T) {
 }
 
 func TestRequireSharingOAuthReportsEffectiveDestination(t *testing.T) {
-	const oauth = "      auth-method: oauth\n      oauth-token: test-oauth-token\n      proxy-endpoint: http://localhost:9091\n"
+	const oauth = "      auth-method: oauth\n      oauth-token: test-oauth-token\n"
 	body := "current-context: default-ctx\ncontexts:\n" +
-		"  default-ctx:\n    grafana:\n      server: https://default.example\n      stack-id: 1\n" + oauth +
-		"  other-ctx:\n    grafana:\n      server: https://other.example\n      stack-id: 2\n" + oauth
+		"  default-ctx:\n    grafana:\n      server: https://default.example\n      stack-id: 1\n      proxy-endpoint: https://default-proxy.example\n" + oauth +
+		"  other-ctx:\n    grafana:\n      server: https://other.example\n      stack-id: 2\n      proxy-endpoint: https://other-proxy.example\n" + oauth
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(configPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -128,8 +128,8 @@ func TestRequireSharingOAuthReportsEffectiveDestination(t *testing.T) {
 		contextFlag string
 		want        messageDestination
 	}{
-		"current context":    {want: messageDestination{Context: "default-ctx", Server: "https://default.example"}},
-		"--context override": {contextFlag: "other-ctx", want: messageDestination{Context: "other-ctx", Server: "https://other.example"}},
+		"current context":    {want: messageDestination{Context: "default-ctx", Server: "https://default.example", ProxyEndpoint: "https://default-proxy.example"}},
+		"--context override": {contextFlag: "other-ctx", want: messageDestination{Context: "other-ctx", Server: "https://other.example", ProxyEndpoint: "https://other-proxy.example"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("GRAFANA_TOKEN", "")

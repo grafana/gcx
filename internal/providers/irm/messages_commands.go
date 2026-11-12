@@ -98,12 +98,13 @@ func (o *messageShareOpts) messageBody(stdin io.Reader) (string, error) {
 // messageEnvelope is what a share sends and where it sends it. The preview
 // digest and the send check both hash this one value.
 type messageEnvelope struct {
-	Context    string        `json:"context"`
-	Server     string        `json:"server"`
-	IncidentID string        `json:"incident_id"`
-	Body       string        `json:"body"`
-	See        string        `json:"see,omitempty"`
-	DraftedBy  *messageAgent `json:"drafted_by,omitempty"`
+	Context       string        `json:"context"`
+	Server        string        `json:"server"`
+	ProxyEndpoint string        `json:"proxy_endpoint"`
+	IncidentID    string        `json:"incident_id"`
+	Body          string        `json:"body"`
+	See           string        `json:"see,omitempty"`
+	DraftedBy     *messageAgent `json:"drafted_by,omitempty"`
 }
 
 func (o *messageShareOpts) envelope(dest messageDestination, incidentID, body string) messageEnvelope {
@@ -115,7 +116,7 @@ func (o *messageShareOpts) envelope(dest messageDestination, incidentID, body st
 		}
 		draftedBy = &messageAgent{ID: id, DisplayName: name}
 	}
-	return messageEnvelope{Context: dest.Context, Server: dest.Server, IncidentID: incidentID, Body: body, See: o.See, DraftedBy: draftedBy}
+	return messageEnvelope{Context: dest.Context, Server: dest.Server, ProxyEndpoint: dest.ProxyEndpoint, IncidentID: incidentID, Body: body, See: o.See, DraftedBy: draftedBy}
 }
 
 func (e messageEnvelope) digest() string {
@@ -166,9 +167,10 @@ API. Service accounts cannot share messages.
 preview of the message body and optional See: line. The server attributes the
 message to the signed-in user and to any agent named by --drafted-by-agent.
 
-The preview also has a digest of the context, server, incident, body, See: line
-and drafting agent. Pass it to --expect-digest on the real send to send exactly
-what was previewed: if any of them changed, gcx sends nothing and exits 2.
+The preview also has a digest of the context, server, OAuth proxy endpoint,
+incident, body, See: line and drafting agent. Pass it to --expect-digest on the
+real send to send exactly what was previewed: if any of them changed, gcx sends
+nothing and exits 2.
 
 A real send has no idempotency key. After a failed or timed-out send, run
 gcx irm incidents list-activity <incident-id> --kind keyUpdateAdded --limit 100
@@ -209,7 +211,7 @@ func runIncidentShare(cmd *cobra.Command, incidentID string, opts *messageShareO
 		exitCode := fail.ExitUsageError
 		return &fail.DetailedError{
 			Summary:     "the message or its destination changed since the preview",
-			Details:     "The --expect-digest value does not match the text, See: line, drafting agent, incident, context or server of this send. Nothing was sent.",
+			Details:     "The --expect-digest value does not match the text, See: line, drafting agent, incident, context, server or OAuth proxy endpoint of this send. Nothing was sent.",
 			ExitCode:    &exitCode,
 			Suggestions: []string{"Run the command again with --dry-run, show the new preview for approval, and pass its digest to --expect-digest"},
 		}

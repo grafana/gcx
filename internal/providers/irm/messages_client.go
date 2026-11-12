@@ -27,8 +27,9 @@ type SharingClientLoader interface {
 // messageDestination names the Grafana instance a share goes to, after
 // --context and environment overrides are applied.
 type messageDestination struct {
-	Context string
-	Server  string
+	Context       string
+	Server        string
+	ProxyEndpoint string
 }
 
 type messageAgent struct {
@@ -70,7 +71,7 @@ func (l *configLoader) RequireSharingOAuth(ctx context.Context) (messageDestinat
 		return messageDestination{}, err
 	}
 	if method == "oauth" {
-		return messageDestination{Context: cfg.CurrentContext, Server: current.Grafana.Server}, nil
+		return messageDestination{Context: cfg.CurrentContext, Server: current.Grafana.Server, ProxyEndpoint: current.Grafana.ProxyEndpoint}, nil
 	}
 	exitCode := fail.ExitAuthFailure
 	return messageDestination{}, &fail.DetailedError{

@@ -183,7 +183,7 @@ func TestIncidentShareRejectsCredentialsBeforeLoadingClient(t *testing.T) {
 }
 
 func TestIncidentShareDryRunPreviewsWithoutSending(t *testing.T) {
-	testDestination := messageDestination{Context: "prod", Server: "https://example.grafana.net"}
+	testDestination := messageDestination{Context: "prod", Server: "https://example.grafana.net", ProxyEndpoint: "https://proxy-a.example"}
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -192,17 +192,17 @@ func TestIncidentShareDryRunPreviewsWithoutSending(t *testing.T) {
 		{
 			name: "with see",
 			args: []string{"INC-1", "--body", "Database connections are exhausted", "--see", "dashboard:db", "--dry-run"},
-			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "context": "prod", "server": "https://example.grafana.net", "incident_id": "INC-1", "body": "Database connections are exhausted", "see": "dashboard:db", "preview": "Database connections are exhausted\nSee: dashboard:db"},
+			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "context": "prod", "server": "https://example.grafana.net", "proxy_endpoint": "https://proxy-a.example", "incident_id": "INC-1", "body": "Database connections are exhausted", "see": "dashboard:db", "preview": "Database connections are exhausted\nSee: dashboard:db"},
 		},
 		{
 			name: "without see",
 			args: []string{"INC-1", "--body", "The service has recovered", "--dry-run"},
-			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "context": "prod", "server": "https://example.grafana.net", "incident_id": "INC-1", "body": "The service has recovered", "preview": "The service has recovered"},
+			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "context": "prod", "server": "https://example.grafana.net", "proxy_endpoint": "https://proxy-a.example", "incident_id": "INC-1", "body": "The service has recovered", "preview": "The service has recovered"},
 		},
 		{
 			name: "drafted by agent",
 			args: []string{"INC-1", "--body", "The service has recovered", "--drafted-by-agent", "codex", "--dry-run"},
-			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "context": "prod", "server": "https://example.grafana.net", "incident_id": "INC-1", "body": "The service has recovered", "drafted_by": map[string]any{"id": "codex", "display_name": "codex"}, "preview": "The service has recovered"},
+			want: map[string]any{"type": "gcx.irm.message_preview", "schema_version": "1", "context": "prod", "server": "https://example.grafana.net", "proxy_endpoint": "https://proxy-a.example", "incident_id": "INC-1", "body": "The service has recovered", "drafted_by": map[string]any{"id": "codex", "display_name": "codex"}, "preview": "The service has recovered"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -256,7 +256,7 @@ func writeShareBody(t *testing.T, name, content string) string {
 }
 
 func TestIncidentShareDigestCoversWhatIsSentAndWhere(t *testing.T) {
-	testDestination := messageDestination{Context: "prod", Server: "https://example.grafana.net"}
+	testDestination := messageDestination{Context: "prod", Server: "https://example.grafana.net", ProxyEndpoint: "https://proxy-a.example"}
 	base := writeShareBody(t, "base.txt", "finding\n")
 	baseArgs := []string{"INC-1", "--body-file", base, "--see", "dashboard:db", "--drafted-by-agent", "codex", "--drafted-by-agent-name", "Codex"}
 	want := shareDigest(t, testDestination, baseArgs...)
@@ -276,8 +276,9 @@ func TestIncidentShareDigestCoversWhatIsSentAndWhere(t *testing.T) {
 		{name: "different agent", args: []string{"INC-1", "--body-file", base, "--see", "dashboard:db", "--drafted-by-agent", "claude", "--drafted-by-agent-name", "Codex"}},
 		{name: "different agent name", args: []string{"INC-1", "--body-file", base, "--see", "dashboard:db", "--drafted-by-agent", "codex"}},
 		{name: "no agent", args: []string{"INC-1", "--body-file", base, "--see", "dashboard:db"}},
-		{name: "different context", dest: messageDestination{Context: "staging", Server: testDestination.Server}},
-		{name: "different server", dest: messageDestination{Context: testDestination.Context, Server: "https://other.grafana.net"}},
+		{name: "different context", dest: messageDestination{Context: "staging", Server: testDestination.Server, ProxyEndpoint: testDestination.ProxyEndpoint}},
+		{name: "different server", dest: messageDestination{Context: testDestination.Context, Server: "https://other.grafana.net", ProxyEndpoint: testDestination.ProxyEndpoint}},
+		{name: "different proxy endpoint", dest: messageDestination{Context: testDestination.Context, Server: testDestination.Server, ProxyEndpoint: "https://proxy-b.example"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dest, args := tc.dest, tc.args
