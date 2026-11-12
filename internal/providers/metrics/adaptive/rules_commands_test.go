@@ -540,15 +540,12 @@ func TestRulesDelete(t *testing.T) {
 		})
 	})
 
-	t.Run("a missing rule sends no delete and reports no change", func(t *testing.T) {
+	t.Run("a missing rule fails without sending a delete", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
 			res := run("rules", "delete", "nope", "--force", "-o", "json")
-			require.NoError(t, res.err)
-			doc, ok := decodeOneJSONValue(t, res.stdout).(map[string]any)
-			require.True(t, ok)
-			assert.Equal(t, false, doc["changed"])
-			assert.Contains(t, res.stderr, "nothing to delete")
+			require.ErrorIs(t, res.err, metrics.ErrRuleNotFound)
+			assert.Empty(t, res.stdout)
 			assert.NotContains(t, res.stderr, "Deleted rule")
 			assert.Empty(t, f.requests("", "DELETE"))
 		})
@@ -840,4 +837,9 @@ func TestRuleExample_IsValid(t *testing.T) {
 	require.NoError(t, json.Unmarshal(metrics.RuleExample(), &obj.Object))
 	_, err = a.Create(t.Context(), &obj, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
 	require.ErrorIs(t, err, adapter.ErrDryRunUnverified)
+}
+
+func TestRuleSchema_OmitsManagedBy(t *testing.T) {
+	assert.NotContains(t, string(metrics.RuleSchema()), "managed_by")
+	assert.Contains(t, string(metrics.RuleSchema()), "aggregation_delay")
 }

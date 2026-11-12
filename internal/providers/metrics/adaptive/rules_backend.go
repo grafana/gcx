@@ -303,7 +303,7 @@ func (b *rulesBackend) put(ctx context.Context, op string, rule *MetricRule) (*M
 	}
 	wire, err := toRuleV2(*rule)
 	if err != nil {
-		return nil, fmt.Errorf("adaptive-metrics: %s: %w", op, err)
+		return nil, err
 	}
 	data, err := json.Marshal(wire)
 	if err != nil {

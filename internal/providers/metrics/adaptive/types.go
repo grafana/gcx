@@ -72,7 +72,6 @@ type MetricRule struct {
 	Aggregations        []string `json:"aggregations,omitempty" yaml:"aggregations,omitempty"`
 	AggregationInterval string   `json:"aggregation_interval,omitempty" yaml:"aggregation_interval,omitempty"`
 	AggregationDelay    string   `json:"aggregation_delay,omitempty" yaml:"aggregation_delay,omitempty"`
-	ManagedBy           string   `json:"managed_by,omitempty" yaml:"managed_by,omitempty"`
 }
 
 // MetricRecommendation represents a recommendation for a metric aggregation rule.
