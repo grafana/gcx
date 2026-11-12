@@ -652,7 +652,7 @@ func TestF1_NewFlagInvalidBoolValueReportsParseError(t *testing.T) {
 	err := rootCmd.Execute()
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "--log-http-payload has been renamed")
-	require.Contains(t, err.Error(), "invalid syntax")
+	require.Contains(t, err.Error(), "invalid argument")
 }
 
 func TestF1_HelpTextMentionsCredentials(t *testing.T) {
