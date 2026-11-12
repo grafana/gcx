@@ -174,8 +174,8 @@ Pass the pointer without `See:`, or omit `--see` when there is none. Never pass
 the text inline with `--body`. `--body-file` reads the file as written, apart
 from trailing line breaks, so the send posts exactly the previewed text. Use the
 invoking product's identity (`codex` / `Codex` or `claude-code` / `Claude Code`). The output's `preview` field shows the body and
-optional `See:` line, and its `context` and `server` fields show where it
-goes. The server adds attribution for the authenticated user and the named
+optional `See:` line, and its `context`, `server` and `proxy_endpoint` fields
+show where it goes. The server adds attribution for the authenticated user and the named
 agent when posting. Keep the output's `digest`; Step 4 needs it.
 
 Put this question before that preview:

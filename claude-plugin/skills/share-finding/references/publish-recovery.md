@@ -21,8 +21,8 @@ that no message exists.
 Read the exit code and error summary to decide what happened:
 
 - **Exit 2 with `the message or its destination changed since the preview`**
-  means nothing was sent because the text, pointer, agent, Incident, context or
-  server differs from what the user approved. Never rerun the preview just to get a
+  means nothing was sent because the text, pointer, agent, Incident, context,
+  server or proxy endpoint differs from what the user approved. Never rerun the preview just to get a
   new digest for the same send. Show the new preview and ask again.
 - **Any other exit 2** is a local usage error. gcx rejected the flags or
   arguments and sent nothing. Fix only the flags and retry once. Never change
@@ -37,10 +37,11 @@ Read the exit code and error summary to decide what happened:
   Never reword or redirect the update yourself.
 - **Exit 1 with HTTP 5xx, exit 5, a timeout, a connection reset, or no receipt**
   is uncertain. The update may already be saved, and delivery has no
-  idempotency key. Do not resend. If Step 0 showed the incident as resolved,
-  Incident refuses status updates and reports a server error. Tell the user the
+  idempotency key. Do not resend. If Step 0 showed the incident as resolved
+  and gcx reported an HTTP 5xx, Incident refused the update. Tell the user the
   update was not posted because the incident is resolved, and do not offer a
-  resend. Otherwise, check the incident's activity:
+  resend. Otherwise, including `the server returned no message id`, check the
+  incident's activity:
 
 ```bash
 gcx --agent --context <context> irm incidents list-activity <incident-id> \
