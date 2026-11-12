@@ -3,8 +3,9 @@
 #
 # Every gcx command the agent runs passes through here. It is logged to
 # $KGKIT_LOG. In every configuration, commands that would change the stack are
-# refused. In the "without-graph" configuration, any command that would reach
-# the Knowledge Graph is refused too.
+# refused. In the "without-graph" configuration the Knowledge Graph is hidden:
+# gcx kg answers as an unknown command, help and discovery output leaves it out
+# (via ../hide_kg.py), and other routes to its data are refused.
 #
 #   KGKIT_REAL_GCX  path to the real gcx binary (required)
 #   KGKIT_MODE      with-graph | without-graph
@@ -68,17 +69,29 @@ for i in "${!words[@]}"; do
   [ -n "$blocked" ] && break
 done
 
+# In the without-graph configuration the graph is hidden, not just refused: `gcx kg`
+# answers as an unknown command, and help and discovery output leaves it out, so the
+# agent doesn't spend turns on commands it can't use.
+hidden=""
+if [ -z "$blocked" ] && [ "$mode" = "without-graph" ]; then
+  case "${path[0]}" in
+    kg|knowledge-graph) hidden=1; blocked="the Knowledge Graph (gcx ${path[0]})" ;;
+  esac
+fi
 if [ -z "$blocked" ] && [ "$mode" = "without-graph" ]; then
   for a in "$@"; do
     case "$a" in
-      kg|knowledge-graph) blocked="the Knowledge Graph (gcx $a)" ;;
       # the graph's own datasource and API groups, reachable through generic
       # commands such as gcx datasources query and gcx resources get (gcx 1.x)
       *knowledgegraph*|*kg.ext.grafana*|*kgatlas*|*kgschema*) blocked="the Knowledge Graph ($a)" ;;
-      # recording rules the graph is built from; labels such as asserts_env on
-      # ordinary series are left alone
+    esac
+    # recording rules the graph is built from. A matcher that excludes them
+    # (__name__!~"asserts:.*") is fine; labels such as asserts_env are left alone.
+    stripped=$(printf '%s' "$a" | sed -E 's/!~ *"[^"]*"//g')
+    case "$stripped" in
       *asserts:*) blocked="Knowledge Graph recording rules (asserts: metrics)" ;;
     esac
+    [ -n "$blocked" ] && break
   done
 fi
 
@@ -97,12 +110,46 @@ status="ok"
 # one line per command: UTC time, mode, ok|blocked, then the arguments, shell-quoted
 printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$status" "$(printf '%q ' "$@")" >> "$log"
 
+hide="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hide_kg.py"
+ctx=()
+[ -n "$KGKIT_CONTEXT" ] && ctx=(--context "$KGKIT_CONTEXT")
+
+if [ -n "$hidden" ]; then
+  # gcx's own unknown-command error, with the graph left out of its command list
+  "$real" __kgkit_none__ 2>&1 | python3 -I "$hide" | sed "s/__kgkit_none__/${path[0]}/g"
+  exit 2
+fi
+
 if [ -n "$blocked" ]; then
   echo "error: this test does not allow $blocked. It is read-only. Use metrics, traces, logs or other read commands instead." >&2
   exit 2
 fi
 
-if [ -n "$KGKIT_CONTEXT" ]; then
-  exec "$real" --context "$KGKIT_CONTEXT" "$@"
+if [ "$mode" != "without-graph" ]; then
+  exec "$real" "${ctx[@]}" "$@"
 fi
-exec "$real" "$@"
+
+# without-graph: run it, and filter the graph out of help and discovery output (stdout)
+# and out of any error text (stderr, which lists commands on a usage error)
+helpish=""
+case "${path[0]}" in
+  ""|help|help-tree|commands|providers|agent) helpish=1 ;;
+esac
+for a in "$@"; do
+  case "$a" in -h|--help) helpish=1 ;; esac
+done
+# gcx prints usage errors on stdout too, and they list every command, so stdout is
+# also filtered when the command fails. Query results from a successful command
+# pass through untouched.
+outf=$(mktemp "${TMPDIR:-/tmp}/kgkit-out.XXXXXX")
+errf=$(mktemp "${TMPDIR:-/tmp}/kgkit-err.XXXXXX")
+"$real" "${ctx[@]}" "$@" >"$outf" 2>"$errf"
+code=$?
+if [ -n "$helpish" ] || [ "$code" -ne 0 ]; then
+  python3 -I "$hide" < "$outf"
+else
+  cat "$outf"
+fi
+python3 -I "$hide" < "$errf" >&2
+rm -f "$outf" "$errf"
+exit "$code"

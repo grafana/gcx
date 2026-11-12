@@ -392,6 +392,11 @@ def write_summary(path, spec, plan, health, qs, per_q, runs, kept):
     failed = sum(r["verdict"] == "failed" for r in runs)
     if failed:
         cav.append(f"- **{plural(failed, 'run')} failed** before answering, and {'is' if failed == 1 else 'are'} left out of time and tokens. Check `report.md` before reading the results.")
+    refused = [r for r in kept if r["config"] == "without-graph" and r.get("gcx_blocked")]
+    if refused:
+        n = sum(r["gcx_blocked"] for r in refused)
+        cav.append(f"- **{plural(n, 'command')} refused in {plural(len(refused), 'without-graph run')}**, "
+                   "where the agent reached for graph data. Each refusal costs a turn, which slows that side a little.")
     if len(runs) - len(kept):
         cav.append(f"- **{plural(len(runs) - len(kept), 'without-graph run')} discarded** for reaching the graph.")
     if health:
