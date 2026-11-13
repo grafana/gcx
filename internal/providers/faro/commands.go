@@ -1,6 +1,7 @@
 package faro
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -467,7 +469,8 @@ another app's slug-id or ID is an error. There is no confirmation prompt.`,
 
 // readAppFromFile reads a FaroApp spec from a file path or stdin.
 // It decodes a Kubernetes-style manifest and JSON-round-trips the spec
-// into a FaroApp, so new fields are handled automatically.
+// into a FaroApp, so new fields are handled automatically. Unknown spec
+// fields are an error.
 func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	var reader io.Reader
 	if file == "-" {
@@ -497,9 +500,24 @@ func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode spec: %w", err)
 	}
+	// Reject unknown fields: a misspelled key such as allowedOrigins (for
+	// corsOrigins) would otherwise be dropped and the command would report
+	// success without storing anything.
 	var app FaroApp
-	if err := json.Unmarshal(specJSON, &app); err != nil {
-		return nil, fmt.Errorf("failed to parse spec: %w", err)
+	dec := json.NewDecoder(bytes.NewReader(specJSON))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&app); err != nil {
+		exitCode := gcxerrors.ExitUsageError
+		return nil, &gcxerrors.DetailedError{
+			Summary: "Invalid Frontend Observability app manifest",
+			Details: "spec could not be parsed into an app. Unknown fields are rejected; only the first problem is reported.",
+			Parent:  err,
+			Suggestions: []string{
+				"List the valid spec fields by exporting an existing app: gcx frontend apps get <app> -o yaml",
+				"Check field names for typos, for example corsOrigins rather than allowedOrigins",
+			},
+			ExitCode: &exitCode,
+		}
 	}
 
 	// Extract ID from metadata.name slug.
