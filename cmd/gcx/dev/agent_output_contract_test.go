@@ -100,7 +100,7 @@ func TestGenerate_HumanDefaultByteIdentical(t *testing.T) {
 	// order) plus the Info summary line.
 	want := "✔ Generated " + filepath.Join(tmp, "dashboards", "svc_overview.go") + "\n" +
 		"✔ Generated " + filepath.Join(tmp, "alerts", "high_cpu.go") + "\n" +
-		"🛈 Generated 2 file(s).\n"
+		"ℹ Generated 2 file(s).\n"
 	require.Equal(t, want, stdout)
 	require.Empty(t, stderr)
 }
@@ -144,7 +144,7 @@ func TestGenerate_PartialFailure(t *testing.T) {
 				require.Len(t, failures, 1)
 			} else {
 				want := "✔ Generated " + filepath.Join(tmp, "dashboards", "ok.go") + "\n" +
-					"🛈 Generated 1 file(s), 1 failed.\n"
+					"ℹ Generated 1 file(s), 1 failed.\n"
 				require.Equal(t, want, stdout)
 			}
 		})
@@ -238,8 +238,8 @@ func TestImportResources_ReceiptAndDiagnostics(t *testing.T) {
 
 	// Per-resource notes are diagnostics on the warn stream, with the exact
 	// pre-migration rendering.
-	require.Contains(t, warn.String(), "🛈 Skipping resource 'Playlist.some-playlist': no converter found for Playlist.playlist.grafana.app/v1\n")
-	require.Contains(t, warn.String(), "🛈 Skipping resource 'Dashboard.bad-dash': ")
+	require.Contains(t, warn.String(), "ℹ Skipping resource 'Playlist.some-playlist': no converter found for Playlist.playlist.grafana.app/v1\n")
+	require.Contains(t, warn.String(), "ℹ Skipping resource 'Dashboard.bad-dash': ")
 }
 
 func TestImportReceiptCodec_HumanDefaultByteIdentical(t *testing.T) {
