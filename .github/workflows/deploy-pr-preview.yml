@@ -5,6 +5,7 @@ on:
     types:
       - opened
       - synchronize
+      - labeled
       - closed
     paths:
       - "docs/sources/**"
