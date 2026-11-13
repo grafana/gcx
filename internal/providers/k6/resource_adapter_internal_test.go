@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
@@ -23,6 +24,52 @@ type mockLoader struct {
 	providerCfg  map[string]string
 	envEndpoints map[string]bool
 	saved        map[string]string
+}
+
+func TestAuthenticatedClient_OAuthDirectRouteUsesGrafanaURLAndStackID(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/cli/v1/proxy/api/plugins/k6-app/resources/cloud/v3/account/me", r.URL.Path)
+		assert.Equal(t, "Bearer gat_test", r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": map[string]string{"key": "personal-token"}})
+	}))
+	t.Cleanup(proxy.Close)
+
+	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/cloud/v6/auth", r.URL.Path)
+		assert.Equal(t, "Bearer personal-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "https://stack.example", r.Header.Get("X-Stack-Url"))
+		assert.Empty(t, r.Header.Get("X-Stack-Id"))
+		_ = json.NewEncoder(w).Encode(map[string]int{"stack_id": 123, "default_project_id": 456})
+	}))
+	t.Cleanup(direct.Close)
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{Grafana: &config.GrafanaConfig{
+		Server:              "https://stack.example/",
+		ProxyEndpoint:       proxy.URL,
+		OAuthToken:          "gat_test",
+		OAuthTokenExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339),
+		StackID:             123,
+	}})
+	require.NoError(t, err)
+	loader := &mockLoader{
+		cloudCfg:    providers.CloudRESTConfig{Stack: cloud.StackInfo{ID: 123}, Namespace: "stacks-123"},
+		grafanaCfg:  restCfg,
+		providerCfg: map[string]string{"api-domain": direct.URL},
+	}
+
+	client, namespace, err := authenticatedClient(t.Context(), loader)
+	require.NoError(t, err)
+	assert.Equal(t, "stacks-123", namespace)
+	proxyClient, ok := client.(*ProxyClient)
+	require.True(t, ok)
+	response, err := proxyClient.doCloud(t.Context(), cloudRequest{
+		Target: cloudTargetCloud,
+		Auth:   cloudAuthDirectStackURL,
+		Method: http.MethodGet,
+		Path:   "/cloud/v6/auth",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, response.StatusCode)
 }
 
 func (m *mockLoader) LoadDirectProviderSnapshot(_ context.Context, _ providers.DirectProviderPolicy) (providers.DirectProviderSnapshot, error) {
