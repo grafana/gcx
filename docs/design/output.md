@@ -68,6 +68,13 @@ keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
 | `total_values` | only for jq streams | Yielded-value count, not list elements; replaces `total_items` |
 | `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes and jq streams. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
+| `hint` | no | Agent-mode field-selection hint. Present only when agent mode is active, the default format is not pinned, and the command uses no `--json` or `--jq` (see [agent-mode.md § 6.2](agent-mode.md#62-behavior-changes)). Additive field; `schema_version` stays `1` |
+
+**stderr on a spill:** in agent mode, a spill writes nothing to stderr. The
+receipt on stdout already names the file, so a second advisory adds no value.
+Other diagnostics can still appear on stderr. Keep stdout and stderr separate
+when parsing JSON. Outside agent mode, an explicit `-o agents` spill also
+writes one `hint: ...` line to stderr.
 
 **Override:** `-o json` forces the full document inline to stdout regardless
 of size (standard indented JSON — see the byte-identity note above).
@@ -263,9 +270,10 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
   stream**, including newlines—not each value or the original payload.
 - At or below the threshold, stdout gets the complete stream. Above it, the
   same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
-  only a spill receipt, and stderr gets a hint.
-- `GCX_AGENT_SPILL_BYTES=0` disables spilling: stdout always gets the complete
-  stream, and no file, receipt or hint is produced.
+  only a spill receipt. Outside agent mode, stderr also gets a hint; in agent
+  mode, stderr stays empty (see [§ 1.1.1](#111-agents-codec)).
+- `GCX_AGENT_SPILL_BYTES=0` disables spilling: output is always written in full,
+  and no file, receipt or hint is produced.
 - The receipt uses `content_format: "jsonl"`, `total_values`, no `total_items`,
   and `preview_sample: null` to avoid unbounded previews. Its fixed metadata
   may exceed a very small threshold. `gcx agent prune` includes JSONL spills.
@@ -591,7 +599,9 @@ encode, with `meta` finalized by `AttachListMeta` — the single derivation
 point for the continuation, so the stderr hint and the payload's
 `list_meta.continue` can never disagree. It routes through `EmitHint` (agent
 mode emits the JSONL `class:"hint"` form with the continuation in `command`).
-No-op when `meta` is nil. TTY templates:
+No-op when `meta` is nil. This completeness notice remains active when the
+field-selection hint is suppressed. Keep stderr separate from stdout when
+parsing JSON. TTY templates:
 
 ```
 hint: showing first 5 of 219. See all results with: gcx datasources list --limit 0          # total known
