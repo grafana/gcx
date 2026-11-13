@@ -16,7 +16,7 @@ aliases:
 weight: 2
 ---
 
-# Manage resources with `gcx`
+# Resource management workflows with `gcx`
 
 `gcx` allows you to interact with Grafana resources directly from your terminal. You can browse, inspect, update, and delete resources without using the Grafana UI, and move them between environments as files.
 

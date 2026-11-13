@@ -30,7 +30,7 @@ Use [`gcx resources`](../../cli-reference/#gcx-resources) to pull, push, inspect
 
 To find out which resource types your instance serves, run [`gcx resources list-types`](../../cli-reference/#gcx-resources-list-types). To view example manifests, run [`gcx resources list-examples`](../../cli-reference/#gcx-resources-list-examples).
 
-For step-by-step workflows, refer to [Manage resources](../manage-resources/).
+For step-by-step workflows, refer to [Resource management workflows](../manage-resources/).
 
 ## Product-specific commands
 
