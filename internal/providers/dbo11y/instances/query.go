@@ -29,11 +29,11 @@ const connectionInfoMetric = "database_observability_connection_info"
 // dbo11yJobValue is the fixed job label the database_observability.postgres
 // and database_observability.mysql Alloy components scrape under, regardless
 // of engine. It disambiguates the universal `up` health signal from any other
-// scrape target that happens to share the same service_name (an application
+// scrape target that happens to share the same instance name (an application
 // pod's own `up` series, for example) — see buildScrapeUpQuery.
 const dbo11yJobValue = "integrations/db-o11y"
 
-// Postgres-specific metrics, scoped by the shared service_name label. Sourced
+// Postgres-specific metrics, scoped by the instance name label. Sourced
 // from postgres_exporter (pg_stat_activity, pg_stat_statements collectors).
 const (
 	pgScrapeErrorMetric     = "pg_exporter_last_scrape_error"
@@ -45,7 +45,7 @@ const (
 	pgStatStatementsRows    = "pg_stat_statements_rows_total"
 )
 
-// MySQL-specific metrics, scoped by the shared service_name label. Sourced
+// MySQL-specific metrics, scoped by the instance name label. Sourced
 // from mysqld_exporter's Performance Schema eventsstatements collector.
 // Confirmed against the grafana-dbo11y-app v2.30.0 production bundle
 // (module.js chunks 530/917) — there is no live MySQL dbo11y telemetry on any
@@ -58,9 +58,8 @@ const (
 	mysqlConnectedMetric   = "mysql_global_status_threads_connected"
 )
 
-// serviceNameLabel is the label every Database Observability metric family
-// shares (inventory, exporter health, and per-engine query-stats metrics
-// alike), so it's the identifier `instances get <name>` scopes queries by.
+// serviceNameLabel is the default label `instances get <name>` scopes
+// per-instance queries by; see instanceNameLabels for the fallbacks.
 const serviceNameLabel = "service_name"
 
 // instanceNameLabels are the labels an instance's name is read from, in
@@ -249,7 +248,6 @@ func connectionInfoPromotedLabels() map[string]struct{} {
 	return map[string]struct{}{
 		"__name__":               {},
 		serviceNameLabel:         {},
-		"service":                {},
 		"service_namespace":      {},
 		"engine":                 {},
 		"engine_version":         {},
@@ -265,9 +263,12 @@ func connectionInfoPromotedLabels() map[string]struct{} {
 // instanceName returns the first non-empty instanceNameLabels value.
 func instanceName(metric map[string]string) string {
 	for _, l := range instanceNameLabels {
-		if v := metric[l]; v != "" && v != unknownProviderValue {
-			return v
+		v := metric[l]
+		// "unknown" is the Alloy sentinel for an unset db_instance_identifier.
+		if v == "" || (l == "db_instance_identifier" && v == unknownProviderValue) {
+			continue
 		}
+		return v
 	}
 	return ""
 }
@@ -288,6 +289,11 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 		labels := map[string]string{}
 		for k, v := range sample.Metric {
 			if _, skip := promoted[k]; skip || v == "" {
+				continue
+			}
+			// Hide `service` only when it supplied the name; otherwise it's
+			// independent metadata (e.g. a k8s Service).
+			if k == "service" && v == name {
 				continue
 			}
 			labels[k] = v
@@ -332,7 +338,7 @@ func scopedByInstance(metric, scopeLabel, name string, matchers []Matcher) *prom
 // buildScrapeUpQuery returns the PromQL for the universal Prometheus scrape-health
 // gauge (`up`), scoped to one instance's dbo11y scrape target specifically —
 // engine-agnostic, unlike pg_up/mysql_up. The job matcher is required: `up`
-// is emitted by every scrape target, so an unscoped service_name match can
+// is emitted by every scrape target, so an unscoped name match can
 // collide with an unrelated target that happens to share the name (e.g. the
 // database's own application pod).
 func buildScrapeUpQuery(scopeLabel, name string) (string, error) {

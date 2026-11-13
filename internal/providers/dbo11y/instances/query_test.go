@@ -322,7 +322,8 @@ func TestParseInstancesResponse_NameLabelFallback(t *testing.T) {
 		{"service_name wins", map[string]string{"service_name": "a", "service": "b", "db_instance_identifier": "c"}, "a"},
 		{"service", map[string]string{"service": "b", "db_instance_identifier": "c"}, "b"},
 		{"db_instance_identifier", map[string]string{"db_instance_identifier": "c"}, "c"},
-		{"unknown sentinel skipped", map[string]string{"db_instance_identifier": "unknown"}, ""},
+		{"unknown sentinel skipped for db_instance_identifier", map[string]string{"db_instance_identifier": "unknown"}, ""},
+		{"unknown is a valid service_name", map[string]string{"service_name": "unknown"}, "unknown"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -361,5 +362,25 @@ func TestBuildQueries_ScopeLabel(t *testing.T) {
 	}
 	if want := `sum by (state) (pg_stat_activity_count{service="ops-db"})`; got != want {
 		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+func TestParseInstancesResponse_ServiceLabelKeptUnlessName(t *testing.T) {
+	parse := func(metric map[string]string) Instance {
+		metric["__name__"] = "database_observability_connection_info"
+		items, err := parseInstancesResponse(sampleResponse(map[string]any{
+			"metric": metric,
+			"value":  []any{float64(1755000000), "1"},
+		}))
+		if err != nil || len(items) != 1 {
+			t.Fatalf("items = %+v, err = %v", items, err)
+		}
+		return items[0]
+	}
+	if got := parse(map[string]string{"service_name": "a", "service": "k8s-svc"}); got.Labels["service"] != "k8s-svc" {
+		t.Errorf("expected distinct service label to be kept, got %+v", got.Labels)
+	}
+	if got := parse(map[string]string{"service": "a"}); got.Name != "a" || got.Labels["service"] != "" {
+		t.Errorf("expected service to be hidden when it supplied the name, got %+v", got)
 	}
 }
