@@ -152,7 +152,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 		name            string
 		agentMode       bool
 		args            []string
-		warnings        []fakeApplyWarning
+		response        string
 		wantExitCode    int // 0 = plain nil error expected
 		wantStdoutEmpty bool
 		wantSucceeded   float64
@@ -162,6 +162,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 	}{
 		{
 			name:          "agent success emits one batch doc",
+			response:      `{"results":[{"metric":"a_metric","status":"applied"},{"metric":"b_metric","status":"noop"}]}`,
 			agentMode:     true,
 			args:          []string{"recommendations", "apply", "a_metric", "b_metric", "--force"},
 			wantSucceeded: 1,
@@ -176,6 +177,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 		},
 		{
 			name:          "agent all emits one batch doc",
+			response:      `{"summary":{"upserted":0,"deleted":1,"unchanged":1}}`,
 			agentMode:     true,
 			args:          []string{"recommendations", "apply", "--all", "--force"},
 			wantSucceeded: 1,
@@ -192,7 +194,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 			name:          "agent all with skipped changes emits one doc and exit 4",
 			agentMode:     true,
 			args:          []string{"recommendations", "apply", "--all", "--force"},
-			warnings:      []fakeApplyWarning{{Code: "rule_limit_reached", Skipped: 1}},
+			response:      `{"summary":{"upserted":0,"deleted":0,"unchanged":1},"warnings":[{"code":"rule_limit_reached","skipped":1}]}`,
 			wantExitCode:  gcxerrors.ExitPartialFailure,
 			wantSucceeded: 0,
 			wantFailed:    1,
@@ -200,13 +202,14 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 		},
 		{
 			name:            "human default stdout stays empty",
+			response:        `{"results":[{"metric":"a_metric","status":"applied"}]}`,
 			args:            []string{"recommendations", "apply", "a_metric", "--force"},
 			wantStdoutEmpty: true,
 		},
 		{
 			name:            "human all with skipped changes stdout empty and exit 4",
 			args:            []string{"recommendations", "apply", "--all", "--force"},
-			warnings:        []fakeApplyWarning{{Code: "policy_limited", Skipped: 1}},
+			response:        `{"summary":{"upserted":0,"deleted":0,"unchanged":1},"warnings":[{"code":"policy_limited","skipped":1}]}`,
 			wantExitCode:    gcxerrors.ExitPartialFailure,
 			wantStdoutEmpty: true,
 		},
@@ -217,6 +220,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 		},
 		{
 			name:          "human explicit -o json wins",
+			response:      `{"results":[{"metric":"a_metric","status":"applied"}]}`,
 			args:          []string{"recommendations", "apply", "a_metric", "--force", "-o", "json"},
 			wantSucceeded: 1,
 		},
@@ -225,7 +229,9 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newApplyFake(t)
-			f.applyWarnings = tc.warnings
+			if tc.response != "" {
+				f.fail(viaProxy, "POST", 200, tc.response)
+			}
 			res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), tc.agentMode, tc.args...)
 
 			if tc.wantExitCode != 0 {
@@ -292,6 +298,8 @@ func TestRecommendationsApply_TotalFailure(t *testing.T) {
 				f := newApplyFake(t)
 				if tc.failPost {
 					f.fail(viaProxy, "POST", 500, `{"code":"internal","error":"boom"}`)
+				} else {
+					f.fail(viaProxy, "POST", 400, `{"code":"invalid_argument","error":"no recommendation found for metrics: nope"}`)
 				}
 				res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), agentMode, tc.args...)
 

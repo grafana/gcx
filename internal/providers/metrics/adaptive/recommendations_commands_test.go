@@ -1,7 +1,9 @@
 package metrics_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -86,15 +88,12 @@ func TestRecommendationsApply_Selected(t *testing.T) {
 	t.Run("applies in one write and reports per metric", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
-			seedRecommendations(f)
+			f.fail(tr.via, "POST", 200, `{"results":[{"metric":"new_metric","status":"applied"},{"metric":"a_metric","status":"applied"},{"metric":"b_metric","status":"applied"},{"metric":"c_metric","status":"noop"}]}`)
 			res := run("recommendations", "apply", "new_metric", "a_metric", "b_metric", "c_metric", "--force", "-o", "json")
 			require.NoError(t, res.err)
 
 			assert.Contains(t, res.stderr, "Applied recommendation for new_metric.")
 			assert.Contains(t, res.stderr, "Skipping c_metric: no change.")
-			assert.Equal(t, []string{"a_metric", "c_metric", "new_metric"}, f.metrics("default"))
-			stored, _ := f.stored("default", "a_metric")
-			assert.Equal(t, []string{"max"}, stored.Functions)
 
 			posts := f.applied(tr.via, "POST")
 			require.Len(t, posts, 1)
@@ -107,10 +106,10 @@ func TestRecommendationsApply_Selected(t *testing.T) {
 	})
 
 	t.Run("custom segment", func(t *testing.T) {
-		f := newFakeRules(t).seed("team-a", ruleB).recommend("team-a", "b_metric", fakeRec{Action: "remove"})
+		f := newFakeRules(t)
+		f.fail(viaProxy, "POST", 200, `{"results":[{"metric":"b_metric","status":"applied"}]}`)
 		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), false, "recommendations", "apply", "b_metric", "--segment", "team-a", "--force")
 		require.NoError(t, res.err)
-		assert.Empty(t, f.metrics("team-a"))
 		posts := f.applied(viaProxy, "POST")
 		require.Len(t, posts, 1)
 		assert.Equal(t, "/v2/segments/team-a/rules:applyRecommendations", posts[0].Path)
@@ -146,18 +145,21 @@ func TestRecommendationsApply_Selected(t *testing.T) {
 
 	t.Run("nothing to change asks no confirmation", func(t *testing.T) {
 		f := newRecommendationsFake(t)
+		f.fail(viaProxy, "POST", 200, `{"results":[{"metric":"c_metric","status":"noop"}]}`)
 		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), true, "recommendations", "apply", "c_metric")
 		require.NoError(t, res.err)
 		assert.Contains(t, res.stderr, "Skipping c_metric: no change.")
 	})
 
-	t.Run("a metric without a recommendation changes nothing", func(t *testing.T) {
-		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
+	t.Run("server rejection is surfaced without client rule writes", func(t *testing.T) {
+		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
-			seedRecommendations(f)
+			f.fail(tr.via, "POST", 400, `{"code":"invalid_argument","error":"no recommendation found for metrics: nope"}`)
 			res := run("recommendations", "apply", "new_metric", "nope", "--force")
 			require.ErrorContains(t, res.err, "no recommendation found for metrics: nope")
-			assert.Equal(t, []string{"a_metric", "b_metric", "c_metric"}, f.metrics("default"))
+			assert.Len(t, f.requests(tr.via, "POST"), 1)
+			assert.Empty(t, f.requests("", "PUT"))
+			assert.Empty(t, f.requests("", "DELETE"))
 		})
 	})
 
@@ -190,14 +192,22 @@ func TestRecommendationsApply_Selected(t *testing.T) {
 	t.Run("exactly 100 metrics are accepted", func(t *testing.T) {
 		f := newFakeRules(t)
 		metrics := make([]string, 100)
+		results := make([]string, 0, len(metrics))
 		for i := range metrics {
 			metrics[i] = fmt.Sprintf("m%d", i)
-			f.recommend("default", metrics[i], fakeRec{Action: "keep"})
+			results = append(results, fmt.Sprintf(`{"metric":%q,"status":"noop"}`, metrics[i]))
 		}
+		f.fail(viaProxy, "POST", 200, `{"results":[`+strings.Join(results, ",")+`]}`)
 		args := append([]string{"recommendations", "apply", "--force"}, metrics...)
 		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), false, args...)
 		require.NoError(t, res.err)
-		assert.Len(t, f.applied(viaProxy, "POST"), 1)
+		posts := f.applied(viaProxy, "POST")
+		require.Len(t, posts, 1)
+		var sent struct {
+			Metrics []string `json:"metrics"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(posts[0].Body), &sent))
+		assert.Equal(t, metrics, sent.Metrics)
 	})
 }
 
@@ -205,14 +215,14 @@ func TestRecommendationsApply_All(t *testing.T) {
 	t.Run("applies the whole segment on the server", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
-			seedRecommendations(f)
+			f.fail(tr.via, "POST", 200, `{"summary":{"upserted":2,"deleted":1,"unchanged":1}}`)
 			res := run("recommendations", "apply", "--all", "--force", "-o", "json")
 			require.NoError(t, res.err)
 			assert.Contains(t, res.stderr, "2 upserted, 1 deleted, 1 unchanged")
-			assert.Equal(t, []string{"a_metric", "c_metric", "new_metric"}, f.metrics("default"))
 
 			posts := f.applied(tr.via, "POST")
 			require.Len(t, posts, 1)
+			assert.Equal(t, "/v2/segments/default/rules:applyRecommendations", posts[0].Path)
 			assert.JSONEq(t, `{"strategy":"all"}`, posts[0].Body)
 			assert.Empty(t, f.requests("", "PUT"))
 		})
@@ -239,7 +249,7 @@ func TestRecommendationsApply_All(t *testing.T) {
 
 	t.Run("skipped changes are a partial failure that names the reason", func(t *testing.T) {
 		f := newRecommendationsFake(t)
-		f.applyWarnings = []fakeApplyWarning{{Code: "rule_limit_reached", Skipped: 2}}
+		f.fail(viaProxy, "POST", 200, `{"summary":{"upserted":1,"deleted":0,"unchanged":1},"warnings":[{"code":"rule_limit_reached","skipped":2}]}`)
 		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), false, "recommendations", "apply", "--all", "--force", "-o", "json")
 		require.Error(t, res.err)
 		assert.Contains(t, res.stderr, "rule_limit_reached: 2 recommendation(s) not applied")

@@ -77,9 +77,6 @@ type fakeRules struct {
 	failures []fakeFailure
 	reqs     []fakeReq
 	gcom     int
-	// applyWarnings are returned by a segment-wide apply, which then leaves
-	// that many recommendations unapplied.
-	applyWarnings []fakeApplyWarning
 }
 
 // fakeRec is a catalog entry: the recommended action and, for add and update,
@@ -96,11 +93,6 @@ type fakeRec struct {
 	UsagesInRules      int
 	UsagesInQueries    int
 	UsagesInDashboards int
-}
-
-type fakeApplyWarning struct {
-	Code    string `json:"code"`
-	Skipped int    `json:"skipped"`
 }
 
 func newFakeRules(t *testing.T) *fakeRules {
@@ -349,9 +341,6 @@ func (f *fakeRules) segmentRoute(w http.ResponseWriter, r *http.Request, tail, b
 		require.NoError(f.t, err)
 		writeRaw(w, http.StatusOK, string(out))
 		return
-	case parts[1] == "rules:applyRecommendations" && r.Method == http.MethodPost:
-		f.applyRecommendations(w, segment, segRules, body)
-		return
 	case parts[1] != "rules":
 		http.NotFound(w, r)
 		return
@@ -563,100 +552,6 @@ func (f *fakeRules) metricDetail(w http.ResponseWriter, segment, metric string, 
 		}
 	}
 	out, err := json.Marshal(detail)
-	require.NoError(f.t, err)
-	writeRaw(w, http.StatusOK, string(out))
-}
-
-// applyRec applies one recommendation and reports whether it changed a rule.
-func applyRec(segRules map[string]wireRule, metric string, rec fakeRec) bool {
-	switch rec.Action {
-	case "add", "update":
-		segRules[metric] = *rec.Rule
-		return true
-	case "remove":
-		delete(segRules, metric)
-		return true
-	default:
-		return false
-	}
-}
-
-func (f *fakeRules) applyRecommendations(w http.ResponseWriter, segment string, segRules map[string]wireRule, body string) {
-	var req struct {
-		Metrics  []string `json:"metrics"`
-		Strategy string   `json:"strategy"`
-	}
-	if err := json.Unmarshal([]byte(body), &req); err != nil {
-		writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"failed to decode request body"}`)
-		return
-	}
-
-	if req.Metrics == nil {
-		f.applySegmentRecommendations(w, segment, segRules, req.Strategy)
-		return
-	}
-
-	if len(req.Metrics) == 0 || len(req.Metrics) > 100 {
-		writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"metrics must contain between 1 and 100 names"}`)
-		return
-	}
-	var missing []string
-	for _, m := range req.Metrics {
-		if _, ok := f.recs[segment][m]; !ok {
-			missing = append(missing, m)
-		}
-	}
-	if len(missing) > 0 {
-		writeRaw(w, http.StatusBadRequest, fmt.Sprintf(`{"code":"invalid_argument","error":"no recommendation found for metrics: %s"}`, strings.Join(missing, ", ")))
-		return
-	}
-	results := make([]map[string]string, 0, len(req.Metrics))
-	for _, m := range req.Metrics {
-		status := "noop"
-		if applyRec(segRules, m, f.recs[segment][m]) {
-			status = "applied"
-		}
-		results = append(results, map[string]string{"metric": m, "status": status})
-	}
-	out, err := json.Marshal(map[string]any{"results": results})
-	require.NoError(f.t, err)
-	writeRaw(w, http.StatusOK, string(out))
-}
-
-func (f *fakeRules) applySegmentRecommendations(w http.ResponseWriter, segment string, segRules map[string]wireRule, strategy string) {
-	if strategy != "all" {
-		writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"unknown strategy"}`)
-		return
-	}
-	skip := 0
-	for _, wn := range f.applyWarnings {
-		skip += wn.Skipped
-	}
-	metrics := make([]string, 0, len(f.recs[segment]))
-	for m := range f.recs[segment] {
-		metrics = append(metrics, m)
-	}
-	sort.Strings(metrics)
-	var summary struct {
-		Upserted  int `json:"upserted"`
-		Deleted   int `json:"deleted"`
-		Unchanged int `json:"unchanged"`
-	}
-	for _, m := range metrics {
-		rec := f.recs[segment][m]
-		changes := rec.Action != "keep" && rec.Action != "none"
-		switch {
-		case changes && skip > 0:
-			skip--
-		case !applyRec(segRules, m, rec):
-			summary.Unchanged++
-		case rec.Action == "remove":
-			summary.Deleted++
-		default:
-			summary.Upserted++
-		}
-	}
-	out, err := json.Marshal(map[string]any{"summary": summary, "warnings": f.applyWarnings})
 	require.NoError(f.t, err)
 	writeRaw(w, http.StatusOK, string(out))
 }
