@@ -12,7 +12,7 @@ keywords:
   - observability as code
   - telemetry
 aliases:
-  - ./explore-modify-resources/ # /docs/grafana/<GRAFANA_VERSION>/as-code/observability-as-code/grafana-cli/gcx/guides/explore-modify-resources/
+  - ./explore-modify-resources/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/explore-modify-resources/
 weight: 2
 ---
 
