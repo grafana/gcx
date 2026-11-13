@@ -17,7 +17,7 @@ import (
 // sub-resources that the Integration object itself cannot carry: the template
 // document lives behind its own collection, and maintenance starts through an
 // action endpoint. Both therefore appear as verbs on the integrations noun,
-// per the sub-resource rule in CONSTITUTION.md.
+// per the sub-resource rule in DESIGN.md § CLI Grammar.
 
 // ---------------------------------------------------------------------------
 // integrations get-templates / update-templates

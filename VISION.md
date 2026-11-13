@@ -10,7 +10,7 @@ Grafana and the Grafana Assistant — in your terminal and your agentic coding e
 
 Agentic coding tools have changed how developers build software. But they're flying blind — code ships, observability comes later (if at all). Production context lives in Grafana dashboards, alert rules, and SLO definitions. Developer context lives in the editor. The two don't talk to each other.
 
-Meanwhile, Grafana Cloud has grown into a platform with dozens of products — SLOs, Synthetic Monitoring, OnCall, Fleet Management, k6, Incidents, Knowledge Graph, Adaptive Telemetry — each with its own API, its own auth story, its own CLI gap. Managing them requires context-switching between web UIs, curl commands, and Terraform configs.
+Meanwhile, Grafana Cloud has grown into a platform with dozens of products — SLOs, Synthetic Monitoring, IRM, Fleet Management, k6, Knowledge Graph, Adaptive Telemetry — each with its own API, its own auth story, its own CLI gap. Managing them requires context-switching between web UIs, curl commands, and Terraform configs.
 
 ## The Solution
 
@@ -19,7 +19,7 @@ gcx is a single CLI that unifies access to the entire Grafana stack — across O
 1. **K8s resource tier** — dashboards, folders, and other Grafana-native resources via Grafana 12's Kubernetes-compatible API (`k8s.io/client-go`)
 2. **Cloud provider tier** — pluggable providers for every Grafana Cloud product via product-specific REST APIs
 
-Every command serves both humans and AI agents. Agent mode is auto-detected (Claude Code, Cursor, Copilot) and switches defaults (JSON output, no color, no truncation) without changing available functionality. It does not auto-approve destructive prompts — those require an explicit bypass via `--force` or enabled `GCX_AUTO_APPROVE` (see [safety.md](docs/design/safety.md) § 3.3).
+Every command serves both humans and AI agents. Agent mode is auto-detected (Claude Code, Cursor, Copilot) and switches defaults (JSON output, no color, no truncation) without removing any capability: an interaction an agent cannot perform becomes a flag it passes. It does not auto-approve destructive prompts — those require an explicit bypass via `--force` or enabled `GCX_AUTO_APPROVE` (see [safety.md](docs/design/safety.md) § 3.3).
 
 ## Core Beliefs
 
@@ -28,9 +28,14 @@ Every command serves both humans and AI agents. Agent mode is auto-detected (Cla
 - **Works everywhere Grafana does.** Usable across Grafana OSS, Enterprise, and Grafana Cloud. The same commands, the same manifests, the same workflows — only the `--context` changes.
 - **Dual-purpose by design.** Humans and agents use the same commands. The CLI grammar, exit codes, and output shapes are designed for both audiences from day one — not bolted on later.
 - **Easy onboarding and setup.** Getting started should take minutes, not hours. `gcx setup` guides users through connection, auth, and product configuration. Sensible defaults everywhere.
-- **Consistent UX across all functionality.** Whether you're querying metrics, managing SLOs, or configuring OnCall schedules, the command grammar, output formats, flag conventions, and error messages follow the same patterns. See [DESIGN.md](DESIGN.md).
+- **Consistent UX across all functionality.** Whether you're querying metrics, managing SLOs, or configuring on-call schedules, the command grammar, output formats, flag conventions, and error messages follow the same patterns. See [DESIGN.md](DESIGN.md).
 - **GitOps-native.** Pull resources to files, version in git, push back. Push is idempotent. The same manifests work across environments via `--context`. CI/CD is a first-class workflow.
+- **Two ways to reach a resource, both permanent.** A product resource is available through its provider commands (`gcx slo definitions list`), with domain-specific tables, and through the generic `gcx resources` commands that push, pull and compare across products. Neither path replaces the other.
 - **Extensible without forking.** New Grafana Cloud products are added as providers — a self-contained package that implements an interface and self-registers. No changes to core code required.
+
+## Product fit
+
+A proposal fits gcx when it serves the core beliefs above. A feature that contradicts one, such as a second CLI surface for one product or a command that works for humans but not agents, needs a maintainer decision before design work starts.
 
 ## Observability as Code
 
@@ -50,5 +55,4 @@ The workflow: alert fires → Assistant investigates → agent drafts fix → ag
 
 - [README.md](README.md) — user-facing introduction and quick start
 - [ARCHITECTURE.md](ARCHITECTURE.md) — technical architecture and system boundaries
-- [DESIGN.md](DESIGN.md) — CLI UX design and taste rules
-- [CONSTITUTION.md](CONSTITUTION.md) — enforceable invariants
+- [DESIGN.md](DESIGN.md) — CLI UX and agent-facing rules

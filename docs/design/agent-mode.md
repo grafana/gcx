@@ -73,6 +73,24 @@ The following are **not yet implemented**:
 
 Confirmation behavior follows [safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented): agent detection alone never grants approval.
 
+**Interactions that become required inputs.** Agent mode never removes a
+capability. An interaction it cannot automate fails with a structured error
+naming the input that replaces it. Prompts with a safe default, such as the
+optional steps of `login`, take the default instead and are not listed. The
+interactions that fail:
+
+| Command | Interaction | Agent input |
+|---------|-------------|-------------|
+| Destructive provider commands | Confirmation prompt | `--force` or enabled `GCX_AUTO_APPROVE` ([safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented)) |
+| `resources edit` | Editor, when no `EDITOR`/`VISUAL` is set | Set an editor, or use `resources push` |
+| `config edit` | Editor | `config set` / `config unset` |
+| `config use-context` | Context picker | The context name as an argument |
+| `frontend sessions get` | Session dump written to stdout | `--save <path>` |
+| `dev scaffold` | Project form | `--project` and `--go-module-path` |
+| `instrumentation setup` | Setup wizard prompts | `--use-defaults` |
+
+A new agent-mode branch that refuses an interaction adds its row here.
+
 **Agent-mode hint banner.** When agent mode emits JSON-like output without
 `--json` field selection or `--jq` transformation in use, gcx writes a single
 hint line to stderr nudging the agent toward in-process parsing:
@@ -134,7 +152,7 @@ land unclassified. When agent mode supplies the default (no explicit
 
 Explicit protocol-changing flags follow the flag, not the class: `--open`
 (browser deep link; in agent mode the URL arrives as a typed stderr hint and
-stdout may be empty), `-o pprof`/`-o raw` (binary/raw artifacts), and
+stdout may be empty), `-o raw` (raw passthrough), and
 `--json list`/`--json ?` (plain field-per-line discovery output) are all
 explicit requests that override the declared default protocol.
 

@@ -1,6 +1,6 @@
 // Package assistant registers Grafana Assistant as a first-class gcx
 // provider, mounting the existing command tree through the provider
-// registry loop instead of a hand-mount (CONSTITUTION §28-32).
+// registry loop instead of a hand-mount (ARCHITECTURE.md § Rules, "Registration is atomic").
 package assistant
 
 import (

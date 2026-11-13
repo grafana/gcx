@@ -52,8 +52,7 @@ Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 their real operations are not CRUD verbs. Product-specific operations need their
 own placement analysis regardless of tier. Provider commands over a native
 `/apis` resource go through the shared native binding (`internal/providers/native`,
-see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
-access until its pending migration lands.
+see [ARCHITECTURE.md § Providers and adapters](../../ARCHITECTURE.md#providers-and-adapters)).
 
 See [provider placement](../../.agents/skills/contribute/references/provider-placement.md) for the full
 decision tree.
@@ -427,7 +426,7 @@ cmdio.Info(cmd.ErrOrStderr(), "...")
 ```
 
 Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
-(see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
+(see [output.md § 1.4](../design/output.md) and [DESIGN.md § Output Model](../../DESIGN.md#output-model)).
 
 They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 

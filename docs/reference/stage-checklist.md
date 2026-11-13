@@ -4,6 +4,6 @@ Use this optional checklist when splitting implementation into stages. The [cont
 
 - [ ] The stage meets its agreed scope and acceptance criteria.
 - [ ] Relevant tests and required quality checks pass.
-- [ ] Documentation reflects changed behavior or architectural contracts, following [documentation maintenance](doc-maintenance.md).
+- [ ] Documentation reflects changed behavior or architectural contracts, following [documentation maintenance](../contributing/doc-maintenance.md).
 - [ ] The issue or RFC records meaningful decisions and remaining work without duplicating the implementation history.
 - [ ] Follow-up work and dependencies are clear to the next contributor.
