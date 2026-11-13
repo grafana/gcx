@@ -437,6 +437,9 @@ func (h *archiveHelper) destinationsCreateCommand() *cobra.Command {
 
 			created, err := client.CreateDestination(ctx, req)
 			if err != nil {
+				if limitErr, ok := explainLimit(err); ok {
+					return limitErr
+				}
 				return explainDestinationCheck(err)
 			}
 
