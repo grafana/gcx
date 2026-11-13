@@ -102,9 +102,9 @@ func (opts *loginOpts) bindConfigAndOutputFlags(flags *pflag.FlagSet, text forma
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	opts.bindConfigAndOutputFlags(flags, &loginTextCodec{})
 
-	flags.StringVar(&opts.Server, "server", "", "Grafana server URL (e.g. https://my-stack.grafana.net)")
+	flags.StringVar(&opts.Server, "server", "", "Grafana stack URL")
 	flags.StringVar(&opts.Token, "token", "", "Grafana service account token")
-	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Grafana Cloud API token (enables Cloud management features)")
+	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Access policy token for the Grafana Cloud management portal")
 	flags.StringVar(&opts.CloudAPIURL, "cloud-api-url", "", "Override Grafana Cloud API URL")
 	flags.BoolVar(&opts.OAuth, "oauth", false, "Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.")
 	flags.BoolVar(&opts.BasicAuth, "basic-auth", false, "Authenticate with a Grafana username and password (GRAFANA_USER / GRAFANA_PASSWORD, or interactive prompts)")
@@ -224,11 +224,15 @@ to Grafana Cloud in the browser and choose a stack. When no server is known,
 --cloud --oauth starts that browser sign-in without prompting. To create a
 Grafana Cloud account, run gcx signup.
 
-Auth sources (for non-interactive use):
+--server takes the URL of a Grafana stack, such as https://my-stack.grafana.net.
+
+Grafana instance authentication (for non-interactive use):
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
   --basic-auth   Grafana username/password. Use --user or GRAFANA_USER, and GRAFANA_PASSWORD.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: ` + docs.ServiceAccounts + `
+
+Grafana Cloud platform credential (optional, and in addition to the above):
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
                  See: ` + docs.AccessPolicies,
 		Example: `  gcx login
@@ -238,6 +242,8 @@ Auth sources (for non-interactive use):
   gcx login prod --server https://prod.grafana.net --oauth
   gcx login local --server https://grafana.example.com --basic-auth --user admin
   gcx login --yes prod --token glsa_xxx
+  # Add an optional Cloud access policy token
+  gcx login --yes prod --server https://prod.grafana.net --token glsa_xxx --cloud-token glc_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.UserSet = cmd.Flags().Changed("user")
@@ -497,6 +503,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			GrafanaToken:                flags.Token,
 			ExistingGrafanaAuthMethod:   existingGrafanaAuthMethod,
 			CloudToken:                  flags.CloudToken,
+			CloudTokenExplicit:          cloudTokenExplicit,
 			CloudAPIURL:                 cloudAPIURL,
 			CloudOAuthURL:               cloudOAuthURL,
 			UseOAuth:                    flags.OAuth,
@@ -555,6 +562,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	opts.ProbePathfinder = pathfinderProbeWanted(persistedSourceCtx)
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
+	}
+	if err := login.RejectPortalServerURL(opts.Server); err != nil {
+		return err
 	}
 	if err := preflightServerOverride(&opts, persistedSourceCtx, isInteractive); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
@@ -1995,8 +2005,8 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 	if result.IsCloud && !result.HasCloudToken {
 		fmt.Fprintln(ew)
 		fmt.Fprintln(ew, "You're authenticated for the Grafana API (dashboards, datasources, queries, alerts, folders).")
-		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")
-		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
+		fmt.Fprintln(ew, "Grafana Cloud stack management, Synthetic Monitoring discovery, and frontend sourcemap upload")
+		fmt.Fprintln(ew, "can additionally require a Cloud Access Policy (CAP) token.")
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}

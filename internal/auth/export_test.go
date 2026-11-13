@@ -162,3 +162,6 @@ func RenderSuccessPageWithLink(w http.ResponseWriter, link *url.URL) {
 func ListenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
 	return listenOnCallbackPort(ctx, bindAddress, fixedPort)
 }
+
+// ValidateGCOMURL exposes trusted-host validation for black-box tests.
+func ValidateGCOMURL(rawURL string) error { return validateGCOMURL(rawURL) }

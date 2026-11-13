@@ -700,6 +700,25 @@ func GCOMRootFromServerURL(serverURL string) (string, bool) {
 	return gcomRoot, ok
 }
 
+// GCOMPortalServerURL identifies Cloud portal hosts and their www aliases.
+// It returns the matched host and the stack suffix for that environment.
+func GCOMPortalServerURL(serverURL string) (string, string, bool) {
+	parsed, err := url.Parse(serverURL)
+	if err != nil {
+		return "", "", false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	for _, entry := range grafanaCloudStackSuffixes {
+		root := strings.TrimPrefix(entry.gcomRoot, "https://")
+		if host == root || host == "www."+root {
+			return host, entry.suffix, true
+		}
+	}
+
+	return "", "", false
+}
+
 // ContextNameFromServerURL derives a context name from a Grafana server URL.
 // For Grafana Cloud URLs, it returns the stack slug with the per-environment
 // suffix ("-dev"/"-ops") appended to prevent collisions between same-named
