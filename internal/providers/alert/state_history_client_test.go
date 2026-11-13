@@ -117,3 +117,96 @@ func TestClient_QueryStateHistory_Error(t *testing.T) {
 	_, err := client.QueryStateHistory(context.Background(), alert.StateHistoryOptions{})
 	require.Error(t, err)
 }
+
+// annotationsStateHistoryFrameJSON reproduces the frame that the annotations
+// state history backend returns: time, free-form text, prev, next, and the
+// annotation data as a JSON string, with the rule UID in the field labels.
+const annotationsStateHistoryFrameJSON = `{
+  "schema": {
+    "name": "states",
+    "fields": [
+      {"name": "time", "type": "time", "labels": {"from": "state-history", "ruleUID": "uid-1"}},
+      {"name": "text", "type": "string", "labels": {"from": "state-history", "ruleUID": "uid-1"}},
+      {"name": "prev", "type": "string", "labels": {"from": "state-history", "ruleUID": "uid-1"}},
+      {"name": "next", "type": "string", "labels": {"from": "state-history", "ruleUID": "uid-1"}},
+      {"name": "data", "type": "string", "labels": {"from": "state-history", "ruleUID": "uid-1"}}
+    ]
+  },
+  "data": {
+    "values": [
+      [1792582450000, 1792583050000, 1792582750000],
+      [
+        "MyAlertRule {alertname=MyAlertRule, severity=warning} - A=1.000000",
+        "MyAlertRule {alertname=MyAlertRule, severity=warning} - A=-1.000000",
+        "MyAlertRule {alertname=MyAlertRule, severity=warning} - Error"
+      ],
+      ["Normal", "Alerting", "Pending"],
+      ["Pending", "Normal (NoData)", "Error"],
+      ["{\"values\":{\"A\":1}}", "{\"values\":{\"A\":-1}}", "{\"error\":\"query failed\"}"]
+    ]
+  }
+}`
+
+func TestClient_QueryStateHistory_AnnotationsBackend(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(annotationsStateHistoryFrameJSON))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	transitions, err := client.QueryStateHistory(context.Background(), alert.StateHistoryOptions{RuleUID: "uid-1"})
+	require.NoError(t, err)
+	require.Len(t, transitions, 3)
+
+	tests := []struct {
+		name     string
+		got      alert.StateTransition
+		timeMs   int64
+		previous string
+		current  string
+		values   map[string]any
+		errMsg   string
+	}{
+		{"newest", transitions[0], 1792583050000, "Alerting", "Normal (NoData)", map[string]any{"A": float64(-1)}, ""},
+		{"error", transitions[1], 1792582750000, "Pending", "Error", nil, "query failed"},
+		{"oldest", transitions[2], 1792582450000, "Normal", "Pending", map[string]any{"A": float64(1)}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.timeMs, tc.got.Time.UnixMilli())
+			assert.Equal(t, "uid-1", tc.got.RuleUID)
+			assert.Equal(t, tc.previous, tc.got.Previous)
+			assert.Equal(t, tc.current, tc.got.Current)
+			assert.Equal(t, tc.values, tc.got.Values)
+			assert.Equal(t, tc.errMsg, tc.got.Error)
+		})
+	}
+}
+
+func TestClient_QueryStateHistory_AnnotationsBackendNullData(t *testing.T) {
+	const frame = `{
+  "schema": {"fields": [
+    {"name": "time", "type": "time"},
+    {"name": "text", "type": "string"},
+    {"name": "prev", "type": "string"},
+    {"name": "next", "type": "string"},
+    {"name": "data", "type": "string"}
+  ]},
+  "data": {"values": [[1792583050000], ["MyAlertRule {} - No data"], ["Normal"], ["NoData"], ["null"]]}
+}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(frame))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	transitions, err := client.QueryStateHistory(context.Background(), alert.StateHistoryOptions{RuleUID: "uid-1"})
+	require.NoError(t, err)
+	require.Len(t, transitions, 1)
+	assert.Equal(t, "Normal", transitions[0].Previous)
+	assert.Equal(t, "NoData", transitions[0].Current)
+	assert.Empty(t, transitions[0].RuleUID)
+	assert.Nil(t, transitions[0].Values)
+}
