@@ -66,6 +66,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 	h := &metricsHelper{loader: loader}
 	cmd.AddCommand(
+		h.metricsCommand(),
 		h.recommendationsCommand(),
 		h.rulesCommand(),
 		h.segmentsCommand(),

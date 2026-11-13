@@ -3,10 +3,12 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
+
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // applyRecommendationsMaxMetrics is the most metrics one v2 apply call takes.
@@ -49,29 +51,12 @@ func noRecommendationError(metric string) error {
 // not list has no recommendation, even when a rule exists for it; the v2
 // apply uses the same definition.
 func (b *rulesBackend) Recommendation(ctx context.Context, metric string) (metricRecommendation, error) {
-	status, body, err := b.send(ctx, b.v2Call(http.MethodGet, "/metrics/"+url.PathEscape(metric), nil, rulesReadAction))
+	detail, err := b.getMetricDetail(ctx, "get recommendation", metric)
 	if err != nil {
+		if errors.Is(err, adapter.ErrNotFound) {
+			return metricRecommendation{}, noRecommendationError(metric)
+		}
 		return metricRecommendation{}, err
-	}
-	if isMetricNotFound(status, body) {
-		return metricRecommendation{}, noRecommendationError(metric)
-	}
-	if status != http.StatusOK {
-		return metricRecommendation{}, ruleError("get recommendation", status, body)
-	}
-	var detail struct {
-		Verdict *struct {
-			RecommendedAction string `json:"recommended_action"`
-		} `json:"verdict"`
-		Current     *ruleV2 `json:"current"`
-		Recommended *ruleV2 `json:"recommended"`
-		Stats       *struct {
-			CurrentSeriesCount     int `json:"current_series_count"`
-			RecommendedSeriesCount int `json:"recommended_series_count"`
-		} `json:"stats"`
-	}
-	if err := json.Unmarshal(body, &detail); err != nil {
-		return metricRecommendation{}, fmt.Errorf("adaptive-metrics: get recommendation: decode: %w", err)
 	}
 	if detail.Verdict == nil {
 		return metricRecommendation{}, noRecommendationError(metric)

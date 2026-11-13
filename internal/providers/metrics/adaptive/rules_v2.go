@@ -33,6 +33,8 @@ const (
 // toRuleV2 converts a MetricRule. Rules that v2 cannot represent or would
 // reject are refused here, so invalid input fails before any request.
 func toRuleV2(r MetricRule) (ruleV2, error) {
+	// ManagedBy is deliberately not mapped: v2 has no such field, and a write
+	// replaces the whole rule.
 	out := ruleV2{Metric: r.Metric, MatchType: r.MatchType}
 	if r.Drop {
 		if len(r.Aggregations) > 0 || len(r.KeepLabels) > 0 || len(r.DropLabels) > 0 {

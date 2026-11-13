@@ -68,6 +68,12 @@ func TestToRuleV2_Errors(t *testing.T) {
 	}
 }
 
+func TestRuleV2_ManagedByNotMapped(t *testing.T) {
+	got, err := toRuleV2(MetricRule{Metric: "m", MatchType: "exact", Drop: true, ManagedBy: "terraform"})
+	require.NoError(t, err)
+	assert.Empty(t, fromRuleV2(got).ManagedBy)
+}
+
 func TestFromRuleV2_UnknownLabelMode(t *testing.T) {
 	got := fromRuleV2(ruleV2{Metric: "m", Action: "aggregate", Functions: []string{"sum"}, LabelPolicy: &labelPolicyV2{Mode: "other", Labels: []string{"a"}}})
 	assert.Empty(t, got.KeepLabels)

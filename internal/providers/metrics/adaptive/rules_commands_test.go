@@ -840,7 +840,7 @@ func TestRuleExample_IsValid(t *testing.T) {
 	require.ErrorIs(t, err, adapter.ErrDryRunUnverified)
 }
 
-func TestRuleSchema_OmitsManagedBy(t *testing.T) {
-	assert.NotContains(t, string(metrics.RuleSchema()), "managed_by")
+func TestRuleSchema_IncludesManagedBy(t *testing.T) {
+	assert.Contains(t, string(metrics.RuleSchema()), "managed_by")
 	assert.Contains(t, string(metrics.RuleSchema()), "aggregation_delay")
 }

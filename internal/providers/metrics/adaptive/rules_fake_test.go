@@ -85,10 +85,17 @@ type fakeRules struct {
 // fakeRec is a catalog entry: the recommended action and, for add and update,
 // the recommended rule.
 type fakeRec struct {
-	Action            string
-	Rule              *wireRule
-	CurrentSeries     int
-	RecommendedSeries int
+	Action             string
+	Rule               *wireRule
+	CurrentSeries      int
+	RecommendedSeries  int
+	RawSeries          int
+	CurrentReduction   int
+	ProjectedChange    int
+	StatsUpdatedAt     string
+	UsagesInRules      int
+	UsagesInQueries    int
+	UsagesInDashboards int
 }
 
 type fakeApplyWarning struct {
@@ -121,6 +128,9 @@ func (f *fakeRules) seed(segment string, rules ...wireRule) *fakeRules {
 func (f *fakeRules) recommend(segment, metric string, rec fakeRec) *fakeRules {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.rules[segment] == nil {
+		f.rules[segment] = map[string]wireRule{}
+	}
 	if f.recs[segment] == nil {
 		f.recs[segment] = map[string]fakeRec{}
 	}
@@ -323,6 +333,9 @@ func (f *fakeRules) segmentRoute(w http.ResponseWriter, r *http.Request, tail, b
 	}
 
 	switch {
+	case parts[1] == "metrics" && len(parts) == 2 && r.Method == http.MethodGet:
+		f.metricList(w, r, segment)
+		return
 	case parts[1] == "metrics" && len(parts) == 3 && r.Method == http.MethodGet:
 		metric, _ := url.PathUnescape(parts[2])
 		f.metricDetail(w, segment, metric, segRules)
@@ -453,6 +466,67 @@ func (f *fakeRules) list(w http.ResponseWriter, r *http.Request, segRules map[st
 	writeRaw(w, http.StatusOK, string(out))
 }
 
+func (f *fakeRules) metricList(w http.ResponseWriter, r *http.Request, segment string) {
+	q := r.URL.Query()
+	size := 1000
+	if v := q.Get("page_size"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 1000 {
+			writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"bad page_size"}`)
+			return
+		}
+		size = n
+	}
+	if f.pageSize > 0 && f.pageSize < size {
+		size = f.pageSize
+	}
+	after := q.Get("page_token")
+	actions := map[string]bool{}
+	for _, action := range q["action"] {
+		actions[action] = true
+	}
+
+	names := make([]string, 0, len(f.recs[segment]))
+	for m, rec := range f.recs[segment] {
+		if after != "" && m <= after {
+			continue
+		}
+		if len(actions) > 0 && !actions[rec.Action] {
+			continue
+		}
+		names = append(names, m)
+	}
+	sort.Strings(names)
+
+	next := ""
+	if len(names) > size {
+		names = names[:size]
+		next = names[len(names)-1]
+	}
+	items := make([]map[string]any, 0, len(names))
+	for _, m := range names {
+		rec := f.recs[segment][m]
+		item := map[string]any{
+			"metric":                         m,
+			"recommended_action":             rec.Action,
+			"raw_series_count":               rec.RawSeries,
+			"current_series_count_reduction": rec.CurrentReduction,
+			"projected_series_count_change":  rec.ProjectedChange,
+		}
+		if rec.StatsUpdatedAt != "" {
+			item["stats_updated_at"] = rec.StatsUpdatedAt
+		}
+		items = append(items, item)
+	}
+	page := map[string]any{"metrics": items}
+	if next != "" {
+		page["next_page_token"] = next
+	}
+	out, err := json.Marshal(page)
+	require.NoError(f.t, err)
+	writeRaw(w, http.StatusOK, string(out))
+}
+
 func (f *fakeRules) metricDetail(w http.ResponseWriter, segment, metric string, segRules map[string]wireRule) {
 	rec, hasRec := f.recs[segment][metric]
 	rule, hasRule := segRules[metric]
@@ -465,11 +539,28 @@ func (f *fakeRules) metricDetail(w http.ResponseWriter, segment, metric string, 
 		detail["current"] = rule
 	}
 	if hasRec {
-		detail["verdict"] = map[string]any{"recommended_action": rec.Action, "urgent": false}
+		verdict := map[string]any{
+			"recommended_action":             rec.Action,
+			"urgent":                         false,
+			"raw_series_count":               rec.RawSeries,
+			"current_series_count_reduction": rec.CurrentReduction,
+			"projected_series_count_change":  rec.ProjectedChange,
+		}
+		if rec.StatsUpdatedAt != "" {
+			verdict["stats_updated_at"] = rec.StatsUpdatedAt
+		}
+		detail["verdict"] = verdict
 		if rec.Rule != nil {
 			detail["recommended"] = rec.Rule
 		}
-		detail["stats"] = map[string]any{"current_series_count": rec.CurrentSeries, "recommended_series_count": rec.RecommendedSeries}
+		detail["stats"] = map[string]any{
+			"raw_series_count":         rec.RawSeries,
+			"current_series_count":     rec.CurrentSeries,
+			"recommended_series_count": rec.RecommendedSeries,
+			"usages_in_rules":          rec.UsagesInRules,
+			"usages_in_queries":        rec.UsagesInQueries,
+			"usages_in_dashboards":     rec.UsagesInDashboards,
+		}
 	}
 	out, err := json.Marshal(detail)
 	require.NoError(f.t, err)

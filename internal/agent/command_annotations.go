@@ -433,6 +433,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx metrics query":    {Cost: "large", Hint: "'up' --since 1h -o json | Docs: " + docs.PromQL},
 
 	// Metrics adaptive
+	"gcx metrics adaptive metrics get":           {Cost: "small", Hint: "<metric> -o json"},
+	"gcx metrics adaptive metrics list":          {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
 	"gcx metrics adaptive recommendations apply": {Cost: "small"},
 	"gcx metrics adaptive recommendations diff":  {Cost: "medium", Hint: "<metric> -o json"},
 	"gcx metrics adaptive recommendations list":  {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
