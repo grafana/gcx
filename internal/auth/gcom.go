@@ -257,9 +257,7 @@ func (f *GCOMFlow) exchangeGCOMToken(ctx context.Context, code, codeVerifier, re
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// NewClient (not NewDefaultClient): NewDefaultClient logs payloads from ctx,
-	// which would dump the OAuth code/code_verifier secrets.
-	client := httputils.NewClient(httputils.ClientOpts{
+	client := httputils.NewClient(ctx, httputils.ClientOpts{
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 			redirectEndpoint := req.URL.Scheme + "://" + req.URL.Host
 			if err := ValidateEndpointURL(redirectEndpoint); err != nil {

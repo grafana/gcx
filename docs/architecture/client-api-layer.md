@@ -413,7 +413,7 @@ data-frame envelope:
 
 [internal/httputils](../../internal/httputils/) supplies direct HTTP client construction, logging middleware, and server response helpers. Grafana-authenticated clients reuse the selected `rest.Config` transport; the dynamic client installs logging through `WrapTransport`. `CloudRESTConfig.HTTPClient` uses the direct factory only when it has no REST config; otherwise it uses `rest.HTTPClientFor` and its configured transport chain. The development proxy uses `rest.TransportFor` to share selected auth and TLS.
 
-`NewDefaultClient(ctx)` provides the standard logging middleware and timeout. `NewClient(ClientOpts)` accepts explicit middleware, TLS, and timeout settings; nil middleware defaults to ordinary request logging. The root pre-run threads the payload-logging option through `context.Context`, avoiding flag parameters throughout constructors.
+`NewDefaultClient(ctx)` provides the standard logging middleware and timeout. `NewClient(ctx, ClientOpts)` accepts explicit middleware, TLS, and timeout settings; nil middleware defaults to ordinary request logging. Both read the payload-logging option from `ctx` and add the payload dump innermost, whatever middleware the caller passes. The root pre-run threads the payload-logging option through `context.Context`, avoiding flag parameters throughout constructors.
 
 | Logging | Behavior |
 |---|---|

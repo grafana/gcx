@@ -49,7 +49,7 @@ func TestGCOMClient_GetStack_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "test-token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestGCOMClient_GetStack_NonSuccess(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+			client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "test-token")
 			if err != nil {
 				t.Fatalf("unexpected error creating client: %v", err)
 			}
@@ -149,7 +149,7 @@ func TestGCOMClient_GetStack_TypedHTTPError(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client, err := cloud.NewGCOMClient(srv.URL, "token")
+			client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 			if err != nil {
 				t.Fatalf("unexpected error creating client: %v", err)
 			}
@@ -184,7 +184,7 @@ func TestGCOMClient_GetStack_SlugEscaping(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestGCOMClient_GetStack_TrailingSlash(t *testing.T) {
 	defer srv.Close()
 
 	// Base URL with trailing slash(es)
-	client, err := cloud.NewGCOMClient(srv.URL+"///", "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL+"///", "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestNewGCOMClient_SchemeValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := cloud.NewGCOMClient(tt.baseURL, "token")
+			_, err := cloud.NewGCOMClient(t.Context(), tt.baseURL, "token")
 			if tt.wantErr && err == nil {
 				t.Errorf("expected error for URL %q, got nil", tt.baseURL)
 			}
@@ -296,7 +296,7 @@ func TestGCOMClient_ListStacks_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "test-token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "test-token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestGCOMClient_ListStacks_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestGCOMClient_CreateStack_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestGCOMClient_CreateStack_Conflict(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client, err := cloud.NewGCOMClient(srv.URL, "token")
+			client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 			if err != nil {
 				t.Fatalf("unexpected error creating client: %v", err)
 			}
@@ -482,7 +482,7 @@ func TestGCOMClient_UpdateStack_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestGCOMClient_DeleteStack_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestGCOMClient_DeleteStack_DeleteProtection(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -566,7 +566,7 @@ func TestGCOMClient_ListRegions_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
@@ -603,7 +603,7 @@ func TestGCOMClient_GetStack_NoRedirectToDifferentDomain(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := cloud.NewGCOMClient(srv.URL, "token")
+	client, err := cloud.NewGCOMClient(t.Context(), srv.URL, "token")
 	if err != nil {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}

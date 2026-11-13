@@ -687,7 +687,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := httputils.NewClient(httputils.ClientOpts{
+	client := httputils.NewClient(ctx, httputils.ClientOpts{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			redirectEndpoint := req.URL.Scheme + "://" + req.URL.Host
 			if err := ValidateEndpointURL(redirectEndpoint); err != nil {
