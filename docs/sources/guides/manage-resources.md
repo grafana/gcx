@@ -210,7 +210,7 @@ If two resources produce the same filename, for example two dashboards titled `O
 
 `gcx resources pull` writes files but never deletes them. If a resource is renamed, or you switch between `--filename-by=name` and `--filename-by=title`, the directory can end up with two files for the same resource: the old one and the new one.
 
-`gcx` warns on `stderr` when it finds such duplicates. Before you push, remove the outdated files, for example with `git rm`, or pull into an empty directory.
+When you pull with `--filename-by=title`, `gcx` warns on `stderr` about files that hold the same resource under a different name. A pull in name mode does not check for this. Before you push, remove the outdated files, for example with `git rm`, or pull into an empty directory.
 
 ## Back up and restore resources
 
