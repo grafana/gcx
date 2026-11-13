@@ -72,7 +72,36 @@ type MetricRule struct {
 	Aggregations        []string `json:"aggregations,omitempty" yaml:"aggregations,omitempty"`
 	AggregationInterval string   `json:"aggregation_interval,omitempty" yaml:"aggregation_interval,omitempty"`
 	AggregationDelay    string   `json:"aggregation_delay,omitempty" yaml:"aggregation_delay,omitempty"`
-	ManagedBy           string   `json:"managed_by,omitempty" yaml:"managed_by,omitempty"`
+	ManagedBy           string   `json:"managed_by,omitempty" yaml:"managed_by,omitempty" jsonschema_extras:"deprecated=true" jsonschema_description:"Deprecated for v2 aggregation rules. Retained for legacy recommendation data and manifests; the v2 API does not store or return this field."`
+}
+
+// AdaptiveMetric is one analyzed metric in a segment's catalog.
+type AdaptiveMetric struct {
+	Metric                      string  `json:"metric" yaml:"metric"`
+	RecommendedAction           string  `json:"recommended_action" yaml:"recommended_action"`
+	RawSeriesCount              *int64  `json:"raw_series_count,omitempty" yaml:"raw_series_count,omitempty"`
+	CurrentSeriesCountReduction *int64  `json:"current_series_count_reduction,omitempty" yaml:"current_series_count_reduction,omitempty"`
+	ProjectedSeriesCountChange  *int64  `json:"projected_series_count_change,omitempty" yaml:"projected_series_count_change,omitempty"`
+	StatsUpdatedAt              *string `json:"stats_updated_at,omitempty" yaml:"stats_updated_at,omitempty"`
+}
+
+// AdaptiveMetricStats is the evidence behind an analyzed metric's recommendation.
+type AdaptiveMetricStats struct {
+	RawSeriesCount         int `json:"raw_series_count" yaml:"raw_series_count"`
+	CurrentSeriesCount     int `json:"current_series_count" yaml:"current_series_count"`
+	RecommendedSeriesCount int `json:"recommended_series_count" yaml:"recommended_series_count"`
+	UsagesInRules          int `json:"usages_in_rules" yaml:"usages_in_rules"`
+	UsagesInQueries        int `json:"usages_in_queries" yaml:"usages_in_queries"`
+	UsagesInDashboards     int `json:"usages_in_dashboards" yaml:"usages_in_dashboards"`
+}
+
+// AdaptiveMetricDetail is one analyzed metric's recommendation detail.
+type AdaptiveMetricDetail struct {
+	Metric            string               `json:"metric" yaml:"metric"`
+	RecommendedAction string               `json:"recommended_action,omitempty" yaml:"recommended_action,omitempty"`
+	CurrentRule       *MetricRule          `json:"current_rule,omitempty" yaml:"current_rule,omitempty"`
+	RecommendedRule   *MetricRule          `json:"recommended_rule,omitempty" yaml:"recommended_rule,omitempty"`
+	Stats             *AdaptiveMetricStats `json:"stats,omitempty" yaml:"stats,omitempty"`
 }
 
 // MetricRecommendation represents a recommendation for a metric aggregation rule.

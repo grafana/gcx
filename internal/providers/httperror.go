@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
 )
@@ -46,7 +47,26 @@ func IsPluginRouteDenied(statusCode int, body []byte) bool {
 		return false
 	}
 	var errResp ErrorResponse
-	return json.Unmarshal(body, &errResp) == nil && errResp.ErrorMessage() == pluginRouteDeniedMessage
+	return json.Unmarshal(body, &errResp) == nil && strings.HasPrefix(errResp.ErrorMessage(), pluginRouteDeniedMessage)
+}
+
+// IsPluginProxyUnavailable reports whether a response is Grafana's plugin proxy
+// itself refusing the request because the caller lacks access to the plugin or
+// its route. Callers that have a direct fallback can retry safely, because the
+// plugin backend never saw the request. The status and Grafana's fixed 403
+// message are both matched; a backend 403 returns false. A 404 is a real
+// resource response and never triggers a fallback.
+func IsPluginProxyUnavailable(statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	var errResp ErrorResponse
+	if json.Unmarshal(body, &errResp) != nil {
+		return false
+	}
+	msg := errResp.ErrorMessage()
+	return strings.HasPrefix(msg, pluginRouteDeniedMessage) ||
+		strings.HasPrefix(msg, "You'll need additional permissions to perform this action.")
 }
 
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud

@@ -577,6 +577,8 @@
  "gcx metrics adaptive exemptions get": "finite",
  "gcx metrics adaptive exemptions list": "finite",
  "gcx metrics adaptive exemptions update": "finite",
+ "gcx metrics adaptive metrics get": "finite",
+ "gcx metrics adaptive metrics list": "finite",
  "gcx metrics adaptive recommendations apply": "finite",
  "gcx metrics adaptive recommendations diff": "finite",
  "gcx metrics adaptive recommendations list": "finite",
