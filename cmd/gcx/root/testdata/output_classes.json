@@ -325,6 +325,7 @@
  "gcx docs list-products": "finite",
  "gcx docs outline": "finite",
  "gcx docs search": "finite",
+ "gcx feedback send": "finite",
  "gcx fleet collectors create": "finite",
  "gcx fleet collectors delete": "finite",
  "gcx fleet collectors get": "finite",
