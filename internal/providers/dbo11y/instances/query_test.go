@@ -27,7 +27,7 @@ func TestBuildConnectionInfoQuery(t *testing.T) {
 }
 
 func TestBuildConnectionsByStateQuery(t *testing.T) {
-	got, err := buildConnectionsByStateQuery("quickpizza-db", nil)
+	got, err := buildConnectionsByStateQuery("", "quickpizza-db", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -38,7 +38,7 @@ func TestBuildConnectionsByStateQuery(t *testing.T) {
 }
 
 func TestBuildWaitEventsQuery(t *testing.T) {
-	got, err := buildWaitEventsQuery("quickpizza-db", nil)
+	got, err := buildWaitEventsQuery("", "quickpizza-db", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -49,7 +49,7 @@ func TestBuildWaitEventsQuery(t *testing.T) {
 }
 
 func TestBuildLongestTxQuery(t *testing.T) {
-	got, err := buildLongestTxQuery("quickpizza-db", nil)
+	got, err := buildLongestTxQuery("", "quickpizza-db", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestBuildLongestTxQuery(t *testing.T) {
 }
 
 func TestBuildTopQueriesRateQuery(t *testing.T) {
-	got, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "quickpizza-db", "5m", nil, "queryid", "datname")
+	got, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "", "quickpizza-db", "5m", nil, "queryid", "datname")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -71,7 +71,7 @@ func TestBuildTopQueriesRateQuery(t *testing.T) {
 }
 
 func TestBuildTopQueriesRateQuery_MySQLLabels(t *testing.T) {
-	got, err := buildTopQueriesRateQuery(mysqlStatementsCalls, "prod-mysql", "5m", nil, "digest", "schema")
+	got, err := buildTopQueriesRateQuery(mysqlStatementsCalls, "", "prod-mysql", "5m", nil, "digest", "schema")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -82,7 +82,7 @@ func TestBuildTopQueriesRateQuery_MySQLLabels(t *testing.T) {
 }
 
 func TestBuildTopQueriesRateQuery_RequiresName(t *testing.T) {
-	if _, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "", "5m", nil, "queryid", "datname"); err == nil {
+	if _, err := buildTopQueriesRateQuery(pgStatStatementsCalls, "", "", "5m", nil, "queryid", "datname"); err == nil {
 		t.Fatal("expected error for empty instance name")
 	}
 }
@@ -125,7 +125,7 @@ func TestMetricsForEngine(t *testing.T) {
 }
 
 func TestBuildScrapeUpQuery(t *testing.T) {
-	got, err := buildScrapeUpQuery("quickpizza-db")
+	got, err := buildScrapeUpQuery("", "quickpizza-db")
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -310,5 +310,56 @@ func TestMergeTopQueries_Limit(t *testing.T) {
 	}
 	if got[0].QueryID != "1" || got[1].QueryID != "2" {
 		t.Errorf("expected top-2 by time share [1,2], got %+v", got)
+	}
+}
+
+func TestParseInstancesResponse_NameLabelFallback(t *testing.T) {
+	tests := []struct {
+		name     string
+		metric   map[string]string
+		wantName string
+	}{
+		{"service_name wins", map[string]string{"service_name": "a", "service": "b", "db_instance_identifier": "c"}, "a"},
+		{"service", map[string]string{"service": "b", "db_instance_identifier": "c"}, "b"},
+		{"db_instance_identifier", map[string]string{"db_instance_identifier": "c"}, "c"},
+		{"unknown sentinel skipped", map[string]string{"db_instance_identifier": "unknown"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.metric["__name__"] = "database_observability_connection_info"
+			items, err := parseInstancesResponse(sampleResponse(map[string]any{
+				"metric": tt.metric,
+				"value":  []any{float64(1755000000), "1"},
+			}))
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if tt.wantName == "" {
+				if len(items) != 0 {
+					t.Fatalf("expected no items, got %+v", items)
+				}
+				return
+			}
+			if len(items) != 1 || items[0].Name != tt.wantName {
+				t.Errorf("got %+v, want name=%q", items, tt.wantName)
+			}
+		})
+	}
+}
+
+func TestBuildQueries_ScopeLabel(t *testing.T) {
+	got, err := buildScrapeUpQuery("service", "ops-db")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if want := `up{service="ops-db",job="integrations/db-o11y"}`; got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	got, err = buildConnectionsByStateQuery("service", "ops-db", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if want := `sum by (state) (pg_stat_activity_count{service="ops-db"})`; got != want {
+		t.Errorf("got %q\nwant %q", got, want)
 	}
 }
