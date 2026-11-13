@@ -20,8 +20,9 @@ import (
 )
 
 // queryTagsHeader carries Loki query tags. Loki records "Source=<value>" in its
-// query logs, which is how gcx traffic is told apart from the assistant and
-// MCP traffic when sizing the cost guardrail.
+// query logs, which is how gcx traffic is identified for requests to
+// /api/datasources/.../resources paths. For /api/ds/query requests, this has no
+// effect (loki reads the source from the request body instead).
 const queryTagsHeader = "X-Query-Tags"
 
 // queryTagsTransport tags every Loki request as coming from gcx unless the
@@ -139,9 +140,10 @@ func queryBody(datasourceUID string, req QueryRequest, queryType string, maxLine
 			"type": "loki",
 			"uid":  datasourceUID,
 		},
-		"expr":       req.Query,
-		"intervalMs": 60000,
-		"queryType":  queryType,
+		"expr":                req.Query,
+		"intervalMs":          60000,
+		"queryType":           queryType,
+		"supportingQueryType": "gcx",
 	}
 	from, to := "now-1m", "now"
 	if req.IsRange() {
