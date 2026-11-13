@@ -113,6 +113,7 @@
   "gcx profiles exemplars span",
   "gcx resources edit",
   "gcx resources validate",
+  "gcx scim users deactivate",
   "gcx setup status",
   "gcx slo definitions status",
   "gcx slo definitions timeline",
