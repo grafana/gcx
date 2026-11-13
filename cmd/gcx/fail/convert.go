@@ -1021,6 +1021,20 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 			},
 		}, true
 	}
+	// A selector that names a cluster-scoped kind is wrapped in a UsageError
+	// (exit 2) by the command. A bare error comes from a manifest in a batch,
+	// such as push --on-error stop, so it is a resource failure (exit 4).
+	if scopeErr, ok := errors.AsType[*resources.ClusterScopedOperationError](err); ok {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: gcxerrors.SummaryPartialFailure,
+			Suggestions: []string{
+				"Remove the cluster-scoped manifests from the input; gcx supports only get on cluster-scoped kinds",
+				"Read the resources instead: gcx resources get " + scopeErr.Descriptor.Plural,
+			},
+			ExitCode: new(gcxerrors.ExitPartialFailure),
+		}, true
+	}
 	invalidSelectorErr := &resources.InvalidSelectorError{}
 	if errors.As(err, invalidSelectorErr) {
 		return &gcxerrors.DetailedError{

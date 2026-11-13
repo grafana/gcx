@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 )
 
@@ -19,7 +20,14 @@ func validateAgainstLive(ctx context.Context, cfg config.NamespacedRESTConfig, c
 		return nil, fmt.Errorf("failed to discover resources: %w", err)
 	}
 
-	liveDescs := reg.SupportedResources().Sorted()
+	// gcx supports only get on cluster-scoped kinds, so the catalog of
+	// manageable types does not cover them.
+	var liveDescs resources.Descriptors
+	for _, desc := range reg.SupportedResources().Sorted() {
+		if !desc.ClusterScoped {
+			liveDescs = append(liveDescs, desc)
+		}
+	}
 
 	entries := make([]agent.CatalogEntry, len(catalog))
 	for i, rt := range catalog {

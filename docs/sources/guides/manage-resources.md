@@ -230,6 +230,31 @@ Follow this workflow to back up all Grafana resources from one instance and late
    gcx resources push --path ./backup-prod
    ```
 
+## Cluster-scoped resources
+
+Some resource types are cluster-scoped. These types do not belong to a namespace.
+For example, the `kgatlas.ext.grafana.app` group serves the cluster-scoped type `SystemKgSchema`.
+To see the scope of each type, run:
+
+```shell
+gcx resources list-types -o wide
+```
+
+The `SCOPE` column shows `Namespaced` or `Cluster`.
+The JSON and YAML outputs show the same value in the `scope` field.
+When `gcx` fetches schemas, which it does by default, the JSON and YAML outputs leave out each type that has no OpenAPI schema.
+To list every type, add `--no-schema`.
+
+You can read cluster-scoped types with `gcx resources get` only:
+
+- `gcx resources get` reads a cluster-scoped type when you name it, for example `gcx resources get systemkgschemas`. Without a resource selector, it includes cluster-scoped types.
+- `gcx resources pull` does not include cluster-scoped types, because they are not part of a backup of your stack. Without a resource selector, it skips them. If a selector names a cluster-scoped type, the command fails with exit code 2.
+- `gcx resources push`, `gcx resources edit` and `gcx resources delete` refuse cluster-scoped types and send no change to Grafana.
+
+The app that serves a type controls whether `gcx` can see it. It sets this in its app manifest.
+
+The namespace of the current context does not apply to cluster-scoped types.
+
 ## Incident descriptions
 
 Incident descriptions remain visible in `gcx resources get` and

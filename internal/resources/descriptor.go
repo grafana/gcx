@@ -36,6 +36,26 @@ type Descriptor struct {
 	Kind         string
 	Singular     string
 	Plural       string
+
+	// ClusterScoped is true for kinds that the API server does not serve
+	// under a namespace. The zero value means namespaced, so descriptors
+	// that providers register statically keep their namespaced behavior.
+	ClusterScoped bool
+}
+
+// Resource scope names, as Kubernetes uses them in CustomResourceDefinitions.
+const (
+	ScopeNamespaced = "Namespaced"
+	ScopeCluster    = "Cluster"
+)
+
+// Scope returns ScopeCluster for cluster-scoped kinds and ScopeNamespaced otherwise.
+func (d Descriptor) Scope() string {
+	if d.ClusterScoped {
+		return ScopeCluster
+	}
+
+	return ScopeNamespaced
 }
 
 func (d Descriptor) String() string {

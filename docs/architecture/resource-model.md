@@ -249,7 +249,7 @@ Grafana API (/apis endpoint)
       |
 [APIGroup list]   [APIResourceList list]
       |
-      v  FilterDiscoveryResults()  ← strips ignoredResourceGroups + non-namespaced + subresources
+      v  FilterDiscoveryResults()  ← strips ignoredResourceGroups + subresources
       |
       v  RegistryIndex.Update()
       |
@@ -278,7 +278,22 @@ Discovery excludes internal, identity, storage, and read-only service groups tha
 
 For partially exposed groups, `partiallyExposedGroups` retains the group's `APIGroup` entry and preferred version while hiding resources outside its allowlist. This preserves native version selection without exposing the entire group.
 
-`FilterDiscoveryResults()` also excludes non-namespaced resources and subresources such as `dashboards/status`. Keep these filters when adding registrations or changing discovery.
+`FilterDiscoveryResults()` also excludes subresources such as `dashboards/status`. Keep this filter when adding registrations or changing discovery.
+
+### Cluster-scoped resources
+
+Discovery keeps cluster-scoped kinds (`Namespaced: false` in the API resource list). `RegistryIndex.Update()` sets `Descriptor.ClusterScoped` for them. The zero value means namespaced, so descriptors that providers register statically stay namespaced. `Descriptor.Scope()` returns `Namespaced` or `Cluster`, and `list-types` shows it in wide, JSON and YAML output.
+
+gcx reads cluster-scoped kinds with `get` only:
+
+- `get` reads them, with or without a selector. The dynamic client sends these requests without a namespace.
+- `pull` does not apply to them, because they are not part of a stack backup. Without a selector, `pull` sets `PullRequest.ExcludeClusterScoped`, so the puller skips them. With a selector that names one, `pull` refuses it before any read.
+- `adapter.CheckMutation()` refuses `push`, `edit` and `delete` with `resources.ClusterScopedOperationError` before any read or write.
+- When a selector names the kind (`pull`, `edit`, `delete`), the command wraps the error in a `UsageError` (exit 2). A manifest in a `push` batch is a resource failure (exit 4), also with `--on-error abort`.
+
+Discovery has no allowlist for cluster-scoped kinds. The app manifest of each app controls which of its kinds the server exposes.
+
+The namespace of the current context does not apply to cluster-scoped kinds.
 
 ### Preferred Versions
 

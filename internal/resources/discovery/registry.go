@@ -279,6 +279,7 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 
 // FilterDiscoveryResults filters the discovery results to exclude ignored resource groups.
 // For groups in partial, only the listed resources are kept.
+// Cluster-scoped resources are kept; their descriptors carry ClusterScoped.
 func FilterDiscoveryResults(
 	ignored []string, partial map[string][]string, apiGroups []*metav1.APIGroup, apiResources []*metav1.APIResourceList,
 ) ([]*metav1.APIGroup, []*metav1.APIResourceList, error) {
@@ -307,10 +308,6 @@ func FilterDiscoveryResults(
 
 		filteredAPIResources := make([]metav1.APIResource, 0, len(resource.APIResources))
 		for _, r := range resource.APIResources {
-			if !r.Namespaced {
-				continue
-			}
-
 			if isPartial && !slices.Contains(allowed, r.Name) {
 				continue
 			}

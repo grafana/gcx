@@ -174,11 +174,16 @@ discovery fails and the configured values are used as-is.
 **File:** `internal/resources/dynamic/namespaced_client.go`
 
 Wraps `k8s.io/client-go/dynamic.Interface` with namespace-scoped operations.
-Every method scopes to `c.namespace` automatically:
+Every method scopes to `c.namespace` automatically, except for cluster-scoped
+descriptors (`Descriptor.ClusterScoped`). Those requests go to
+`/apis/<group>/<version>/<plural>` without a namespace:
 
 ```go
-c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).<op>()
+c.resource(desc).<op>()  // .Namespace(c.namespace) only when the kind is namespaced
 ```
+
+The client does not refuse writes to cluster-scoped descriptors.
+`adapter.CheckMutation()` refuses them before any caller reaches the client.
 
 **Operations provided:**
 
@@ -195,7 +200,7 @@ c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).<op>()
 **Pagination pattern:**
 ```go
 pager := pager.New(func(ctx context.Context, opts metav1.ListOptions) (runtime.Object, error) {
-    return c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).List(ctx, opts)
+    return c.resource(desc).List(ctx, opts)
 })
 pager.EachListItemWithAlloc(ctx, opts, func(obj runtime.Object) error { ... })
 ```

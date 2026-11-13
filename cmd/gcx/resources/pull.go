@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"io"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -189,19 +191,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			res, err := FetchResources(ctx, FetchRequest{
-				ExcludeReadOnly: opts.SkipReadOnly,
-				Config:          cfg,
-				Warn:            cmd.ErrOrStderr(),
-				// Strip server fields from the resources.
-				// This includes fields like `resourceVersion`, `uid`, etc.
-				Processors: []remote.Processor{
-					&process.ServerFieldsStripper{},
-					adapter.PullFieldsStripper{},
-				},
-				ExcludeManaged: !opts.IncludeManaged,
-				StopOnError:    opts.OnError.StopOnError(),
-			}, args)
+			res, err := fetchForPull(ctx, opts, cfg, cmd.ErrOrStderr(), args)
 			if err != nil {
 				return err
 			}
@@ -337,4 +327,24 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// fetchForPull reads the resources that pull saves. Cluster-scoped kinds are
+// not part of a stack backup: pull skips them without a selector and refuses
+// a selector that names one.
+func fetchForPull(ctx context.Context, opts *pullOpts, cfg config.NamespacedRESTConfig, warn io.Writer, args []string) (*FetchResponse, error) {
+	return fetchResources(ctx, FetchRequest{
+		ExcludeReadOnly:      opts.SkipReadOnly,
+		ExcludeClusterScoped: true,
+		Config:               cfg,
+		Warn:                 warn,
+		// Strip server fields from the resources.
+		// This includes fields like `resourceVersion`, `uid`, etc.
+		Processors: []remote.Processor{
+			&process.ServerFieldsStripper{},
+			adapter.PullFieldsStripper{},
+		},
+		ExcludeManaged: !opts.IncludeManaged,
+		StopOnError:    opts.OnError.StopOnError(),
+	}, args, rejectClusterScoped("pull"))
 }
