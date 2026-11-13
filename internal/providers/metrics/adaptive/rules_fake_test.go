@@ -72,15 +72,33 @@ type fakeRules struct {
 
 	mu       sync.Mutex
 	rules    map[string]map[string]wireRule
+	recs     map[string]map[string]fakeRec
 	pageSize int
 	failures []fakeFailure
 	reqs     []fakeReq
 	gcom     int
+	// applyWarnings are returned by a segment-wide apply, which then leaves
+	// that many recommendations unapplied.
+	applyWarnings []fakeApplyWarning
+}
+
+// fakeRec is a catalog entry: the recommended action and, for add and update,
+// the recommended rule.
+type fakeRec struct {
+	Action            string
+	Rule              *wireRule
+	CurrentSeries     int
+	RecommendedSeries int
+}
+
+type fakeApplyWarning struct {
+	Code    string `json:"code"`
+	Skipped int    `json:"skipped"`
 }
 
 func newFakeRules(t *testing.T) *fakeRules {
 	t.Helper()
-	f := &fakeRules{t: t, rules: map[string]map[string]wireRule{"default": {}}}
+	f := &fakeRules{t: t, rules: map[string]map[string]wireRule{"default": {}}, recs: map[string]map[string]fakeRec{}}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -100,6 +118,16 @@ func (f *fakeRules) seed(segment string, rules ...wireRule) *fakeRules {
 
 // fail makes matching requests fail with status and body. A zero status drops
 // the connection without a response.
+func (f *fakeRules) recommend(segment, metric string, rec fakeRec) *fakeRules {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.recs[segment] == nil {
+		f.recs[segment] = map[string]fakeRec{}
+	}
+	f.recs[segment][metric] = rec
+	return f
+}
+
 func (f *fakeRules) fail(via, method string, status int, body string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -281,7 +309,7 @@ func writeRaw(w http.ResponseWriter, status int, body string) {
 func (f *fakeRules) segmentRoute(w http.ResponseWriter, r *http.Request, tail, body string) {
 	parts := strings.SplitN(tail, "/", 3)
 	segment, err := url.PathUnescape(parts[0])
-	if err != nil || len(parts) < 2 || parts[1] != "rules" {
+	if err != nil || len(parts) < 2 {
 		http.NotFound(w, r)
 		return
 	}
@@ -291,6 +319,28 @@ func (f *fakeRules) segmentRoute(w http.ResponseWriter, r *http.Request, tail, b
 	segRules, ok := f.rules[segment]
 	if !ok {
 		writeRaw(w, http.StatusNotFound, fmt.Sprintf(`{"code":"not_found","error":"segment not found: %s"}`, segment))
+		return
+	}
+
+	switch {
+	case parts[1] == "metrics" && len(parts) == 3 && r.Method == http.MethodGet:
+		metric, _ := url.PathUnescape(parts[2])
+		f.metricDetail(w, segment, metric, segRules)
+		return
+	case parts[1] == "metrics:summary" && r.Method == http.MethodGet:
+		counts := map[string]int{}
+		for _, rec := range f.recs[segment] {
+			counts[rec.Action]++
+		}
+		out, err := json.Marshal(map[string]any{"count": len(f.recs[segment]), "counts_by_action": counts})
+		require.NoError(f.t, err)
+		writeRaw(w, http.StatusOK, string(out))
+		return
+	case parts[1] == "rules:applyRecommendations" && r.Method == http.MethodPost:
+		f.applyRecommendations(w, segment, segRules, body)
+		return
+	case parts[1] != "rules":
+		http.NotFound(w, r)
 		return
 	}
 
@@ -399,6 +449,123 @@ func (f *fakeRules) list(w http.ResponseWriter, r *http.Request, segRules map[st
 		page.Rules = append(page.Rules, segRules[m])
 	}
 	out, err := json.Marshal(page)
+	require.NoError(f.t, err)
+	writeRaw(w, http.StatusOK, string(out))
+}
+
+func (f *fakeRules) metricDetail(w http.ResponseWriter, segment, metric string, segRules map[string]wireRule) {
+	rec, hasRec := f.recs[segment][metric]
+	rule, hasRule := segRules[metric]
+	if !hasRec && !hasRule {
+		writeRaw(w, http.StatusNotFound, fmt.Sprintf(`{"code":"not_found","error":"metric not found: %s"}`, metric))
+		return
+	}
+	detail := map[string]any{"metric": metric}
+	if hasRule {
+		detail["current"] = rule
+	}
+	if hasRec {
+		detail["verdict"] = map[string]any{"recommended_action": rec.Action, "urgent": false}
+		if rec.Rule != nil {
+			detail["recommended"] = rec.Rule
+		}
+		detail["stats"] = map[string]any{"current_series_count": rec.CurrentSeries, "recommended_series_count": rec.RecommendedSeries}
+	}
+	out, err := json.Marshal(detail)
+	require.NoError(f.t, err)
+	writeRaw(w, http.StatusOK, string(out))
+}
+
+// applyRec applies one recommendation and reports whether it changed a rule.
+func applyRec(segRules map[string]wireRule, metric string, rec fakeRec) bool {
+	switch rec.Action {
+	case "add", "update":
+		segRules[metric] = *rec.Rule
+		return true
+	case "remove":
+		delete(segRules, metric)
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *fakeRules) applyRecommendations(w http.ResponseWriter, segment string, segRules map[string]wireRule, body string) {
+	var req struct {
+		Metrics  []string `json:"metrics"`
+		Strategy string   `json:"strategy"`
+	}
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"failed to decode request body"}`)
+		return
+	}
+
+	if req.Metrics == nil {
+		f.applySegmentRecommendations(w, segment, segRules, req.Strategy)
+		return
+	}
+
+	if len(req.Metrics) == 0 || len(req.Metrics) > 100 {
+		writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"metrics must contain between 1 and 100 names"}`)
+		return
+	}
+	var missing []string
+	for _, m := range req.Metrics {
+		if _, ok := f.recs[segment][m]; !ok {
+			missing = append(missing, m)
+		}
+	}
+	if len(missing) > 0 {
+		writeRaw(w, http.StatusBadRequest, fmt.Sprintf(`{"code":"invalid_argument","error":"no recommendation found for metrics: %s"}`, strings.Join(missing, ", ")))
+		return
+	}
+	results := make([]map[string]string, 0, len(req.Metrics))
+	for _, m := range req.Metrics {
+		status := "noop"
+		if applyRec(segRules, m, f.recs[segment][m]) {
+			status = "applied"
+		}
+		results = append(results, map[string]string{"metric": m, "status": status})
+	}
+	out, err := json.Marshal(map[string]any{"results": results})
+	require.NoError(f.t, err)
+	writeRaw(w, http.StatusOK, string(out))
+}
+
+func (f *fakeRules) applySegmentRecommendations(w http.ResponseWriter, segment string, segRules map[string]wireRule, strategy string) {
+	if strategy != "all" {
+		writeRaw(w, http.StatusBadRequest, `{"code":"invalid_argument","error":"unknown strategy"}`)
+		return
+	}
+	skip := 0
+	for _, wn := range f.applyWarnings {
+		skip += wn.Skipped
+	}
+	metrics := make([]string, 0, len(f.recs[segment]))
+	for m := range f.recs[segment] {
+		metrics = append(metrics, m)
+	}
+	sort.Strings(metrics)
+	var summary struct {
+		Upserted  int `json:"upserted"`
+		Deleted   int `json:"deleted"`
+		Unchanged int `json:"unchanged"`
+	}
+	for _, m := range metrics {
+		rec := f.recs[segment][m]
+		changes := rec.Action != "keep" && rec.Action != "none"
+		switch {
+		case changes && skip > 0:
+			skip--
+		case !applyRec(segRules, m, rec):
+			summary.Unchanged++
+		case rec.Action == "remove":
+			summary.Deleted++
+		default:
+			summary.Upserted++
+		}
+	}
+	out, err := json.Marshal(map[string]any{"summary": summary, "warnings": f.applyWarnings})
 	require.NoError(f.t, err)
 	writeRaw(w, http.StatusOK, string(out))
 }

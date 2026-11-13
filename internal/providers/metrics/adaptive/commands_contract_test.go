@@ -100,13 +100,8 @@ func decodeOneJSONValue(t *testing.T, stdout string) any {
 const rulesV2Prefix = "/adaptive-metrics/api/v2/segments/default/rules"
 
 // fakeMetricsAPI serves the Adaptive Metrics endpoints exercised by the
-// apply, delete, and list commands. Rule mutations for metrics listed in
-// failMetrics return HTTP 500.
-func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
-	fail := make(map[string]bool, len(failMetrics))
-	for _, m := range failMetrics {
-		fail[m] = true
-	}
+// delete and list commands.
+func fakeMetricsAPI() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, rulesV2Prefix+"/"):
@@ -121,22 +116,7 @@ func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
 			fmt.Fprint(w, `{"rules":[]}`)
 		case r.URL.Path == "/aggregations/recommendations":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, recs)
-		case r.URL.Path == "/aggregations/rules" && r.Method == http.MethodGet:
-			w.Header().Set("ETag", "v1")
-			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, "[]")
-		case r.URL.Path == "/aggregations/rules" && r.Method == http.MethodPost: // SyncRules
-			w.WriteHeader(http.StatusOK)
-		case strings.HasPrefix(r.URL.Path, "/aggregations/rule/"):
-			metric := strings.TrimPrefix(r.URL.Path, "/aggregations/rule/")
-			if fail[metric] {
-				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprint(w, "boom")
-				return
-			}
-			w.Header().Set("ETag", "v2")
-			w.WriteHeader(http.StatusOK)
 		case r.URL.Path == "/aggregations/rules/segments" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, "[]")
@@ -158,77 +138,95 @@ func fakeMetricsAPI(recs string, failMetrics ...string) http.HandlerFunc {
 	}
 }
 
-const applyRecsJSON = `[` +
-	`{"metric":"metric_ok","recommended_action":"remove","current_series_count":10,"recommended_series_count":0},` +
-	`{"metric":"metric_bad","recommended_action":"remove","current_series_count":10,"recommended_series_count":0}` +
-	`]`
+func newApplyFake(t *testing.T) *fakeRules {
+	t.Helper()
+	removeA := fakeRec{Action: "remove", CurrentSeries: 10}
+	return newFakeRules(t).
+		seed("default", ruleA, ruleB).
+		recommend("default", "a_metric", removeA).
+		recommend("default", "b_metric", fakeRec{Action: "keep"})
+}
 
 func TestRecommendationsApply_OutputContract(t *testing.T) {
 	tests := []struct {
 		name            string
 		agentMode       bool
 		args            []string
-		failMetrics     []string
+		warnings        []fakeApplyWarning
 		wantExitCode    int // 0 = plain nil error expected
 		wantStdoutEmpty bool
 		wantSucceeded   float64
 		wantFailed      float64
+		wantSkipped     float64
 		wantDryRun      bool
 	}{
 		{
 			name:          "agent success emits one batch doc",
 			agentMode:     true,
-			args:          []string{"recommendations", "apply", "metric_ok", "--force"},
+			args:          []string{"recommendations", "apply", "a_metric", "b_metric", "--force"},
 			wantSucceeded: 1,
-		},
-		{
-			name:          "agent partial failure emits one doc and exit 4",
-			agentMode:     true,
-			args:          []string{"recommendations", "apply", "metric_ok", "metric_bad", "--force"},
-			failMetrics:   []string{"metric_bad"},
-			wantExitCode:  gcxerrors.ExitPartialFailure,
-			wantSucceeded: 1,
-			wantFailed:    1,
+			wantSkipped:   1,
 		},
 		{
 			name:          "agent dry-run emits one doc with dry_run",
 			agentMode:     true,
-			args:          []string{"recommendations", "apply", "metric_ok", "--dry-run"},
+			args:          []string{"recommendations", "apply", "a_metric", "--dry-run"},
 			wantSucceeded: 1,
 			wantDryRun:    true,
 		},
 		{
+			name:          "agent all emits one batch doc",
+			agentMode:     true,
+			args:          []string{"recommendations", "apply", "--all", "--force"},
+			wantSucceeded: 1,
+			wantSkipped:   1,
+		},
+		{
+			name:          "agent all dry-run emits one doc with dry_run",
+			agentMode:     true,
+			args:          []string{"recommendations", "apply", "--all", "--dry-run"},
+			wantSucceeded: 1,
+			wantDryRun:    true,
+		},
+		{
+			name:          "agent all with skipped changes emits one doc and exit 4",
+			agentMode:     true,
+			args:          []string{"recommendations", "apply", "--all", "--force"},
+			warnings:      []fakeApplyWarning{{Code: "rule_limit_reached", Skipped: 1}},
+			wantExitCode:  gcxerrors.ExitPartialFailure,
+			wantSucceeded: 0,
+			wantFailed:    1,
+			wantSkipped:   1,
+		},
+		{
 			name:            "human default stdout stays empty",
-			agentMode:       false,
-			args:            []string{"recommendations", "apply", "metric_ok", "--force"},
+			args:            []string{"recommendations", "apply", "a_metric", "--force"},
 			wantStdoutEmpty: true,
 		},
 		{
-			name:            "human partial failure stdout empty and exit 4",
-			agentMode:       false,
-			args:            []string{"recommendations", "apply", "metric_ok", "metric_bad", "--force"},
-			failMetrics:     []string{"metric_bad"},
+			name:            "human all with skipped changes stdout empty and exit 4",
+			args:            []string{"recommendations", "apply", "--all", "--force"},
+			warnings:        []fakeApplyWarning{{Code: "policy_limited", Skipped: 1}},
 			wantExitCode:    gcxerrors.ExitPartialFailure,
 			wantStdoutEmpty: true,
 		},
 		{
 			name:            "human dry-run stdout stays empty",
-			agentMode:       false,
-			args:            []string{"recommendations", "apply", "metric_ok", "--dry-run"},
+			args:            []string{"recommendations", "apply", "a_metric", "--dry-run"},
 			wantStdoutEmpty: true,
 		},
 		{
 			name:          "human explicit -o json wins",
-			agentMode:     false,
-			args:          []string{"recommendations", "apply", "metric_ok", "--force", "-o", "json"},
+			args:          []string{"recommendations", "apply", "a_metric", "--force", "-o", "json"},
 			wantSucceeded: 1,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			loader := newContractLoader(t, fakeMetricsAPI(applyRecsJSON, tc.failMetrics...))
-			res := runAdaptiveCmd(t, loader, tc.agentMode, tc.args...)
+			f := newApplyFake(t)
+			f.applyWarnings = tc.warnings
+			res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), tc.agentMode, tc.args...)
 
 			if tc.wantExitCode != 0 {
 				var emitted *gcxerrors.EmittedError
@@ -253,16 +251,16 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 			summary, ok := doc["summary"].(map[string]any)
 			require.True(t, ok, "document must carry a summary object")
 			assert.InDelta(t, tc.wantSucceeded, summary["succeeded"], 0)
+			assert.InDelta(t, tc.wantFailed, summary["failed"], 0)
+			if tc.wantSkipped > 0 {
+				assert.InDelta(t, tc.wantSkipped, summary["skipped"], 0)
+			}
 			if tc.wantFailed > 0 {
-				assert.InDelta(t, tc.wantFailed, summary["failed"], 0)
 				failures, ok := doc["failures"].([]any)
 				require.True(t, ok, "failures must be present")
 				require.Len(t, failures, int(tc.wantFailed))
 				failure, ok := failures[0].(map[string]any)
 				require.True(t, ok, "failure entry must be an object")
-				target, ok := failure["target"].(map[string]any)
-				require.True(t, ok, "failure target must be an object")
-				assert.Equal(t, "metric_bad", target["name"])
 				assert.NotEmpty(t, failure["error"])
 			}
 			if tc.wantDryRun {
@@ -275,30 +273,37 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 }
 
 // TestRecommendationsApply_TotalFailure pins the total-failure contract:
-// when every recommendation fails to apply, the command keeps the classified
-// single-error path — no success-shaped batch document on stdout and no
-// EmittedError (the reporter owns the error document and the exit code).
+// when nothing was applied, the command keeps the classified single-error
+// path — no success-shaped batch document on stdout and no EmittedError (the
+// reporter owns the error document and the exit code).
 func TestRecommendationsApply_TotalFailure(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		agentMode bool
+		name     string
+		args     []string
+		failPost bool
+		want     string
 	}{
-		{name: "agent mode", agentMode: true},
-		{name: "human mode", agentMode: false},
+		{name: "listed metrics rejected by the server", args: []string{"recommendations", "apply", "a_metric", "--force"}, failPost: true, want: "boom"},
+		{name: "all rejected by the server", args: []string{"recommendations", "apply", "--all", "--force"}, failPost: true, want: "boom"},
+		{name: "metric without a recommendation", args: []string{"recommendations", "apply", "nope", "--force"}, want: "no recommendation found"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			loader := newContractLoader(t, fakeMetricsAPI(applyRecsJSON, "metric_ok", "metric_bad"))
-			res := runAdaptiveCmd(t, loader, tc.agentMode,
-				"recommendations", "apply", "metric_ok", "metric_bad", "--force")
+		for _, agentMode := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s agent=%v", tc.name, agentMode), func(t *testing.T) {
+				f := newApplyFake(t)
+				if tc.failPost {
+					f.fail(viaProxy, "POST", 500, `{"code":"internal","error":"boom"}`)
+				}
+				res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true}), agentMode, tc.args...)
 
-			require.Error(t, res.err)
-			var emitted *gcxerrors.EmittedError
-			assert.NotErrorAs(t, res.err, &emitted,
-				"total failure must use the standard error path, not EmittedError")
-			assert.Empty(t, res.stdout,
-				"no success-shaped batch document when nothing was applied — the reporter owns the error document")
-			assert.Contains(t, res.err.Error(), "failed to apply 2 of 2 recommendation(s)")
-		})
+				require.Error(t, res.err)
+				var emitted *gcxerrors.EmittedError
+				assert.NotErrorAs(t, res.err, &emitted,
+					"total failure must use the standard error path, not EmittedError")
+				assert.Empty(t, res.stdout,
+					"no success-shaped batch document when nothing was applied — the reporter owns the error document")
+				assert.Contains(t, res.err.Error(), tc.want)
+			})
+		}
 	}
 }
 
@@ -317,7 +322,7 @@ func TestAdaptiveLists_EmptyStillEmitsOneDoc(t *testing.T) {
 	for _, tc := range lists {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("agent mode emits exactly one empty array", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, true, tc.args...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				doc := decodeOneJSONValue(t, res.stdout)
@@ -327,14 +332,14 @@ func TestAdaptiveLists_EmptyStillEmitsOneDoc(t *testing.T) {
 			})
 
 			t.Run("human default stdout stays empty", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, false, tc.args...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				assert.Empty(t, res.stdout, "default human stdout for an empty list must stay byte-identical (empty)")
 			})
 
 			t.Run("human explicit -o json emits one empty array", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, false, append(append([]string{}, tc.args...), "-o", "json")...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				doc := decodeOneJSONValue(t, res.stdout)
@@ -382,7 +387,7 @@ func TestAdaptiveDeletes_MutationDocContract(t *testing.T) {
 			forceArgs := append(append([]string{}, tc.args...), "--force")
 
 			t.Run("agent mode emits one mutation doc", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, true, forceArgs...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 
@@ -405,7 +410,7 @@ func TestAdaptiveDeletes_MutationDocContract(t *testing.T) {
 			})
 
 			t.Run("human default stdout stays empty", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, false, forceArgs...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				assert.Empty(t, res.stdout, "default human stdout must stay byte-identical (empty)")
@@ -413,7 +418,7 @@ func TestAdaptiveDeletes_MutationDocContract(t *testing.T) {
 			})
 
 			t.Run("explicit -o yaml wins", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, false, append(append([]string{}, forceArgs...), "-o", "yaml")...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				assert.Contains(t, res.stdout, "type: gcx.mutation")
@@ -421,7 +426,7 @@ func TestAdaptiveDeletes_MutationDocContract(t *testing.T) {
 			})
 
 			t.Run("agent mode without --force is rejected before mutation", func(t *testing.T) {
-				loader := newContractLoader(t, fakeMetricsAPI("[]"))
+				loader := newContractLoader(t, fakeMetricsAPI())
 				res := runAdaptiveCmd(t, loader, true, tc.args...)
 				require.ErrorIs(t, res.err, providers.ErrAgentModeRequiresForce)
 				assert.Empty(t, res.stdout)

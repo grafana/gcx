@@ -545,6 +545,7 @@ func TestRulesDelete(t *testing.T) {
 			t.Helper()
 			res := run("rules", "delete", "nope", "--force", "-o", "json")
 			require.ErrorIs(t, res.err, metrics.ErrRuleNotFound)
+			require.ErrorContains(t, res.err, "delete rule nope")
 			assert.Empty(t, res.stdout)
 			assert.NotContains(t, res.stderr, "Deleted rule")
 			assert.Empty(t, f.requests("", "DELETE"))
