@@ -200,7 +200,7 @@ func TestReportsPushOutputContract(t *testing.T) {
 		{
 			name:       "human dry-run byte-identical",
 			extraArgs:  []string{"--dry-run"},
-			wantStdout: "🛈 [dry-run] Would push report \"Report One\" (uuid=)\n🛈 [dry-run] Would push report \"Report Two\" (uuid=uuid-2)\n",
+			wantStdout: "ℹ [dry-run] Would push report \"Report One\" (uuid=)\nℹ [dry-run] Would push report \"Report Two\" (uuid=uuid-2)\n",
 		},
 		{
 			name:      "agent mode single JSON document",

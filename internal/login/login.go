@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 )
 
@@ -987,11 +988,11 @@ func announceOAuthLogin(w io.Writer, result *auth.Result, signup bool) {
 	}
 	switch {
 	case endpoint != "" && result.Email != "":
-		fmt.Fprintf(w, "\n✔ Signed in to %s as %s\n", endpoint, result.Email)
+		fmt.Fprintf(w, "\n%s Signed in to %s as %s\n", output.SuccessSymbol(), endpoint, result.Email)
 	case endpoint != "":
-		fmt.Fprintf(w, "\n✔ Signed in to %s\n", endpoint)
+		fmt.Fprintf(w, "\n%s Signed in to %s\n", output.SuccessSymbol(), endpoint)
 	default:
-		fmt.Fprintln(w, "\n✔ Signed in")
+		fmt.Fprintf(w, "\n%s Signed in\n", output.SuccessSymbol())
 	}
 }
 
