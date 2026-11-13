@@ -5,6 +5,7 @@ on:
     types:
       - opened
       - synchronize
+      - labeled
       - closed
     paths:
       - "docs/sources/**"
@@ -20,7 +21,18 @@ jobs:
       statuses: write
     # The preview looks up the PR in grafana/gcx (repo: gcx below), so it
     # fails in any other repository. Skip it outside the canonical repo.
-    if: github.repository == 'grafana/gcx' && !github.event.pull_request.head.repo.fork
+    # A labeled event also fires on closed and merged PRs and for unrelated
+    # labels. Invoke the preview only for an open PR gaining the breakglass
+    # label: skipping the whole job avoids an orphaned preview after teardown
+    # and a needless rebuild, and leaves the existing check-links status intact
+    # rather than overwriting it with a skipped run. The reusable workflow
+    # guards the state as a backstop for other callers.
+    if: >-
+      github.repository == 'grafana/gcx'
+      && !github.event.pull_request.head.repo.fork
+      && (github.event.action != 'labeled'
+      || (github.event.pull_request.state == 'open'
+      && github.event.label.name == 'docs/ignore-broken-links'))
     uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main # zizmor: ignore[unpinned-uses]
     with:
       branch: ${{ github.head_ref }}
