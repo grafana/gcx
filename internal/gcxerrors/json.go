@@ -66,11 +66,12 @@ func (e DetailedError) resolvedDetails() string {
 
 // JSONError is the machine-readable representation of a DetailedError.
 type JSONError struct {
-	Summary     string   `json:"summary" yaml:"summary"`
-	ExitCode    int      `json:"exitCode" yaml:"exitCode"`
-	Details     string   `json:"details,omitempty" yaml:"details,omitempty"`
-	Suggestions []string `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
-	DocsLink    string   `json:"docsLink,omitempty" yaml:"docsLink,omitempty"`
+	Summary     string       `json:"summary" yaml:"summary"`
+	ExitCode    int          `json:"exitCode" yaml:"exitCode"`
+	Details     string       `json:"details,omitempty" yaml:"details,omitempty"`
+	Suggestions []string     `json:"suggestions,omitempty" yaml:"suggestions,omitempty"`
+	Corrections []Correction `json:"corrections,omitempty" yaml:"corrections,omitempty"`
+	DocsLink    string       `json:"docsLink,omitempty" yaml:"docsLink,omitempty"`
 }
 
 // JSONObject builds an error object for a structured result, resolving parent
@@ -81,6 +82,7 @@ func (e DetailedError) JSONObject(exitCode int) JSONError {
 		ExitCode:    exitCode,
 		Details:     stripBoxChars(e.resolvedDetails()),
 		Suggestions: e.agentSuggestions(),
+		Corrections: e.Corrections,
 		DocsLink:    e.DocsLink,
 	}
 }
