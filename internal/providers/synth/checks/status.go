@@ -220,10 +220,8 @@ Prometheus datasource, the values here come only from the app.`,
 			}
 
 			if len(filtered) == 0 {
-				if opts.IO.OutputFormat == "graph" {
-					cmdio.Info(cmd.OutOrStdout(), "No checks found.")
-					return nil
-				}
+				// The hint is diagnostic: stdout carries only the empty result.
+				cmdio.Info(cmd.ErrOrStderr(), "No checks found.")
 				return opts.IO.Encode(cmd.OutOrStdout(), []CheckStatusResult{})
 			}
 
@@ -990,11 +988,6 @@ func StatusTable() cmdio.Table[CheckStatusResult] {
 			{Header: "PROBES", Visible: cmdio.WideOnly, Content: func(r CheckStatusResult) string { return strings.Join(r.ProbeNames, ", ") }},
 			{Header: "STATUS", Content: func(r CheckStatusResult) string { return r.Status }},
 		},
-		// Keep prose in the table codec so JSON, YAML and agents still encode [].
-		Empty: func(w io.Writer) error {
-			cmdio.Info(w, "No checks found.")
-			return nil
-		},
 	}
 }
 
@@ -1092,7 +1085,7 @@ func (c *StatusGraphCodec) Encode(w io.Writer, v any) error {
 	}
 
 	if len(results) == 0 {
-		fmt.Fprintln(w, "No checks found.")
+		// The command reports the empty result on stderr.
 		return nil
 	}
 

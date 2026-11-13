@@ -138,12 +138,10 @@ grafana_slo_sli_window metrics.`,
 				}
 			}
 
-			if len(slos) == 0 && (opts.IO.OutputFormat == "graph" || opts.IO.OutputFormat == "table") {
-				// Prose formats keep the historical notice; structured
-				// formats (json/yaml/agents) fall through and encode the
-				// (empty) payload so stdout still carries one document.
-				cmdio.Info(cmd.OutOrStdout(), "No SLO definitions found.")
-				return nil
+			if len(slos) == 0 {
+				// The hint is diagnostic: every format still encodes the
+				// (empty) payload so stdout carries only the result.
+				cmdio.Info(cmd.ErrOrStderr(), "No SLO definitions found.")
 			}
 
 			// Parse time range.

@@ -176,8 +176,8 @@ The command's declared protocol matters: interactive prompts and server startup
 messages can be the result themselves, while `EmitArtifactResult` writes a
 structured receipt to stdout (see § 12). Check
 `cmd/gcx/root/testdata/output_classes.json` before changing these paths.
-Existing finite-command no-data notices on stdout, such as those in SLO status
-and Synth checks status, are known nonconforming behavior, not examples to copy.
+A finite command with no results still encodes its empty result on stdout; any
+"No … found." hint goes to stderr.
 
 Reference: `internal/output/messages.go`
 
