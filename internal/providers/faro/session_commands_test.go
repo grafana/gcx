@@ -761,7 +761,7 @@ func TestFetchLokiEventPagesKeepsBoundaryRowsThatShareTimestamp(t *testing.T) {
 			Line:      "event-" + strconv.Itoa(i),
 		})
 	}
-	got, err := fetchLokiEventPages(context.Background(), &rangeLoki{dataset: ds}, "uid", `{kind="event"}`, time.UnixMilli(0), time.UnixMilli(2000), sessionLokiQueryTimeout)
+	got, _, err := fetchLokiEventPagesUntil(context.Background(), &rangeLoki{dataset: ds}, "uid", `{kind="event"}`, time.UnixMilli(0), time.UnixMilli(2000), sessionLokiQueryTimeout, lokiEventsPageSize, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, lokiEventsPageSize+1, lokiEntryCount(got))
 }
