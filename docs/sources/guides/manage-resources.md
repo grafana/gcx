@@ -1,5 +1,5 @@
 ---
-title: Manage resources workflows 
+title: Resource management workflows
 labels:
   products:
     - cloud
