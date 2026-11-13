@@ -429,7 +429,7 @@ cmdio.Info(cmd.ErrOrStderr(), "...")
 Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
 (see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
 
-They prefix with colored Unicode symbols (✔ ⚠ ✘ ℹ). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
+They prefix with colored Unicode symbols (✔ ⚠ ✘ ℹ), or ASCII (`[ok]` `[!]` `[x]` `[i]`) when the locale is not UTF-8. `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 
 ---
 

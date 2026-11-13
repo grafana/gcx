@@ -20,23 +20,23 @@ var (
 func Success(stdout io.Writer, message string, args ...any) {
 	msg := fmt.Sprintf(message, args...)
 
-	fmt.Fprintln(stdout, Green("✔ ")+msg)
+	fmt.Fprintln(stdout, Green(SuccessSymbol()+" ")+msg)
 }
 
 func Warning(stdout io.Writer, message string, args ...any) {
 	msg := fmt.Sprintf(message, args...)
 
-	fmt.Fprintln(stdout, Yellow("⚠ ")+msg)
+	fmt.Fprintln(stdout, Yellow(WarningSymbol()+" ")+msg)
 }
 
 func Error(stdout io.Writer, message string, args ...any) {
 	msg := fmt.Sprintf(message, args...)
 
-	fmt.Fprintln(stdout, Red("✘ ")+msg)
+	fmt.Fprintln(stdout, Red(ErrorSymbol()+" ")+msg)
 }
 
 func Info(stdout io.Writer, message string, args ...any) {
 	msg := fmt.Sprintf(message, args...)
 
-	fmt.Fprintln(stdout, Blue("ℹ ")+msg)
+	fmt.Fprintln(stdout, Blue(InfoSymbol()+" ")+msg)
 }

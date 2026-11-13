@@ -39,9 +39,12 @@ depends = ["tests:cli", "tests:linter", "tests:install", "tests:tag"]
 # and friends from the developer's shell and flips confirm-prompt behaviour to
 # "requires --force", failing tests that exercise the prompts. CI has no such
 # env, so this keeps local runs honest.
+#
+# LC_ALL is pinned for the same reason: status symbols fall back to ASCII when
+# the locale is not UTF-8, and many tests assert the exact Unicode output.
 [tasks."tests:cli"]
 description = "Run CLI tests"
-env = { GCX_AGENT_MODE = "false" }
+env = { GCX_AGENT_MODE = "false", LC_ALL = "C.UTF-8" }
 run = "go test ./..."
 
 [tasks."tests:linter"]
