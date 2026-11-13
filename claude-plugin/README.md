@@ -78,6 +78,7 @@ canonical portable skill bundle.
 | `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
 | `debug-with-grafana` | Investigate with metrics, logs, and traces; use baseline candidates and trace diff to localize request regressions |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
+| `map-source-code` | Scan local repositories and link services to the repositories that build and deploy them and to the buckets, queues and tables they use, using the Knowledge Graph `sourcecode` schema |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
