@@ -19,9 +19,7 @@ It defines no checks of its own. Run the checks where they already live:
   covers code that repeats something the repo already has.
 - AGENTS.md, for the compliance hierarchy. Check all four levels in order.
 
-Authors run the same triggers before they push. Read their reasoning and earlier
-review replies before deciding whether a finding was missed or deliberately
-deferred.
+Authors run the same triggers before they push.
 
 ## The correctness pass
 
@@ -41,14 +39,10 @@ gets the same treatment either way.
 
 ## What blocks a merge here
 
-These criteria determine severity in both local and unattended reviews. Reserve
-the blocking tier for demonstrated correctness or safety defects, regressions,
-and violations of the repository's hard rules:
+Use these blocking criteria in both local and unattended reviews:
 
-**A correctness or safety defect in reachable behaviour.** Show the input, call
-path and materially incorrect result, failed operation or unsafe effect. A hypothetical
-future server response or refactor is not evidence of a current defect; follow
-the evidence discipline above.
+**A demonstrated correctness or safety defect.** Follow the evidence discipline
+above.
 
 **A violation of `CONSTITUTION.md` or `DESIGN.md`.** Two cases recur. The agent
 output contract: a command declared `finite` in
@@ -69,13 +63,9 @@ queue when the flow exits early, where the shell then reads it. Where a diff add
 a control for this, check that it runs on every exit path and not only on
 success.
 
-Naming, structure, duplication and test shape alone do not block a merge,
-including findings from T5 and T12. Label small optional improvements `nit` and
-larger optional work `followup`. Use `recommended` for a demonstrated issue worth
-fixing that does not meet the blocking criteria. If a structural concern also
-causes a blocking defect, require the smallest fix for that defect and keep any
-broader cleanup optional. Cite the specific rule for a claimed CONSTITUTION or
-DESIGN violation.
+Naming, structure, duplication and test shape alone are optional, including
+T5/T12. Require the smallest fix for a blocking defect and keep broader cleanup
+optional. Cite the specific CONSTITUTION or DESIGN rule for claimed violations.
 
 ## Do not report
 
@@ -146,31 +136,21 @@ which. Otherwise five blocking findings look heavier than the change deserves.
 
 ## Reviewing another round
 
-Read earlier reviews and author replies, including resolved discussions when
-available. The workflow's previous-findings list contains only excerpts from
-unresolved inline threads; it omits resolved decisions and summary-only findings.
-Use it as a starting point, not a complete history. State any material gap in
-the history you could read.
+Read earlier findings and replies; workflow excerpts omit resolved and summary-only
+findings. Disclose material history gaps. Compare the previous reviewed commit
+with the head, retaining the full correctness pass; identify the introducing
+change before calling something a regression from a fix.
 
-Compare the previous reviewed commit with the current PR head using
-`git diff <previous-review-commit>..<review-head>`. Keep the full correctness
-pass, but distinguish a regression introduced by a fix from an older issue
-newly noticed. Identify the introducing change before blaming a fix.
+Summarize earlier findings as addressed, still present, withdrawn or deferred.
+Link existing threads instead of reposting. Preserve agreed deferrals unless new
+evidence meets the blocking criteria. Resolution alone does not prove a fix.
 
-For earlier findings, say which are addressed, still present, withdrawn as
-incorrect, or explicitly deferred. Summarize a still-open finding with a link
-to its existing thread instead of posting it again. Preserve an agreed deferral
-unless new evidence meets the blocking criteria; explain that evidence before
-changing the severity. A resolved thread alone does not prove a bug was fixed.
-
-If the author implemented the previous remedy and it was insufficient,
-acknowledge that the advice was incomplete and show the remaining failure.
-Recheck the full call path, existing tests and author rationale before replacing
-the remedy. Do not require a broader refactor merely because it is now preferred.
+If the author followed insufficient advice, acknowledge it, demonstrate the
+remaining failure and recheck the call path before changing the remedy.
 
 ## When a workflow invoked this
 
-Six things change when no human is present. The rest of the review is the same.
+Five things change when no human is present. The rest of the review is the same.
 
 - **Deliver without asking.** The offer below applies when a human can answer.
   In CI nobody can, and the trigger is the consent. Deliver through *Workflow
@@ -181,26 +161,19 @@ Six things change when no human is present. The rest of the review is the same.
 - **Drop what you could not establish.** Do not label it unverified. No author
   can answer a speculative finding here, and a wrong one makes them disprove it
   in public.
-- **Use tighter comment caps**: at most three blocking inline comments, and
-  eight inline comments in total. Summarize any additional established blockers
-  in the review body so the author can address them in the same round. Drop
-  excess optional findings.
+- **Use tighter comment caps**: up to three blocking inline comments and eight inline
+  comments total; summarize additional established blockers in the review body
+  and drop excess optional findings.
 - **Close the summary with this exact line**:
 
   > Comment `@claude review` for a fresh review.
 
-- **Keep the same severity labels.** `recommended`, `followup` and `nit` remain
-  non-blocking. Running unattended does not increase a finding's impact.
-
-Silence is a valid result. If there are no findings, say so in one line; on a
-later round, also summarize prior findings' dispositions. Never invent a finding.
+Silence is a valid result. If there are no findings, say so in one line. Never
+invent a finding.
 
 Silence is not the same as a pass you did not run. If your correctness pass
 could not complete, say that instead. Never deliver "no findings" for a review
 that did not happen.
-
-Follow [Reviewing another round](#reviewing-another-round) whenever earlier
-reviews exist.
 
 ### Workflow delivery
 
@@ -213,9 +186,9 @@ Return the review as this run's structured output:
 `body` is the summary. `comments` carries the inline findings, mapped exactly as
 in *Mechanics* below: `path`, `line`, `side` and `body` on each one, plus
 `start_line` and `start_side` for a range. A complete review with no new inline
-findings keeps an empty `comments` array and reports any prior findings' status
-in `body`. If your correctness pass could not complete, return `{"review": null}`;
-that is not a clean review, and the workflow fails the run instead of publishing one.
+findings keeps an empty `comments` array. If your correctness pass could not
+complete, return `{"review": null}`; that is not a clean review, and the workflow
+fails the run instead of publishing one.
 
 Anchor every line against the **PR head**, not the tree you are standing in.
 A workflow run checks out the merge ref, and its line numbers can differ from
@@ -297,9 +270,7 @@ a document is too long to read in a review thread.
 
 - Write two to four sentences. Start with the mechanism. End with the ask.
 - Turn "what would overturn this" into a question the author can answer.
-- Start with a bold label that says what the author must do. The summary names
-  the blocking findings and prior findings' dispositions. Without a label, the
-  author has to work out which of the other comments they must act on.
+- Start with a bold label that says what the author must do.
 - Use a `suggestion` block for any concrete one-line change.
 - State conclusions, not process. "The extraction preserves every check in both
   paths: state → … → all 8 `Result` fields" helps the author. "I checked this
@@ -318,9 +289,9 @@ judgement:
 | Section | Label | Means |
 |---|---|---|
 | 2 Blocking | `**required**` | fix before merge |
-| 3 Other findings | `**recommended**` | should fix, does not block the merge |
-| 3 Other findings | `**nit**` | take it or leave it |
-| 3 Other findings | `**followup**` | fine to defer to its own PR |
+| 3 Other findings | `**recommended**` | demonstrated non-blocking issue; should fix |
+| 3 Other findings | `**nit**` | small optional improvement; take it or leave it |
+| 3 Other findings | `**followup**` | larger optional work; defer to its own PR |
 
 Written out:
 
