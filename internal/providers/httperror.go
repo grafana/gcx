@@ -47,7 +47,7 @@ func IsPluginRouteDenied(statusCode int, body []byte) bool {
 		return false
 	}
 	var errResp ErrorResponse
-	return json.Unmarshal(body, &errResp) == nil && errResp.ErrorMessage() == pluginRouteDeniedMessage
+	return json.Unmarshal(body, &errResp) == nil && strings.HasPrefix(errResp.ErrorMessage(), pluginRouteDeniedMessage)
 }
 
 // IsPluginProxyUnavailable reports whether a response is Grafana's plugin proxy
@@ -65,15 +65,8 @@ func IsPluginProxyUnavailable(statusCode int, body []byte) bool {
 		return false
 	}
 	msg := errResp.ErrorMessage()
-	for _, m := range [...]string{
-		pluginRouteDeniedMessage,
-		"You'll need additional permissions to perform this action.",
-	} {
-		if strings.HasPrefix(msg, m) {
-			return true
-		}
-	}
-	return false
+	return strings.HasPrefix(msg, pluginRouteDeniedMessage) ||
+		strings.HasPrefix(msg, "You'll need additional permissions to perform this action.")
 }
 
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud

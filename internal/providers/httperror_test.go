@@ -163,6 +163,7 @@ func TestIsPluginRouteDenied(t *testing.T) {
 		want bool
 	}{
 		{"route denied", http.StatusForbidden, `{"message":"plugin proxy route access denied"}`, true},
+		{"route denied with detail", http.StatusForbidden, `{"message":"plugin proxy route access denied: missing permission"}`, true},
 		{"backend 403", http.StatusForbidden, `{"message":"forbidden"}`, false},
 		{"route message on another status", http.StatusUnauthorized, `{"message":"plugin proxy route access denied"}`, false},
 		{"plain text body", http.StatusForbidden, "plugin proxy route access denied", false},
@@ -236,6 +237,7 @@ func TestIsPluginProxyUnavailable(t *testing.T) {
 		{"plugin disabled", 404, `{"message":"Plugin is not enabled"}`, false},
 		{"no route", 404, `{"message":"plugin route match not found"}`, false},
 		{"route denied", 403, `{"message":"plugin proxy route access denied"}`, true},
+		{"route denied with detail", 403, `{"message":"plugin proxy route access denied: missing permission"}`, true},
 		{"plugin access denied", 403, `{"title":"Access denied","message":"You'll need additional permissions to perform this action. Permissions needed: plugins.app:access"}`, true},
 		{"backend not found", 404, `{"code":"not_found","error":"rule not found: x"}`, false},
 		{"backend forbidden", 403, `{"code":"forbidden","error":"nope"}`, false},
