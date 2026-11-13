@@ -58,7 +58,7 @@ func (b *rulesBackend) Recommendation(ctx context.Context, metric string) (metri
 		}
 		return metricRecommendation{}, err
 	}
-	if detail.Verdict == nil {
+	if detail.Verdict == nil || detail.Verdict.RecommendedAction == "" {
 		return metricRecommendation{}, noRecommendationError(metric)
 	}
 	rec := metricRecommendation{Metric: metric, Action: detail.Verdict.RecommendedAction}

@@ -346,6 +346,18 @@ func TestMetricsGet(t *testing.T) {
 		})
 	})
 
+	t.Run("catalog metric without an action is not found", func(t *testing.T) {
+		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
+			t.Helper()
+			f.seed("default", ruleB).recommend("default", "b_metric", fakeRec{Action: ""})
+
+			res := run("metrics", "get", "b_metric")
+			require.ErrorIs(t, res.err, adapter.ErrNotFound)
+			assert.Contains(t, res.err.Error(), "metric b_metric")
+			assert.Empty(t, res.stdout)
+		})
+	})
+
 	t.Run("catalog metric without a rule", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
