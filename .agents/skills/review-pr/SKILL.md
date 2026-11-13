@@ -19,8 +19,9 @@ It defines no checks of its own. Run the checks where they already live:
   covers code that repeats something the repo already has.
 - AGENTS.md, for the compliance hierarchy. Check all four levels in order.
 
-Authors run the same triggers before they push. Assume they did. Treat what you
-find as missed, not as dismissed.
+Authors run the same triggers before they push. Read their reasoning and earlier
+review replies before deciding whether a finding was missed or deliberately
+deferred.
 
 ## The correctness pass
 
@@ -40,8 +41,14 @@ gets the same treatment either way.
 
 ## What blocks a merge here
 
-The severity split matters more than any single finding. It decides what the
-author must act on. Reserve the blocking tier for four things.
+These criteria determine severity in both local and unattended reviews. Reserve
+the blocking tier for demonstrated correctness or safety defects, regressions,
+and violations of the repository's hard rules:
+
+**A correctness or safety defect in reachable behaviour.** Show the input, call
+path and materially incorrect result, failed operation or unsafe effect. A hypothetical
+future server response or refactor is not evidence of a current defect; follow
+the evidence discipline above.
 
 **A violation of `CONSTITUTION.md` or `DESIGN.md`.** Two cases recur. The agent
 output contract: a command declared `finite` in
@@ -62,8 +69,13 @@ queue when the flow exits early, where the shell then reads it. Where a diff add
 a control for this, check that it runs on every exit path and not only on
 success.
 
-Report findings about naming, structure, duplication, and test shape as nits.
-Do that even when the argument for them is strong.
+Naming, structure, duplication and test shape alone do not block a merge,
+including findings from T5 and T12. Label small optional improvements `nit` and
+larger optional work `followup`. Use `recommended` for a demonstrated issue worth
+fixing that does not meet the blocking criteria. If a structural concern also
+causes a blocking defect, require the smallest fix for that defect and keep any
+broader cleanup optional. Cite the specific rule for a claimed CONSTITUTION or
+DESIGN violation.
 
 ## Do not report
 
@@ -75,46 +87,48 @@ Do that even when the argument for them is strong.
 
 ## Report shape
 
-Use bold text for headings in the report, not markdown headings. Each section should be at most two sentences.
+Use bold text for headings in the report, not markdown headings. Keep Intent and
+Verdict to at most two sentences each; give each finding only the explanation
+needed to establish its impact.
 
-1. **Intent.** The problem, and how the change solves it. Say whether the
-   approach is sound before you list what is wrong with it. Do not give an opinion non whether the approach is sound or not here - that will become obvious from the rest. Keep this as short as possible.
-2. **Blocking.** Fix before merge: correctness bugs, regressions to shipped
-   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md. Also: Behaviour that changes inside a described refactor. A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
+1. **Intent.** The problem and how the change solves it. Save the judgement for
+   the verdict.
+2. **Blocking.** Findings that meet [What blocks a merge here](#what-blocks-a-merge-here),
+   worst first. If nothing blocks the merge, omit this section.
 3. **Other findings.** Everything that does not block, worst first. Include
    documentation that contradicts the code it describes. Give each finding the
    space its argument needs and no more. Some take a paragraph. Most take a
    line. The label shows the difference, so a one-line nit and a
    worth-fixing defect can share the list.
-5. **Fix summary** One combined remedy. Omit this section when section
+4. **Fix summary.** One combined remedy. Omit this section when sections
    2 and 3 are empty.
-6. **Verdict.** Approve or request changes. Name the findings that decide it. If
-   you would merge a reduced version, say so, and say how much smaller.
+5. **Verdict.** Approve when no blocking findings remain; otherwise request
+   changes and name the findings that decide it. In an unattended run, omit the
+   approval verdict and state only which findings block and which are optional.
 
 ## Rules that keep the report honest
 
 **One finding per code unit, not per check.** Name the symbol, file, or flag.
-Two findings that name the same symbol are one finding. Combine them and list
-every check the unit trips. State the count as evidence. Never split one unit
-across sections. A split unit turns one problem into five complaints about the
-same file.
+Combine related concerns about the same symbol and explain their shared cause.
+Keep the required remedy distinct from optional cleanup; sharing a function
+does not give every suggestion the highest severity.
 
-**Rank section 4 by lock-in.** Lock-in is what the thing costs to remove after
-release:
+**Rank structural findings in Other findings by lock-in.** Lock-in is what the
+thing costs to remove after release; it orders optional work, not its severity:
 
 1. Exported API with fewer than two callers
 2. User-visible surface: flags, output shape, command paths
 3. Internal structure: duplicate types, thin wrappers, copied code
 4. Tests and unreachable branches
 
-Break ties by line count. Cap the section at six findings. Move the
-lowest-ranked ones to section 3 as one-line nits. The ranking is mechanical on
-purpose, so two reviewers produce the same order.
+Break ties by line count. Cap Other findings at six and omit the lowest-ranked
+optional items. Caps limit the report, not the correctness pass, and are never
+quotas to fill.
 
-**Give one remedy, not one per finding.** Section 5 is an ordered list of
-deletions and merges. Together they resolve everything in section 4. State the
-resulting size change against the real diff size. The size is evidence for the
-whole set. It is not a finding, and it does not belong in section 4.
+**Give one combined fix summary.** List the smallest changes that address the
+findings, separating required fixes from optional work. When proposing a
+reduction, state the resulting size change against the real diff size. Size is
+supporting evidence, not a finding by itself.
 
 **Say what would overturn each blocking finding.** This makes you look for the
 author's reasoning before you write. It also gives the author something specific
@@ -130,6 +144,30 @@ Judge the diff against its problem, not against a line count.
 behaviour outranks a violation a maintainer can waive in the PR. Say which is
 which. Otherwise five blocking findings look heavier than the change deserves.
 
+## Reviewing another round
+
+Read earlier reviews and author replies, including resolved discussions when
+available. The workflow's previous-findings list contains only excerpts from
+unresolved inline threads; it omits resolved decisions and summary-only findings.
+Use it as a starting point, not a complete history. State any material gap in
+the history you could read.
+
+Compare the previous reviewed commit with the current PR head using
+`git diff <previous-review-commit>..<review-head>`. Keep the full correctness
+pass, but distinguish a regression introduced by a fix from an older issue
+newly noticed. Identify the introducing change before blaming a fix.
+
+For earlier findings, say which are addressed, still present, withdrawn as
+incorrect, or explicitly deferred. Summarize a still-open finding with a link
+to its existing thread instead of posting it again. Preserve an agreed deferral
+unless new evidence meets the blocking criteria; explain that evidence before
+changing the severity. A resolved thread alone does not prove a bug was fixed.
+
+If the author implemented the previous remedy and it was insufficient,
+acknowledge that the advice was incomplete and show the remaining failure.
+Recheck the full call path, existing tests and author rationale before replacing
+the remedy. Do not require a broader refactor merely because it is now preferred.
+
 ## When a workflow invoked this
 
 Six things change when no human is present. The rest of the review is the same.
@@ -143,24 +181,26 @@ Six things change when no human is present. The rest of the review is the same.
 - **Drop what you could not establish.** Do not label it unverified. No author
   can answer a speculative finding here, and a wrong one makes them disprove it
   in public.
-- **Use tighter caps**: at most three blocking findings, and eight comments in
-  total. Drop the lowest-ranked findings.
+- **Use tighter comment caps**: at most three blocking inline comments, and
+  eight inline comments in total. Summarize any additional established blockers
+  in the review body so the author can address them in the same round. Drop
+  excess optional findings.
 - **Close the summary with this exact line**:
 
   > Comment `@claude review` for a fresh review.
 
-- **Upgrade `recommended` findings to blocking.** A human reviewer can weigh a
-  should-fix in conversation. Nobody is here to do that, so a finding is either
-  worth the author's attention or it is a nit.
+- **Keep the same severity labels.** `recommended`, `followup` and `nit` remain
+  non-blocking. Running unattended does not increase a finding's impact.
 
-Silence is a valid result. If there are no findings, say so in one line and
-deliver that line. Never invent a finding.
+Silence is a valid result. If there are no findings, say so in one line; on a
+later round, also summarize prior findings' dispositions. Never invent a finding.
 
 Silence is not the same as a pass you did not run. If your correctness pass
 could not complete, say that instead. Never deliver "no findings" for a review
 that did not happen.
 
-If the prompt lists a previous review commit and findings, use them as context: run `git diff <previous review commit>..HEAD` to check whether each earlier finding was actually addressed, do not post a previous finding again as a new comment, and say in the summary which earlier findings are addressed and which still stand.
+Follow [Reviewing another round](#reviewing-another-round) whenever earlier
+reviews exist.
 
 ### Workflow delivery
 
@@ -172,10 +212,10 @@ Return the review as this run's structured output:
 
 `body` is the summary. `comments` carries the inline findings, mapped exactly as
 in *Mechanics* below: `path`, `line`, `side` and `body` on each one, plus
-`start_line` and `start_side` for a range. A complete review that found nothing
-keeps its one-line summary and an empty `comments` array. If your correctness
-pass could not complete, return `{"review": null}`; that is not a clean review,
-and the workflow fails the run instead of publishing one.
+`start_line` and `start_side` for a range. A complete review with no new inline
+findings keeps an empty `comments` array and reports any prior findings' status
+in `body`. If your correctness pass could not complete, return `{"review": null}`;
+that is not a clean review, and the workflow fails the run instead of publishing one.
 
 Anchor every line against the **PR head**, not the tree you are standing in.
 A workflow run checks out the merge ref, and its line numbers can differ from
@@ -246,9 +286,9 @@ GitHub rejects lines outside every hunk. A `suggestion` block replaces exactly
 the lines you anchor it to, so match the indentation of the target. Go files use
 tabs.
 
-Report sections split like this. Sections 2, 3, and 4 become inline comments at
-the symbol each one names. Sections 1, 5, and 6 have no line to attach to, so
-they become the summary body.
+Blocking and Other findings become inline comments at the symbols they name,
+subject to the workflow comment caps. Intent, Fix summary and Verdict become
+the summary body.
 
 ### Rewrite the findings as comments
 
@@ -258,8 +298,8 @@ a document is too long to read in a review thread.
 - Write two to four sentences. Start with the mechanism. End with the ask.
 - Turn "what would overturn this" into a question the author can answer.
 - Start with a bold label that says what the author must do. The summary names
-  only the blocking findings. Without a label, the author has to work out which
-  of the other comments they must act on.
+  the blocking findings and prior findings' dispositions. Without a label, the
+  author has to work out which of the other comments they must act on.
 - Use a `suggestion` block for any concrete one-line change.
 - State conclusions, not process. "The extraction preserves every check in both
   paths: state → … → all 8 `Result` fields" helps the author. "I checked this
@@ -268,8 +308,7 @@ a document is too long to read in a review thread.
   line at the end says more.
 
 When one finding covers several sites, anchor it at one site and name the others
-in the text (`also flow.go:160, gcom.go:145`). Ten comments make a review.
-Thirty make noise.
+in the text (`also flow.go:160, gcom.go:145`).
 
 ### Labels
 
@@ -281,22 +320,21 @@ judgement:
 | 2 Blocking | `**required**` | fix before merge |
 | 3 Other findings | `**recommended**` | should fix, does not block the merge |
 | 3 Other findings | `**nit**` | take it or leave it |
-| 4 Over-engineering | `**followup**` | fine to defer to its own PR |
+| 3 Other findings | `**followup**` | fine to defer to its own PR |
 
 Written out:
 
 > **required** — this returns on every `readLine` error, not just the `Close`
 > one the comment describes. …
 
-Two adjustments. Label a section 4 finding `**nit**` when it is small enough to
-fix in the same sitting. Where the author may ignore a `**nit**`, say so in the
+Where the author may ignore a `**nit**` or defer a `**followup**`, say so in the
 text as well as the label.
 
 Say what the labels mean once, in the summary body, with the counts. The author
 wants the shape of the review before the detail:
 
-> comments below are prefixed **required** (2), **recommended** (4),
-> **followup** (2), **nit** (2)
+> comments below are prefixed **required** (2), **recommended** (2),
+> **followup** (1), **nit** (1)
 
 Only label a comment `**required**` when it sits in section 2 of the report. One
 inflated label teaches the author to ignore every label in every later review.
