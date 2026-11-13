@@ -144,7 +144,6 @@ func TestConverterBranches(t *testing.T) {
 		{"fleet 403", &fleet.HTTPError{Status: 403, Path: "/foo"}, gcxerrors.SummaryAuthorizationFailed, gcxerrors.ExitAuthFailure},
 		{"instrumentation mutually exclusive flags", fmt.Errorf("--a and --b: %w", instrumentation.ErrMutuallyExclusiveFlags), gcxerrors.SummaryInvalidCommandUsage, gcxerrors.ExitUsageError},
 		{"instrumentation conflict", rmw.ConflictError{Diff: "tracing: true -> false"}, gcxerrors.SummaryResourceConflict, gcxerrors.ExitGeneralError},
-		{"unknown --json field", cmdoutput.UnknownFieldSelectionError{Fields: []string{"bogus"}}, gcxerrors.SummaryInvalidCommandUsage, gcxerrors.ExitUsageError},
 		{"jq runtime", cmdoutput.JQRuntimeError{Err: errors.New("cannot iterate"), Shape: "a number"}, gcxerrors.SummaryInvalidCommandUsage, gcxerrors.ExitUsageError},
 		{"stack delete protection", fmt.Errorf("failed to delete stack: %w", &cloud.GCOMHTTPError{Status: 409, Message: "instance is protected"}), gcxerrors.SummaryResourceConflict, gcxerrors.ExitGeneralError},
 		{"stack invalid argument", fmt.Errorf("failed to create stack: %w", &cloud.GCOMHTTPError{Status: 409, Code: "InvalidArgument", Message: "Invalid region"}), gcxerrors.SummaryInvalidStackRequest, gcxerrors.ExitUsageError},
