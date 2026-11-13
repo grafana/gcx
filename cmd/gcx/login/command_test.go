@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/huh/v2"
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
@@ -2619,7 +2620,7 @@ func TestGrafanaAuthOptions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			options := grafanaAuthOptions(tt.target, tt.hasMTLS, tt.remote)
+			options := grafanaAuthOptions(tt.target, tt.hasMTLS, tt.remote, nil)
 			values := make([]string, 0, len(options))
 			for _, option := range options {
 				values = append(values, option.Value)
@@ -2654,4 +2655,140 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	require.NoError(t, runCloudOAuth(context.Background(), &opts))
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
+}
+
+func TestLoginOptsValidateWeb(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		opts          loginOpts
+		wantErrSubstr string
+		wantOAuth     bool
+		wantWeb       bool
+	}{
+		{
+			name:    "--web alone lets the target decide",
+			opts:    loginOpts{Web: true},
+			wantWeb: true,
+		},
+		{
+			name:    "--web keeps --oauth-manual for either login",
+			opts:    loginOpts{Web: true, OAuthManual: true},
+			wantWeb: true,
+		},
+		{
+			name:      "--web --cloud is Grafana Cloud OAuth",
+			opts:      loginOpts{Web: true, Cloud: true},
+			wantOAuth: true,
+		},
+		{
+			name: "explicit OIDC provider",
+			opts: loginOpts{OIDCIssuer: "https://idp.example.com", OIDCClientID: "client"},
+		},
+		{
+			name:          "issuer without client ID",
+			opts:          loginOpts{Web: true, OIDCIssuer: "https://idp.example.com"},
+			wantErrSubstr: "incomplete OIDC options",
+		},
+		{
+			name:          "client ID without issuer",
+			opts:          loginOpts{OIDCClientID: "client"},
+			wantErrSubstr: "incomplete OIDC options",
+		},
+		{
+			name:          "explicit OIDC provider with --cloud",
+			opts:          loginOpts{OIDCIssuer: "https://idp.example.com", OIDCClientID: "client", Cloud: true},
+			wantErrSubstr: "conflicting authentication methods",
+		},
+		{
+			name:          "with --oauth",
+			opts:          loginOpts{Web: true, OAuth: true},
+			wantErrSubstr: "conflicting authentication methods",
+		},
+		{
+			name:          "with --token",
+			opts:          loginOpts{Web: true, Token: "glsa_xxx"},
+			wantErrSubstr: "conflicting authentication methods",
+		},
+		{
+			name:          "with --basic-auth",
+			opts:          loginOpts{Web: true, BasicAuth: true},
+			wantErrSubstr: "conflicting authentication methods",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opts := tt.opts
+			opts.IO.RegisterCustomCodec("text", &loginTextCodec{})
+			opts.IO.DefaultFormat("text")
+			opts.IO.BindFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+
+			err := opts.Validate(nil)
+			if tt.wantErrSubstr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrSubstr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantOAuth, opts.OAuth, "OAuth")
+			assert.Equal(t, tt.wantWeb, opts.Web, "Web")
+		})
+	}
+}
+
+func TestDefaultOIDCFromContext(t *testing.T) {
+	t.Parallel()
+
+	oidcCtx := &config.Context{Grafana: &config.GrafanaConfig{
+		AuthMethod:   "oidc",
+		OIDCIssuer:   "https://idp.example.com",
+		OIDCClientID: "client",
+		OIDCScopes:   "openid offline_access email",
+	}}
+	flags := &loginOpts{}
+	defaultOIDCFromContext(flags, oidcCtx)
+	assert.True(t, flags.web())
+	assert.Equal(t, []string{"openid", "offline_access", "email"}, flags.oidcScopes)
+	assert.Equal(t, "https://idp.example.com", flags.OIDCIssuer)
+	assert.Equal(t, "client", flags.OIDCClientID)
+
+	for name, ctx := range map[string]*config.Context{
+		"nil context":   nil,
+		"no grafana":    {},
+		"oauth context": {Grafana: &config.GrafanaConfig{AuthMethod: "oauth", OIDCIssuer: "https://stale.example.com"}},
+	} {
+		flags := &loginOpts{}
+		defaultOIDCFromContext(flags, ctx)
+		assert.False(t, flags.web(), name)
+	}
+}
+
+func TestGrafanaAuthOptionsWithSSO(t *testing.T) {
+	t.Parallel()
+	sso := []internalauth.GrafanaSSOLogin{{ID: "azuread", Name: "Company SSO"}}
+	values := func(options []huh.Option[string]) []string {
+		out := make([]string, 0, len(options))
+		for _, o := range options {
+			out = append(out, o.Value)
+		}
+		return out
+	}
+	assert.Equal(t, []string{"oidc:azuread", "token", "basic"},
+		values(grafanaAuthOptions(internallogin.TargetOnPrem, false, false, sso)))
+	assert.Equal(t, []string{"mtls", "oidc:azuread", "token", "basic"},
+		values(grafanaAuthOptions(internallogin.TargetOnPrem, true, false, sso)))
+	assert.Equal(t, []string{"oidc:azuread", "token", "basic", "oauth", "oauth-manual"},
+		values(grafanaAuthOptions(internallogin.TargetUnknown, false, false, sso)))
+	assert.Equal(t, []string{"oauth", "oauth-manual", "token"},
+		values(grafanaAuthOptions(internallogin.TargetCloud, false, false, sso)), "Cloud keeps its own OAuth")
+
+	options := grafanaAuthOptions(internallogin.TargetOnPrem, false, false, sso)
+	assert.Equal(t, "Web login (browser)", options[0].Key)
+
+	two := []internalauth.GrafanaSSOLogin{{ID: "azuread", Name: "Company SSO"}, {ID: "okta", Name: "Partner SSO"}}
+	options = grafanaAuthOptions(internallogin.TargetOnPrem, false, false, two)
+	assert.Equal(t, "Web login (browser) – Company SSO", options[0].Key)
+	assert.Equal(t, "Web login (browser) – Partner SSO", options[1].Key)
 }

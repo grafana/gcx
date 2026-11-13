@@ -789,11 +789,24 @@ type GrafanaConfig struct {
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
 
-	// AuthMethod selects "oauth", "token", "basic", or "mtls" when no complete
+	// AuthMethod selects "oauth", "oidc", "token", "basic", or "mtls" when no complete
 	// runtime credential override supersedes it. Empty is valid for legacy configs
 	// and uses compatibility inference; consumers should use
 	// Context.EffectiveGrafanaAuthMethod instead of inspecting fields.
 	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
+
+	// OIDCIssuer is the issuer URL of the identity provider used by
+	// auth-method "oidc". The ID token is stored in OAuthToken and its refresh
+	// token in OAuthRefreshToken. Set automatically by `gcx login`.
+	OIDCIssuer string `json:"oidc-issuer,omitempty" yaml:"oidc-issuer,omitempty"`
+
+	// OIDCClientID is the public client ID registered at the identity
+	// provider for auth-method "oidc".
+	OIDCClientID string `json:"oidc-client-id,omitempty" yaml:"oidc-client-id,omitempty"`
+
+	// OIDCScopes is the space-separated scope list of the OIDC login. Token
+	// refreshes request the same scopes. Empty uses the gcx defaults.
+	OIDCScopes string `json:"oidc-scopes,omitempty" yaml:"oidc-scopes,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.

@@ -37,6 +37,24 @@ func TestExplicitGrafanaAuthMethodControlsRESTTransport(t *testing.T) {
 				assert.Empty(t, got.Username)
 			},
 		},
+		"OIDC talks to the Grafana server directly with refresh": {
+			grafana: GrafanaConfigFixture{config.GrafanaConfig{
+				AuthMethod:        "oidc",
+				OIDCIssuer:        "https://login.example.invalid/tenant/v2.0",
+				OIDCClientID:      "client",
+				OAuthToken:        "id-token",
+				OAuthRefreshToken: "refresh",
+				ProxyEndpoint:     proxy,
+				APIToken:          "stale-token",
+			}},
+			assert: func(t *testing.T, got config.NamespacedRESTConfig) {
+				t.Helper()
+				assert.False(t, got.IsOAuthProxy())
+				assert.Equal(t, server, got.Host)
+				assert.Empty(t, got.BearerToken)
+				assert.NotNil(t, got.WrapTransport)
+			},
+		},
 		"token ignores stale OAuth Basic and mTLS identity": {
 			grafana: GrafanaConfigFixture{config.GrafanaConfig{
 				AuthMethod:        "token",
@@ -242,6 +260,18 @@ func TestInvalidOrIncompleteExplicitGrafanaAuthFailsBeforeNetwork(t *testing.T) 
 			AuthMethod:    "oauth",
 			ProxyEndpoint: "https://assistant.example.invalid",
 			APIToken:      "must-not-fall-back",
+		},
+		"OIDC without issuer": {
+			AuthMethod:        "oidc",
+			OIDCClientID:      "client",
+			OAuthRefreshToken: "refresh-token",
+			APIToken:          "must-not-fall-back",
+		},
+		"OIDC without token material": {
+			AuthMethod:   "oidc",
+			OIDCIssuer:   "https://login.example.invalid/tenant/v2.0",
+			OIDCClientID: "client",
+			APIToken:     "must-not-fall-back",
 		},
 		"mTLS without private key": {
 			AuthMethod: "mtls",

@@ -93,6 +93,23 @@ type Inputs struct {
 	// from the browser address bar. It is mutually exclusive with
 	// OAuthCallbackPort.
 	OAuthManual bool
+	// UseWeb asks for a browser login and lets the target decide which:
+	// Grafana Cloud uses UseOAuth, every other Grafana uses UseOIDC. Run
+	// resolves it as soon as the target is known.
+	UseWeb bool
+	// UseOIDC logs in with a generic OIDC identity provider (authorization
+	// code + PKCE) and authenticates to Grafana with its ID token. Grafana
+	// must accept that token via [auth.jwt]. OAuthCallbackPort and OAuthManual
+	// apply to this flow as well.
+	UseOIDC      bool
+	OIDCIssuer   string
+	OIDCClientID string
+	// OIDCProvider restricts discovery to one Grafana SSO login route, e.g.
+	// "azuread", as chosen in the interactive menu.
+	OIDCProvider string
+	// OIDCScopes are the scopes to request; empty uses the gcx defaults.
+	// openid and offline_access are always added.
+	OIDCScopes []string
 	// Reader supplies the pasted redirect URL for OAuthManual. It is never
 	// defaulted to os.Stdin here: internal/login is UI-free (NC-001) and never
 	// touches process streams. CLI callers pass cmd.InOrStdin().
@@ -189,6 +206,15 @@ type Hooks struct {
 	// command path deterministic in tests without putting browser logic in cmd/.
 	NewCloudAuthFlow func(opts auth.GCOMOptions) CloudAuthFlow
 
+	// NewOIDCFlow constructs the generic OIDC login flow used by UseOIDC.
+	// Nil selects auth.NewOIDCFlow.
+	NewOIDCFlow func(opts auth.OIDCOptions) OIDCFlow
+
+	// DiscoverOIDCFn finds the OIDC issuer and client ID behind the Grafana
+	// server's SSO login when UseOIDC is set without them. Nil selects
+	// auth.DiscoverGrafanaOIDC with the login's TLS settings.
+	DiscoverOIDCFn func(ctx context.Context, server, provider string) (*auth.GrafanaOIDCProvider, error)
+
 	// ValidateFn overrides connectivity validation for testing.
 	// Returns the Grafana version string on success. When nil, the real
 	// Validate() is used.
@@ -260,7 +286,7 @@ var ErrCredentialPersistencePreflight = errors.New("OAuth login credential persi
 // render a post-login summary and persist auth-method metadata.
 type Result struct {
 	ContextName    string
-	AuthMethod     string // "oauth", "token", "basic", or "mtls"
+	AuthMethod     string // "oauth", "oidc", "token", "basic", or "mtls"
 	IsCloud        bool
 	HasCloudToken  bool
 	GrafanaVersion string
@@ -333,6 +359,11 @@ type AuthFlow interface {
 // CloudAuthFlow is implemented by auth.GCOMFlow.
 type CloudAuthFlow interface {
 	Run(ctx context.Context) (*auth.GCOMResult, error)
+}
+
+// OIDCFlow is implemented by auth.OIDCFlow.
+type OIDCFlow interface {
+	Run(ctx context.Context) (*auth.OIDCResult, error)
 }
 
 // CloudCredentialKind identifies which Cloud auth mechanism produced a token.
@@ -417,6 +448,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	opts.adoptResolvedOIDCProvider(grafanaCfg)
 	capture.SetLoginStage("validate")
 	if err := validateRuntimeOnlyBearerDestination(*opts, authMethod, grafanaCfg); err != nil {
 		return Result{}, err
@@ -508,7 +540,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 			// token without losing core access in the meantime.
 			warnCloudTokenUnvalidated(opts.Writer, capErr)
 
-		case !opts.mayOfferUnvalidatedSave():
+		case !opts.mayOfferUnvalidatedSave(err):
 			return Result{}, err
 
 		default:
@@ -525,7 +557,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if opts.PreserveStoredTLS && tempCtx.Grafana != nil {
 		tempCtx.Grafana.TLS = opts.StoredTLS
 	}
-	if opts.PreserveStoredProxyEndpoint && authMethod != "oauth" && tempCtx.Grafana != nil {
+	if opts.PreserveStoredProxyEndpoint && !authMethodSetsProxyEndpoint(authMethod) && tempCtx.Grafana != nil {
 		tempCtx.Grafana.ProxyEndpoint = opts.StoredProxyEndpoint
 	}
 
@@ -581,10 +613,10 @@ func probePathfinder(ctx context.Context, opts *Options, restCfg config.Namespac
 // OAuth resolves, the second call also compares the issuer-provided proxy that
 // will actually be persisted.
 func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resolved ...*config.GrafanaConfig) error {
-	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth && !opts.UseBasicAuth {
+	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth && !opts.UseOIDC && !opts.UseWeb && !opts.UseBasicAuth {
 		return nil
 	}
-	if authMethod != "" && authMethod != "token" && authMethod != "oauth" && authMethod != "basic" {
+	if authMethod != "" && authMethod != "token" && authMethod != "oauth" && authMethod != "oidc" && authMethod != "basic" {
 		return nil
 	}
 
@@ -611,7 +643,7 @@ func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resol
 		switch {
 		case authMethod == "oauth" && resolvedDestination != nil:
 			durable.ProxyEndpoint = resolvedDestination.ProxyEndpoint
-		case authMethod == "" && opts.UseOAuth && opts.GrafanaToken == "":
+		case authMethod == "" && (opts.UseOAuth || opts.UseWeb) && opts.GrafanaToken == "":
 			// OAuth supplies and persists its own proxy endpoint. Before the
 			// browser flow returns, defer this component to the post-auth check;
 			// TLS is already fully knowable and remains enforced here.
@@ -685,10 +717,33 @@ func preAuthTLS(opts Options) *config.TLS {
 		return nil
 	}
 	method := strings.ToLower(strings.TrimSpace(opts.ExistingGrafanaAuthMethod))
-	if opts.GrafanaToken != "" || opts.UseOAuth || opts.UseBasicAuth || (method != "" && method != "mtls") {
+	if opts.GrafanaToken != "" || opts.UseOAuth || opts.UseOIDC || opts.UseWeb || opts.UseBasicAuth || (method != "" && method != "mtls") {
 		return opts.TLS.ServerTrustOnly()
 	}
 	return opts.TLS
+}
+
+// GrafanaSSOLogins lists the SSO logins the Grafana server offers that gcx
+// can use, using the same TLS settings as the login.
+func GrafanaSSOLogins(ctx context.Context, opts Options) ([]auth.GrafanaSSOLogin, error) {
+	client, err := tlsAwareClient(ctx, preAuthTLS(opts))
+	if err != nil {
+		return nil, fmt.Errorf("TLS configuration: %w", err)
+	}
+	return auth.GrafanaSSOLogins(ctx, opts.Server, client)
+}
+
+// discoverGrafanaOIDC honours the DiscoverOIDCFn seam and otherwise probes the
+// server with the same pre-auth TLS view as target detection.
+func discoverGrafanaOIDC(ctx context.Context, opts Options) (*auth.GrafanaOIDCProvider, error) {
+	if opts.DiscoverOIDCFn != nil {
+		return opts.DiscoverOIDCFn(ctx, opts.Server, opts.OIDCProvider)
+	}
+	client, err := tlsAwareClient(ctx, preAuthTLS(opts))
+	if err != nil {
+		return nil, fmt.Errorf("TLS configuration: %w", err)
+	}
+	return auth.DiscoverGrafanaOIDC(ctx, opts.Server, opts.OIDCProvider, client)
 }
 
 // tlsAwareClient returns a TLS-aware *http.Client when tlsCfg is non-nil and
@@ -720,6 +775,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		return opts.StagedContext.Grafana.AuthMethod, opts.StagedContext.Grafana, nil
 	}
 
+	opts.resolveWebLogin()
 	authTLS := preAuthTLS(opts)
 	grafanaCfg := &config.GrafanaConfig{
 		Server:        opts.Server,
@@ -806,6 +862,12 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		// once: retries hit the StagedContext cache above and skip OAuth.
 		announceOAuthLogin(w, result, opts.CloudSignup)
 
+	case opts.UseOIDC:
+		if err := resolveOIDCAuth(ctx, opts, grafanaCfg); err != nil {
+			return "", nil, err
+		}
+		method = "oidc"
+
 	case authTLS != nil && (len(authTLS.CertData) > 0 || authTLS.CertFile != ""):
 		// mTLS-only auth: the client certificate authenticates at the transport
 		// layer (e.g. Teleport proxy). No Grafana token or OAuth needed.
@@ -834,6 +896,70 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 	}
 
 	return method, grafanaCfg, nil
+}
+
+// resolveOIDCAuth runs the OIDC browser login and records its tokens and
+// provider on grafanaCfg. Without an explicit issuer and client ID it first
+// discovers them, best effort, from the Grafana server's SSO login.
+func resolveOIDCAuth(ctx context.Context, opts Options, grafanaCfg *config.GrafanaConfig) error {
+	if opts.OAuthManual && opts.Reader == nil {
+		return errors.New("manual OIDC login requires an input reader")
+	}
+	checkPersistence := opts.CheckCredentialPersistence
+	if checkPersistence == nil {
+		checkPersistence = config.CheckOAuthCredentialPersistence
+	}
+	capture.SetLoginStage("credentials")
+	if err := checkPersistence(); err != nil {
+		return fmt.Errorf("%w: %w", ErrCredentialPersistencePreflight, err)
+	}
+	w := opts.Writer
+	if w == nil {
+		w = io.Discard
+	}
+	issuer, clientID, scopes := opts.OIDCIssuer, opts.OIDCClientID, opts.OIDCScopes
+	if issuer == "" || clientID == "" {
+		provider, err := discoverGrafanaOIDC(ctx, opts)
+		if err != nil {
+			return &OIDCDiscoveryError{Server: opts.Server, Cause: err}
+		}
+		issuer, clientID, scopes = provider.Issuer, provider.ClientID, provider.Scopes
+		fmt.Fprintf(w, "Using the identity provider of Grafana's %s login: %s (client %s)\n", provider.Provider, issuer, clientID)
+	}
+	scopes = auth.NormalizeOIDCScopes(scopes)
+	newFlow := opts.NewOIDCFlow
+	if newFlow == nil {
+		newFlow = func(o auth.OIDCOptions) OIDCFlow { return auth.NewOIDCFlow(o) }
+	}
+	capture.SetLoginStage("browser")
+	result, err := newFlow(auth.OIDCOptions{
+		Issuer:   issuer,
+		ClientID: clientID,
+		Scopes:   scopes,
+		Writer:   w,
+		Reader:   opts.Reader,
+		Port:     opts.OAuthCallbackPort,
+		Manual:   opts.OAuthManual,
+	}).Run(ctx)
+	if err != nil {
+		return fmt.Errorf("OIDC login failed: %w", err)
+	}
+	grafanaCfg.OAuthToken = result.IDToken
+	grafanaCfg.OAuthRefreshToken = result.RefreshToken
+	grafanaCfg.OAuthTokenExpiresAt = result.ExpiresAt
+	grafanaCfg.OIDCIssuer = issuer
+	grafanaCfg.OIDCClientID = clientID
+	grafanaCfg.OIDCScopes = strings.Join(scopes, " ")
+	// The ID token is sent to the Grafana server directly; a proxy
+	// endpoint from the environment does not apply.
+	grafanaCfg.ProxyEndpoint = ""
+	grafanaCfg.AuthMethod = "oidc"
+	if result.Email != "" {
+		fmt.Fprintf(w, "\n✔ Signed in to %s as %s\n", issuer, auth.StripControlChars(result.Email))
+	} else {
+		fmt.Fprintf(w, "\n✔ Signed in to %s\n", issuer)
+	}
+	return nil
 }
 
 // resolveCloudAuth builds the cloud auth entry for Cloud targets (step 5),
@@ -880,9 +1006,47 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, 
 // hatch that requires explicit confirmation. Signup never asks it: a person who
 // just created an account cannot judge a connection that failed validation, and
 // the stack it names exists either way, so `gcx login` can connect it once it
-// answers.
-func (opts *Options) mayOfferUnvalidatedSave() bool {
+// answers. An ID token that Grafana rejects is never saved: the fix is on the
+// server, and the saved context could not work.
+func (opts *Options) mayOfferUnvalidatedSave(validationErr error) bool {
+	if _, rejected := errors.AsType[*OIDCTokenRejectedError](validationErr); rejected {
+		return false
+	}
 	return !opts.Yes && !opts.CloudSignup && !agent.IsAgentMode()
+}
+
+// resolveWebLogin turns UseWeb into the browser login that fits the resolved
+// target: Grafana Cloud's OAuth, or the OIDC login of a self-hosted Grafana.
+// opts.Target must already be resolved.
+func (opts *Options) resolveWebLogin() {
+	if !opts.UseWeb || opts.UseOAuth || opts.UseOIDC {
+		return
+	}
+	if opts.Target == TargetCloud {
+		opts.UseOAuth = true
+		return
+	}
+	opts.UseOIDC = true
+}
+
+// authMethodSetsProxyEndpoint reports whether the login itself decides the
+// persisted proxy endpoint: OAuth stores the issuer's proxy and OIDC talks to
+// the Grafana server directly, so neither keeps a stored or runtime value.
+func authMethodSetsProxyEndpoint(authMethod string) bool {
+	return authMethod == "oauth" || authMethod == "oidc"
+}
+
+// adoptResolvedOIDCProvider records the provider that an OIDC login used, also
+// one chosen by --web, so validation can name it and sentinel retries reuse it
+// instead of discovering it again.
+func (opts *Options) adoptResolvedOIDCProvider(grafanaCfg *config.GrafanaConfig) {
+	if grafanaCfg == nil || grafanaCfg.AuthMethod != "oidc" {
+		return
+	}
+	opts.UseOIDC = true
+	opts.OIDCIssuer = grafanaCfg.OIDCIssuer
+	opts.OIDCClientID = grafanaCfg.OIDCClientID
+	opts.OIDCScopes = strings.Fields(grafanaCfg.OIDCScopes)
 }
 
 // cloudLaunchOrigin reduces the resolved Cloud OAuth URL (ResolveCloudEndpoints,
@@ -1177,6 +1341,9 @@ func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src
 	g.OAuthRefreshToken = src.OAuthRefreshToken
 	g.OAuthTokenExpiresAt = src.OAuthTokenExpiresAt
 	g.OAuthRefreshExpiresAt = src.OAuthRefreshExpiresAt
+	g.OIDCIssuer = src.OIDCIssuer
+	g.OIDCClientID = src.OIDCClientID
+	g.OIDCScopes = src.OIDCScopes
 	markGrafanaAuthMutation(cfg, existing.Stack)
 
 	// Carry the freshly discovered cloud stack ID through re-auth so re-logins

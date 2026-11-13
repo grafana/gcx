@@ -30,6 +30,33 @@ func (e *K8sDiscoveryError) Error() string {
 
 func (e *K8sDiscoveryError) Unwrap() error { return e.Cause }
 
+// OIDCTokenRejectedError is returned when Grafana answers an OIDC login's ID
+// token with 401: Grafana does not accept ID tokens from this provider.
+type OIDCTokenRejectedError struct {
+	Server string
+	Issuer string
+	Cause  error
+}
+
+func (e *OIDCTokenRejectedError) Error() string {
+	return fmt.Sprintf("connectivity validation: %s rejected the ID token from %s: %s", e.Server, e.Issuer, e.Cause)
+}
+
+func (e *OIDCTokenRejectedError) Unwrap() error { return e.Cause }
+
+// OIDCDiscoveryError is returned when gcx cannot find the OIDC identity
+// provider behind the Grafana server's SSO login.
+type OIDCDiscoveryError struct {
+	Server string
+	Cause  error
+}
+
+func (e *OIDCDiscoveryError) Error() string {
+	return fmt.Sprintf("find the OIDC identity provider of %s: %s", e.Server, e.Cause)
+}
+
+func (e *OIDCDiscoveryError) Unwrap() error { return e.Cause }
+
 // VersionCheckError is returned when the Grafana version is below the
 // supported floor. The wrapped Cause is typically a *grafana.VersionIncompatibleError.
 type VersionCheckError struct {
