@@ -4,11 +4,17 @@ import (
 	"encoding/json"
 	"testing"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	metrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type metricsEnvelope struct {
+	Items    []metrics.AdaptiveMetric `json:"items"`
+	ListMeta *cmdio.ListMeta          `json:"list_meta"`
+}
 
 func metricRecommendation() fakeRec {
 	return fakeRec{
@@ -32,7 +38,7 @@ func TestMetricsList(t *testing.T) {
 			t.Helper()
 			res := run("metrics", "list", "-o", "json")
 			require.NoError(t, res.err)
-			assert.JSONEq(t, `[]`, res.stdout)
+			assert.JSONEq(t, `{"items":[]}`, res.stdout)
 			assert.Contains(t, res.stderr, "0 metric(s)")
 		})
 	})
@@ -46,11 +52,13 @@ func TestMetricsList(t *testing.T) {
 
 			res := run("metrics", "list", "-o", "json")
 			require.NoError(t, res.err)
-			assert.JSONEq(t, `[
-				{"metric":"a_metric","recommended_action":"update","raw_series_count":100,"current_series_count_reduction":20,"projected_series_count_change":-60,"stats_updated_at":"2026-01-02T03:04:05Z"},
-				{"metric":"b_metric","recommended_action":"keep","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0},
-				{"metric":"c_metric","recommended_action":"none","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0}
-			]`, res.stdout)
+			assert.JSONEq(t, `{
+				"items": [
+					{"metric":"a_metric","recommended_action":"update","raw_series_count":100,"current_series_count_reduction":20,"projected_series_count_change":-60,"stats_updated_at":"2026-01-02T03:04:05Z"},
+					{"metric":"b_metric","recommended_action":"keep","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0},
+					{"metric":"c_metric","recommended_action":"none","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0}
+				]
+			}`, res.stdout)
 			assert.Contains(t, res.stderr, "3 metric(s)")
 
 			reqs := f.applied(tr.via, "GET")
@@ -71,10 +79,12 @@ func TestMetricsList(t *testing.T) {
 
 			res := run("metrics", "list", "--action", "add", "--action", "keep", "-o", "json")
 			require.NoError(t, res.err)
-			assert.JSONEq(t, `[
-				{"metric":"a_metric","recommended_action":"add","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0},
-				{"metric":"b_metric","recommended_action":"keep","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0}
-			]`, res.stdout)
+			assert.JSONEq(t, `{
+				"items": [
+					{"metric":"a_metric","recommended_action":"add","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0},
+					{"metric":"b_metric","recommended_action":"keep","raw_series_count":0,"current_series_count_reduction":0,"projected_series_count_change":0}
+				]
+			}`, res.stdout)
 
 			reqs := f.applied(tr.via, "GET")
 			require.Len(t, reqs, 1)
@@ -141,11 +151,14 @@ func TestMetricsList(t *testing.T) {
 
 			res := run("metrics", "list", "--limit", "2", "-o", "json")
 			require.NoError(t, res.err)
-			var got []metrics.AdaptiveMetric
+			var got metricsEnvelope
 			require.NoError(t, json.Unmarshal([]byte(res.stdout), &got))
-			require.Len(t, got, 2)
-			assert.Equal(t, "a_metric", got[0].Metric)
-			assert.Equal(t, "b_metric", got[1].Metric)
+			require.Len(t, got.Items, 2)
+			assert.Equal(t, "a_metric", got.Items[0].Metric)
+			assert.Equal(t, "b_metric", got.Items[1].Metric)
+			require.NotNil(t, got.ListMeta)
+			assert.True(t, got.ListMeta.Truncated)
+			assert.Equal(t, 2, got.ListMeta.Returned)
 			assert.Contains(t, res.stderr, "showing first 2")
 			assert.Contains(t, res.stderr, "2 metric(s)")
 			assert.Len(t, f.applied(tr.via, "GET"), 3)
@@ -162,9 +175,10 @@ func TestMetricsList(t *testing.T) {
 
 			res := run("metrics", "list", "--limit", "0", "-o", "json")
 			require.NoError(t, res.err)
-			var got []metrics.AdaptiveMetric
+			var got metricsEnvelope
 			require.NoError(t, json.Unmarshal([]byte(res.stdout), &got))
-			assert.Len(t, got, 5)
+			assert.Len(t, got.Items, 5)
+			assert.Nil(t, got.ListMeta)
 			assert.NotContains(t, res.stderr, "showing first")
 			assert.Len(t, f.applied(tr.via, "GET"), 3)
 		})
@@ -227,6 +241,32 @@ func TestMetricsList(t *testing.T) {
 		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{cloud: true}), false, "metrics", "list", "--limit", "0")
 		require.ErrorContains(t, res.err, "repeated a page token")
 	})
+}
+
+func TestMetricsListFieldSelection(t *testing.T) {
+	f := newFakeRules(t)
+	f.recommend("default", "a_metric", fakeRec{Action: "keep"}).
+		recommend("default", "b_metric", fakeRec{Action: "keep"})
+	loader := f.loader(t, fakeConfig{grafana: true})
+
+	complete := runAdaptiveCmd(t, loader, false, "metrics", "list", "-o", "json", "--json", "metric,recommended_action")
+	require.NoError(t, complete.err)
+	assert.JSONEq(t, `{"items":[
+		{"metric":"a_metric","recommended_action":"keep"},
+		{"metric":"b_metric","recommended_action":"keep"}
+	]}`, complete.stdout)
+
+	f.pageSize = 1
+	truncated := runAdaptiveCmd(t, loader, false, "metrics", "list", "--limit", "1", "-o", "json", "--json", "metric,recommended_action")
+	require.NoError(t, truncated.err)
+	var got struct {
+		Items    []map[string]any `json:"items"`
+		ListMeta *cmdio.ListMeta  `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(truncated.stdout), &got))
+	require.Len(t, got.Items, 1)
+	require.NotNil(t, got.ListMeta)
+	assert.True(t, got.ListMeta.Truncated)
 }
 
 func TestMetricsGet(t *testing.T) {
@@ -294,16 +334,31 @@ func TestMetricsGet(t *testing.T) {
 		})
 	})
 
-	t.Run("rule without recommendation", func(t *testing.T) {
+	t.Run("rule-only metric is not found", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
 			f.seed("default", ruleB)
 
 			res := run("metrics", "get", "b_metric")
+			require.ErrorIs(t, res.err, adapter.ErrNotFound)
+			assert.Contains(t, res.err.Error(), "metric b_metric")
+			assert.Empty(t, res.stdout)
+		})
+	})
+
+	t.Run("catalog metric without a rule", func(t *testing.T) {
+		forEachTransport(t, func(t *testing.T, _ rulesTransport, f *fakeRules, run func(...string) cmdResult) {
+			t.Helper()
+			f.recommend("default", "none_metric", fakeRec{Action: "none"})
+
+			res := run("metrics", "get", "none_metric", "-o", "json")
 			require.NoError(t, res.err)
-			assert.Contains(t, res.stdout, "current_rule:")
-			assert.NotContains(t, res.stdout, "recommended_action:")
-			assert.NotContains(t, res.stdout, "stats:")
+			var got metrics.AdaptiveMetricDetail
+			require.NoError(t, json.Unmarshal([]byte(res.stdout), &got))
+			assert.Equal(t, "none", got.RecommendedAction)
+			assert.Nil(t, got.CurrentRule)
+			assert.Nil(t, got.RecommendedRule)
+			require.NotNil(t, got.Stats)
 		})
 	})
 

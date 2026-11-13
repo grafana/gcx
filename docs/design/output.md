@@ -635,6 +635,9 @@ These guarantees hold for typed envelope structs and for envelopes assembled as 
   paginated source, both server-reported (`PagedListMeta`, no safety cap:
   `--limit 0` drains every `next` cursor) and over-fetch-by-one
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
+- `internal/providers/metrics/adaptive/metrics_commands.go` (`metrics list`) —
+  over-fetch-by-one paginated source, `TruncatePagedList`, `list_meta`
+  envelope with a bare `items` array for the table codec.
 
 `alert rules list` is deliberately not migrated yet: its JSON/YAML output is a bare array (no envelope to carry `list_meta`) and its `--limit` counts different units per format (flattened rules in the table, groups in JSON). The envelope shape and counting unit need to be settled before migration.
 

@@ -163,10 +163,15 @@ func (b *rulesBackend) getMetricDetail(ctx context.Context, op, metric string) (
 }
 
 // GetMetricDetail reads one analyzed metric's verdict, rules and usage stats.
+// A metric the catalog does not list is not found, even when a rule exists for
+// it, because the command exposes analyzed metrics rather than rules.
 func (b *rulesBackend) GetMetricDetail(ctx context.Context, metric string) (*AdaptiveMetricDetail, error) {
 	detail, err := b.getMetricDetail(ctx, "get metric", metric)
 	if err != nil {
 		return nil, err
+	}
+	if detail.Verdict == nil {
+		return nil, fmt.Errorf("metric %s: %w", metric, adapter.ErrNotFound)
 	}
 
 	out := &AdaptiveMetricDetail{Metric: detail.Metric}

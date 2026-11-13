@@ -33,7 +33,9 @@ type metricsListOpts struct {
 }
 
 func (o *metricsListOpts) setup(flags *pflag.FlagSet) {
-	cmdio.RegisterTable(&o.Options, metricsTable())
+	table := metricsListTable()
+	o.RegisterCustomCodec("table", table.Codec("table"))
+	o.RegisterCustomCodec("wide", table.Codec("wide"))
 	o.DefaultFormat("table")
 	o.BindFlags(flags)
 	o.BindListLimit(flags, &o.Limit, "metrics", 50)
@@ -88,17 +90,30 @@ func (h *metricsHelper) metricsListCommand() *cobra.Command {
 			}
 
 			metrics, meta := cmdio.TruncatePagedList(metrics, opts.Limit)
-			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), cmdio.AttachListMeta(meta, os.Args))
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d metric(s)\n", len(metrics))
 
 			if metrics == nil {
 				metrics = []AdaptiveMetric{}
 			}
-			return opts.Encode(cmd.OutOrStdout(), metrics)
+			return opts.Encode(cmd.OutOrStdout(), metricsListEnvelope{Items: metrics, ListMeta: meta})
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+type metricsListEnvelope struct {
+	Items    []AdaptiveMetric `json:"items" yaml:"items"`
+	ListMeta *cmdio.ListMeta  `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
+func metricsListTable() cmdio.TableAdapter[metricsListEnvelope, AdaptiveMetric] {
+	return cmdio.TableAdapter[metricsListEnvelope, AdaptiveMetric]{
+		Table: metricsTable(),
+		Rows:  func(e metricsListEnvelope) ([]AdaptiveMetric, error) { return e.Items, nil },
+	}
 }
 
 func metricsTable() cmdio.Table[AdaptiveMetric] {
