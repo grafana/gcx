@@ -22,6 +22,8 @@ You can work with resources in two ways:
 - [Declarative resource workflows](#declarative-resource-workflows): Manage resources as JSON or YAML files with a single set of commands.
 - [Product-specific commands](#product-specific-commands): Use dedicated commands for each Grafana area or Grafana Cloud product.
 
+You can also [query your telemetry](#query-telemetry), such as metrics, logs, traces, and profiles, from the command line.
+
 ## Declarative resource workflows
 
 Use [`gcx resources`](../../cli-reference/#gcx-resources) to pull, push, inspect, edit, validate, and delete resources as JSON or YAML manifests. The same commands work for Grafana-native resources, such as `dashboards`, `folders`, `alertrules`, `routingtrees`, `templategroups`, and `timeintervals`, and for supported Grafana Cloud provider resources.
@@ -34,28 +36,40 @@ For step-by-step workflows, refer to [Manage resources](../manage-resources/).
 
 Each Grafana area and Grafana Cloud product also has its own commands to create, inspect, update, and operate its resources. Areas that also list `gcx resources` in the table support both ways of working.
 
-The following table lists all resources available in the [CLI reference](../../cli-reference/):
+The following table lists the main Grafana areas and Grafana Cloud products you can manage with `gcx`. For the complete list of commands, refer to the [CLI reference](../../cli-reference/) or run the command with `--help`.
 
-| Area | Resources | Command | Guides |
+| Area | What you can manage | Command | Guides |
 | --- | --- | --- | --- |
-| **Dashboards** | Dashboards, dashboard version history (`versions`), and rendered PNG snapshots (`snapshot`) | [`gcx dashboards`](../../cli-reference/#gcx-dashboards), [`gcx resources`](../../cli-reference/#gcx-resources) | [Dashboards as code](../dashboards-as-code/), [Lint resources](../lint-resources/) |
-| **Folders** | Folders (`folders`) | [`gcx resources`](../../cli-reference/#gcx-resources) | |
-| **Data sources** | Data source configurations, schemas, and health checks (plus direct queries across supported data source types) | [`gcx datasources`](../../cli-reference/#gcx-datasources) | |
-| **Alerting** | Grafana-managed alert rules (`rules` / `alertrules`), rule groups (`groups`), alert instances (`instances`), state history (`state-history`), data source-managed rule groups and namespaces (`ruler`), contact points (`contact-points`), mute timings (`mute-timings`), notification policies (`notification-policies`), routing trees (`routing-trees` / `routingtrees`), notification history (`notification-history`), notification templates (`templates`), template groups (`template-groups` / `templategroups`), and time intervals (`time-intervals` / `timeintervals`) | [`gcx alert`](../../cli-reference/#gcx-alert), [`gcx resources`](../../cli-reference/#gcx-resources) | [Lint resources](../lint-resources/) |
-| **SLOs** | SLO definitions (`definitions` / `slos`) and SLO reports (`reports`) | [`gcx slo`](../../cli-reference/#gcx-slo), [`gcx resources`](../../cli-reference/#gcx-resources) | |
-| **IRM — Incidents** | Incidents, incident activity (`activity`), severities (`severities`), contexts (`list-contexts`), and post-incident reviews (`get-pir`) | [`gcx irm incidents`](../../cli-reference/#gcx-irm-incidents), [`gcx resources`](../../cli-reference/#gcx-resources) | [Incident descriptions](../manage-resources/#incident-descriptions) |
-| **IRM — OnCall** | Alert groups (`alert-groups`), escalation chains (`escalation-chains`), escalation policies and steps (`escalation-policies`), integrations and templates (`integrations`), organizations (`organizations`), resolution notes (`resolution-notes`), routes (`routes`), schedules (`schedules`), shifts (`shifts`), shift swaps (`shift-swaps`), Slack channels (`slack-channels`), teams (`teams`), user groups (`user-groups`), users (`users`), and outgoing webhooks (`webhooks`) | [`gcx irm oncall`](../../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](../manage-oncall-notification-rules/) |
-| **Adaptive Metrics** | Aggregation rules (`rules`), recommendations (`recommendations`), segments (`segments`), and exemptions (`exemptions`) | [`gcx metrics adaptive`](../../cli-reference/#gcx-metrics-adaptive) | |
-| **Adaptive Logs** | Drop rules (`drop-rules`), exemptions (`exemptions`), log patterns (`patterns`), and segments (`segments`) | [`gcx logs adaptive`](../../cli-reference/#gcx-logs-adaptive) | |
-| **Adaptive Traces** | Tail-sampling policies (`policies`) and recommendations (`recommendations`) | [`gcx traces adaptive`](../../cli-reference/#gcx-traces-adaptive) | |
-| **Synthetic Monitoring** | Checks (`checks` / `checks.syntheticmonitoring`), probes (`probes`), saved queries (`queries`), and check suggestions (`suggestions`) | [`gcx synthetic-monitoring`](../../cli-reference/#gcx-synthetic-monitoring), [`gcx resources`](../../cli-reference/#gcx-resources) | |
-| **Performance Testing (k6)** | Projects (`projects`), load tests and scripts (`load-tests`), schedules (`schedules`), test runs (`runs`, `test-run`), private load zones (`load-zones`), and environment variables (`env-vars`) | [`gcx k6`](../../cli-reference/#gcx-k6) | |
-| **Fleet Management** | Collectors (`collectors`), configuration pipelines (`pipelines`), and tenant limits (`tenant`) | [`gcx fleet`](../../cli-reference/#gcx-fleet) | |
-| **Frontend Observability** | Frontend apps (`apps`), sourcemaps (`apply-sourcemap`, `list-sourcemaps`, `delete-sourcemap`), and user sessions (`sessions`) | [`gcx frontend`](../../cli-reference/#gcx-frontend) | |
-| **Application Observability** | Monitored services and service maps (`services`), operations (`operations`), service overrides (`overrides`), and settings (`settings`) | [`gcx appo11y`](../../cli-reference/#gcx-appo11y) | |
-| **Database Observability** | Monitored database instances (`instances`) | [`gcx dbo11y`](../../cli-reference/#gcx-dbo11y) | |
-| **Instrumentation** | Kubernetes clusters and cluster apps (`clusters`, `clusters apps`), and monitored service filters (`services`) | [`gcx instrumentation`](../../cli-reference/#gcx-instrumentation) | |
-| **Grafana Assistant** | Conversations (`conversation`), investigations (`investigations`), MCP servers (`mcp-servers`), and Assistant Watchers (`watchers`) | [`gcx assistant`](../../cli-reference/#gcx-assistant) | [Manage Assistant Watchers](../manage-assistant-watchers/), [Check Assistant usage and limits](../assistant-usage/) |
-| **Agent Observability** | AI agents (`agents`), conversations (`conversations`), saved conversations (`saved-conversations`), collections (`collections`), evaluators (`evaluators`), experiments, test suites, and trials (`experiments`), generations (`generations`), guards (`guards`), judge models and providers (`judge`), model rates (`model-rates`), evaluation rules (`rules`), and prompt templates (`templates`) | [`gcx agento11y`](../../cli-reference/#gcx-agento11y) | |
-| **Knowledge Graph** | Entities (`entities`), relationships (`relationships`), model rules (`model-rules`), Prometheus rules (`prom-rules`), relabel rules (`relabel-rules`), notifications (`notifications`), suppressions (`suppressions`), thresholds (`thresholds`), and telemetry quality checks (`quality`) | [`gcx kg`](../../cli-reference/#gcx-kg) | |
-| **Grafana Cloud platform** | Organization memberships (`orgs`) and Grafana Cloud stacks (`stacks`) | [`gcx cloud`](../../cli-reference/#gcx-cloud) | |
+| **Dashboards** | Dashboards, their version history, and rendered snapshots | [`gcx dashboards`](../../cli-reference/#gcx-dashboards), [`gcx resources`](../../cli-reference/#gcx-resources) | [Dashboards as code](../dashboards-as-code/), [Lint resources](../lint-resources/) |
+| **Folders** | Folders | [`gcx resources`](../../cli-reference/#gcx-resources) | |
+| **Data sources** | Data source configurations and health checks | [`gcx datasources`](../../cli-reference/#gcx-datasources) | |
+| **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../../cli-reference/#gcx-alert), [`gcx resources`](../../cli-reference/#gcx-resources) | [Lint resources](../lint-resources/) |
+| **SLOs** | SLO definitions and reports | [`gcx slo`](../../cli-reference/#gcx-slo), [`gcx resources`](../../cli-reference/#gcx-resources) | |
+| **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../../cli-reference/#gcx-irm-incidents), [`gcx resources`](../../cli-reference/#gcx-resources) | [Incident descriptions](../manage-resources/#incident-descriptions) |
+| **IRM OnCall** | Schedules, escalation chains, integrations, and other OnCall configuration | [`gcx irm oncall`](../../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](../manage-oncall-notification-rules/) |
+| **Machine Learning** | Forecasts, holidays, outlier detectors, and their alerts | `gcx ml`, [`gcx resources`](../../cli-reference/#gcx-resources) | [Manage Machine Learning resources](../manage-machine-learning/) |
+| **Adaptive Telemetry** | Rules, policies, and recommendations for Adaptive Metrics, Logs, Traces, and Profiles | [`gcx metrics adaptive`](../../cli-reference/#gcx-metrics-adaptive), [`gcx logs adaptive`](../../cli-reference/#gcx-logs-adaptive), [`gcx traces adaptive`](../../cli-reference/#gcx-traces-adaptive), [`gcx profiles adaptive`](../../cli-reference/#gcx-profiles-adaptive) | |
+| **Synthetic Monitoring** | Checks, probes, and saved queries | [`gcx synthetic-monitoring`](../../cli-reference/#gcx-synthetic-monitoring), [`gcx resources`](../../cli-reference/#gcx-resources) | |
+| **Performance Testing (k6)** | Projects, load tests, schedules, and test runs | [`gcx k6`](../../cli-reference/#gcx-k6) | |
+| **Fleet Management** | Collectors and configuration pipelines | [`gcx fleet`](../../cli-reference/#gcx-fleet) | |
+| **Frontend Observability** | Frontend apps, source maps, and user sessions | [`gcx frontend`](../../cli-reference/#gcx-frontend) | |
+| **Application Observability** | Monitored services and their settings | [`gcx appo11y`](../../cli-reference/#gcx-appo11y) | |
+| **Database Observability** | Monitored database instances | [`gcx dbo11y`](../../cli-reference/#gcx-dbo11y) | |
+| **Instrumentation** | Kubernetes clusters, cluster apps, and monitored services | [`gcx instrumentation`](../../cli-reference/#gcx-instrumentation) | |
+| **Grafana Assistant** | Conversations, investigations, MCP servers, and Assistant Watchers | [`gcx assistant`](../../cli-reference/#gcx-assistant) | [Manage Assistant Watchers](../manage-assistant-watchers/), [Check Assistant usage and limits](../assistant-usage/) |
+| **Agent Observability** | AI agents, conversations, evaluations, and prompt templates | [`gcx agento11y`](../../cli-reference/#gcx-agento11y) | |
+| **Knowledge Graph** | Entities, relationships, and the rules that shape them | [`gcx kg`](../../cli-reference/#gcx-kg) | |
+| **Grafana Cloud platform** | Organization memberships and Grafana Cloud stacks | [`gcx cloud`](../../cli-reference/#gcx-cloud) | |
+
+## Query telemetry
+
+Use the signal commands to query your data sources directly from the command line:
+
+| Signal | Command | Guides |
+| --- | --- | --- |
+| **Metrics** | [`gcx metrics`](../../cli-reference/#gcx-metrics) | |
+| **Logs** | [`gcx logs`](../../cli-reference/#gcx-logs) | |
+| **Traces** | [`gcx traces`](../../cli-reference/#gcx-traces) | |
+| **Profiles** | [`gcx profiles`](../../cli-reference/#gcx-profiles) | [Compare profiles](../compare-profiles/) |
+
+To investigate an empty dashboard or missing application telemetry, refer to [Diagnose missing telemetry](../diagnose-missing-telemetry/).
