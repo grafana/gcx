@@ -70,8 +70,8 @@ func (e *rulesEndpoint) do(ctx context.Context, method, path string, body []byte
 // transports that reach the same handlers: Grafana's plugin proxy using the
 // context's Grafana credential (preferred), or the Adaptive Metrics API
 // directly using the Cloud access-policy token. The direct path is used when
-// there is no usable Grafana configuration or when the proxy itself refuses the
-// request. It is resolved lazily so proxy-only runs never contact GCOM.
+// there is no usable Grafana configuration or when the proxy denies access
+// with a 403. It is resolved lazily so proxy-only runs never contact GCOM.
 type rulesBackend struct {
 	segment string
 
@@ -175,9 +175,9 @@ func proxyRefusal(c ruleCall, status int, body []byte) error {
 }
 
 // send issues one call, preferring the plugin proxy. The direct path is taken
-// only when the proxy is unconfigured or refused the request before it reached
-// the backend. A proxy transport error is returned as is, because the backend
-// may already have applied the request.
+// only when the proxy is unconfigured or denies access with a 403. A proxy
+// transport error is returned as is, because the backend may already have
+// applied the request; a 404 is a real resource response and is returned as is.
 func (b *rulesBackend) send(ctx context.Context, c ruleCall) (int, []byte, error) {
 	proxyErr := b.proxyErr
 	if b.proxy != nil {

@@ -230,11 +230,11 @@ func TestIsPluginProxyUnavailable(t *testing.T) {
 		body   string
 		want   bool
 	}{
-		{"plugin not installed", 404, `{"message":"Plugin not found, no installed plugin with that id"}`, true},
-		{"plugin not found", 404, `{"message":"Plugin not found"}`, true},
-		{"plugin unconfigured", 404, `{"message":"Plugin setting not found"}`, true},
-		{"plugin disabled", 404, `{"message":"Plugin is not enabled"}`, true},
-		{"no route", 404, `{"message":"plugin route match not found"}`, true},
+		{"plugin not installed", 404, `{"message":"Plugin not found, no installed plugin with that id"}`, false},
+		{"plugin not found", 404, `{"message":"Plugin not found"}`, false},
+		{"plugin unconfigured", 404, `{"message":"Plugin setting not found"}`, false},
+		{"plugin disabled", 404, `{"message":"Plugin is not enabled"}`, false},
+		{"no route", 404, `{"message":"plugin route match not found"}`, false},
 		{"route denied", 403, `{"message":"plugin proxy route access denied"}`, true},
 		{"plugin access denied", 403, `{"title":"Access denied","message":"You'll need additional permissions to perform this action. Permissions needed: plugins.app:access"}`, true},
 		{"backend not found", 404, `{"code":"not_found","error":"rule not found: x"}`, false},

@@ -50,17 +50,11 @@ func IsPluginRouteDenied(statusCode int, body []byte) bool {
 	return json.Unmarshal(body, &errResp) == nil && errResp.ErrorMessage() == pluginRouteDeniedMessage
 }
 
-// pluginProxyRejections are the exact messages Grafana returns when it
-// rejects a plugin-proxy request before anything reaches the plugin backend,
-// keyed by HTTP status. Backend responses never use these messages, so a match
-// guarantees the request was not applied.
-var pluginProxyRejections = map[int][]string{ //nolint:gochecknoglobals // Static lookup table.
-	http.StatusNotFound: {
-		"Plugin not found",
-		"Plugin setting not found",
-		"Plugin is not enabled",
-		"plugin route match not found",
-	},
+// pluginProxyDenials are the exact 403 messages Grafana returns when it rejects
+// a plugin-proxy request before anything reaches the plugin backend. Backend
+// responses never use these messages, so a match guarantees the request was not
+// applied.
+var pluginProxyDenials = map[int][]string{ //nolint:gochecknoglobals // Static lookup table.
 	http.StatusForbidden: {
 		pluginRouteDeniedMessage,
 		"You'll need additional permissions to perform this action.",
@@ -68,13 +62,13 @@ var pluginProxyRejections = map[int][]string{ //nolint:gochecknoglobals // Stati
 }
 
 // IsPluginProxyUnavailable reports whether a response is Grafana's plugin proxy
-// itself refusing the request: the plugin is missing or disabled, it has no
-// matching route, or the caller lacks access to the plugin or route. Callers
-// that have a direct fallback can retry safely, because the plugin backend never
-// saw the request. Statuses are matched together with Grafana's fixed messages;
-// a plugin backend's own 403 or 404 returns false.
+// itself refusing the request because the caller lacks access to the plugin or
+// its route. Callers that have a direct fallback can retry safely, because the
+// plugin backend never saw the request. The status and Grafana's fixed 403
+// message are both matched; a backend 403 returns false. A 404 is a real
+// resource response and never triggers a fallback.
 func IsPluginProxyUnavailable(statusCode int, body []byte) bool {
-	messages, ok := pluginProxyRejections[statusCode]
+	messages, ok := pluginProxyDenials[statusCode]
 	if !ok {
 		return false
 	}

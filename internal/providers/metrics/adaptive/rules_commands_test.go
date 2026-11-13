@@ -47,7 +47,6 @@ func rulesTransports() []rulesTransport {
 		{name: "proxy without cloud config", cfg: fakeConfig{grafana: true}, via: viaProxy},
 		{name: "direct without grafana config", cfg: fakeConfig{cloud: true}, via: viaDirect},
 		{name: "direct after route denied", cfg: both, via: viaDirect, prepare: func(f *fakeRules) { f.fail(viaProxy, "", 403, routeDeniedBody) }},
-		{name: "direct after plugin missing", cfg: both, via: viaDirect, prepare: func(f *fakeRules) { f.fail(viaProxy, "", 404, pluginMissingBody) }},
 	}
 }
 
@@ -672,12 +671,8 @@ func TestRulesTransport(t *testing.T) {
 		status int
 		body   string
 	}{
-		"plugin not installed":     {404, `{"message":"Plugin not found, no installed plugin with that id"}`},
-		"plugin not configured":    {404, `{"message":"Plugin setting not found"}`},
-		"plugin disabled":          {404, `{"message":"Plugin is not enabled"}`},
-		"plugin without the route": {404, `{"message":"plugin route match not found"}`},
-		"route access denied":      {403, routeDeniedBody},
-		"plugin access denied":     {403, `{"title":"Access denied","message":"You'll need additional permissions to perform this action. Permissions needed: plugins.app:access"}`},
+		"route access denied":  {403, routeDeniedBody},
+		"plugin access denied": {403, `{"title":"Access denied","message":"You'll need additional permissions to perform this action. Permissions needed: plugins.app:access"}`},
 	} {
 		t.Run("falls back when "+name, func(t *testing.T) {
 			f := newFakeRules(t).seed("default", ruleA)
@@ -693,9 +688,13 @@ func TestRulesTransport(t *testing.T) {
 		status int
 		body   string
 	}{
-		"backend forbidden":    {403, `{"code":"forbidden","error":"tenant is read-only"}`},
-		"backend not found":    {404, `{"code":"not_found","error":"segment not found: x"}`},
-		"grafana server error": {500, `{"message":"Failed to fetch plugin settings"}`},
+		"plugin not installed":     {404, pluginMissingBody},
+		"plugin not configured":    {404, `{"message":"Plugin setting not found"}`},
+		"plugin disabled":          {404, `{"message":"Plugin is not enabled"}`},
+		"plugin without the route": {404, `{"message":"plugin route match not found"}`},
+		"backend forbidden":        {403, `{"code":"forbidden","error":"tenant is read-only"}`},
+		"backend not found":        {404, `{"code":"not_found","error":"segment not found: x"}`},
+		"grafana server error":     {500, `{"message":"Failed to fetch plugin settings"}`},
 	} {
 		t.Run("does not fall back on "+name, func(t *testing.T) {
 			f := newFakeRules(t)
