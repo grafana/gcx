@@ -118,7 +118,7 @@ func TestSnapshot_TimeoutValidationBeforeConfigLoad(t *testing.T) {
 		wantContain string
 	}{
 		{name: "empty", value: "", wantContain: "invalid argument"},
-		{name: "malformed", value: "eventually", wantContain: "invalid duration"},
+		{name: "malformed", value: "eventually", wantContain: "invalid argument"},
 		{name: "zero", value: "0s", wantContain: "must be positive"},
 		{name: "negative", value: "-1s", wantContain: "must be positive"},
 		{name: "fractional second", value: "1500ms", wantContain: "whole number of seconds"},

@@ -18,12 +18,12 @@ require (
 	github.com/go-openapi/strfmt v0.27.4
 	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.4
-	github.com/gofrs/flock v0.13.1
+	github.com/gofrs/flock v0.13.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
-	github.com/grafana/grafana-app-sdk/logging v0.61.1
+	github.com/grafana/grafana-app-sdk/logging v0.62.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.22
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
 	github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a
@@ -34,18 +34,18 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/itchyny/gojq v0.12.20
 	github.com/olekukonko/tablewriter v1.1.5
-	github.com/open-policy-agent/opa v1.22.0
+	github.com/open-policy-agent/opa v1.22.2
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/prometheus/common v0.73.1
-	github.com/prometheus/prometheus v0.315.1
+	github.com/prometheus/prometheus v0.316.0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/goldmark v1.8.7
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/mod v0.42.0
-	golang.org/x/sync v0.24.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sync v0.25.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/term v0.47.0
 	golang.org/x/tools v0.52.0
 	google.golang.org/protobuf v1.36.12
