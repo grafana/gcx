@@ -565,6 +565,8 @@ func newTeamsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
 		newGetSubcommand(loader, "Get a team by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
+		newTeamGetWorkingHoursCmd(loader),
+		newTeamUpdateWorkingHoursCmd(loader),
 	)
 	return cmd
 }
