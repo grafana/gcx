@@ -17,7 +17,7 @@ keywords:
 weight: 80
 ---
 
-# `gcx` user guides 
+# `gcx` user guides
 
 Refer to the following documents to learn about specific workflows to use `gcx`:
 

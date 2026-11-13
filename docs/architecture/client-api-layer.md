@@ -19,7 +19,7 @@ authenticated HTTP transport to call
 `/apis/search.grafana.app/v0alpha1/namespaces/{namespace}/global/search/hybrid`.
 If the caller selects no resource types, Grafana uses its configured defaults.
 The response contains ranked matches with scores and matching text.
-See the [resource exploration guide](../sources/guides/explore-modify-resources.md)
+See the [resource management guide](../sources/guides/manage-resources.md#search-resources-by-relevance)
 for usage.
 
 ---

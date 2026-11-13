@@ -8,7 +8,7 @@ keywords:
   - gcx
   - machine learning
   - forecasting
-weight: 8
+weight: 5
 ---
 
 # Manage Machine Learning resources
