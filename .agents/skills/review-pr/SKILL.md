@@ -19,7 +19,8 @@ It defines no checks of its own. Run the checks where they already live:
   covers code that repeats something the repo already has.
 - AGENTS.md, for the compliance hierarchy. Check all four levels in order.
 
-Authors run the same triggers before they push.
+Authors run the same triggers before they push. Assume they did. Treat what you
+find as missed, not as dismissed.
 
 ## The correctness pass
 
@@ -39,10 +40,10 @@ gets the same treatment either way.
 
 ## What blocks a merge here
 
-Use these blocking criteria in both local and unattended reviews:
+The severity split matters more than any single finding. It decides what the
+author must act on. Reserve the blocking tier for the following defects.
 
-**A demonstrated correctness or safety defect.** Follow the evidence discipline
-above.
+**Correctness bugs and safety defects.**
 
 **A violation of `CONSTITUTION.md` or `DESIGN.md`.** Two cases recur. The agent
 output contract: a command declared `finite` in
@@ -63,9 +64,8 @@ queue when the flow exits early, where the shell then reads it. Where a diff add
 a control for this, check that it runs on every exit path and not only on
 success.
 
-Naming, structure, duplication and test shape alone are optional, including
-T5/T12. Require the smallest fix for a blocking defect and keep broader cleanup
-optional. Cite the specific CONSTITUTION or DESIGN rule for claimed violations.
+Report findings about naming, structure, duplication, and test shape as nits
+or followups. Do that even when the argument for them is strong.
 
 ## Do not report
 
@@ -77,48 +77,44 @@ optional. Cite the specific CONSTITUTION or DESIGN rule for claimed violations.
 
 ## Report shape
 
-Use bold text for headings in the report, not markdown headings. Keep Intent and
-Verdict to at most two sentences each; give each finding only the explanation
-needed to establish its impact.
+Use bold text for headings in the report, not markdown headings. Intent and Verdict should be at most two sentences each.
 
 1. **Intent.** The problem and how the change solves it. Save the judgement for
    the verdict.
-2. **Blocking.** Findings that meet [What blocks a merge here](#what-blocks-a-merge-here),
-   worst first. If nothing blocks the merge, omit this section.
+2. **Blocking.** Findings that meet [What blocks a merge here](#what-blocks-a-merge-here).
+   If nothing blocks the merge, omit this section.
 3. **Other findings.** Everything that does not block, worst first. Include
    documentation that contradicts the code it describes. Give each finding the
    space its argument needs and no more. Some take a paragraph. Most take a
    line. The label shows the difference, so a one-line nit and a
    worth-fixing defect can share the list.
-4. **Fix summary.** One combined remedy. Omit this section when sections
+4. **Fix summary** One combined remedy. Omit this section when sections
    2 and 3 are empty.
-5. **Verdict.** Approve when no blocking findings remain; otherwise request
-   changes and name the findings that decide it. In an unattended run, omit the
-   approval verdict and state only which findings block and which are optional.
+5. **Verdict.** Approve or request changes. Name the findings that decide it. If
+   you would merge a reduced version, say so, and say how much smaller.
 
 ## Rules that keep the report honest
 
 **One finding per code unit, not per check.** Name the symbol, file, or flag.
-Combine related concerns about the same symbol and explain their shared cause.
-Keep the required remedy distinct from optional cleanup; sharing a function
-does not give every suggestion the highest severity.
+Two findings that name the same symbol are one finding. Combine them and list
+every check the unit trips. State the count as evidence. Never split one unit
+across sections. A split unit turns one problem into five complaints about the
+same file.
 
-**Rank structural findings in Other findings by lock-in.** Lock-in is what the
-thing costs to remove after release; it orders optional work, not its severity:
+**Rank structural findings in section 3 by lock-in.** Lock-in is what the thing
+costs to remove after release:
 
 1. Exported API with fewer than two callers
 2. User-visible surface: flags, output shape, command paths
 3. Internal structure: duplicate types, thin wrappers, copied code
 4. Tests and unreachable branches
 
-Break ties by line count. Cap Other findings at six and omit the lowest-ranked
-optional items. Caps limit the report, not the correctness pass, and are never
-quotas to fill.
+Break ties by line count. Cap structural findings at six. The ranking is
+mechanical on purpose, so two reviewers produce the same order.
 
-**Give one combined fix summary.** List the smallest changes that address the
-findings, separating required fixes from optional work. When proposing a
-reduction, state the resulting size change against the real diff size. Size is
-supporting evidence, not a finding by itself.
+**Give one remedy, not one per finding.** Section 4 lists the fixes for sections
+2 and 3. For proposed reductions, state the resulting size change against the
+real diff size. Size is evidence, not a separate finding.
 
 **Say what would overturn each blocking finding.** This makes you look for the
 author's reasoning before you write. It also gives the author something specific
@@ -134,20 +130,6 @@ Judge the diff against its problem, not against a line count.
 behaviour outranks a violation a maintainer can waive in the PR. Say which is
 which. Otherwise five blocking findings look heavier than the change deserves.
 
-## Reviewing another round
-
-Read earlier findings and replies; workflow excerpts omit resolved and summary-only
-findings. Disclose material history gaps. Compare the previous reviewed commit
-with the head, retaining the full correctness pass; identify the introducing
-change before calling something a regression from a fix.
-
-Summarize earlier findings as addressed, still present, withdrawn or deferred.
-Link existing threads instead of reposting. Preserve agreed deferrals unless new
-evidence meets the blocking criteria. Resolution alone does not prove a fix.
-
-If the author followed insufficient advice, acknowledge it, demonstrate the
-remaining failure and recheck the call path before changing the remedy.
-
 ## When a workflow invoked this
 
 Five things change when no human is present. The rest of the review is the same.
@@ -161,19 +143,20 @@ Five things change when no human is present. The rest of the review is the same.
 - **Drop what you could not establish.** Do not label it unverified. No author
   can answer a speculative finding here, and a wrong one makes them disprove it
   in public.
-- **Use tighter comment caps**: up to three blocking inline comments and eight inline
-  comments total; summarize additional established blockers in the review body
-  and drop excess optional findings.
+- **Use tighter caps**: at most three blocking findings, and eight comments in
+  total. Drop the lowest-ranked findings.
 - **Close the summary with this exact line**:
 
   > Comment `@claude review` for a fresh review.
 
-Silence is a valid result. If there are no findings, say so in one line. Never
-invent a finding.
+Silence is a valid result. If there are no findings, say so in one line and
+deliver that line. Never invent a finding.
 
 Silence is not the same as a pass you did not run. If your correctness pass
 could not complete, say that instead. Never deliver "no findings" for a review
 that did not happen.
+
+If the prompt lists a previous review commit and findings, use them as context: run `git diff <previous review commit>..HEAD` to check whether each earlier finding was actually addressed, do not post a previous finding again as a new comment, and say in the summary which earlier findings are addressed and which still stand.
 
 ### Workflow delivery
 
@@ -185,10 +168,10 @@ Return the review as this run's structured output:
 
 `body` is the summary. `comments` carries the inline findings, mapped exactly as
 in *Mechanics* below: `path`, `line`, `side` and `body` on each one, plus
-`start_line` and `start_side` for a range. A complete review with no new inline
-findings keeps an empty `comments` array. If your correctness pass could not
-complete, return `{"review": null}`; that is not a clean review, and the workflow
-fails the run instead of publishing one.
+`start_line` and `start_side` for a range. A complete review that found nothing
+keeps an empty `comments` array. If your correctness pass could not complete,
+return `{"review": null}`; that is not a clean review, and the workflow fails the
+run instead of publishing one.
 
 Anchor every line against the **PR head**, not the tree you are standing in.
 A workflow run checks out the merge ref, and its line numbers can differ from
@@ -259,9 +242,9 @@ GitHub rejects lines outside every hunk. A `suggestion` block replaces exactly
 the lines you anchor it to, so match the indentation of the target. Go files use
 tabs.
 
-Blocking and Other findings become inline comments at the symbols they name,
-subject to the workflow comment caps. Intent, Fix summary and Verdict become
-the summary body.
+Report sections split like this. Sections 2 and 3 become inline comments at
+the symbol each one names. Sections 1, 4, and 5 have no line to attach to, so
+they become the summary body.
 
 ### Rewrite the findings as comments
 
@@ -270,7 +253,9 @@ a document is too long to read in a review thread.
 
 - Write two to four sentences. Start with the mechanism. End with the ask.
 - Turn "what would overturn this" into a question the author can answer.
-- Start with a bold label that says what the author must do.
+- Start with a bold label that says what the author must do. The summary names
+  the blocking findings. Without a label, the author has to work out which
+  of the other comments they must act on.
 - Use a `suggestion` block for any concrete one-line change.
 - State conclusions, not process. "The extraction preserves every check in both
   paths: state → … → all 8 `Result` fields" helps the author. "I checked this
@@ -289,16 +274,17 @@ judgement:
 | Section | Label | Means |
 |---|---|---|
 | 2 Blocking | `**required**` | fix before merge |
-| 3 Other findings | `**recommended**` | demonstrated non-blocking issue; should fix |
-| 3 Other findings | `**nit**` | small optional improvement; take it or leave it |
-| 3 Other findings | `**followup**` | larger optional work; defer to its own PR |
+| 3 Other findings | `**recommended**` | should fix, does not block the merge |
+| 3 Other findings | `**nit**` | take it or leave it |
+| 3 Other findings | `**followup**` | fine to defer to its own PR |
 
 Written out:
 
 > **required** — this returns on every `readLine` error, not just the `Close`
 > one the comment describes. …
 
-Where the author may ignore a `**nit**` or defer a `**followup**`, say so in the
+Two adjustments. Label a structural finding `**nit**` when it is small enough to
+fix in the same sitting. Where the author may ignore a `**nit**`, say so in the
 text as well as the label.
 
 Say what the labels mean once, in the summary body, with the counts. The author
