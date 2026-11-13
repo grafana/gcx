@@ -21,16 +21,8 @@ jobs:
       statuses: write
     # The preview looks up the PR in grafana/gcx (repo: gcx below), so it
     # fails in any other repository. Skip it outside the canonical repo.
-    # A labeled event also fires on closed and merged PRs, and the reusable
-    # build and deploy jobs run on any labeled action. Act on it only for an
-    # open PR gaining the breakglass label, otherwise the redeploy would
-    # outlive the closed-PR teardown and leave an orphaned preview.
-    if: >-
-      github.repository == 'grafana/gcx'
-      && !github.event.pull_request.head.repo.fork
-      && (github.event.action != 'labeled'
-      || (github.event.pull_request.state == 'open'
-      && github.event.label.name == 'docs/ignore-broken-links'))
+    # The reusable workflow guards the labeled trigger against closed PRs.
+    if: github.repository == 'grafana/gcx' && !github.event.pull_request.head.repo.fork
     uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main # zizmor: ignore[unpinned-uses]
     with:
       branch: ${{ github.head_ref }}
