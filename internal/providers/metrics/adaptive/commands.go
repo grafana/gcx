@@ -385,12 +385,13 @@ func applyAllRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *re
 	if resp.Summary != nil {
 		summary = *resp.Summary
 	}
+	if applyErr != nil && summary.Upserted+summary.Deleted == 0 {
+		return applyErr
+	}
+
 	result := cmdio.NewBatchMutation("applied")
 	result.Summary.Succeeded = summary.Upserted + summary.Deleted
 	result.Summary.Skipped = summary.Unchanged
-	if applyErr != nil && result.Summary.Succeeded == 0 {
-		return applyErr
-	}
 
 	target := cmdio.MutationTarget{Kind: "recommendation", Namespace: opts.Segment}
 	for _, w := range resp.Warnings {
@@ -400,8 +401,9 @@ func applyAllRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *re
 			Error:  fmt.Sprintf("%s: %d recommendation(s) not applied", w.Code, w.Skipped),
 		})
 	}
+
 	if applyErr != nil {
-		result.Summary.Failed++
+		// The server reports committed changes, but not how many metrics remain unprocessed.
 		result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: applyErr.Error()})
 	}
 
@@ -417,8 +419,11 @@ func applyAllRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *re
 	if err := opts.Encode(cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
+	if applyErr != nil {
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, applyErr)
+	}
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-		gcxerrors.NewPartialFailureError("apply", result.Summary.Succeeded+result.Summary.Failed, result.Summary.Failed))
+		gcxerrors.NewPartialFailureError("apply", result.Summary.Succeeded+result.Summary.Failed+result.Summary.Skipped, result.Summary.Failed))
 }
 
 func applySelectiveRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *recommendationsApplyOpts, metrics []string) error {

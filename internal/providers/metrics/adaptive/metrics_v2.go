@@ -174,10 +174,7 @@ func (b *rulesBackend) GetMetricDetail(ctx context.Context, metric string) (*Ada
 		return nil, fmt.Errorf("metric %s: %w", metric, adapter.ErrNotFound)
 	}
 
-	out := &AdaptiveMetricDetail{Metric: detail.Metric}
-	if detail.Verdict != nil {
-		out.RecommendedAction = detail.Verdict.RecommendedAction
-	}
+	out := &AdaptiveMetricDetail{Metric: detail.Metric, RecommendedAction: detail.Verdict.RecommendedAction}
 	if detail.Current != nil {
 		rule := fromRuleV2(*detail.Current)
 		out.CurrentRule = &rule

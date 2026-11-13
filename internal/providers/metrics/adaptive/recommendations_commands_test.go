@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -243,6 +244,28 @@ func TestRecommendationsApply_All(t *testing.T) {
 		require.Error(t, res.err)
 		assert.Contains(t, res.stderr, "rule_limit_reached: 2 recommendation(s) not applied")
 		assert.Contains(t, res.stdout, "rule_limit_reached")
+	})
+
+	t.Run("a failure after committed chunks preserves results without counting the error", func(t *testing.T) {
+		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
+			t.Helper()
+			f.fail(tr.via, "POST", 500, `{"code":"internal","error":"failed to write rules","summary":{"upserted":3,"deleted":1,"unchanged":2},"warnings":[{"code":"rule_limit_reached","skipped":5}]}`)
+			res := run("recommendations", "apply", "--all", "--force", "-o", "json")
+			var emitted *gcxerrors.EmittedError
+			require.ErrorAs(t, res.err, &emitted)
+			assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+			require.ErrorContains(t, res.err, "failed to write rules")
+			assert.Contains(t, res.stderr, "failed to write rules")
+			doc, ok := decodeOneJSONValue(t, res.stdout).(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, map[string]any{"succeeded": float64(4), "failed": float64(5), "skipped": float64(2)}, doc["summary"])
+			failures, ok := doc["failures"].([]any)
+			require.True(t, ok)
+			require.Len(t, failures, 2)
+			failure, ok := failures[1].(map[string]any)
+			require.True(t, ok)
+			assert.Contains(t, failure["error"], "failed to write rules")
+		})
 	})
 
 	t.Run("server unavailable for apply is surfaced", func(t *testing.T) {

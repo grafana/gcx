@@ -34,6 +34,7 @@ const (
 
 type rulesEndpoint struct {
 	baseURL  string
+	root     string
 	http     *http.Client
 	tenantID int
 	token    string
@@ -44,7 +45,7 @@ func (e *rulesEndpoint) do(ctx context.Context, method, path string, body []byte
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(e.baseURL, "/")+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(e.baseURL, "/")+e.root+path, reader)
 	if err != nil {
 		return 0, nil, fmt.Errorf("adaptive-metrics: create request: %w", err)
 	}
@@ -82,9 +83,6 @@ type rulesBackend struct {
 	directOnce sync.Once
 	direct     *rulesEndpoint
 	directErr  error
-
-	mu        sync.Mutex
-	proxySkip map[string]error
 }
 
 func newRulesBackend(ctx context.Context, loader *providers.ConfigLoader, segment string) (*rulesBackend, error) {
@@ -92,14 +90,13 @@ func newRulesBackend(ctx context.Context, loader *providers.ConfigLoader, segmen
 		return nil, err
 	}
 	b := &rulesBackend{
-		segment:   segment,
-		proxySkip: map[string]error{},
+		segment: segment,
 		loadDirect: func(ctx context.Context) (*rulesEndpoint, error) {
 			sa, err := adaptiveauth.ResolveSignalAuth(ctx, loader, "metrics")
 			if err != nil {
 				return nil, err
 			}
-			return &rulesEndpoint{baseURL: sa.BaseURL, http: sa.HTTPClient, tenantID: sa.TenantID, token: sa.APIToken}, nil
+			return &rulesEndpoint{baseURL: sa.BaseURL, root: rulesDirectRoot, http: sa.HTTPClient, tenantID: sa.TenantID, token: sa.APIToken}, nil
 		},
 	}
 	// Any Grafana config or client failure leaves the direct path to decide: a
@@ -108,17 +105,16 @@ func newRulesBackend(ctx context.Context, loader *providers.ConfigLoader, segmen
 	deps, _, err := providers.LoadGrafanaDepsWithLoader(ctx, loader)
 	b.proxyErr = err
 	if err == nil {
-		b.proxy = &rulesEndpoint{baseURL: deps.BaseURL, http: deps.HTTP}
+		b.proxy = &rulesEndpoint{baseURL: deps.BaseURL, root: rulesProxyRoot + "/v2", http: deps.HTTP}
 	}
 	return b, nil
 }
 
 type ruleCall struct {
-	method     string
-	proxyPath  string
-	directPath string
-	body       []byte
-	action     string
+	method string
+	path   string
+	body   []byte
+	action string
 }
 
 func (b *rulesBackend) segmentPath() string {
@@ -131,30 +127,16 @@ func (b *rulesBackend) segmentPath() string {
 func (b *rulesBackend) v2Call(method, suffix string, body []byte, action string) ruleCall {
 	seg := "/segments/" + b.segmentPath()
 	return ruleCall{
-		method:     method,
-		proxyPath:  rulesProxyRoot + "/v2" + seg + suffix,
-		directPath: rulesDirectRoot + seg + suffix,
-		body:       body,
-		action:     action,
+		method: method,
+		path:   seg + suffix,
+		body:   body,
+		action: action,
 	}
 }
 
 func (b *rulesBackend) directEndpoint(ctx context.Context) (*rulesEndpoint, error) {
 	b.directOnce.Do(func() { b.direct, b.directErr = b.loadDirect(ctx) })
 	return b.direct, b.directErr
-}
-
-func (b *rulesBackend) skipReason(action string) (error, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	err, ok := b.proxySkip[action]
-	return err, ok
-}
-
-func (b *rulesBackend) markSkip(action string, err error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.proxySkip[action] = err
 }
 
 func roleFor(action string) string {
@@ -181,16 +163,11 @@ func proxyRefusal(c ruleCall, status int, body []byte) error {
 func (b *rulesBackend) send(ctx context.Context, c ruleCall) (int, []byte, error) {
 	proxyErr := b.proxyErr
 	if b.proxy != nil {
-		if skipErr, skip := b.skipReason(c.action); skip {
-			proxyErr = skipErr
-		} else {
-			status, body, err := b.proxy.do(ctx, c.method, c.proxyPath, c.body)
-			if err != nil || !providers.IsPluginProxyUnavailable(status, body) {
-				return status, body, err
-			}
-			proxyErr = proxyRefusal(c, status, body)
-			b.markSkip(c.action, proxyErr)
+		status, body, err := b.proxy.do(ctx, c.method, c.path, c.body)
+		if err != nil || !providers.IsPluginProxyUnavailable(status, body) {
+			return status, body, err
 		}
+		proxyErr = proxyRefusal(c, status, body)
 	}
 
 	ep, err := b.directEndpoint(ctx)
@@ -202,7 +179,7 @@ func (b *rulesBackend) send(ctx context.Context, c ruleCall) (int, []byte, error
 		}
 		return 0, nil, fmt.Errorf("%w; direct access unavailable: %w", proxyErr, err)
 	}
-	status, body, err := ep.do(ctx, c.method, c.directPath, c.body)
+	status, body, err := ep.do(ctx, c.method, c.path, c.body)
 	if err != nil {
 		return 0, nil, err
 	}

@@ -654,19 +654,6 @@ func TestRulesTransport(t *testing.T) {
 		assert.Equal(t, []string{"min"}, stored.Functions)
 	})
 
-	t.Run("refusal is remembered for the rest of the command", func(t *testing.T) {
-		f := newFakeRules(t)
-		for _, m := range []string{"m1", "m2", "m3"} {
-			f.seed("default", wireRule{Metric: m, Action: "drop"})
-		}
-		f.pageSize = 1
-		f.fail(viaProxy, "GET", 403, routeDeniedBody)
-		res := runAdaptiveCmd(t, f.loader(t, fakeConfig{grafana: true, cloud: true}), false, "rules", "list", "--limit", "0", "-o", "json")
-		require.NoError(t, res.err)
-		assert.Len(t, f.requests(viaProxy, "GET"), 1)
-		assert.Len(t, f.applied(viaDirect, "GET"), 3)
-	})
-
 	for name, tc := range map[string]struct {
 		status int
 		body   string
