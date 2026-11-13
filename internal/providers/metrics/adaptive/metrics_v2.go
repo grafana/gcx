@@ -170,7 +170,7 @@ func (b *rulesBackend) GetMetricDetail(ctx context.Context, metric string) (*Ada
 	if err != nil {
 		return nil, err
 	}
-	if detail.Verdict == nil || detail.Verdict.RecommendedAction == "" {
+	if detail.Verdict == nil {
 		return nil, fmt.Errorf("metric %s: %w", metric, adapter.ErrNotFound)
 	}
 
