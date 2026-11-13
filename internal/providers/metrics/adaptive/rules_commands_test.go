@@ -826,7 +826,10 @@ func TestRuleExample_IsValid(t *testing.T) {
 	require.ErrorIs(t, err, adapter.ErrDryRunUnverified)
 }
 
-func TestRuleSchema_IncludesManagedBy(t *testing.T) {
-	assert.Contains(t, string(metrics.RuleSchema()), "managed_by")
-	assert.Contains(t, string(metrics.RuleSchema()), "aggregation_delay")
+func TestRuleSchema_DeprecatesManagedBy(t *testing.T) {
+	schema := string(metrics.RuleSchema())
+	assert.Contains(t, schema, `"managed_by"`)
+	assert.Contains(t, schema, `"deprecated":true`)
+	assert.Contains(t, schema, "the v2 API does not store or return this field")
+	assert.Contains(t, schema, `"aggregation_delay"`)
 }

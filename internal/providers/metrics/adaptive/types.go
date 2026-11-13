@@ -72,7 +72,7 @@ type MetricRule struct {
 	Aggregations        []string `json:"aggregations,omitempty" yaml:"aggregations,omitempty"`
 	AggregationInterval string   `json:"aggregation_interval,omitempty" yaml:"aggregation_interval,omitempty"`
 	AggregationDelay    string   `json:"aggregation_delay,omitempty" yaml:"aggregation_delay,omitempty"`
-	ManagedBy           string   `json:"managed_by,omitempty" yaml:"managed_by,omitempty"`
+	ManagedBy           string   `json:"managed_by,omitempty" yaml:"managed_by,omitempty" jsonschema_extras:"deprecated=true" jsonschema_description:"Deprecated for v2 aggregation rules. Retained for legacy recommendation data and manifests; the v2 API does not store or return this field."`
 }
 
 // AdaptiveMetric is one analyzed metric in a segment's catalog.

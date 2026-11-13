@@ -50,17 +50,6 @@ func IsPluginRouteDenied(statusCode int, body []byte) bool {
 	return json.Unmarshal(body, &errResp) == nil && errResp.ErrorMessage() == pluginRouteDeniedMessage
 }
 
-// pluginProxyDenials are the exact 403 messages Grafana returns when it rejects
-// a plugin-proxy request before anything reaches the plugin backend. Backend
-// responses never use these messages, so a match guarantees the request was not
-// applied.
-var pluginProxyDenials = map[int][]string{ //nolint:gochecknoglobals // Static lookup table.
-	http.StatusForbidden: {
-		pluginRouteDeniedMessage,
-		"You'll need additional permissions to perform this action.",
-	},
-}
-
 // IsPluginProxyUnavailable reports whether a response is Grafana's plugin proxy
 // itself refusing the request because the caller lacks access to the plugin or
 // its route. Callers that have a direct fallback can retry safely, because the
@@ -68,8 +57,7 @@ var pluginProxyDenials = map[int][]string{ //nolint:gochecknoglobals // Static l
 // message are both matched; a backend 403 returns false. A 404 is a real
 // resource response and never triggers a fallback.
 func IsPluginProxyUnavailable(statusCode int, body []byte) bool {
-	messages, ok := pluginProxyDenials[statusCode]
-	if !ok {
+	if statusCode != http.StatusForbidden {
 		return false
 	}
 	var errResp ErrorResponse
@@ -77,7 +65,10 @@ func IsPluginProxyUnavailable(statusCode int, body []byte) bool {
 		return false
 	}
 	msg := errResp.ErrorMessage()
-	for _, m := range messages {
+	for _, m := range [...]string{
+		pluginRouteDeniedMessage,
+		"You'll need additional permissions to perform this action.",
+	} {
 		if strings.HasPrefix(msg, m) {
 			return true
 		}

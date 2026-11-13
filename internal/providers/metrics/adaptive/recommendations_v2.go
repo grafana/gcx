@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
@@ -81,10 +82,8 @@ func isMetricNotFound(status int, body []byte) bool {
 	if status != http.StatusNotFound {
 		return false
 	}
-	var er struct {
-		Error string `json:"error"`
-	}
-	return json.Unmarshal(body, &er) == nil && strings.HasPrefix(er.Error, "metric not found")
+	var er providers.ErrorResponse
+	return json.Unmarshal(body, &er) == nil && strings.HasPrefix(er.ErrorMessage(), "metric not found")
 }
 
 // RecommendationCounts returns the segment's recommendations counted by
@@ -129,7 +128,8 @@ type applyResponse struct {
 }
 
 // ApplyRecommendations applies the listed metrics' recommendations in one
-// atomic write. Every metric must have a recommendation.
+// atomic write. Every metric must have a recommendation. This endpoint returns
+// per-metric results; summary and warning fields are used only by segment-wide apply.
 func (b *rulesBackend) ApplyRecommendations(ctx context.Context, metrics []string) ([]applyResult, error) {
 	resp, err := b.apply(ctx, map[string]any{"metrics": metrics})
 	if err != nil {

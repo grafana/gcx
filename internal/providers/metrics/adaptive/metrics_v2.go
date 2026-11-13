@@ -53,10 +53,7 @@ type metricListItemV2 struct {
 // ListMetrics reads a segment's analyzed metrics, following page tokens up to
 // limit. A non-positive limit drains every page.
 func (b *rulesBackend) ListMetrics(ctx context.Context, opts metricsListOptions) ([]AdaptiveMetric, error) {
-	sortSpec, ok := metricsSorts[opts.Sort]
-	if !ok {
-		return nil, fmt.Errorf("invalid sort %q", opts.Sort)
-	}
+	sortSpec := metricsSorts[opts.Sort]
 
 	metrics := []AdaptiveMetric{}
 	token := ""

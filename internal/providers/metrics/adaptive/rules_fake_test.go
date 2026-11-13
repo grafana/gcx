@@ -115,8 +115,6 @@ func (f *fakeRules) seed(segment string, rules ...wireRule) *fakeRules {
 	return f
 }
 
-// fail makes matching requests fail with status and body. A zero status drops
-// the connection without a response.
 func (f *fakeRules) recommend(segment, metric string, rec fakeRec) *fakeRules {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -130,6 +128,8 @@ func (f *fakeRules) recommend(segment, metric string, rec fakeRec) *fakeRules {
 	return f
 }
 
+// fail makes matching requests fail with status and body. A zero status drops
+// the connection without a response.
 func (f *fakeRules) fail(via, method string, status int, body string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
