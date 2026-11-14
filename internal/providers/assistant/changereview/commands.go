@@ -88,11 +88,13 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*client.Clie
 	return client.NewClient(base), nil
 }
 
-func requireID(cmd *cobra.Command, id string) error {
-	if strings.TrimSpace(id) == "" {
-		return usageError(cmd, "CHECK must be a nonempty check ID; list IDs with: gcx assistant change-review checks list")
+// requireID returns the trimmed check ID, or a usage error when it is empty.
+func requireID(cmd *cobra.Command, arg string) (string, error) {
+	id := strings.TrimSpace(arg)
+	if id == "" {
+		return "", usageError(cmd, "CHECK must be a nonempty check ID; list IDs with: gcx assistant change-review checks list")
 	}
-	return nil
+	return id, nil
 }
 
 // usageError reports invalid input with exit code 2, so callers can tell it
@@ -260,7 +262,8 @@ The output is valid input for update -f, so get, edit, and update round-trip.`,
   gcx assistant change-review checks get my-check > check.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireID(cmd, args[0]); err != nil {
+			id, err := requireID(cmd, args[0])
+			if err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -274,7 +277,7 @@ The output is valid input for update -f, so get, edit, and update round-trip.`,
 			if err != nil {
 				return err
 			}
-			index, err := findCheck(checks.Checks, args[0])
+			index, err := findCheck(checks.Checks, id)
 			if err != nil {
 				return err
 			}
@@ -480,7 +483,11 @@ save; reviews already running keep the checks they started with.`,
 					return opts.IO.Encode(cmd.OutOrStdout(), newMutationResult("created", created))
 				}
 			}
-			return errors.New("create change review check: the saved checks do not include the new check")
+			return &gcxerrors.DetailedError{
+				Summary:     "Created change review check not found in the saved checks",
+				Details:     fmt.Sprintf("The save succeeded, but no check in the response is new, so %q could not be identified.", check.Name),
+				Suggestions: []string{"List the checks to see whether it was saved: gcx assistant change-review checks list"},
+			}
 		},
 	}
 	markExperimental(cmd)
@@ -504,8 +511,8 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
   gcx assistant change-review checks update my-check -f check.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-			if err := requireID(cmd, id); err != nil {
+			id, err := requireID(cmd, args[0])
+			if err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -578,8 +585,8 @@ while agent mode still requires explicit --force for destructive operations.`,
   gcx assistant change-review checks delete migration-safety --force`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-			if err := requireID(cmd, id); err != nil {
+			id, err := requireID(cmd, args[0])
+			if err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -697,13 +704,16 @@ func (w *windowFlags) resolve(cmd *cobra.Command, now time.Time) (client.StatsQu
 		}
 		*bound.target = t
 	}
+	if !toChanged {
+		q.To = now
+	}
 	if !fromChanged {
 		q.From = q.To.Add(-30 * 24 * time.Hour)
 	}
 	switch {
-	case !q.To.IsZero() && !q.From.Before(q.To):
+	case !q.From.Before(q.To):
 		return q, usageError(cmd, "--from must be before --to")
-	case !q.To.IsZero() && q.To.Sub(q.From) > maxWindow:
+	case q.To.Sub(q.From) > maxWindow:
 		return q, usageError(cmd, "the window can be at most 90 days; narrow --from or --to")
 	}
 	return q, nil
@@ -909,7 +919,8 @@ totals.`,
   gcx assistant change-review checks list-pull-requests security -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireID(cmd, args[0]); err != nil {
+			id, err := requireID(cmd, args[0])
+			if err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -923,7 +934,7 @@ totals.`,
 			if err != nil {
 				return err
 			}
-			pulls, err := c.PullRequests(cmd.Context(), args[0], q)
+			pulls, err := c.PullRequests(cmd.Context(), id, q)
 			if err != nil {
 				return err
 			}

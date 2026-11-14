@@ -314,6 +314,8 @@ func TestWindowResolve(t *testing.T) {
 		{name: "from after to", args: []string{"--from", "now-1d", "--to", "now-2d"}, wantErr: "before --to"},
 		{name: "window over 90d", args: []string{"--from", "now-100d", "--to", "now"}, wantErr: "at most 90 days"},
 		{name: "only to", args: []string{"--to", "now-1d"}, wantFrom: now.Add(-31 * 24 * time.Hour), wantTo: now.Add(-24 * time.Hour)},
+		{name: "only from defaults to now", args: []string{"--from", "now-7d"}, wantFrom: now.Add(-7 * 24 * time.Hour), wantTo: now},
+		{name: "only from over 90d", args: []string{"--from", "2024-01-01T00:00:00Z"}, wantErr: "at most 90 days"},
 		{name: "empty repository", args: []string{"--repository", ""}, wantErr: "invalid --repository"},
 		{name: "repository without owner", args: []string{"--repository", "gcx"}, wantErr: "invalid --repository"},
 	}
@@ -374,4 +376,32 @@ func TestMutationYAMLCarriesDiscriminators(t *testing.T) {
 	assert.Contains(t, out, "schema_version: \"1\"\n")
 	assert.Contains(t, out, "action: deleted\n")
 	assert.NotContains(t, out, "SingleMutation")
+}
+
+func TestListPullRequestsSendsCheckAndWindow(t *testing.T) {
+	var path, query string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, query = r.URL.Path, r.URL.RawQuery
+		writeData(w, client.PullRequests{PullRequests: []client.PullRequest{{Repository: "grafana/gcx", PullNumber: 42, Reviews: 2, Confirmed: 1}}})
+	}))
+	t.Cleanup(server.Close)
+
+	out, err := run(t, newListPullRequestsCommand(loaderFor(t, server)), " security ", "--since", "7d", "--repository", "grafana/gcx", "-o", "text")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/plugins/grafana-assistant-app/resources/api/v1/github/review-analytics/pull-requests", path)
+	assert.Contains(t, query, "check=security&", "the check ID is trimmed and sent as check")
+	assert.Contains(t, query, "repository=grafana%2Fgcx")
+	assert.Contains(t, query, "from=")
+	assert.Contains(t, query, "to=")
+	assert.Contains(t, out, "#42")
+}
+
+func TestGetTrimsCheckID(t *testing.T) {
+	fake := &fakeChecks{checks: builtIns()}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+
+	out, err := run(t, newGetCommand(loaderFor(t, server)), " security ")
+	require.NoError(t, err)
+	assert.Contains(t, out, "id: security")
 }
