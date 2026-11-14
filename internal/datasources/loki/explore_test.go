@@ -75,6 +75,7 @@ func TestMetricsExploreURL(t *testing.T) {
 
 		require.NotEmpty(t, got)
 		params := mustParseURL(t, got).Query()
+		assert.Contains(t, params.Get("panes"), `"queryType":"instant"`)
 		assert.Contains(t, params.Get("panes"), `"instant":true`)
 		assert.Contains(t, params.Get("panes"), `"range":false`)
 	})

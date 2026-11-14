@@ -57,7 +57,9 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50. --limit 0 omits the limit, so Loki's own default
-applies (100 lines in Loki's range-query API).
+applies (100 lines in Loki's range-query API), not unlimited results. For
+counts, use 'gcx datasources loki metrics' with no time flags: an instant
+query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
@@ -98,6 +100,9 @@ syntax error. Self-hosted Grafana targets are not guarded.`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+			if err := dsquery.ValidateLimit(limit); err != nil {
 				return err
 			}
 
@@ -147,13 +152,17 @@ syntax error. Self-hosted Grafana targets are not guarded.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
+			graphHinted := false
 			if shared.IO.OutputFormat == "graph" {
 				if summary, ok := graphLimitHint(limit, countEntries(resp)); ok {
 					cmdio.EmitHint(cmd.ErrOrStderr(), summary, "")
+					graphHinted = true
 				}
 			}
-
-			dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			// The graph hint already covers --limit; a second hint would repeat it.
+			if !graphHinted {
+				dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			}
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,

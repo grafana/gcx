@@ -69,7 +69,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, true)
+	body, err := buildLogQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 // MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
 // Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
 func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, false)
+	body, err := buildMetricQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -110,10 +110,29 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	return convertMetricResponse(grafanaResp), nil
 }
 
-// buildQueryBody builds the Grafana datasource query API request body shared by
-// Query and MetricQuery. includeMaxLines controls whether req.Limit is sent as
-// maxLines — MetricQuery results are time-series, not log lines, so it doesn't apply.
-func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeMaxLines bool) ([]byte, error) {
+// buildLogQueryBody builds the request body for a log query. Loki rejects
+// instant log queries, so a log query with no time range runs as a range query
+// over the last minute.
+func buildLogQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	return queryBody(datasourceUID, req, "range", req.Limit)
+}
+
+// buildMetricQueryBody builds the request body for a metric query. With no
+// time range it is an instant query. Line limits do not apply.
+func buildMetricQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	queryType := "instant"
+	if req.IsRange() {
+		queryType = "range"
+	}
+	return queryBody(datasourceUID, req, queryType, 0)
+}
+
+// queryBody builds the Grafana datasource query API request body. Grafana's
+// Loki datasource reads queryType and ignores the legacy instant field. With no
+// time range the request covers the last minute: Grafana evaluates an instant
+// query at "to", and "from" still feeds $__range and the step. A maxLines of 0
+// omits the field.
+func queryBody(datasourceUID string, req QueryRequest, queryType string, maxLines int) ([]byte, error) {
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
@@ -122,36 +141,28 @@ func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeM
 		},
 		"expr":       req.Query,
 		"intervalMs": 60000,
+		"queryType":  queryType,
 	}
-
-	var from, to string
+	from, to := "now-1m", "now"
 	if req.IsRange() {
 		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
 		to = strconv.FormatInt(req.End.UnixMilli(), 10)
 		if req.Step > 0 {
 			query["intervalMs"] = req.Step.Milliseconds()
 		}
-	} else {
-		from = "now-1m"
-		to = "now"
-		query["instant"] = true
+	}
+	if maxLines > 0 {
+		query["maxLines"] = maxLines
 	}
 
-	if includeMaxLines && req.Limit > 0 {
-		query["maxLines"] = req.Limit
-	}
-
-	bodyMap := map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"queries": []any{query},
 		"from":    from,
 		"to":      to,
-	}
-
-	body, err := json.Marshal(bodyMap)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-
 	return body, nil
 }
 

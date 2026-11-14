@@ -26,6 +26,10 @@ type Status struct {
 	DisabledTime            *string             `json:"disabledTime,omitempty"`
 	Version                 int                 `json:"version"`
 	SanityCheckResults      []SanityCheckResult `json:"sanityCheckResults,omitempty"`
+	// KgWriteAPIEnabled reports whether the Knowledge Graph write API accepts
+	// writes for this stack: the write endpoints are served and the tenant's
+	// write flag is on. Nil when the server is too old to report it.
+	KgWriteAPIEnabled *bool `json:"kgWriteApiEnabled,omitempty"`
 }
 
 // SanityCheckResult represents a metric sanity check result (MetricSanityCheckResult).

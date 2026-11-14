@@ -8,7 +8,7 @@ keywords:
   - gcx
   - OnCall
   - notifications
-weight: 8
+weight: 6
 ---
 
 # Manage OnCall personal notification rules
