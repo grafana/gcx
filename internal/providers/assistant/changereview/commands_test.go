@@ -15,6 +15,7 @@ import (
 	"time"
 
 	client "github.com/grafana/gcx/internal/assistant/changereview"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -155,7 +156,7 @@ func TestUpdateChangesOnlySetFieldsAndSendsRevision(t *testing.T) {
 
 	var result mutationResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	assert.Equal(t, "updated", result.Operation)
+	assert.Equal(t, "updated", result.Action)
 	assert.True(t, result.Check.Blocking)
 	assert.True(t, result.Check.Enabled, "enabled was not set and must keep its value")
 	assert.Equal(t, []string{"api/**"}, result.Check.Paths)
@@ -232,7 +233,11 @@ func TestCreateAppendsCustomCheck(t *testing.T) {
 	require.NoError(t, err)
 	var result mutationResult
 	require.NoError(t, json.Unmarshal([]byte(out), &result))
-	assert.Equal(t, "created", result.Operation)
+	assert.Equal(t, "created", result.Action)
+	assert.Equal(t, "gcx.mutation", result.Type)
+	assert.Equal(t, "1", result.SchemaVersion)
+	assert.Equal(t, "migration-safety", result.Target.ID)
+	assert.Contains(t, out, `"type": "gcx.mutation"`, "discriminators are top-level fields")
 	assert.Equal(t, "migration-safety", result.Check.ID)
 	assert.True(t, result.Check.Enabled, "new checks are enabled by default")
 	assert.Len(t, fake.checks, 3)
@@ -328,4 +333,45 @@ func TestWindowResolve(t *testing.T) {
 			assert.Equal(t, tc.wantTo, q.To)
 		})
 	}
+}
+
+func TestInvalidInputIsUsageError(t *testing.T) {
+	fake := &fakeChecks{checks: builtIns()}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	loader := loaderFor(t, server)
+
+	tests := []struct {
+		name string
+		cmd  *cobra.Command
+		args []string
+	}{
+		{name: "since over 90d", cmd: newStatsCommand(loader), args: []string{"--since", "91d"}},
+		{name: "bad repository", cmd: newListPullRequestsCommand(loader), args: []string{"security", "--repository", "gcx"}},
+		{name: "bad applies-to", cmd: newCreateCommand(loader), args: []string{"--name", "x", "--instructions", "y", "--applies-to", "deploy"}},
+		{name: "missing instructions", cmd: newCreateCommand(loader), args: []string{"--name", "x"}},
+		{name: "built-in rename", cmd: newUpdateCommand(loader), args: []string{"security", "--name", "Sec"}},
+		{name: "empty check ID", cmd: newGetCommand(loader), args: []string{" "}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := run(t, tc.cmd, tc.args...)
+			var usage *gcxerrors.UsageError
+			require.ErrorAs(t, err, &usage)
+		})
+	}
+	assert.Empty(t, fake.puts)
+}
+
+func TestMutationYAMLCarriesDiscriminators(t *testing.T) {
+	fake := &fakeChecks{checks: append(builtIns(), client.Check{ID: "migrations", Name: "Migrations", Instructions: "x", Enabled: true})}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+
+	out, err := run(t, newDeleteCommand(loaderFor(t, server)), "migrations", "--force", "-o", "yaml")
+	require.NoError(t, err)
+	assert.Contains(t, out, "type: gcx.mutation\n")
+	assert.Contains(t, out, "schema_version: \"1\"\n")
+	assert.Contains(t, out, "action: deleted\n")
+	assert.NotContains(t, out, "SingleMutation")
 }

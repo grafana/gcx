@@ -88,11 +88,17 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*client.Clie
 	return client.NewClient(base), nil
 }
 
-func requireID(id string) error {
+func requireID(cmd *cobra.Command, id string) error {
 	if strings.TrimSpace(id) == "" {
-		return errors.New("CHECK must be a nonempty check ID; list IDs with: gcx assistant change-review checks list")
+		return usageError(cmd, "CHECK must be a nonempty check ID; list IDs with: gcx assistant change-review checks list")
 	}
 	return nil
+}
+
+// usageError reports invalid input with exit code 2, so callers can tell it
+// from a failed request.
+func usageError(cmd *cobra.Command, format string, args ...any) error {
+	return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf(format, args...), nil)
 }
 
 func findCheck(checks []client.Check, id string) (int, error) {
@@ -254,7 +260,7 @@ The output is valid input for update -f, so get, edit, and update round-trip.`,
   gcx assistant change-review checks get my-check > check.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireID(args[0]); err != nil {
+			if err := requireID(cmd, args[0]); err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -354,7 +360,7 @@ func (f *editFlags) input(cmd *cobra.Command) (checkInput, error) {
 	if in.AppliesTo != nil {
 		for _, stage := range *in.AppliesTo {
 			if !slices.Contains([]string{"plan", "code", "pr"}, stage) {
-				return in, fmt.Errorf("invalid --applies-to %q: use plan, code, or pr, for example --applies-to pr", stage)
+				return in, usageError(cmd, "invalid --applies-to %q: use plan, code, or pr, for example --applies-to pr", stage)
 			}
 		}
 	}
@@ -362,13 +368,13 @@ func (f *editFlags) input(cmd *cobra.Command) (checkInput, error) {
 }
 
 // apply writes the set fields of in onto check.
-func (in checkInput) apply(check client.Check) (client.Check, error) {
+func (in checkInput) apply(cmd *cobra.Command, check client.Check) (client.Check, error) {
 	if check.BuiltIn {
 		if in.Name != nil && *in.Name != check.Name {
-			return check, fmt.Errorf("built-in check %q keeps its own name; --name applies to custom checks only", check.ID)
+			return check, usageError(cmd, "built-in check %q keeps its own name; --name applies to custom checks only", check.ID)
 		}
 		if in.AppliesTo != nil && len(*in.AppliesTo) > 0 && !slices.Equal(*in.AppliesTo, []string{"pr"}) {
-			return check, fmt.Errorf("built-in check %q reviews pull requests only; --applies-to applies to custom checks only", check.ID)
+			return check, usageError(cmd, "built-in check %q reviews pull requests only; --applies-to applies to custom checks only", check.ID)
 		}
 	}
 	if in.Name != nil {
@@ -393,16 +399,25 @@ func (in checkInput) apply(check client.Check) (client.Check, error) {
 		check.AppliesTo = *in.AppliesTo
 	}
 	if !check.BuiltIn && (check.Name == "" || check.Instructions == "") {
-		return check, errors.New("a custom check needs --name and --instructions")
+		return check, usageError(cmd, "a custom check needs --name and --instructions")
 	}
 	return check, nil
 }
 
 // mutationResult reports a create, update, or delete with the check it
 // affected.
+// It is the shared gcx.mutation shape with the saved check added.
 type mutationResult struct {
-	Operation string       `json:"operation"`
-	Check     client.Check `json:"check"`
+	cmdio.SingleMutation
+
+	Check client.Check `json:"check"`
+}
+
+func newMutationResult(action string, check client.Check) mutationResult {
+	return mutationResult{
+		SingleMutation: cmdio.NewSingleMutation(action, cmdio.MutationTarget{Kind: "ChangeReviewCheck", ID: check.ID, Name: check.Name}),
+		Check:          check,
+	}
 }
 
 type mutationOpts struct {
@@ -441,7 +456,7 @@ save; reviews already running keep the checks they started with.`,
 			if err != nil {
 				return err
 			}
-			check, err := in.apply(client.Check{Enabled: true})
+			check, err := in.apply(cmd, client.Check{Enabled: true})
 			if err != nil {
 				return err
 			}
@@ -462,7 +477,7 @@ save; reviews already running keep the checks they started with.`,
 			}
 			for _, created := range saved.Checks {
 				if !before[created.ID] {
-					return opts.IO.Encode(cmd.OutOrStdout(), mutationResult{Operation: "created", Check: created})
+					return opts.IO.Encode(cmd.OutOrStdout(), newMutationResult("created", created))
 				}
 			}
 			return errors.New("create change review check: the saved checks do not include the new check")
@@ -490,7 +505,7 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
-			if err := requireID(id); err != nil {
+			if err := requireID(cmd, id); err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -501,7 +516,7 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 				return err
 			}
 			if in.ID != "" && in.ID != id {
-				return fmt.Errorf("the file describes check %q, not %q; check IDs cannot be changed", in.ID, id)
+				return usageError(cmd, "the file describes check %q, not %q; check IDs cannot be changed", in.ID, id)
 			}
 			c, err := newClient(cmd, loader)
 			if err != nil {
@@ -513,7 +528,7 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 					return nil, err
 				}
 				next := slices.Clone(checks)
-				if next[index], err = in.apply(next[index]); err != nil {
+				if next[index], err = in.apply(cmd, next[index]); err != nil {
 					return nil, err
 				}
 				return next, nil
@@ -525,7 +540,7 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), mutationResult{Operation: "updated", Check: saved.Checks[index]})
+			return opts.IO.Encode(cmd.OutOrStdout(), newMutationResult("updated", saved.Checks[index]))
 		},
 	}
 	markExperimental(cmd)
@@ -564,7 +579,7 @@ while agent mode still requires explicit --force for destructive operations.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
-			if err := requireID(id); err != nil {
+			if err := requireID(cmd, id); err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
@@ -606,7 +621,7 @@ while agent mode still requires explicit --force for destructive operations.`,
 			if err != nil {
 				return saveError(err)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), mutationResult{Operation: "deleted", Check: deleted})
+			return opts.IO.Encode(cmd.OutOrStdout(), newMutationResult("deleted", deleted))
 		},
 	}
 	markExperimental(cmd)
@@ -649,18 +664,18 @@ func (w *windowFlags) resolve(cmd *cobra.Command, now time.Time) (client.StatsQu
 	if flags.Changed("repository") {
 		owner, name, ok := strings.Cut(strings.TrimSpace(w.Repository), "/")
 		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-			return q, fmt.Errorf("invalid --repository %q: use owner/name, for example --repository grafana/gcx", w.Repository)
+			return q, usageError(cmd, "invalid --repository %q: use owner/name, for example --repository grafana/gcx", w.Repository)
 		}
 		q.Repository = owner + "/" + name
 	}
 	fromChanged, toChanged := flags.Changed("from"), flags.Changed("to")
 	if flags.Changed("since") && (fromChanged || toChanged) {
-		return q, errors.New("--since cannot be used together with --from or --to")
+		return q, usageError(cmd, "--since cannot be used together with --from or --to")
 	}
 	if !fromChanged && !toChanged {
 		since, err := shared.ParseDuration(w.Since)
 		if err != nil || since <= 0 || since > maxWindow {
-			return q, fmt.Errorf("invalid --since %q: use a positive duration of at most 90d, for example --since 7d", w.Since)
+			return q, usageError(cmd, "invalid --since %q: use a positive duration of at most 90d, for example --since 7d", w.Since)
 		}
 		q.From, q.To = now.Add(-since), now
 		return q, nil
@@ -674,11 +689,11 @@ func (w *windowFlags) resolve(cmd *cobra.Command, now time.Time) (client.StatsQu
 			continue
 		}
 		if strings.TrimSpace(bound.value) == "" {
-			return q, fmt.Errorf("--%s cannot be empty; use RFC3339, Unix seconds, or a relative time such as now-7d", bound.name)
+			return q, usageError(cmd, "--%s cannot be empty; use RFC3339, Unix seconds, or a relative time such as now-7d", bound.name)
 		}
 		t, err := shared.ParseTime(bound.value, now)
 		if err != nil {
-			return q, fmt.Errorf("invalid --%s %q: %w", bound.name, bound.value, err)
+			return q, usageError(cmd, "invalid --%s %q: %v", bound.name, bound.value, err)
 		}
 		*bound.target = t
 	}
@@ -687,9 +702,9 @@ func (w *windowFlags) resolve(cmd *cobra.Command, now time.Time) (client.StatsQu
 	}
 	switch {
 	case !q.To.IsZero() && !q.From.Before(q.To):
-		return q, errors.New("--from must be before --to")
+		return q, usageError(cmd, "--from must be before --to")
 	case !q.To.IsZero() && q.To.Sub(q.From) > maxWindow:
-		return q, errors.New("the window can be at most 90 days; narrow --from or --to")
+		return q, usageError(cmd, "the window can be at most 90 days; narrow --from or --to")
 	}
 	return q, nil
 }
@@ -894,7 +909,7 @@ totals.`,
   gcx assistant change-review checks list-pull-requests security -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireID(args[0]); err != nil {
+			if err := requireID(cmd, args[0]); err != nil {
 				return err
 			}
 			if err := opts.Validate(); err != nil {
