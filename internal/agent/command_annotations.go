@@ -73,6 +73,15 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant mcp-servers list":               {Cost: "small"},
 	"gcx assistant mcp-servers update":             {Cost: "small"},
 
+	// assistant change-review
+	"gcx assistant change-review checks list":               {Cost: "small", Hint: "Every built-in and custom check with enabled/blocking/paths; use get CHECK for full instructions"},
+	"gcx assistant change-review checks get":                {Cost: "small", Hint: "CHECK -o yaml; output round-trips into update -f"},
+	"gcx assistant change-review checks create":             {Cost: "small", Hint: "--name <name> --instructions <text> [--path <glob>] [--blocking]; ID is derived from the name"},
+	"gcx assistant change-review checks update":             {Cost: "small", Hint: "CHECK [--enabled=false] [--blocking] [--instructions <text>] [--path <glob>] [-f check.yaml]; only set fields change"},
+	"gcx assistant change-review checks delete":             {Cost: "small", Hint: "CHECK --force; custom checks only (turn built-ins off with update --enabled=false)"},
+	"gcx assistant change-review checks list-pull-requests": {Cost: "medium", Hint: "CHECK [--since 7d] [--repository owner/name] -o json; one row per pull request with findings from the check. Narrow with --since or --repository"},
+	"gcx assistant change-review stats":                     {Cost: "small", Hint: "[--since 30d] [--repository owner/name] -o json; per-check counts only, never finding text"},
+
 	// login
 	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
 	"gcx signup":      {Cost: "small", Hint: "Creates a Grafana Cloud account and connects gcx to its first stack. A person completes the browser steps (sign-up, email verification, first-stack creation) and approves Connect gcx. A browser already signed in to Grafana Cloud skips sign-up and asks for one of that account's stacks, or goes straight to Connect gcx with one organization and one stack. In agent mode gcx prints the URL for the person and asks no questions. Pass an unused CONTEXT_NAME. If it fails after the browser step started, run the gcx login command the error shows, never signup again. It saves no Cloud credential; for Cloud product APIs add a Cloud Access Policy token afterwards: gcx cloud login --context <ctx> --cloud-token <token>. For an existing account use gcx login instead."},

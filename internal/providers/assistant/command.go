@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	changereviewcmd "github.com/grafana/gcx/internal/providers/assistant/changereview"
 	mcpserverscmd "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
 	watcherscmd "github.com/grafana/gcx/internal/providers/assistant/watchers"
 	"github.com/spf13/cobra"
@@ -93,6 +94,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
 	cmd.AddCommand(watcherscmd.Commands(loader))
+	cmd.AddCommand(changereviewcmd.Commands(loader))
 	return cmd
 }
 

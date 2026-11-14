@@ -56,7 +56,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Application Observability** | Monitored services and their settings | [`gcx appo11y`](../../cli-reference/#gcx-appo11y) | |
 | **Database Observability** | Monitored database instances | [`gcx dbo11y`](../../cli-reference/#gcx-dbo11y) | |
 | **Instrumentation** | Kubernetes clusters, cluster apps, and monitored services | [`gcx instrumentation`](../../cli-reference/#gcx-instrumentation) | |
-| **Grafana Assistant** | Conversations, investigations, MCP servers, and Assistant Watchers | [`gcx assistant`](../../cli-reference/#gcx-assistant) | [Manage Assistant Watchers](../manage-assistant-watchers/), [Check Assistant usage and limits](../assistant-usage/) |
+| **Grafana Assistant** | Conversations, investigations, MCP servers, Assistant Watchers, and change review checks | [`gcx assistant`](../../cli-reference/#gcx-assistant) | [Manage Assistant Watchers](../manage-assistant-watchers/), [Manage Assistant change review checks](../manage-change-review-checks/), [Check Assistant usage and limits](../assistant-usage/) |
 | **Agent Observability** | AI agents, conversations, evaluations, and prompt templates | [`gcx agento11y`](../../cli-reference/#gcx-agento11y) | |
 | **Knowledge Graph** | Entities, relationships, and the rules that shape them | [`gcx kg`](../../cli-reference/#gcx-kg) | |
 | **Grafana Cloud platform** | Organization memberships and Grafana Cloud stacks | [`gcx cloud`](../../cli-reference/#gcx-cloud) | |
