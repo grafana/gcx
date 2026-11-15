@@ -1,5 +1,9 @@
 ## Unreleased
 
+- `gcx kg stats` now breaks active insights down by category
+  (`insights.byCategory`: failure, error, anomaly, saturation, amend), each
+  with its own total and per-name counts, from the records it already reads.
+  The existing `total`, `bySeverity` and `byName` keys are unchanged.
 - `gcx kg stats` no longer counts the graph's own catalog records (Account,
   EntityType, Env and Schema) as entities. They inflated `entities.total` and
   showed up as kinds in `entities.byType`, so `kg stats` disagreed with

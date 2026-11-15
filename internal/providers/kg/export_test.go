@@ -264,3 +264,14 @@ func NewCypherCommand(loader RESTConfigLoader) *cobra.Command { return newCypher
 func NewGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 	return newGraphQueryCommand(loader)
 }
+
+// InsightsSummary is an exported alias for the `kg stats` insights block.
+type InsightsSummary = insightsSummary
+
+// InsightGroup is an exported alias for insightGroup.
+type InsightGroup = insightGroup
+
+// SummarizeInsights wraps the unexported summarizeInsights for testing.
+func SummarizeInsights(results []SearchResult) InsightsSummary {
+	return summarizeInsights(results)
+}

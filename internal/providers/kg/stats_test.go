@@ -89,3 +89,72 @@ func TestEntitiesSummary_JSONOmitsEmptyInternal(t *testing.T) {
 		})
 	}
 }
+
+func insightResult(insights ...any) kg.SearchResult {
+	return kg.SearchResult{Assertion: map[string]any{"assertions": insights}}
+}
+
+func TestSummarizeInsights(t *testing.T) {
+	tests := []struct {
+		name    string
+		results []kg.SearchResult
+		want    kg.InsightsSummary
+	}{
+		{
+			name:    "no insights",
+			results: []kg.SearchResult{{}, insightResult()},
+			want: kg.InsightsSummary{
+				ByCategory: map[string]kg.InsightGroup{},
+				BySeverity: map[string]int{},
+				ByName:     map[string]int{},
+			},
+		},
+		{
+			name: "grouped by category with per-category names",
+			results: []kg.SearchResult{
+				insightResult(
+					map[string]any{"assertionName": "ErrorRatioBreach", "category": "error", "severity": "critical"},
+					map[string]any{"assertionName": "Deployment Updated", "category": "amend", "severity": "info"},
+				),
+				insightResult(
+					map[string]any{"assertionName": "ErrorRatioBreach", "category": "error", "severity": "critical"},
+					map[string]any{"assertionName": "LatencyAnomaly", "category": "anomaly", "severity": "warning"},
+				),
+			},
+			want: kg.InsightsSummary{
+				Total: 4,
+				ByCategory: map[string]kg.InsightGroup{
+					"error":   {Total: 2, ByName: map[string]int{"ErrorRatioBreach": 2}},
+					"amend":   {Total: 1, ByName: map[string]int{"Deployment Updated": 1}},
+					"anomaly": {Total: 1, ByName: map[string]int{"LatencyAnomaly": 1}},
+				},
+				BySeverity: map[string]int{"CRITICAL": 2, "INFO": 1, "WARNING": 1},
+				ByName:     map[string]int{"ErrorRatioBreach": 2, "Deployment Updated": 1, "LatencyAnomaly": 1},
+			},
+		},
+		{
+			name: "category case is normalised and missing fields count as unknown",
+			results: []kg.SearchResult{
+				insightResult(
+					map[string]any{"assertionName": "Saturated", "category": "Saturation", "severity": "warning"},
+					map[string]any{},
+					"not an insight",
+				),
+			},
+			want: kg.InsightsSummary{
+				Total: 2,
+				ByCategory: map[string]kg.InsightGroup{
+					"saturation": {Total: 1, ByName: map[string]int{"Saturated": 1}},
+					"unknown":    {Total: 1, ByName: map[string]int{"UNKNOWN": 1}},
+				},
+				BySeverity: map[string]int{"WARNING": 1, "UNKNOWN": 1},
+				ByName:     map[string]int{"Saturated": 1, "UNKNOWN": 1},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, kg.SummarizeInsights(tt.results))
+		})
+	}
+}
