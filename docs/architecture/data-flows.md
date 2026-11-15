@@ -328,6 +328,10 @@ capture: ResolveSelections (supported types only, whole types, unresolved → un
       |      A failed Get makes the type incomplete but keeps the other items;
       |      a NotFound (deleted during the capture) is omitted.
       |    complete only with no failures, no skips, and no truncation
+      |    views beside the selected types: the dashboard trash (list with the
+      |      grafana.app/get-trash label) and the stored permission entries of
+      |      each captured dashboard and folder (sorted, one read each). A view
+      |      is its own type in the manifest and has its own coverage.
       v
    Normalize (versioned rules; secure values → {"redacted": true})
       |
