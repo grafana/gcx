@@ -80,7 +80,7 @@ stack, so that a later capture of the same stack can be compared with
 Supported resource types: ` + strings.Join(observation.SupportedTypes(), ", ") + `.
 Without arguments, every supported type is captured. Arguments select whole
 resource types; resource names and other types are usage errors. Data sources
-are read one at a time, because their list endpoint omits configuration.
+are read individually, because their list endpoint omits configuration.
 
 The capture directory holds one normalized JSON file per resource and a
 manifest.json that records the stack, the selected scope, the coverage of each
@@ -94,7 +94,10 @@ read only partly is recorded as incomplete. A data source that fails its own
 read makes the type incomplete, but the other data sources are kept; one that
 was deleted between the list and its read is simply absent. In both the
 unavailable and the incomplete case the command exits with code 4; the capture
-is still written.
+is still written. The receipt's summary counts resource types, because a type
+is the unit of coverage: a truncated, restricted or unavailable type has no
+list of the resources it misses. The number of resources written for each
+type is in files[].count.
 
 Grafana hides resources that the caller cannot read, without an error. The
 capture records who took it, and checks that the caller can read every

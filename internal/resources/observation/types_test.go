@@ -583,3 +583,16 @@ func TestCollect_DatasourceItemReads(t *testing.T) {
 		assert.Empty(t, res.Changes)
 	})
 }
+
+func TestWrite_RejectsUnsafeTypeKey(t *testing.T) {
+	for _, key := range []string{"..", "a/b", "a b"} {
+		c := collect(t, &fakePuller{}, selections())
+		c.Objects[key] = map[string]map[string]any{"x": {"metadata": map[string]any{"name": "x"}}}
+		parent := t.TempDir()
+		dest := filepath.Join(parent, "c")
+		require.Error(t, observation.Write(c, dest), key)
+		entries, err := os.ReadDir(parent)
+		require.NoError(t, err)
+		assert.Empty(t, entries, "nothing is left behind for %q", key)
+	}
+}

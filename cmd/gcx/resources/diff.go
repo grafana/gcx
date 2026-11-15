@@ -46,8 +46,8 @@ Diff compares two directories written by 'gcx resources capture' and reports
 the resources that were added, modified or deleted between them. It works
 offline and does not contact Grafana.
 
-Both captures must be finished, unaltered, from the same stack, taken by the
-same caller, and use the same normalization version; otherwise the command
+Both captures must be finished, with every resource file matching the digest
+in its manifest, from the same stack, taken by the same caller, and use the same normalization version; otherwise the command
 fails. Permissions decide what a caller can see, so captures by different
 callers are not comparable. Modified resources
 list each changed field as a JSON pointer; array order is significant.

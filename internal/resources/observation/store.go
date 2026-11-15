@@ -83,6 +83,10 @@ func Write(c *Capture, dest string) error {
 		}
 		sort.Strings(names)
 		if len(names) > 0 {
+			// Check the key before it becomes a directory name.
+			if !validTypeKey(typeKey) {
+				return fmt.Errorf("cannot store resource type %q", typeKey)
+			}
 			if err := os.Mkdir(filepath.Join(tmp, typeKey), dirPerm); err != nil {
 				return err
 			}
@@ -232,9 +236,14 @@ func Load(dir string) (*Capture, error) {
 	return capture, nil
 }
 
+// validTypeKey reports whether a type key is safe as one path element.
+func validTypeKey(typeKey string) bool {
+	return typeKey != "" && typeKey != "." && typeKey != ".." && url.PathEscape(typeKey) == typeKey
+}
+
 func objectPath(typeKey, name string) (string, error) {
 	escaped := url.PathEscape(name)
-	if name == "" || escaped == "." || escaped == ".." || typeKey == "" || typeKey == "." || typeKey == ".." || url.PathEscape(typeKey) != typeKey {
+	if name == "" || escaped == "." || escaped == ".." || !validTypeKey(typeKey) {
 		return "", fmt.Errorf("cannot store resource %s/%s", typeKey, name)
 	}
 	return path.Join(typeKey, escaped+".json"), nil

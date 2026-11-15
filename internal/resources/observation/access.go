@@ -84,6 +84,8 @@ func (a Access) ReadScope(typeKey string) (string, string) {
 			return ReadScopeAll, ""
 		}
 	}
+	// The message leaves out the global "*" (scopes[0]) on purpose: the
+	// type's own wildcard scopes are the grant to request.
 	return ReadScopeRestricted, fmt.Sprintf("the caller cannot read every resource: %s is not granted on %s", perm.action, strings.Join(perm.scopes[1:], " or "))
 }
 
