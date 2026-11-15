@@ -518,3 +518,68 @@ func TestCollectCompare_MultipleTypes(t *testing.T) {
 	}, changes)
 	assert.Equal(t, observation.DiffSummary{Deleted: 1, Unchanged: 1, Indeterminate: 2}, res.Summary)
 }
+
+// Datasources are read one by one after the list, so one failed read costs
+// only that datasource, and a list summary is never stored as a full object.
+func TestCollect_DatasourceItemReads(t *testing.T) {
+	k := kindFixtures()[2]
+	full := func(name string) map[string]any {
+		obj := datasource("prometheus", name, name, map[string]any{"basicAuthPassword": map[string]any{"name": "ref"}})
+		asMap(t, obj["spec"])["basicAuthUser"] = "bob"
+		return obj
+	}
+	// The legacy list leaves out basicAuthUser and the secret names.
+	summary := func(name string) map[string]any { return datasource("prometheus", name, name, nil) }
+
+	t.Run("a failed read of one datasource keeps the others", func(t *testing.T) {
+		p := &fakePuller{
+			items:   map[string][]map[string]any{k.key: {summary("prom"), summary("logs")}},
+			got:     map[string][]map[string]any{k.key: {full("prom"), full("logs")}},
+			itemErr: map[string]error{"logs": errors.New("503 service unavailable")},
+		}
+		c := k.collect(t, p)
+		cov := c.Manifest.Types[0]
+		assert.Equal(t, observation.CoverageIncomplete, cov.Status)
+		assert.Equal(t, 1, cov.Count)
+		require.Len(t, cov.Reasons, 1)
+		assert.Contains(t, cov.Reasons[0], "logs: 503 service unavailable")
+		assert.Contains(t, c.Objects[k.key], "prom")
+	})
+
+	t.Run("a datasource deleted between the list and its read is absent, not a gap", func(t *testing.T) {
+		before := k.collect(t, &fakePuller{
+			items: map[string][]map[string]any{k.key: {summary("prom"), summary("logs")}},
+			got:   map[string][]map[string]any{k.key: {full("prom"), full("logs")}},
+		})
+		after := k.collect(t, &fakePuller{
+			items: map[string][]map[string]any{k.key: {summary("prom"), summary("logs")}},
+			got:   map[string][]map[string]any{k.key: {full("prom")}},
+		})
+		cov := after.Manifest.Types[0]
+		assert.Equal(t, observation.CoverageComplete, cov.Status)
+		assert.Empty(t, cov.Reasons)
+		assert.Equal(t, 1, cov.Count)
+
+		res := compare(t, before, after)
+		assert.True(t, res.Complete)
+		assert.Equal(t, observation.DiffSummary{Deleted: 1, Unchanged: 1}, res.Summary)
+	})
+
+	t.Run("an incomplete list still reads items, so summaries never compare as modified", func(t *testing.T) {
+		before := k.collect(t, &fakePuller{
+			items: map[string][]map[string]any{k.key: {summary("prom")}},
+			got:   map[string][]map[string]any{k.key: {full("prom")}},
+		})
+		after := k.collect(t, &fakePuller{
+			items:     map[string][]map[string]any{k.key: {summary("prom")}},
+			got:       map[string][]map[string]any{k.key: {full("prom")}},
+			truncated: map[string]bool{k.key: true},
+		})
+		assert.Equal(t, observation.CoverageIncomplete, after.Manifest.Types[0].Status)
+		assert.Equal(t, "bob", asMap(t, after.Objects[k.key]["prom"]["spec"])["basicAuthUser"])
+
+		res := compare(t, before, after)
+		assert.Equal(t, observation.DiffSummary{Unchanged: 1}, res.Summary)
+		assert.Empty(t, res.Changes)
+	})
+}

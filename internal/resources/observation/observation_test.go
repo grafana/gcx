@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
@@ -163,10 +164,13 @@ func TestNormalize_DoesNotMutateInput(t *testing.T) {
 // fakePuller returns canned results per type key.
 // A list request returns items; a request for named resources returns the
 // matching entries of got, or of items when got has no entry for the type.
+// A named resource that is in neither is not found. itemErr fails the read
+// of one named resource.
 type fakePuller struct {
 	items     map[string][]map[string]any
 	got       map[string][]map[string]any
 	getErr    map[string]error
+	itemErr   map[string]error
 	failures  map[string]error
 	truncated map[string]bool
 	err       map[string]error
@@ -183,30 +187,8 @@ func (f *fakePuller) Pull(_ context.Context, req remote.PullRequest) (*remote.Op
 	f.requests = append(f.requests, filter.Type)
 	f.mu.Unlock()
 
-	if filter.Type == resources.FilterTypeMultiple {
-		if err := f.getErr[key]; err != nil {
-			summary.RecordFailure(nil, err)
-			return summary, nil
-		}
-		source, ok := f.got[key]
-		if !ok {
-			source = f.items[key]
-		}
-		req.Resources.Clear()
-		for _, item := range source {
-			name, _ := item["metadata"].(map[string]any)["name"].(string)
-			if !slices.Contains(filter.ResourceUIDs, name) {
-				continue
-			}
-			u := unstructured.Unstructured{Object: item}
-			res, err := resources.FromUnstructured(&u)
-			if err != nil {
-				return nil, err
-			}
-			req.Resources.Add(res)
-			summary.RecordSuccess()
-		}
-		return summary, nil
+	if filter.Type == resources.FilterTypeMultiple || filter.Type == resources.FilterTypeSingle {
+		return f.pullNamed(key, filter, req, summary)
 	}
 
 	if err := f.err[key]; err != nil {
@@ -227,6 +209,42 @@ func (f *fakePuller) Pull(_ context.Context, req remote.PullRequest) (*remote.Op
 	}
 	if f.truncated[key] {
 		summary.RecordTruncated()
+	}
+	return summary, nil
+}
+
+// pullNamed serves a request for named resources.
+func (f *fakePuller) pullNamed(key string, filter resources.Filter, req remote.PullRequest, summary *remote.OperationSummary) (*remote.OperationSummary, error) {
+	if err := f.getErr[key]; err != nil {
+		summary.RecordFailure(nil, err)
+		return summary, nil
+	}
+	source, ok := f.got[key]
+	if !ok {
+		source = f.items[key]
+	}
+	req.Resources.Clear()
+	for _, uid := range filter.ResourceUIDs {
+		if err := f.itemErr[uid]; err != nil {
+			summary.RecordFailure(nil, err)
+			continue
+		}
+		idx := slices.IndexFunc(source, func(item map[string]any) bool {
+			name, _ := item["metadata"].(map[string]any)["name"].(string)
+			return name == uid
+		})
+		if idx < 0 {
+			// As the real client does for a resource that is gone.
+			summary.RecordFailure(nil, apierrors.NewNotFound(schema.GroupResource{Group: filter.Descriptor.GroupVersion.Group, Resource: filter.Descriptor.Plural}, uid))
+			continue
+		}
+		u := unstructured.Unstructured{Object: source[idx]}
+		res, err := resources.FromUnstructured(&u)
+		if err != nil {
+			return nil, err
+		}
+		req.Resources.Add(res)
+		summary.RecordSuccess()
 	}
 	return summary, nil
 }
@@ -575,7 +593,7 @@ func TestCollect_DatasourcesAreReadIndividually(t *testing.T) {
 			got:   map[string][]map[string]any{observation.TypeDatasources: {full}},
 		}
 		c := collect(t, p, dsSelections())
-		assert.Equal(t, []resources.FilterType{resources.FilterTypeAll, resources.FilterTypeMultiple}, p.requests)
+		assert.Equal(t, []resources.FilterType{resources.FilterTypeAll, resources.FilterTypeSingle}, p.requests)
 		assert.Equal(t, observation.CoverageComplete, c.Manifest.Types[0].Status)
 		spec, ok := c.Objects[observation.TypeDatasources]["prom"]["spec"].(map[string]any)
 		require.True(t, ok)

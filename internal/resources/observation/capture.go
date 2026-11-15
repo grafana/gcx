@@ -14,9 +14,11 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"golang.org/x/sync/errgroup"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// DefaultConcurrency bounds the number of resource types read in parallel.
+// DefaultConcurrency bounds the number of resource types, and of individual
+// item reads within a type, read in parallel.
 const DefaultConcurrency = 10
 
 // Capture is a collected observation: its manifest (without inventory until
@@ -135,9 +137,8 @@ type CollectRequest struct {
 	Selections []Selection
 	Puller     Puller
 	// Access is the caller's identity and permissions (see ReadAccess).
-	Access      Access
-	GCXVersion  string
-	Concurrency int
+	Access     Access
+	GCXVersion string
 	// Now returns the current time; defaults to time.Now.
 	Now func() time.Time
 }
@@ -149,10 +150,6 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 	now := req.Now
 	if now == nil {
 		now = time.Now
-	}
-	limit := req.Concurrency
-	if limit <= 0 {
-		limit = DefaultConcurrency
 	}
 
 	selectors := req.Selectors
@@ -178,7 +175,7 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 	coverage := make([]TypeCoverage, len(req.Selections))
 	objects := make([]map[string]map[string]any, len(req.Selections))
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(limit)
+	g.SetLimit(DefaultConcurrency)
 	for idx, sel := range req.Selections {
 		if sel.Err != nil {
 			coverage[idx] = TypeCoverage{
@@ -246,20 +243,16 @@ func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverag
 	}
 
 	// Some list endpoints return summaries rather than full objects. For
-	// those types, every listed item is read again individually.
-	if itemReadTypes[sel.Type] && len(reasons) == 0 && len(listed) > 0 {
-		names := make([]string, 0, len(listed))
-		for _, r := range listed {
-			names = append(names, r.Name())
-		}
-		listed, reasons, err = pullFilter(ctx, puller, resources.Filter{
-			Type:         resources.FilterTypeMultiple,
-			Descriptor:   sel.Filter.Descriptor,
-			ResourceUIDs: names,
-		})
+	// those types, every listed item is read again individually, also when
+	// the list itself is incomplete: a summary must never be stored as if it
+	// were the full object, because it would compare as modified.
+	if itemReadTypes[sel.Type] && len(listed) > 0 {
+		var itemReasons []string
+		listed, itemReasons, err = readItems(ctx, puller, sel.Filter.Descriptor, listed)
 		if err != nil {
 			return cov, nil, err
 		}
+		reasons = append(reasons, itemReasons...)
 	}
 
 	objs := map[string]map[string]any{}
@@ -286,6 +279,101 @@ func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverag
 		cov.Reasons = reasons
 	}
 	return cov, objs, nil
+}
+
+// readItems reads each listed resource on its own, so that one failed read
+// costs only that resource. A resource that is gone by the time it is read
+// was deleted during the capture: it is omitted without making the type
+// incomplete, because the capture observed its absence. Any other failure
+// omits the resource and records a reason. The error is set only when ctx
+// is done.
+func readItems(ctx context.Context, puller Puller, desc resources.Descriptor, listed []*resources.Resource) ([]*resources.Resource, []string, error) {
+	read := make([]*resources.Resource, len(listed))
+	reasons := make([]string, len(listed))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(DefaultConcurrency)
+	for idx, item := range listed {
+		g.Go(func() error {
+			r, reason, err := readItem(gctx, puller, desc, item.Name())
+			read[idx], reasons[idx] = r, reason
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
+	}
+
+	var outR []*resources.Resource
+	var outReasons []string
+	for idx := range listed {
+		if read[idx] != nil {
+			outR = append(outR, read[idx])
+		}
+		if reasons[idx] != "" {
+			outReasons = append(outReasons, reasons[idx])
+		}
+	}
+	return outR, outReasons, nil
+}
+
+// readItem reads one resource by name. It returns the resource, or nil and
+// the reason that it could not be read; both are empty for a resource that
+// no longer exists.
+func readItem(ctx context.Context, puller Puller, desc resources.Descriptor, name string) (*resources.Resource, string, error) {
+	res := resources.NewResources()
+	summary, err := puller.Pull(ctx, remote.PullRequest{
+		Filters:   resources.Filters{{Type: resources.FilterTypeSingle, Descriptor: desc, ResourceUIDs: []string{name}}},
+		Resources: res,
+		// As in pullFilter, nothing is excluded by manager or read-only state.
+		ExcludeManaged:  false,
+		ExcludeReadOnly: false,
+		StopOnError:     false,
+	})
+	if ctx.Err() != nil {
+		return nil, "", ctx.Err()
+	}
+	if err != nil {
+		// A read error is a coverage reason, not a capture failure.
+		return nil, "read failed: " + name + ": " + err.Error(), nil //nolint:nilerr // see above
+	}
+	if reason, gone := itemReadReason(name, summary); reason != "" || gone {
+		return nil, reason, nil
+	}
+	items := res.AsList()
+	if len(items) != 1 {
+		return nil, fmt.Sprintf("read failed: %s: expected one object, got %d", name, len(items)), nil
+	}
+	return items[0], "", nil
+}
+
+// itemReadReason returns why a single-item read did not produce the item,
+// or gone when the item no longer exists (a NotFound failure): it was deleted
+// during the capture. Both are empty when the read succeeded.
+func itemReadReason(name string, summary *remote.OperationSummary) (string, bool) {
+	if summary == nil {
+		return "", false
+	}
+	if failures := summary.Failures(); len(failures) > 0 {
+		failure := failures[0]
+		if apierrors.IsNotFound(failure.Error) {
+			return "", true
+		}
+		msg := "unknown error"
+		if failure.Error != nil {
+			msg = failure.Error.Error()
+		}
+		return "read failed: " + name + ": " + msg, false
+	}
+	skipped := summary.SkippedReasons()
+	if len(skipped) == 0 {
+		return "", false
+	}
+	keys := make([]string, 0, len(skipped))
+	for reason := range skipped {
+		keys = append(keys, reason)
+	}
+	sort.Strings(keys)
+	return "skipped: " + name + ": " + strings.Join(keys, ", "), false
 }
 
 // pullFilter reads one filter. It returns the resources read and the reasons

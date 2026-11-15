@@ -323,7 +323,10 @@ capture: ResolveSelections (supported types only, whole types, unresolved → un
       |    action is not granted on a wildcard scope is incomplete (lists are
       |    permission-filtered without an error)
       v  one Puller.Pull per type (bounded errgroup) → per-type coverage
-      |    datasources: list, then a per-item Get (the legacy list omits fields)
+      |    datasources: list, then one Get per item, also when the list is
+      |      incomplete (the legacy list omits fields; a summary is never kept).
+      |      A failed Get makes the type incomplete but keeps the other items;
+      |      a NotFound (deleted during the capture) is omitted.
       |    complete only with no failures, no skips, and no truncation
       v
    Normalize (versioned rules; secure values → {"redacted": true})

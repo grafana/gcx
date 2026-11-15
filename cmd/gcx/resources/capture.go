@@ -88,9 +88,13 @@ type, and an inventory of the files. The manifest is written last and the
 directory is moved into place only when it is complete, so an interrupted
 capture never looks finished. The destination must not exist or must be empty.
 
-Coverage is reported per type. A type that is unavailable, fails to read, or is
-truncated is recorded as incomplete and the command exits with code 4; the
-capture is still written.
+Coverage is reported per type. A type that the stack does not serve is recorded
+as unavailable. A type that fails to read, is truncated, or that the caller can
+read only partly is recorded as incomplete. A data source that fails its own
+read makes the type incomplete, but the other data sources are kept; one that
+was deleted between the list and its read is simply absent. In both the
+unavailable and the incomplete case the command exits with code 4; the capture
+is still written.
 
 Grafana hides resources that the caller cannot read, without an error. The
 capture records who took it, and checks that the caller can read every

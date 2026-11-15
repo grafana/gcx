@@ -60,7 +60,11 @@ compared on complete reads.
 
 Secret values are redacted in captures, so a changed secret value cannot be
 observed. A matching result is evidence about observable resource state, not
-proof that a workflow succeeded.`,
+proof that a workflow succeeded.
+
+The command exits 0 whenever it produces a comparison, including an
+incomplete one. Check the 'complete' field, not the exit code, before you
+trust an added or deleted result.`,
 		Example: `
 	# Compare two captures
 	gcx resources diff ./before ./after
