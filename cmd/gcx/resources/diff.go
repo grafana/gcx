@@ -47,10 +47,11 @@ the resources that were added, modified or deleted between them. It works
 offline and does not contact Grafana.
 
 Both captures must be finished, with every resource file matching the digest
-in its manifest, from the same stack, taken by the same caller, and use the same normalization version; otherwise the command
-fails. Permissions decide what a caller can see, so captures by different
-callers are not comparable. Modified resources
-list each changed field as a JSON pointer; array order is significant.
+in its manifest, from the same stack, taken by the same caller, and use the
+same normalization version; otherwise the command fails. Permissions decide
+what a caller can see, so captures by different callers are not comparable.
+Modified resources list each changed field as a JSON pointer; array order is
+significant.
 
 A result is reported only where coverage supports it. A resource that is absent
 from an incomplete capture is indeterminate, not added or deleted, and a type
