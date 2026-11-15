@@ -34,7 +34,8 @@ const (
 const (
 	// CoverageComplete means every item of the type was listed and read.
 	CoverageComplete = "complete"
-	// CoverageIncomplete means the read failed, was truncated, or skipped items.
+	// CoverageIncomplete means the read failed, was truncated, skipped items,
+	// or the caller's read scope for the type is not "all".
 	CoverageIncomplete = "incomplete"
 	// CoverageUnavailable means the type could not be resolved on the stack.
 	CoverageUnavailable = "unavailable"

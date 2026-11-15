@@ -261,7 +261,7 @@ The supported resource types are dashboards, folders, and data sources. Without 
 ### How to read the result
 
 - `gcx resources diff` reports each resource as added, modified, deleted, or indeterminate. For a modified resource, it lists each changed field as a JSON pointer, such as `/spec/panels/0/targets/0/expr`. Array order is significant.
-- If a type is unavailable, fails to read, or is truncated, the capture records it as incomplete and `gcx resources capture` exits with code 4. A resource that is absent from an incomplete capture is indeterminate. `gcx` does not report it as added or deleted.
+- If a type is unavailable, fails to read, is truncated, or the caller can read it only partly, the capture records it as incomplete and `gcx resources capture` exits with code 4. A resource that is absent from an incomplete capture is indeterminate. `gcx` does not report it as added or deleted.
 - The `complete` field in the result is `true` only when `gcx` compared every type on complete reads.
 - `gcx` ignores fields that change on every save, such as timestamps, `resourceVersion`, the dashboard `version` counter, and `status`. It also ignores the folder path annotations that Grafana derives from the folder tree, so renaming or moving a folder changes only that folder in the result, not its subfolders. For the complete rules, refer to [`normalize.go`](https://github.com/grafana/gcx/blob/main/internal/resources/observation/normalize.go).
 - `gcx` does not compare captures from different stacks, captures taken by different users or service accounts, or captures with different normalization versions.
