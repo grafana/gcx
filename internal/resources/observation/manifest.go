@@ -72,6 +72,9 @@ type Manifest struct {
 	NormalizationVersion string        `json:"normalization_version"`
 	GCXVersion           string        `json:"gcx_version,omitempty"`
 	Stack                StackIdentity `json:"stack"`
+	// Caller is who took the capture. Captures by different callers are
+	// not comparable, because permissions decide what a caller can see.
+	Caller *CallerIdentity `json:"caller"`
 	// Selectors are the resource type selectors that defined the scope.
 	Selectors  []string         `json:"selectors"`
 	StartedAt  time.Time        `json:"started_at"`
@@ -91,6 +94,10 @@ type TypeCoverage struct {
 	Version string `json:"version,omitempty"`
 	Kind    string `json:"kind,omitempty"`
 	Status  string `json:"status"`
+	// ReadScope reports whether the caller can read every resource of the
+	// type (all, restricted or unknown). Anything other than all makes the
+	// type incomplete.
+	ReadScope string `json:"read_scope,omitempty"`
 	// Count is the number of resources written for the type.
 	Count int `json:"count"`
 	// Reasons explains an incomplete or unavailable status.

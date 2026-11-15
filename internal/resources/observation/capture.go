@@ -130,10 +130,12 @@ type Puller interface {
 
 // CollectRequest describes a capture.
 type CollectRequest struct {
-	Stack       StackIdentity
-	Selectors   []string
-	Selections  []Selection
-	Puller      Puller
+	Stack      StackIdentity
+	Selectors  []string
+	Selections []Selection
+	Puller     Puller
+	// Access is the caller's identity and permissions (see ReadAccess).
+	Access      Access
 	GCXVersion  string
 	Concurrency int
 	// Now returns the current time; defaults to time.Now.
@@ -165,6 +167,7 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 			NormalizationVersion: NormalizationVersion,
 			GCXVersion:           req.GCXVersion,
 			Stack:                req.Stack,
+			Caller:               &CallerIdentity{UID: req.Access.Identity.UID, Login: req.Access.Identity.Login},
 			Selectors:            append([]string(nil), selectors...),
 			StartedAt:            now().UTC(),
 			Inventory:            []InventoryEntry{},
@@ -191,6 +194,7 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 			if err != nil {
 				return err
 			}
+			applyReadScope(&cov, req.Access)
 			coverage[idx] = cov
 			objects[idx] = objs
 			return nil
@@ -215,6 +219,20 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 	capture.Manifest.FinishedAt = now().UTC()
 
 	return capture, nil
+}
+
+// applyReadScope records the caller's read scope for a collected type. A
+// caller that cannot read every resource sees a filtered list without an
+// error, so the type is incomplete unless the scope is all.
+func applyReadScope(cov *TypeCoverage, access Access) {
+	scope, reason := access.ReadScope(cov.Type)
+	cov.ReadScope = scope
+	if scope == ReadScopeAll {
+		return
+	}
+	cov.Status = CoverageIncomplete
+	cov.Reasons = append(cov.Reasons, reason)
+	sort.Strings(cov.Reasons)
 }
 
 func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverage, map[string]map[string]any, error) {

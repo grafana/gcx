@@ -240,7 +240,7 @@ Follow this workflow to back up all Grafana resources from one instance and late
 
 Use `gcx resources capture` and `gcx resources diff` to find out what a workflow changed on one stack. For example, you can capture dashboards, create and configure a dashboard in the Grafana UI, capture again, and see the changes. You cannot use these commands to compare two stacks or to migrate resources.
 
-1. Use a context with administrator access. Ordinary permissions can hide resources. `gcx` does not verify admin access.
+1. Use a context that can read every resource of the types you capture. An administrator context is the simplest choice. Grafana hides resources that the caller cannot read, without an error. `gcx` checks the caller's read permissions for each type and records a type that the caller can read only partly as incomplete. Use the same context for both captures: `gcx resources diff` rejects captures taken by different users or service accounts.
 1. Capture the state before the workflow:
    ```shell
    gcx resources capture dashboards folders -p ./before
@@ -264,7 +264,7 @@ The supported resource types are dashboards, folders, and data sources. Without 
 - If a type is unavailable, fails to read, or is truncated, the capture records it as incomplete and `gcx resources capture` exits with code 4. A resource that is absent from an incomplete capture is indeterminate. `gcx` does not report it as added or deleted.
 - The `complete` field in the result is `true` only when `gcx` compared every type on complete reads.
 - `gcx` ignores fields that change on every save, such as timestamps, `resourceVersion`, the dashboard `version` counter, and `status`. It also ignores the folder path annotations that Grafana derives from the folder tree, so renaming or moving a folder changes only that folder in the result, not its subfolders. For the complete rules, refer to [`normalize.go`](https://github.com/grafana/gcx/blob/main/internal/resources/observation/normalize.go).
-- `gcx` does not compare captures from different stacks, or captures with different normalization versions.
+- `gcx` does not compare captures from different stacks, captures taken by different users or service accounts, or captures with different normalization versions.
 
 ### Limitations
 

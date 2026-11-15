@@ -319,6 +319,9 @@ different requirements from backup and migration:
 ```
 capture: ResolveSelections (supported types only, whole types, unresolved → unavailable)
       |
+      v  ReadAccess: caller identity (/api/user) + permissions; a type whose read
+      |    action is not granted on a wildcard scope is incomplete (lists are
+      |    permission-filtered without an error)
       v  one Puller.Pull per type (bounded errgroup) → per-type coverage
       |    datasources: list, then a per-item Get (the legacy list omits fields)
       |    complete only with no failures, no skips, and no truncation
@@ -331,7 +334,7 @@ capture: ResolveSelections (supported types only, whole types, unresolved → un
 
 diff:  Load (verify manifest, inventory, digests, no extra files) ×2
       |
-      v  Compare: same stack + same normalization version, else IncompatibleError
+      v  Compare: same stack + same caller + same normalization version, else IncompatibleError
            per type: compared | partial | indeterminate
            added requires a complete before read; deleted requires a complete after read
 ```

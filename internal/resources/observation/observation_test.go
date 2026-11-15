@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/observation"
@@ -20,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 )
 
 func dashboardDesc() resources.Descriptor {
@@ -233,13 +237,31 @@ func selections() []observation.Selection {
 	}
 }
 
+// fullAccess is a caller that can read every resource of every type.
+func fullAccess() observation.Access {
+	return observation.Access{
+		Identity: observation.CallerIdentity{UID: "service-account:1", Login: "sa-admin"},
+		Permissions: map[string][]string{
+			"folders:read":     {"folders:*"},
+			"dashboards:read":  {"folders:uid:team", "dashboards:*"},
+			"datasources:read": {"datasources:*"},
+		},
+	}
+}
+
 func collect(t *testing.T, p *fakePuller, sels []observation.Selection) *observation.Capture {
+	t.Helper()
+	return collectAs(t, p, sels, fullAccess())
+}
+
+func collectAs(t *testing.T, p *fakePuller, sels []observation.Selection, access observation.Access) *observation.Capture {
 	t.Helper()
 	c, err := observation.Collect(t.Context(), observation.CollectRequest{
 		Stack:      observation.StackIdentity{Server: "https://example.grafana.net", Namespace: "stacks-1"},
 		Selectors:  []string{"dashboards"},
 		Selections: sels,
 		Puller:     p,
+		Access:     access,
 		Now:        func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 	})
 	require.NoError(t, err)
@@ -591,6 +613,131 @@ func TestCompare_Incompatible(t *testing.T) {
 	c.Manifest.NormalizationVersion = "0"
 	_, err = observation.Compare(a, c, "a", "c")
 	require.ErrorAs(t, err, &incompatible)
+}
+
+func TestCollect_ReadScope(t *testing.T) {
+	restricted := fullAccess()
+	restricted.Permissions["dashboards:read"] = []string{"folders:uid:team", "dashboards:uid:a"}
+	unknown := fullAccess()
+	unknown.Permissions = nil
+	unknown.PermissionsErr = errors.New("status 403")
+
+	tests := []struct {
+		name       string
+		access     observation.Access
+		wantScope  string
+		wantStatus string
+		wantReason string
+	}{
+		{"wildcard scope is complete", fullAccess(), observation.ReadScopeAll, observation.CoverageComplete, ""},
+		{"specific scopes are restricted", restricted, observation.ReadScopeRestricted, observation.CoverageIncomplete, "dashboards:read is not granted"},
+		{"unreadable permissions are unknown", unknown, observation.ReadScopeUnknown, observation.CoverageIncomplete, "status 403"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := collectAs(t, items(dashboard("a", "A", 1)), selections(), tc.access)
+			cov := c.Manifest.Types[0]
+			assert.Equal(t, tc.wantScope, cov.ReadScope)
+			assert.Equal(t, tc.wantStatus, cov.Status)
+			if tc.wantReason != "" {
+				require.Len(t, cov.Reasons, 1)
+				assert.Contains(t, cov.Reasons[0], tc.wantReason)
+			}
+			require.NotNil(t, c.Manifest.Caller)
+			assert.Equal(t, "service-account:1", c.Manifest.Caller.UID)
+		})
+	}
+}
+
+// A caller whose access shrinks between captures sees fewer resources. The
+// missing ones must be indeterminate, not deleted.
+func TestCompare_RestrictedAfterCaptureIsNotDeletion(t *testing.T) {
+	restricted := fullAccess()
+	restricted.Permissions["dashboards:read"] = []string{"dashboards:uid:a"}
+	before := collect(t, items(dashboard("a", "A", 1), dashboard("b", "B", 1)), selections())
+	after := collectAs(t, items(dashboard("a", "A", 1)), selections(), restricted)
+
+	res := compare(t, before, after)
+	assert.False(t, res.Complete)
+	assert.Equal(t, observation.DiffSummary{Unchanged: 1, Indeterminate: 1}, res.Summary)
+	assert.Equal(t, observation.TypePartial, res.Types[0].Status)
+}
+
+func TestCompare_RequiresTheSameCaller(t *testing.T) {
+	a := collect(t, items(), selections())
+	other := fullAccess()
+	other.Identity = observation.CallerIdentity{UID: "user:viewer"}
+	b := collectAs(t, items(), selections(), other)
+	noCaller := collect(t, items(), selections())
+	noCaller.Manifest.Caller = nil
+
+	var incompatible *observation.IncompatibleError
+	_, err := observation.Compare(a, b, "a", "b")
+	require.ErrorAs(t, err, &incompatible)
+	assert.Contains(t, incompatible.Reason, "different callers (service-account:1 and user:viewer)")
+
+	_, err = observation.Compare(a, noCaller, "a", "c")
+	require.ErrorAs(t, err, &incompatible)
+	assert.Contains(t, incompatible.Reason, "does not record who took it")
+
+	res, err := observation.Compare(a, collect(t, items(), selections()), "a", "a2")
+	require.NoError(t, err)
+	assert.Equal(t, "service-account:1", res.Caller.UID)
+}
+
+func TestReadAccess(t *testing.T) {
+	newServer := func(permStatus int) (*httptest.Server, *[]string) {
+		var paths []string
+		var mu sync.Mutex
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			mu.Unlock()
+			switch r.URL.Path {
+			case "/api/user":
+				_, _ = w.Write([]byte(`{"uid":"service-account:7","login":"sa-x","email":"ignored"}`))
+			case "/api/access-control/user/permissions":
+				w.WriteHeader(permStatus)
+				_, _ = w.Write([]byte(`{"dashboards:read":["dashboards:*"]}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return srv, &paths
+	}
+
+	t.Run("reads identity and permissions", func(t *testing.T) {
+		srv, paths := newServer(http.StatusOK)
+		access, err := observation.ReadAccess(t.Context(), config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}})
+		require.NoError(t, err)
+		assert.Equal(t, observation.CallerIdentity{UID: "service-account:7", Login: "sa-x"}, access.Identity)
+		assert.Equal(t, []string{"dashboards:*"}, access.Permissions["dashboards:read"])
+		assert.Equal(t, []string{"GET /api/user", "GET /api/access-control/user/permissions"}, *paths)
+	})
+
+	t.Run("permission errors are recorded, not returned", func(t *testing.T) {
+		srv, _ := newServer(http.StatusForbidden)
+		access, err := observation.ReadAccess(t.Context(), config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}})
+		require.NoError(t, err)
+		assert.Nil(t, access.Permissions)
+		require.Error(t, access.PermissionsErr)
+		assert.Contains(t, access.PermissionsErr.Error(), "status 403")
+		scope, _ := access.ReadScope(observation.TypeDashboards)
+		assert.Equal(t, observation.ReadScopeUnknown, scope)
+	})
+
+	t.Run("identity errors fail", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		t.Cleanup(srv.Close)
+		_, err := observation.ReadAccess(t.Context(), config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}})
+		require.ErrorContains(t, err, "status 401")
+		var status *observation.StatusError
+		require.ErrorAs(t, err, &status)
+		assert.Equal(t, http.StatusUnauthorized, status.Status)
+	})
 }
 
 func TestCompare_NullIsDistinctFromAbsent(t *testing.T) {

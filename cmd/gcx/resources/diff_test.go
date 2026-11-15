@@ -33,6 +33,7 @@ func writeTestCapture(t *testing.T, dir, namespace string, dashboards map[string
 			SchemaVersion:        observation.SchemaVersion,
 			NormalizationVersion: observation.NormalizationVersion,
 			Stack:                observation.StackIdentity{Server: "https://example.grafana.net", Namespace: namespace},
+			Caller:               &observation.CallerIdentity{UID: "service-account:1"},
 			Selectors:            []string{"dashboards"},
 			Types: []observation.TypeCoverage{{
 				Type: observation.TypeDashboards, Selector: "dashboards", Version: "v1beta1", Kind: "Dashboard",

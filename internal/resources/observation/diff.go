@@ -53,8 +53,10 @@ type DiffResult struct {
 	SchemaVersion        string        `json:"schema_version"`
 	NormalizationVersion string        `json:"normalization_version"`
 	Stack                StackIdentity `json:"stack"`
-	Before               CaptureRef    `json:"before"`
-	After                CaptureRef    `json:"after"`
+	// Caller is who took both captures.
+	Caller CallerIdentity `json:"caller"`
+	Before CaptureRef     `json:"before"`
+	After  CaptureRef     `json:"after"`
 	// Complete is true when every type was compared on complete reads and
 	// no result is indeterminate.
 	Complete    bool             `json:"complete"`
@@ -127,11 +129,19 @@ func Compare(before, after *Capture, beforePath, afterPath string) (*DiffResult,
 		return nil, &IncompatibleError{Reason: fmt.Sprintf("captures come from different stacks (%s %s and %s %s)", bm.Stack.Server, bm.Stack.Namespace, am.Stack.Server, am.Stack.Namespace)}
 	}
 
+	switch {
+	case bm.Caller == nil || am.Caller == nil || bm.Caller.UID == "" || am.Caller.UID == "":
+		return nil, &IncompatibleError{Reason: "a capture does not record who took it; take both captures again with this version of gcx"}
+	case bm.Caller.UID != am.Caller.UID:
+		return nil, &IncompatibleError{Reason: fmt.Sprintf("captures were taken by different callers (%s and %s); permissions decide what each caller can see, so a difference can come from access rather than from a change. Take both captures with the same context", bm.Caller.UID, am.Caller.UID)}
+	}
+
 	result := &DiffResult{
 		Type:                 DiffType,
 		SchemaVersion:        SchemaVersion,
 		NormalizationVersion: NormalizationVersion,
 		Stack:                StackIdentity{Server: am.Stack.Server, Namespace: am.Stack.Namespace},
+		Caller:               CallerIdentity{UID: am.Caller.UID, Login: am.Caller.Login},
 		Before:               CaptureRef{Path: beforePath, StartedAt: bm.StartedAt, FinishedAt: bm.FinishedAt},
 		After:                CaptureRef{Path: afterPath, StartedAt: am.StartedAt, FinishedAt: am.FinishedAt},
 		Types:                []TypeComparison{},

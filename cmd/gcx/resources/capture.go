@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,8 +90,14 @@ capture never looks finished. The destination must not exist or must be empty.
 
 Coverage is reported per type. A type that is unavailable, fails to read, or is
 truncated is recorded as incomplete and the command exits with code 4; the
-capture is still written. Use an administrative context: ordinary permissions
-can hide resources, and admin access is not verified.
+capture is still written.
+
+Grafana hides resources that the caller cannot read, without an error. The
+capture records who took it, and checks that the caller can read every
+resource of each type. A type that the caller can read only partly is
+incomplete. 'gcx resources diff' rejects captures taken by different callers,
+so take both captures with the same context. An administrative context is
+the simplest way to get complete reads.
 
 Captures can contain sensitive configuration and query text. Files are
 readable by the owner only. Secret values are never captured: only the names of
@@ -135,6 +142,21 @@ configured secrets are recorded.`,
 				return err
 			}
 
+			access, err := observation.ReadAccess(ctx, cfg)
+			if err != nil {
+				detailed := gcxerrors.DetailedError{
+					Summary: "Cannot identify the caller",
+					Details: "A capture records who took it, because permissions decide which resources a caller can see. gcx could not read the caller identity from /api/user.",
+					Parent:  err,
+				}
+				if status, ok := errors.AsType[*observation.StatusError](err); ok && (status.Status == http.StatusUnauthorized || status.Status == http.StatusForbidden) {
+					exit := gcxerrors.ExitAuthFailure
+					detailed.ExitCode = &exit
+					detailed.Suggestions = []string{"Check the credentials of the current context: gcx config check"}
+				}
+				return detailed
+			}
+
 			puller, err := remote.NewDefaultPullerWithRegistry(cfg, reg)
 			if err != nil {
 				return err
@@ -154,6 +176,7 @@ configured secrets are recorded.`,
 				Selectors:  args,
 				Selections: selections,
 				Puller:     puller,
+				Access:     access,
 				GCXVersion: version.Get(),
 			})
 			if err != nil {
