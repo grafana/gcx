@@ -192,12 +192,13 @@ const (
 // ---------------------------------------------------------------------------
 
 // isMetaEntityType reports whether the given entity type is a catalog-level
-// type that describes the Entity Graph schema itself rather than user
-// workloads. These inflate entity counts without informational value; the
-// EntityOverview excludes them.
+// type that describes the Entity Graph itself (its schema, account and
+// environment records) rather than user workloads. These inflate entity
+// counts without informational value; the EntityOverview and `kg stats`
+// totals exclude them.
 func isMetaEntityType(t string) bool {
 	switch t {
-	case "EntityType", "Schema", "Env":
+	case "Account", "EntityType", "Schema", "Env":
 		return true
 	default:
 		return false

@@ -21,6 +21,7 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 			"EntityType": 18, // meta — excluded
 			"Schema":     30, // meta — excluded
 			"Env":        3,  // meta — excluded
+			"Account":    1,  // meta — excluded
 		},
 		TracesTargetInfoSeries: 4,
 	}
@@ -28,12 +29,13 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 	overview := kg.BuildEntityOverview(in)
 
 	assert.Equal(t, int64(60), overview.Total,
-		"Total should exclude meta types (10 + 50, not 10+50+18+30+3)")
+		"Total should exclude meta types (10 + 50, not 10+50+18+30+3+1)")
 	assert.Equal(t, int64(10), overview.TotalServiceCount)
 	assert.Equal(t, int64(4), overview.TracedServiceCount)
 	assert.NotContains(t, overview.ByType, "EntityType")
 	assert.NotContains(t, overview.ByType, "Schema")
 	assert.NotContains(t, overview.ByType, "Env")
+	assert.NotContains(t, overview.ByType, "Account")
 	assert.Contains(t, overview.ByType, "Service")
 	assert.Contains(t, overview.ByType, "Pod")
 }
