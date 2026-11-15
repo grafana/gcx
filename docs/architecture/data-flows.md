@@ -309,6 +309,38 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ---
 
+## 4c. CAPTURE and DIFF (observation, experimental)
+
+`gcx resources capture` and `gcx resources diff` (`internal/resources/observation/`)
+observe resource changes over time on one stack. They reuse the PULL pipeline for
+reads but not its export processors or file writer, because observation has
+different requirements from backup and migration:
+
+```
+capture: ResolveSelections (supported types only, whole types, unresolved → unavailable)
+      |
+      v  one Puller.Pull per type (bounded errgroup) → per-type coverage
+      |    complete only with no failures, no skips, and no truncation
+      v
+   Normalize (versioned rules; secure values → {"redacted": true})
+      |
+      v
+   Write: files + manifest.json (inventory with SHA-256) into a hidden temp dir,
+          manifest last, then rename into place (dest must be absent or empty)
+
+diff:  Load (verify manifest, inventory, digests, no extra files) ×2
+      |
+      v  Compare: same stack + same normalization version, else IncompatibleError
+           per type: compared | partial | indeterminate
+           added requires a complete before read; deleted requires a complete after read
+```
+
+The manifest, not the directory, defines a capture: a capture without
+`manifest.json`, or with files outside its inventory, is rejected. Bump
+`NormalizationVersion` whenever a normalization rule changes.
+
+---
+
 ## 5. QUERY Pipeline
 
 Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.

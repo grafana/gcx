@@ -37,6 +37,8 @@ The `gcx resources` command group includes the following commands:
 | `gcx resources validate` | Check local files against a Grafana instance without writing them | [Validate and preview changes](#validate-and-preview-changes) |
 | `gcx resources pull` | Save resources from Grafana to local files | [Migrate resources between environments](#migrate-resources-between-environments), [Back up and restore resources](#back-up-and-restore-resources) |
 | `gcx resources push` | Create or update resources in Grafana from local files | [Validate and preview changes](#validate-and-preview-changes), [Migrate resources between environments](#migrate-resources-between-environments) |
+| `gcx resources capture` | Record the observable state of selected resource types (experimental) | [Observe resource changes over time](#observe-resource-changes-over-time) |
+| `gcx resources diff` | Compare two captures of the same stack (experimental) | [Observe resource changes over time](#observe-resource-changes-over-time) |
 
 For every flag of each command, refer to the [CLI reference](../../cli-reference/#gcx-resources).
 
@@ -229,6 +231,47 @@ Follow this workflow to back up all Grafana resources from one instance and late
    ```shell
    gcx resources push --path ./backup-prod
    ```
+
+## Observe resource changes over time
+
+{{< admonition type="caution" >}}
+`gcx resources capture` and `gcx resources diff` are experimental. Their flags and output can change in a later release.
+{{< /admonition >}}
+
+Use `gcx resources capture` and `gcx resources diff` to find out what a workflow changed on one stack. For example, you can capture dashboards, create and configure a dashboard in the Grafana UI, capture again, and see the changes. You cannot use these commands to compare two stacks or to migrate resources.
+
+1. Use a context with administrator access. Ordinary permissions can hide resources. `gcx` does not verify admin access.
+1. Capture the state before the workflow:
+   ```shell
+   gcx resources capture dashboards folders -p ./before
+   ```
+1. Do the workflow.
+1. Capture the same types again:
+   ```shell
+   gcx resources capture dashboards folders -p ./after
+   ```
+1. Compare the captures:
+   ```shell
+   gcx resources diff ./before ./after          # summary and table
+   gcx resources diff ./before ./after -o json  # structured result
+   ```
+
+The supported resource types are dashboards, folders, and data sources. Without arguments, `gcx resources capture` captures all three. The destination directory must not exist or must be empty. `gcx` writes the capture in a temporary directory and moves it into place only when it is complete.
+
+### How to read the result
+
+- `gcx resources diff` reports each resource as added, modified, deleted, or indeterminate. For a modified resource, it lists each changed field as a JSON pointer, such as `/spec/panels/0/targets/0/expr`. Array order is significant.
+- If a type is unavailable, fails to read, or is truncated, the capture records it as incomplete and `gcx resources capture` exits with code 4. A resource that is absent from an incomplete capture is indeterminate. `gcx` does not report it as added or deleted.
+- The `complete` field in the result is `true` only when `gcx` compared every type on complete reads.
+- `gcx` ignores fields that change on every save, such as timestamps, `resourceVersion`, the dashboard `version` counter, and `status`. For the complete rules, refer to [`normalize.go`](https://github.com/grafana/gcx/blob/main/internal/resources/observation/normalize.go).
+- `gcx` does not compare captures from different stacks, or captures with different normalization versions.
+
+### Limitations
+
+- A capture is an observation over a time interval, not an atomic snapshot. Changes made by other users or background processes during the workflow can appear in the result. For repeatable evaluations, use an isolated test stack.
+- Secret values are never captured. `gcx` records only the names of configured secrets, so it cannot detect a changed secret value.
+- A capture can contain sensitive configuration and query text. `gcx` makes the files readable by the owner only. Protect them as you protect other configuration exports.
+- A matching result is evidence about the observable state of resources. It does not prove that a workflow succeeded.
 
 ## Incident descriptions
 
