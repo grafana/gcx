@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
+
+	"github.com/grafana/gcx/internal/resources"
 )
 
 // Supported resource types for capture. Each type has documented
@@ -25,6 +28,47 @@ func IsSupportedType(typeKey string) bool {
 	return slices.Contains(SupportedTypes(), typeKey)
 }
 
+// supportedTypeNames are the names that select each supported type: plural,
+// singular and lowercase kind. A selector group must be empty or a prefix of
+// the type's group.
+//
+//nolint:gochecknoglobals // constant-like lookup table.
+var supportedTypeNames = []struct {
+	key   string
+	group string
+	names []string
+}{
+	{TypeFolders, "folder.grafana.app", []string{"folders", "folder"}},
+	{TypeDashboards, "dashboard.grafana.app", []string{"dashboards", "dashboard"}},
+	{TypeDatasources, "datasource.grafana.app", []string{"datasources", "datasource"}},
+}
+
+// supportedTypeFor returns the supported type key that a selector names, or
+// "" when it names no supported type. It does not need the stack's discovery
+// data, so it also works for a type that the stack does not serve.
+func supportedTypeFor(gvk resources.PartialGVK) string {
+	name := strings.ToLower(gvk.Resource)
+	group := strings.ToLower(gvk.Group)
+	for _, t := range supportedTypeNames {
+		if !slices.Contains(t.names, name) {
+			continue
+		}
+		if group == "" || group == t.group || strings.HasPrefix(t.group, group+".") {
+			return t.key
+		}
+	}
+	return ""
+}
+
+// itemReadTypes are types whose list endpoint returns summaries, so each item
+// is read again individually. The legacy datasource list omits fields such as
+// basicAuthUser and the names of configured secrets.
+//
+//nolint:gochecknoglobals // constant-like lookup table.
+var itemReadTypes = map[string]bool{
+	TypeDatasources: true,
+}
+
 // redactedSecret replaces every secure value in a capture. Its presence means
 // that a secret with that name is configured; its value is never observed.
 //
@@ -43,6 +87,11 @@ var incidentalAnnotations = map[string]bool{
 	"grafana.app/sourceChecksum":                       true,
 	"grafana.app/sourceTimestamp":                      true,
 	"kubectl.kubernetes.io/last-applied-configuration": true,
+	// The folder path annotations are derived from the folder tree. The
+	// parent is kept in grafana.app/folder, so a rename or move is still
+	// observed on the folder that changed, not on all of its descendants.
+	"grafana.app/fullpath":     true,
+	"grafana.app/fullpathUIDs": true,
 }
 
 // incidentalLabels are server-written labels without configuration meaning.
@@ -67,7 +116,8 @@ var incidentalSpecFields = map[string][]string{
 //   - metadata.labels and metadata.annotations are kept, except incidental
 //     server-written keys (createdBy, updatedBy, updatedTimestamp, message,
 //     sourceChecksum, sourceTimestamp, kubectl last-applied, deprecated
-//     internal ID). Empty maps are removed.
+//     internal ID) and the derived folder path keys (fullpath,
+//     fullpathUIDs). Empty maps are removed.
 //   - metadata.finalizers and metadata.ownerReferences are kept.
 //   - Other metadata (namespace, uid, resourceVersion, generation,
 //     creationTimestamp, managedFields, deletion fields) is removed. The

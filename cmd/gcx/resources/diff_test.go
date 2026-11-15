@@ -3,6 +3,7 @@ package resources_test
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -102,8 +103,36 @@ func TestDiffCmd(t *testing.T) {
 	})
 }
 
-func TestCaptureCmd_RequiresPath(t *testing.T) {
-	err := newTestRoot(&bytes.Buffer{}, "capture", "dashboards").Execute()
-	var usage *fail.UsageError
-	require.ErrorAs(t, err, &usage)
+// The destination checks run before the config is loaded, so these
+// invocations never reach a Grafana server.
+func TestCaptureCmd_DestinationValidation(t *testing.T) {
+	root := t.TempDir()
+	nonEmpty := filepath.Join(root, "full")
+	require.NoError(t, os.MkdirAll(nonEmpty, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(nonEmpty, "x"), nil, 0o600))
+	file := filepath.Join(root, "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+	t.Chdir(root)
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"missing path", []string{}, "--path is required"},
+		{"blank path", []string{"-p", "  "}, "--path is required"},
+		{"current directory", []string{"-p", "."}, "current directory"},
+		{"parent of current directory", []string{"-p", ".."}, "current directory"},
+		{"not empty", []string{"-p", "full"}, "is not empty"},
+		{"not a directory", []string{"-p", "file"}, "is not a directory"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append([]string{"capture", "dashboards"}, tc.args...)
+			err := newTestRoot(&bytes.Buffer{}, args...).Execute()
+			var usage *fail.UsageError
+			require.ErrorAs(t, err, &usage)
+			assert.Contains(t, usage.Message, tc.want)
+		})
+	}
 }

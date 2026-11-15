@@ -69,7 +69,7 @@ proof that a workflow succeeded.`,
 		Annotations: map[string]string{
 			agent.AnnotationStability: agent.StabilityExperimental,
 			agent.AnnotationTokenCost: "medium",
-			agent.AnnotationLLMHint:   "BEFORE AFTER -o json; check .complete and .types before trusting added/deleted results",
+			agent.AnnotationLLMHint:   "BEFORE AFTER -o json; check .complete and .types before trusting added/deleted results. Added and deleted entries carry the full object; narrow with --jq '.changes[] | {type,name,change,paths: [.fields[]?.path]}'",
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {

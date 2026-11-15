@@ -320,6 +320,7 @@ different requirements from backup and migration:
 capture: ResolveSelections (supported types only, whole types, unresolved → unavailable)
       |
       v  one Puller.Pull per type (bounded errgroup) → per-type coverage
+      |    datasources: list, then a per-item Get (the legacy list omits fields)
       |    complete only with no failures, no skips, and no truncation
       v
    Normalize (versioned rules; secure values → {"redacted": true})

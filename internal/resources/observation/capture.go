@@ -83,14 +83,23 @@ func ResolveSelections(maker FilterMaker, selectors []string, warn io.Writer) ([
 			PreferredVersionOnly: true,
 		})
 		if err != nil || len(filters) == 0 {
+			// Only a supported type that the stack does not serve is a
+			// coverage gap. Anything else is a mistyped or unknown type.
+			key := supportedTypeFor(sels[0].GroupVersionKind)
+			if key == "" {
+				return nil, &UnsupportedSelectorError{
+					Selector: raw,
+					Reason:   "unknown resource type; supported types: " + strings.Join(SupportedTypes(), ", "),
+				}
+			}
 			if err == nil {
 				err = errors.New("no matching resource type")
 			}
-			if seen[raw] {
+			if seen[key] {
 				continue
 			}
-			seen[raw] = true
-			out = append(out, Selection{Selector: raw, Type: raw, Err: err})
+			seen[key] = true
+			out = append(out, Selection{Selector: raw, Type: key, Err: err})
 			continue
 		}
 
@@ -213,9 +222,61 @@ func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverag
 	cov.Version = sel.Filter.Descriptor.GroupVersion.Version
 	cov.Kind = sel.Filter.Descriptor.Kind
 
+	listed, reasons, err := pullFilter(ctx, puller, sel.Filter)
+	if err != nil {
+		return cov, nil, err
+	}
+
+	// Some list endpoints return summaries rather than full objects. For
+	// those types, every listed item is read again individually.
+	if itemReadTypes[sel.Type] && len(reasons) == 0 && len(listed) > 0 {
+		names := make([]string, 0, len(listed))
+		for _, r := range listed {
+			names = append(names, r.Name())
+		}
+		listed, reasons, err = pullFilter(ctx, puller, resources.Filter{
+			Type:         resources.FilterTypeMultiple,
+			Descriptor:   sel.Filter.Descriptor,
+			ResourceUIDs: names,
+		})
+		if err != nil {
+			return cov, nil, err
+		}
+	}
+
+	objs := map[string]map[string]any{}
+	for _, r := range listed {
+		name := r.Name()
+		if _, dup := objs[name]; dup {
+			reasons = append(reasons, "duplicate resource name: "+name)
+			continue
+		}
+		norm, nerr := Normalize(sel.Type, r.Object.Object)
+		if nerr != nil {
+			reasons = append(reasons, "normalize failed: "+name+": "+nerr.Error())
+			continue
+		}
+		objs[name] = norm
+	}
+
+	cov.Count = len(objs)
+	if len(reasons) == 0 {
+		cov.Status = CoverageComplete
+	} else {
+		sort.Strings(reasons)
+		cov.Status = CoverageIncomplete
+		cov.Reasons = reasons
+	}
+	return cov, objs, nil
+}
+
+// pullFilter reads one filter. It returns the resources read and the reasons
+// that make the read incomplete. The error is set only when ctx is done.
+// Nothing is returned for a read that failed as a whole.
+func pullFilter(ctx context.Context, puller Puller, filter resources.Filter) ([]*resources.Resource, []string, error) {
 	res := resources.NewResources()
 	summary, err := puller.Pull(ctx, remote.PullRequest{
-		Filters:   resources.Filters{sel.Filter},
+		Filters:   resources.Filters{filter},
 		Resources: res,
 		// Observation must see everything the caller can read: nothing is
 		// excluded by manager or read-only state.
@@ -224,11 +285,12 @@ func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverag
 		StopOnError:     false,
 	})
 	if ctx.Err() != nil {
-		return cov, nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 
 	var reasons []string
-	if err != nil {
+	failed := err != nil
+	if failed {
 		reasons = append(reasons, "read failed: "+err.Error())
 	}
 	if summary != nil {
@@ -255,33 +317,13 @@ func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverag
 			reasons = append(reasons, "list truncated")
 		}
 	}
-
-	objs := map[string]map[string]any{}
-	if err == nil {
-		for _, r := range res.AsList() {
-			name := r.Name()
-			if _, dup := objs[name]; dup {
-				reasons = append(reasons, "duplicate resource name: "+name)
-				continue
-			}
-			norm, nerr := Normalize(sel.Type, r.Object.Object)
-			if nerr != nil {
-				reasons = append(reasons, "normalize failed: "+name+": "+nerr.Error())
-				continue
-			}
-			objs[name] = norm
-		}
+	// A read error is recorded as a reason: it makes the type incomplete
+	// rather than failing the capture, and none of its items are kept.
+	var read []*resources.Resource
+	if !failed {
+		read = res.AsList()
 	}
-
-	cov.Count = len(objs)
-	if len(reasons) == 0 {
-		cov.Status = CoverageComplete
-	} else {
-		sort.Strings(reasons)
-		cov.Status = CoverageIncomplete
-		cov.Reasons = reasons
-	}
-	return cov, objs, nil
+	return read, reasons, nil //nolint:nilerr // a read error is a coverage reason, not a capture failure
 }
 
 // ServerIdentity returns the server URL with user information removed.

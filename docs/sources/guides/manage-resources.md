@@ -256,14 +256,14 @@ Use `gcx resources capture` and `gcx resources diff` to find out what a workflow
    gcx resources diff ./before ./after -o json  # structured result
    ```
 
-The supported resource types are dashboards, folders, and data sources. Without arguments, `gcx resources capture` captures all three. The destination directory must not exist or must be empty. `gcx` writes the capture in a temporary directory and moves it into place only when it is complete.
+The supported resource types are dashboards, folders, and data sources. Without arguments, `gcx resources capture` captures all three. Other types are usage errors. `gcx` reads each data source individually, because the data source list omits some configuration, so a stack with many data sources takes longer to capture. The destination directory must not exist or must be empty. `gcx` writes the capture in a temporary directory and moves it into place only when it is complete.
 
 ### How to read the result
 
 - `gcx resources diff` reports each resource as added, modified, deleted, or indeterminate. For a modified resource, it lists each changed field as a JSON pointer, such as `/spec/panels/0/targets/0/expr`. Array order is significant.
 - If a type is unavailable, fails to read, or is truncated, the capture records it as incomplete and `gcx resources capture` exits with code 4. A resource that is absent from an incomplete capture is indeterminate. `gcx` does not report it as added or deleted.
 - The `complete` field in the result is `true` only when `gcx` compared every type on complete reads.
-- `gcx` ignores fields that change on every save, such as timestamps, `resourceVersion`, the dashboard `version` counter, and `status`. For the complete rules, refer to [`normalize.go`](https://github.com/grafana/gcx/blob/main/internal/resources/observation/normalize.go).
+- `gcx` ignores fields that change on every save, such as timestamps, `resourceVersion`, the dashboard `version` counter, and `status`. It also ignores the folder path annotations that Grafana derives from the folder tree, so renaming or moving a folder changes only that folder in the result, not its subfolders. For the complete rules, refer to [`normalize.go`](https://github.com/grafana/gcx/blob/main/internal/resources/observation/normalize.go).
 - `gcx` does not compare captures from different stacks, or captures with different normalization versions.
 
 ### Limitations

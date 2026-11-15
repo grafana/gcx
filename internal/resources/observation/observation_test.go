@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,6 +113,26 @@ func TestNormalize(t *testing.T) {
 			},
 		},
 		{
+			name:    "folder keeps its parent and drops the derived path annotations",
+			typeKey: observation.TypeFolders,
+			in: map[string]any{
+				"apiVersion": "folder.grafana.app/v1beta1",
+				"kind":       "Folder",
+				"metadata": map[string]any{"name": "child", "annotations": map[string]any{
+					"grafana.app/folder":       "parent",
+					"grafana.app/fullpath":     "Parent/Child",
+					"grafana.app/fullpathUIDs": "parent/child",
+				}},
+				"spec": map[string]any{"title": "Child"},
+			},
+			want: map[string]any{
+				"apiVersion": "folder.grafana.app/v1beta1",
+				"kind":       "Folder",
+				"metadata":   map[string]any{"name": "child", "annotations": map[string]any{"grafana.app/folder": "parent"}},
+				"spec":       map[string]any{"title": "Child"},
+			},
+		},
+		{
 			name:    "unexpected secure shape is redacted as a whole",
 			typeKey: observation.TypeDatasources,
 			in:      map[string]any{"metadata": map[string]any{"name": "x"}, "secure": "plain"},
@@ -135,16 +157,54 @@ func TestNormalize_DoesNotMutateInput(t *testing.T) {
 }
 
 // fakePuller returns canned results per type key.
+// A list request returns items; a request for named resources returns the
+// matching entries of got, or of items when got has no entry for the type.
 type fakePuller struct {
 	items     map[string][]map[string]any
+	got       map[string][]map[string]any
+	getErr    map[string]error
 	failures  map[string]error
 	truncated map[string]bool
 	err       map[string]error
+
+	mu       sync.Mutex
+	requests []resources.FilterType
 }
 
 func (f *fakePuller) Pull(_ context.Context, req remote.PullRequest) (*remote.OperationSummary, error) {
 	summary := &remote.OperationSummary{}
-	key := observation.TypeKey(req.Filters[0].Descriptor)
+	filter := req.Filters[0]
+	key := observation.TypeKey(filter.Descriptor)
+	f.mu.Lock()
+	f.requests = append(f.requests, filter.Type)
+	f.mu.Unlock()
+
+	if filter.Type == resources.FilterTypeMultiple {
+		if err := f.getErr[key]; err != nil {
+			summary.RecordFailure(nil, err)
+			return summary, nil
+		}
+		source, ok := f.got[key]
+		if !ok {
+			source = f.items[key]
+		}
+		req.Resources.Clear()
+		for _, item := range source {
+			name, _ := item["metadata"].(map[string]any)["name"].(string)
+			if !slices.Contains(filter.ResourceUIDs, name) {
+				continue
+			}
+			u := unstructured.Unstructured{Object: item}
+			res, err := resources.FromUnstructured(&u)
+			if err != nil {
+				return nil, err
+			}
+			req.Resources.Add(res)
+			summary.RecordSuccess()
+		}
+		return summary, nil
+	}
+
 	if err := f.err[key]; err != nil {
 		return summary, err
 	}
@@ -452,9 +512,14 @@ func TestCompare_DatasourceSecretIsRedacted(t *testing.T) {
 		}
 		return obj
 	}
-	sels := []observation.Selection{{Selector: "datasources", Type: observation.TypeDatasources, Filter: resources.Filter{Type: resources.FilterTypeAll, Descriptor: datasourceDesc()}}}
+	sels := dsSelections()
 	before := collect(t, &fakePuller{}, sels)
-	after := collect(t, &fakePuller{items: map[string][]map[string]any{observation.TypeDatasources: {ds(map[string]any{"basicAuthPassword": map[string]any{"name": "ref"}})}}}, sels)
+	// The list returns a summary without the secure block, as the legacy
+	// datasource list does; only the item read carries it.
+	after := collect(t, &fakePuller{
+		items: map[string][]map[string]any{observation.TypeDatasources: {ds(nil)}},
+		got:   map[string][]map[string]any{observation.TypeDatasources: {ds(map[string]any{"basicAuthPassword": map[string]any{"name": "ref"}})}},
+	}, sels)
 
 	res := compare(t, before, after)
 	require.Len(t, res.Changes, 1)
@@ -464,6 +529,54 @@ func TestCompare_DatasourceSecretIsRedacted(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), `"ref"`)
 	assert.Contains(t, string(data), "secure values are redacted")
+}
+
+func dsSelections() []observation.Selection {
+	return []observation.Selection{{Selector: "datasources", Type: observation.TypeDatasources, Filter: resources.Filter{Type: resources.FilterTypeAll, Descriptor: datasourceDesc()}}}
+}
+
+func TestCollect_DatasourcesAreReadIndividually(t *testing.T) {
+	summary := map[string]any{
+		"apiVersion": "prometheus.datasource.grafana.app/v0alpha1", "kind": "DataSource",
+		"metadata": map[string]any{"name": "prom"},
+		"spec":     map[string]any{"title": "Prom", "type": "prometheus"},
+	}
+	full := map[string]any{
+		"apiVersion": "prometheus.datasource.grafana.app/v0alpha1", "kind": "DataSource",
+		"metadata": map[string]any{"name": "prom"},
+		"spec":     map[string]any{"title": "Prom", "type": "prometheus", "basicAuthUser": "bob"},
+	}
+
+	t.Run("item reads replace the list summaries", func(t *testing.T) {
+		p := &fakePuller{
+			items: map[string][]map[string]any{observation.TypeDatasources: {summary}},
+			got:   map[string][]map[string]any{observation.TypeDatasources: {full}},
+		}
+		c := collect(t, p, dsSelections())
+		assert.Equal(t, []resources.FilterType{resources.FilterTypeAll, resources.FilterTypeMultiple}, p.requests)
+		assert.Equal(t, observation.CoverageComplete, c.Manifest.Types[0].Status)
+		spec, ok := c.Objects[observation.TypeDatasources]["prom"]["spec"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "bob", spec["basicAuthUser"])
+	})
+
+	t.Run("a failed item read makes the type incomplete", func(t *testing.T) {
+		p := &fakePuller{
+			items:  map[string][]map[string]any{observation.TypeDatasources: {summary}},
+			getErr: map[string]error{observation.TypeDatasources: errors.New("prom: not found")},
+		}
+		c := collect(t, p, dsSelections())
+		cov := c.Manifest.Types[0]
+		assert.Equal(t, observation.CoverageIncomplete, cov.Status)
+		assert.Equal(t, 0, cov.Count)
+		assert.Contains(t, cov.Reasons[0], "not found")
+	})
+
+	t.Run("dashboards are not read again", func(t *testing.T) {
+		p := items(dashboard("a", "A", 1))
+		collect(t, p, selections())
+		assert.Equal(t, []resources.FilterType{resources.FilterTypeAll}, p.requests)
+	})
 }
 
 func TestCompare_Incompatible(t *testing.T) {
@@ -526,13 +639,23 @@ func TestResolveSelections(t *testing.T) {
 		"notavailable!": nil,
 	}}
 
-	t.Run("deduplicates and records unresolved selectors", func(t *testing.T) {
-		got, err := observation.ResolveSelections(maker, []string{"dashboards", "dashboard", "folders"}, nil)
+	t.Run("deduplicates and records unresolved supported types", func(t *testing.T) {
+		got, err := observation.ResolveSelections(maker, []string{"dashboards", "dashboard", "folders", "folder.folder"}, nil)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.Equal(t, observation.TypeDashboards, got[0].Type)
-		assert.Equal(t, "folders", got[1].Type)
+		assert.Equal(t, observation.TypeFolders, got[1].Type)
+		assert.Equal(t, "folders", got[1].Selector)
 		assert.Error(t, got[1].Err)
+	})
+
+	t.Run("rejects unknown types", func(t *testing.T) {
+		for _, sel := range []string{"bogus", "folders.example.com"} {
+			_, err := observation.ResolveSelections(maker, []string{sel}, nil)
+			var unsupported *observation.UnsupportedSelectorError
+			require.ErrorAs(t, err, &unsupported, sel)
+			assert.Contains(t, unsupported.Reason, "unknown resource type")
+		}
 	})
 
 	t.Run("rejects unsupported types", func(t *testing.T) {
