@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -139,6 +140,12 @@ type CollectRequest struct {
 	// Access is the caller's identity and permissions (see ReadAccess).
 	Access     Access
 	GCXVersion string
+	// Trash, when set, also records the dashboard trash as its own view
+	// whenever dashboards are in the scope (see TypeDashboardTrash).
+	Trash TrashReader
+	// Permissions, when set, also records the stored permission entries of
+	// every captured dashboard and folder as their own views.
+	Permissions PermissionReader
 	// Now returns the current time; defaults to time.Now.
 	Now func() time.Time
 }
@@ -203,6 +210,16 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	trashCov, trashObjs, err := collectTrash(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	permCov, permObjs, err := collectPermissions(ctx, req, coverage, objects)
+	if err != nil {
+		return nil, err
+	}
+	coverage = slices.Concat(coverage, trashCov, permCov)
+	objects = slices.Concat(objects, trashObjs, permObjs)
 
 	for idx, cov := range coverage {
 		capture.Manifest.Types = append(capture.Manifest.Types, cov)
@@ -222,7 +239,13 @@ func Collect(ctx context.Context, req CollectRequest) (*Capture, error) {
 // caller that cannot read every resource sees a filtered list without an
 // error, so the type is incomplete unless the scope is all.
 func applyReadScope(cov *TypeCoverage, access Access) {
-	scope, reason := access.ReadScope(cov.Type)
+	applyReadScopeOf(cov, cov.Type, access)
+}
+
+// applyReadScopeOf records the read scope of typeKey on cov, which is read
+// with that type's permission.
+func applyReadScopeOf(cov *TypeCoverage, typeKey string, access Access) {
+	scope, reason := access.ReadScope(typeKey)
 	cov.ReadScope = scope
 	if scope == ReadScopeAll {
 		return
@@ -230,6 +253,68 @@ func applyReadScope(cov *TypeCoverage, access Access) {
 	cov.Status = CoverageIncomplete
 	cov.Reasons = append(cov.Reasons, reason)
 	sort.Strings(cov.Reasons)
+}
+
+// collectTrash records the dashboard trash as its own view, once for each
+// dashboards selection that resolved. It is a no-op without a trash reader.
+func collectTrash(ctx context.Context, req CollectRequest) ([]TypeCoverage, []map[string]map[string]any, error) {
+	var coverage []TypeCoverage
+	var objects []map[string]map[string]any
+	if req.Trash == nil {
+		return nil, nil, nil
+	}
+	for _, sel := range req.Selections {
+		if sel.Type != TypeDashboards || sel.Err != nil {
+			continue
+		}
+		cov, objs, err := req.Trash(ctx, sel.Filter.Descriptor.GroupVersion.Version)
+		if err != nil {
+			return nil, nil, err
+		}
+		if cov.Status != CoverageUnavailable {
+			// The trash is read with the dashboards read permission; a caller
+			// that cannot read every dashboard cannot see the whole trash.
+			applyReadScopeOf(&cov, TypeDashboards, req.Access)
+		}
+		coverage = append(coverage, cov)
+		objects = append(objects, objs)
+	}
+	return coverage, objects, nil
+}
+
+// collectPermissions records the stored permission entries of the captured
+// dashboards and folders, one view for each type that was read. It is a no-op
+// without a permission reader.
+func collectPermissions(ctx context.Context, req CollectRequest, parents []TypeCoverage, parentObjects []map[string]map[string]any) ([]TypeCoverage, []map[string]map[string]any, error) {
+	var coverage []TypeCoverage
+	var objects []map[string]map[string]any
+	if req.Permissions == nil {
+		return nil, nil, nil
+	}
+	for idx, parent := range parents {
+		if _, ok := permissionViews[parent.Type]; !ok || parent.Status == CoverageUnavailable {
+			continue
+		}
+		names := make([]string, 0, len(parentObjects[idx]))
+		for name := range parentObjects[idx] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		cov, objs, err := req.Permissions(ctx, parent.Type, names)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Permissions are read for the captured resources only, so an
+		// incomplete parent leaves the view incomplete too.
+		if parent.Status != CoverageComplete {
+			cov.Status = CoverageIncomplete
+			cov.Reasons = append(cov.Reasons, "the "+parent.Type+" capture is incomplete")
+		}
+		applyReadScope(&cov, req.Access)
+		coverage = append(coverage, cov)
+		objects = append(objects, objs)
+	}
+	return coverage, objects, nil
 }
 
 func collectType(ctx context.Context, puller Puller, sel Selection) (TypeCoverage, map[string]map[string]any, error) {

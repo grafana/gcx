@@ -33,6 +33,8 @@ const (
 //
 //nolint:gochecknoglobals // constant-like list.
 var limitations = []string{
+	"Permission views compare stored permission entries, sorted, not effective access: inherited access is not always listed, and changes take time to reach other principals.",
+	"The dashboard trash is compared as its own view: an added trash entry is a deleted dashboard, and a removed trash entry left the trash by restore, purge, or a new dashboard with the same name.",
 	"captures are observations over a collection interval, not atomic snapshots; concurrent changes can appear in the result",
 	"secure values are redacted; only the presence of secret names is compared, and a changed secret value cannot be observed",
 	"a matching result is evidence about observable resource state, not proof that an operation succeeded",

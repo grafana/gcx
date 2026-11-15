@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/rest"
 )
 
 const experimentalObservationPreamble = "This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions."
@@ -81,6 +82,16 @@ Supported resource types: ` + strings.Join(observation.SupportedTypes(), ", ") +
 Without arguments, every supported type is captured. Arguments select whole
 resource types; resource names and other types are usage errors. Data sources
 are read individually, because their list endpoint omits configuration.
+
+Two views are captured beside the types that you select. Selecting dashboards
+also captures the dashboard trash, so a dashboard that was created and deleted
+between two captures, or whose name a new dashboard took over, shows up in a
+diff. Selecting dashboards or folders also captures the stored permission
+entries of each captured dashboard or folder, sorted, so a change that affects
+only access shows up. Permission entries are what is stored, not effective
+access: access that comes from a parent folder or a role is not always listed,
+and a change can take time to reach other principals. Each view is a
+separate type in the manifest and has its own coverage.
 
 The capture directory holds one normalized JSON file per resource and a
 manifest.json that records the stack, the selected scope, the coverage of each
@@ -169,6 +180,12 @@ configured secrets are recorded.`,
 				return err
 			}
 
+			trashClient, err := rest.HTTPClientFor(&cfg.Config)
+			if err != nil {
+				return fmt.Errorf("create HTTP client: %w", err)
+			}
+			trash := observation.NewTrashReader(trashClient, cfg.Host, cfg.Namespace)
+
 			server := cfg.GrafanaURL
 			if server == "" {
 				server = cfg.Host
@@ -180,11 +197,13 @@ configured secrets are recorded.`,
 					Namespace: cfg.Namespace,
 					Context:   contextName,
 				},
-				Selectors:  args,
-				Selections: selections,
-				Puller:     puller,
-				Access:     access,
-				GCXVersion: version.Get(),
+				Selectors:   args,
+				Selections:  selections,
+				Puller:      puller,
+				Access:      access,
+				GCXVersion:  version.Get(),
+				Trash:       trash,
+				Permissions: observation.NewPermissionReader(trashClient, cfg.Host),
 			})
 			if err != nil {
 				return err

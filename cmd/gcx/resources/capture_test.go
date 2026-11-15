@@ -22,7 +22,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const fullPermissions = `{"folders:read":["folders:*"],"dashboards:read":["dashboards:*"],"datasources:read":["datasources:*"]}`
+const fullPermissions = `{"folders:read":["folders:*"],"dashboards:read":["dashboards:*"],"datasources:read":["datasources:*"],"dashboards.permissions:read":["dashboards:*"],"folders.permissions:read":["folders:*"]}`
+
+// defaultACL is the permission list the fake serves unless acl overrides it.
+const defaultACL = `[{"userLogin":"sa-admin","permissionName":"Admin"},{"role":"Editor","permissionName":"Edit"},{"role":"Viewer","permissionName":"View"}]`
 
 // fakeGrafana serves API discovery, the caller endpoints and the folder and
 // dashboard lists. Datasources are not served: their adapter is registered
@@ -33,6 +36,10 @@ type fakeGrafana struct {
 	permissions string
 	folders     []string
 	dashboards  []string
+	// trash is served for the dashboards list with the trash label selector.
+	trash []string
+	// acl overrides the permission list served for a dashboard or folder uid.
+	acl map[string]string
 
 	mu         sync.Mutex
 	unexpected []string
@@ -52,6 +59,17 @@ func (f *fakeGrafana) serve(t *testing.T) *httptest.Server {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		aclPath := (strings.HasPrefix(r.URL.Path, "/api/dashboards/uid/") || strings.HasPrefix(r.URL.Path, "/api/folders/")) &&
+			strings.HasSuffix(r.URL.Path, "/permissions")
+		if aclPath {
+			uid := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/dashboards/uid/"), "/api/folders/"), "/permissions")
+			if acl, set := f.acl[uid]; set {
+				_, _ = fmt.Fprint(w, acl)
+				return
+			}
+			_, _ = fmt.Fprint(w, defaultACL)
+			return
+		}
 		switch r.URL.Path {
 		case "/bootdata":
 			// Config loading probes it; a plain Grafana server may not serve it.
@@ -67,6 +85,10 @@ func (f *fakeGrafana) serve(t *testing.T) *httptest.Server {
 		case "/apis/folder.grafana.app/v1beta1/namespaces/default/folders":
 			_, _ = fmt.Fprint(w, list("FolderList", f.folders))
 		case "/apis/dashboard.grafana.app/v1beta1/namespaces/default/dashboards":
+			if r.URL.Query().Get("labelSelector") == "grafana.app/get-trash=true" {
+				_, _ = fmt.Fprint(w, list("DashboardList", f.trash))
+				return
+			}
 			_, _ = fmt.Fprint(w, list("DashboardList", f.dashboards))
 		case "/api/user":
 			if f.userStatus != 0 && f.userStatus != http.StatusOK {
@@ -179,8 +201,9 @@ func TestCaptureCmd_Receipt(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &receipt))
 	assert.Equal(t, "captured", receipt.Action)
 	assert.Equal(t, "out", receipt.Dir)
-	// The summary counts resource types; files count resources.
-	assert.Equal(t, 2, receipt.Summary.Succeeded)
+	// The summary counts resource types and their trash and permission views;
+	// files count resources.
+	assert.Equal(t, 5, receipt.Summary.Succeeded)
 	assert.Equal(t, 0, receipt.Summary.Failed)
 	assert.Empty(t, receipt.Failures)
 	counts := map[string]int{}
@@ -188,9 +211,11 @@ func TestCaptureCmd_Receipt(t *testing.T) {
 		counts[f.Path] = f.Count
 	}
 	assert.Equal(t, map[string]int{
-		filepath.Join("out", observation.ManifestFile):   0,
-		filepath.Join("out", observation.TypeDashboards): 2,
-		filepath.Join("out", observation.TypeFolders):    1,
+		filepath.Join("out", observation.ManifestFile):             0,
+		filepath.Join("out", observation.TypeDashboards):           2,
+		filepath.Join("out", observation.TypeFolders):              1,
+		filepath.Join("out", observation.TypeDashboardPermissions): 2,
+		filepath.Join("out", observation.TypeFolderPermissions):    1,
 	}, counts)
 
 	capture, err := observation.Load("out")
@@ -201,7 +226,8 @@ func TestCaptureCmd_Receipt(t *testing.T) {
 	require.NotNil(t, m.Caller)
 	assert.Equal(t, observation.CallerIdentity{UID: "service-account:1", Login: "sa-admin"}, *m.Caller)
 	assert.Equal(t, []string{"dashboards", "folders"}, m.Selectors)
-	require.Len(t, m.Types, 2)
+	// Dashboards bring the trash and permission views, folders a permission view.
+	require.Len(t, m.Types, 5)
 	for _, cov := range m.Types {
 		assert.Equal(t, observation.CoverageComplete, cov.Status, cov.Type)
 		assert.Equal(t, observation.ReadScopeAll, cov.ReadScope, cov.Type)
@@ -217,7 +243,7 @@ func TestCaptureCmd_TextReceipt(t *testing.T) {
 
 	stdout, stderr, err := runResources(t, cfg, "capture", "dashboards", "folders", "-p", "out")
 	require.NoError(t, err)
-	assert.Contains(t, stdout, "3 resources captured across 2 types to out")
+	assert.Contains(t, stdout, "6 resources captured across 5 types to out")
 	assert.Empty(t, stderr)
 }
 
@@ -229,16 +255,21 @@ func TestCaptureCmd_Incomplete(t *testing.T) {
 
 		stdout, stderr, err := runResources(t, cfg, "capture", "dashboards", "folders", "-p", "out")
 		assert.Equal(t, gcxerrors.ExitPartialFailure, exitCode(t, err))
-		assert.Contains(t, stderr, "warn: 1 of 2 resource type(s) captured incompletely")
+		// The trash is read with the dashboards permission, so it is incomplete too.
+		assert.Contains(t, stderr, "warn: 4 of 5 resource type(s) captured incompletely")
 		assert.Contains(t, stdout, observation.TypeDashboards+" is incomplete")
 		assert.Contains(t, stdout, "dashboards:read is not granted")
 
 		// The capture is still written.
 		capture, err := observation.Load("out")
 		require.NoError(t, err)
-		require.Len(t, capture.Manifest.Types, 2)
+		// Types are sorted: dashboards, folders, the two permission views, trash.
+		require.Len(t, capture.Manifest.Types, 5)
 		assert.Equal(t, observation.ReadScopeRestricted, capture.Manifest.Types[0].ReadScope)
 		assert.Equal(t, observation.CoverageComplete, capture.Manifest.Types[1].Status)
+		for _, cov := range capture.Manifest.Types[2:] {
+			assert.Equal(t, observation.CoverageIncomplete, cov.Status, cov.Type)
+		}
 	})
 
 	t.Run("receipt counts the incomplete type as failed", func(t *testing.T) {
@@ -251,7 +282,8 @@ func TestCaptureCmd_Incomplete(t *testing.T) {
 
 		var receipt captureReceipt
 		require.NoError(t, json.NewDecoder(strings.NewReader(stdout)).Decode(&receipt))
-		assert.Equal(t, 1, receipt.Summary.Succeeded)
+		// folders and its permission view succeed.
+		assert.Equal(t, 2, receipt.Summary.Succeeded)
 		assert.Equal(t, 1, receipt.Summary.Failed)
 		require.Len(t, receipt.Failures, 1)
 		assert.Equal(t, observation.TypeDatasources, receipt.Failures[0].Target.Kind)
@@ -299,7 +331,7 @@ func TestDiffCmd_TextShowsIncompleteTypes(t *testing.T) {
 	_, _, err := runResources(t, cfg, "capture", "dashboards", "folders", "-p", "before")
 	require.NoError(t, err)
 
-	fake.permissions = `{"folders:read":["folders:*"],"dashboards:read":["dashboards:uid:d1"]}`
+	fake.permissions = `{"folders:read":["folders:*"],"folders.permissions:read":["folders:*"],"dashboards:read":["dashboards:uid:d1"]}`
 	fake.dashboards = fake.dashboards[:1]
 	fake.folders = append(fake.folders, folderJSON("f2", "F2"))
 	_, _, err = runResources(t, cfg, "capture", "dashboards", "folders", "-p", "after")
@@ -307,7 +339,9 @@ func TestDiffCmd_TextShowsIncompleteTypes(t *testing.T) {
 
 	stdout, _, err := runResources(t, cfg, "diff", "before", "after", "-o", "text")
 	require.NoError(t, err)
-	assert.Contains(t, stdout, "1 added, 0 modified, 0 deleted, 2 unchanged, 1 indeterminate")
+	// Folders and their permission view are compared; dashboards, their
+	// permission view and the trash are partial.
+	assert.Contains(t, stdout, "2 added, 0 modified, 0 deleted, 4 unchanged, 2 indeterminate")
 	assert.Contains(t, stdout, "The comparison is incomplete")
 
 	tables := strings.SplitN(stdout, "\n\n", 3)
@@ -317,7 +351,8 @@ func TestDiffCmd_TextShowsIncompleteTypes(t *testing.T) {
 	assert.Contains(t, gaps, observation.TypeDashboards)
 	assert.Contains(t, gaps, observation.TypePartial)
 	assert.Contains(t, gaps, "after capture is incomplete")
-	assert.NotContains(t, gaps, observation.TypeFolders, "a compared type is not a gap")
+	assert.NotContains(t, gaps, "\n"+observation.TypeFolders+" ", "a compared type is not a gap")
+	assert.NotContains(t, gaps, observation.TypeFolderPermissions, "a compared view is not a gap")
 
 	assert.Contains(t, changes, "DETAIL")
 	for line := range strings.SplitSeq(changes, "\n") {
@@ -331,4 +366,79 @@ func TestDiffCmd_TextShowsIncompleteTypes(t *testing.T) {
 	}
 	assert.Contains(t, changes, " d2 ")
 	assert.Contains(t, changes, " f2 ")
+}
+
+func trashChanges(t *testing.T, stdout string) map[string]string {
+	t.Helper()
+	var res struct {
+		Changes []struct {
+			Type   string `json:"type"`
+			Name   string `json:"name"`
+			Change string `json:"change"`
+		} `json:"changes"`
+		Complete bool `json:"complete"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &res), stdout)
+	require.True(t, res.Complete, stdout)
+	out := map[string]string{}
+	for _, c := range res.Changes {
+		out[c.Type+"/"+c.Name] = c.Change
+	}
+	return out
+}
+
+// A dashboard created and deleted between two captures leaves no change in
+// the dashboards type, but it does leave an entry in the trash view.
+func TestDiffCmd_TrashShowsCreateAndDeleteWithinWindow(t *testing.T) {
+	fake := defaultFake()
+	cfg := captureEnv(t, fake)
+	_, _, err := runResources(t, cfg, "capture", "dashboards", "-p", "before")
+	require.NoError(t, err)
+
+	fake.trash = []string{dashboardJSON("d3", "D3")}
+	_, _, err = runResources(t, cfg, "capture", "dashboards", "-p", "after")
+	require.NoError(t, err)
+
+	stdout, _, err := runResources(t, cfg, "diff", "before", "after", "-o", "json")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{observation.TypeDashboardTrash + "/d3": observation.ChangeAdded}, trashChanges(t, stdout))
+}
+
+// Creating a dashboard with the name of a trashed one removes the trash entry.
+func TestDiffCmd_TrashShowsConsumedName(t *testing.T) {
+	fake := defaultFake()
+	fake.trash = []string{dashboardJSON("d3", "D3 old")}
+	cfg := captureEnv(t, fake)
+	_, _, err := runResources(t, cfg, "capture", "dashboards", "-p", "before")
+	require.NoError(t, err)
+
+	fake.trash = nil
+	fake.dashboards = append(fake.dashboards, dashboardJSON("d3", "D3 new"))
+	_, _, err = runResources(t, cfg, "capture", "dashboards", "-p", "after")
+	require.NoError(t, err)
+
+	stdout, _, err := runResources(t, cfg, "diff", "before", "after", "-o", "json")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		observation.TypeDashboards + "/d3":           observation.ChangeAdded,
+		observation.TypeDashboardPermissions + "/d3": observation.ChangeAdded,
+		observation.TypeDashboardTrash + "/d3":       observation.ChangeDeleted,
+	}, trashChanges(t, stdout))
+}
+
+// Narrowing a dashboard's permissions is a change in the permission view,
+// while the dashboard itself is unchanged.
+func TestDiffCmd_PermissionsShowNarrowedACL(t *testing.T) {
+	fake := defaultFake()
+	cfg := captureEnv(t, fake)
+	_, _, err := runResources(t, cfg, "capture", "dashboards", "-p", "before")
+	require.NoError(t, err)
+
+	fake.acl = map[string]string{"d1": `[{"userLogin":"sa-admin","permissionName":"Admin"}]`}
+	_, _, err = runResources(t, cfg, "capture", "dashboards", "-p", "after")
+	require.NoError(t, err)
+
+	stdout, _, err := runResources(t, cfg, "diff", "before", "after", "-o", "json")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{observation.TypeDashboardPermissions + "/d1": observation.ChangeModified}, trashChanges(t, stdout))
 }

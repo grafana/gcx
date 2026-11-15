@@ -63,6 +63,9 @@ var readPermissions = map[string]struct {
 	TypeFolders:     {"folders:read", []string{"*", "folders:*", "folders:uid:*"}},
 	TypeDashboards:  {"dashboards:read", []string{"*", "dashboards:*", "dashboards:uid:*", "folders:*", "folders:uid:*"}},
 	TypeDatasources: {"datasources:read", []string{"*", "datasources:*", "datasources:uid:*"}},
+	TypeDashboardPermissions: {"dashboards.permissions:read",
+		[]string{"*", "dashboards:*", "dashboards:uid:*", "folders:*", "folders:uid:*"}},
+	TypeFolderPermissions: {"folders.permissions:read", []string{"*", "folders:*", "folders:uid:*"}},
 }
 
 // ReadScope reports whether the caller can read every resource of a type.

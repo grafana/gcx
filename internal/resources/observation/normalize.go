@@ -107,6 +107,8 @@ var incidentalLabels = map[string]bool{
 var incidentalSpecFields = map[string][]string{
 	// The dashboard JSON carries a save counter and a legacy numeric ID.
 	TypeDashboards: {"version", "id"},
+	// Trash entries are dashboards and follow the dashboard rules.
+	TypeDashboardTrash: {"version", "id"},
 }
 
 // Normalize returns the observable form of a resource object. Normalization
