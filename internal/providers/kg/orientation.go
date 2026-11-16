@@ -62,7 +62,7 @@ const (
 // existing entity-count and metric-check responses in DiagnoseResult.
 type EntityOverview struct {
 	// Total entities across all types, EXCLUDING catalog meta types
-	// (EntityType, Schema, Env). Those types describe the catalog itself,
+	// (see isMetaEntityType). Those types describe the catalog itself,
 	// not the user's workloads, and inflate the count without informational
 	// value.
 	Total int64 `json:"total"`
