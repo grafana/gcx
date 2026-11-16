@@ -1,5 +1,11 @@
 ## Unreleased
 
+- The `gcx kg graph query` help now states that a variable-length
+  relationship needs an upper bound of at most 5 hops, the maximum the
+  endpoint accepts, and its path example uses `*1..5`. The help listed
+  unbounded paths as refused but did not give the maximum, so a query such as
+  `[:TYPE*1..6]` was refused with `CYPHER_UNBOUNDED_PATH` before the user
+  narrowed it.
 - `gcx kg graph query` now adds a `warnings` entry to its `-o json` and
   `-o yaml` output, and writes the same warning to stderr in every format,
   when returned rows hold the graph's own catalog records: nodes labeled

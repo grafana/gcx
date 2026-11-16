@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -290,5 +292,18 @@ func TestCypherQueryPreservesGraphValues(t *testing.T) {
 			require.NoError(t, roundTrip.Decode(&actual))
 			assert.Equal(t, expected, actual, "cell values and numeric precision must survive transport unchanged")
 		})
+	}
+}
+
+func TestGraphQueryHelpPathBounds(t *testing.T) {
+	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+	long := strings.Join(strings.Fields(cmd.Long), " ")
+	assert.Contains(t, long, "upper bound of at most 5 hops", "help must state the hop maximum the endpoint enforces")
+	bounds := regexp.MustCompile(`\*(\d*)\.\.(\d+)`).FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
+	require.NotEmpty(t, bounds, "help should show a bounded variable-length relationship")
+	for _, b := range bounds {
+		upper, err := strconv.Atoi(b[2])
+		require.NoError(t, err)
+		assert.LessOrEqual(t, upper, 5, "%s exceeds the hop maximum", b[0])
 	}
 }
