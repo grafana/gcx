@@ -14,6 +14,24 @@
   first now ends the command with an error that names the type and the page,
   instead of printing a partial list. `--page N` still returns that one
   backend page.
+- `gcx kg entities list --type` and `gcx kg entities inspect` now check the
+  entity type when the lookup finds nothing; a lookup that finds entities
+  makes no extra call. A type that differs only in letter case or
+  surrounding spaces is corrected and the lookup run again. A type that is in
+  the window's schema but has no entities still returns `[]` (list) or "not
+  found" (inspect). Any other type, which used to give the same result, now
+  returns an error that names the window's entity types and, where a probe
+  finds entities, the command that returns them: the name under another
+  type, or the type name as the value of a kind-like property such as a
+  workload type. The suggested command keeps the call's `--property`,
+  `--insight` and window, and its scope (for inspect, the found entity's full
+  scope when the probe finds one entity). When no `--from`/`--to`/`--since`
+  was passed, the error also says that the default window is the last hour.
+  Behaviour change: when the window holds no entities of any type and no
+  window was passed, list now exits 1 (it printed `[]`) and inspect's
+  not-found error says that the default window is the last hour. With a
+  window passed, an empty window gives the same result as before. If the type
+  counts or the schema cannot be read, the result is unchanged too.
 - `gcx logs query` and `gcx datasources loki query` now reject a negative
   `--limit`, as generic `gcx datasources query` already did. A negative value
   used to run with Loki's default line limit and exit 0. `--limit 0` still

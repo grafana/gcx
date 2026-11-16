@@ -167,6 +167,11 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 	return nil
 }
 
+// windowGiven reports whether the caller passed --from, --to or --since.
+func (f *scopeFlags) windowGiven() bool {
+	return f.from != "" || f.to != "" || f.since != ""
+}
+
 func (f *scopeFlags) scopeMap() map[string]string {
 	scope := map[string]string{}
 	if f.env != "" {
@@ -1954,10 +1959,14 @@ analysis, use 'gcx kg entities inspect' instead.`,
 				return err
 			}
 			var propertyFilters []PropertyMatcher
+			nameFilter := ""
 			for _, raw := range listPropertyRaw {
 				pm, err := parsePropertyFlag(raw)
 				if err != nil {
 					return err
+				}
+				if pm.Name == "name" && pm.Op == "=" {
+					nameFilter = pm.Value
 				}
 				propertyFilters = append(propertyFilters, pm)
 			}
@@ -2002,6 +2011,27 @@ analysis, use 'gcx kg entities inspect' instead.`,
 				return searchByTypesAllPages(cmd.Context(), cmd, client, entityTypes, search, listOpts.Limit, maxPages)
 			}
 			results, err := run(listType)
+			// The type is checked only when the search finds nothing, so a
+			// lookup that finds entities costs no extra call.
+			if listType != "" && ((err == nil && len(results) == 0) || isClientAPIError(err)) {
+				var flags []string
+				flags = append(flags, flagArgs("--property", listPropertyRaw)...)
+				flags = append(flags, flagArgs("--insight", listInsightRaw)...)
+				flags = append(flags, listScope.args()...)
+				checked, cerr := checkEntityType(cmd.Context(), client, listType, typeCheck{
+					verb:        "list",
+					name:        nameFilter,
+					search:      search,
+					windowGiven: listScope.windowGiven(),
+					flags:       flags,
+				})
+				if cerr != nil {
+					return cerr
+				}
+				if checked != listType {
+					results, err = run(checked)
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -2443,57 +2473,89 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 			if err != nil {
 				return err
 			}
-			scope := inspectScope.scopeMap()
-			if scope == nil {
-				discovered, err := discoverEntityScope(cmd, client, entityType, name, inspectDomain, startMs, endMs)
-				if err != nil {
-					return err
-				}
-				scope = discovered
-			}
-
-			hideOlderHours, hideChronicPct := ioOpts.resolveInsightFilters(cmd.Flags())
-
-			llmReq := LLMSummaryRequest{
-				StartTime: startMs,
-				EndTime:   endMs,
-				EntityKeys: []EntityKey{{
-					Type:  entityType,
-					Name:  name,
-					Scope: toAnyMap(scope),
-				}},
-				SuggestionSrcEntities:                         []EntityKey{},
-				AlertCategories:                               ioOpts.InsightCategories,
-				HideAssertionsOlderThanNHours:                 hideOlderHours,
-				HideAssertionsPresentMoreThanPercentageOfTime: hideChronicPct,
-				IncludeSuggestions:                            true,
-				IncludeRcaPatterns:                            false,
-			}
-			result, err := client.LLMSummary(cmd.Context(), llmReq)
-			if err != nil {
-				var apiErr *APIError
-				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-					if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
-						return fmt.Errorf("%w\n\n%s", err, hint)
+			// lookup inspects entityType/name. notFound reports that the
+			// entity was not found, which is when the type is checked.
+			lookup := func(entityType string) (result map[string]any, scope map[string]string, notFound bool, err error) {
+				scope = inspectScope.scopeMap()
+				if scope == nil {
+					discovered, err := discoverEntityScope(cmd, client, entityType, name, inspectDomain, startMs, endMs)
+					if err != nil {
+						return nil, nil, false, err
 					}
+					scope = discovered
 				}
+
+				hideOlderHours, hideChronicPct := ioOpts.resolveInsightFilters(cmd.Flags())
+
+				llmReq := LLMSummaryRequest{
+					StartTime: startMs,
+					EndTime:   endMs,
+					EntityKeys: []EntityKey{{
+						Type:  entityType,
+						Name:  name,
+						Scope: toAnyMap(scope),
+					}},
+					SuggestionSrcEntities:                         []EntityKey{},
+					AlertCategories:                               ioOpts.InsightCategories,
+					HideAssertionsOlderThanNHours:                 hideOlderHours,
+					HideAssertionsPresentMoreThanPercentageOfTime: hideChronicPct,
+					IncludeSuggestions:                            true,
+					IncludeRcaPatterns:                            false,
+				}
+				result, err = client.LLMSummary(cmd.Context(), llmReq)
+				if err != nil {
+					var apiErr *APIError
+					if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+						if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
+							return nil, nil, true, fmt.Errorf("%w\n\n%s", err, hint)
+						}
+						return nil, nil, true, err
+					}
+					return nil, nil, false, err
+				}
+				// The llm-summary endpoint echoes an empty "rcaPatterns" array (we
+				// request IncludeRcaPatterns: false). Drop it when empty so inspect
+				// output doesn't carry a permanently-empty field.
+				if p, ok := result["rcaPatterns"].([]any); ok && len(p) == 0 {
+					delete(result, "rcaPatterns")
+				}
+				if isEmptyLLMResult(result) {
+					scopeDesc := ""
+					if len(scope) > 0 {
+						scopeDesc = " in " + scopeStr(scope)
+					}
+					if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
+						return nil, nil, true, fmt.Errorf("%s/%s not found%s\n\n%s", entityType, name, scopeDesc, hint)
+					}
+					return nil, nil, true, fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
+				}
+				return result, scope, false, nil
+			}
+			result, scope, notFound, err := lookup(entityType)
+			if notFound {
+				search := typeSearch{
+					sc:              inspectScope.scopeCriteria(),
+					startMs:         startMs,
+					endMs:           endMs,
+					propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: name}},
+				}
+				checked, cerr := checkEntityType(cmd.Context(), client, entityType, typeCheck{
+					verb:        "inspect",
+					name:        name,
+					search:      search,
+					windowGiven: inspectScope.windowGiven(),
+					flags:       inspectScope.args(),
+				})
+				if cerr != nil {
+					return cerr
+				}
+				if checked != entityType {
+					entityType = checked
+					result, scope, _, err = lookup(checked)
+				}
+			}
+			if err != nil {
 				return err
-			}
-			// The llm-summary endpoint echoes an empty "rcaPatterns" array (we
-			// request IncludeRcaPatterns: false). Drop it when empty so inspect
-			// output doesn't carry a permanently-empty field.
-			if p, ok := result["rcaPatterns"].([]any); ok && len(p) == 0 {
-				delete(result, "rcaPatterns")
-			}
-			if isEmptyLLMResult(result) {
-				scopeDesc := ""
-				if len(scope) > 0 {
-					scopeDesc = " in " + scopeStr(scope)
-				}
-				if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
-					return fmt.Errorf("%s/%s not found%s\n\n%s", entityType, name, scopeDesc, hint)
-				}
-				return fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
 			}
 			if u := rcaWorkbenchURL(cfg.GrafanaURL, entityType, name, scope, startMs, endMs, inspectScope.since); u != "" {
 				if ioOpts.ShareLink {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -138,6 +139,10 @@ func matchesAll(e SearchResult, ms []PropertyMatcher) bool {
 	return true
 }
 
+// catalogOnly is the type counts of a window without entities: the graph's
+// own catalog records are still counted.
+var catalogOnly = map[string]int64{"Account": 1, "EntityType": 12, "Schema": 1} //nolint:gochecknoglobals // test fixture
+
 func newFakeClient(t *testing.T, f *fakeKG) *Client {
 	t.Helper()
 	server := httptest.NewServer(f.handler(t))
@@ -168,6 +173,242 @@ func names(rs []SearchResult) []string {
 		out = append(out, r.Name)
 	}
 	return out
+}
+
+func TestCheckEntityType(t *testing.T) {
+	schema := map[string][]string{
+		"Service": {"name", "namespace", "workload_type"},
+		"Pod":     {"name", "namespace", "node"},
+		"Volume":  {"name"},
+	}
+	api := svc("api", "deployment")
+	api.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
+	db := svc("db", "statefulset")
+	db.Scope = map[string]string{"env": "prod", "namespace": "ns2"}
+	dup1 := svc("dup", "deployment")
+	dup1.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
+	dup2 := svc("dup", "deployment")
+	dup2.Scope = map[string]string{"env": "prod", "namespace": "ns2"}
+	entities := map[string][]SearchResult{
+		"Service": {api, db, dup1, dup2},
+		"Pod":     {{Name: "api-1", Type: "Pod"}},
+	}
+	counts := map[string]int64{"Service": 4, "Pod": 1, "Volume": 0}
+
+	tests := []struct {
+		name            string
+		fake            *fakeKG
+		entityType      string
+		check           typeCheck
+		want            string
+		wantSummary     string
+		wantDetails     string
+		wantSuggestions []string
+		wantNoSuggest   string
+		// wantFirst is the first suggestion; wantNoText must not appear in
+		// the summary or details.
+		wantFirst  string
+		wantNoText string
+	}{
+		{name: "type with entities in the window", entityType: "Service", want: "Service"},
+		{name: "letter case is corrected", entityType: "service", want: "Service"},
+		{name: "surrounding whitespace is trimmed", entityType: " Service ", want: "Service"},
+		{name: "schema type without entities is kept", entityType: "Volume", want: "Volume"},
+		{name: "schema type case is corrected", entityType: "volume", want: "Volume"},
+		{name: "count API error skips the check", fake: &fakeKG{countErr: true}, entityType: "Nope", want: "Nope"},
+		{
+			name:        "unknown type names a kind property match",
+			entityType:  "StatefulSet",
+			check:       typeCheck{verb: "list"},
+			wantSummary: `entity type "StatefulSet" is not in the graph in the window`,
+			wantDetails: "Entity types in this window: Pod, Service, Volume",
+			wantSuggestions: []string{
+				"gcx kg entities list --type Service --property workload_type=statefulset --from ",
+				"gcx kg meta schema --from ",
+			},
+		},
+		{
+			name:       "unknown type with a name adds the caller's flags to the list command",
+			entityType: "Deployment",
+			check: typeCheck{
+				verb:   "list",
+				name:   "api",
+				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "api"}}},
+				flags:  []string{"--property name=api", "--insight any", "--namespace ns1"},
+			},
+			wantSummary: `entity type "Deployment" is not in the graph`,
+			wantSuggestions: []string{
+				"gcx kg entities list --type Service --property workload_type=deployment --property name=api --insight any --namespace ns1 --from ",
+			},
+			wantNoSuggest: "--type Service --property name=api",
+		},
+		{
+			name:       "inspect suggests the one entity under the type it has, with its scope",
+			entityType: "Deployment",
+			check: typeCheck{
+				verb:   "inspect",
+				name:   "api",
+				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "api"}}},
+				flags:  []string{"--env prod"},
+			},
+			wantSummary:     `entity type "Deployment" is not in the graph`,
+			wantSuggestions: []string{"gcx kg entities inspect Service--api --env prod --namespace ns1 --from "},
+		},
+		{
+			name:       "inspect keeps the caller's scope when the name has several entities",
+			entityType: "Deployment",
+			check: typeCheck{
+				verb:   "inspect",
+				name:   "dup",
+				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "dup"}}},
+				flags:  []string{"--env prod"},
+			},
+			wantSummary:     `entity type "Deployment" is not in the graph`,
+			wantSuggestions: []string{"gcx kg entities inspect Service--dup --env prod --from "},
+		},
+		{
+			name:       "a name found under another type without a kind match",
+			entityType: "Container",
+			check: typeCheck{
+				verb:   "inspect",
+				name:   "api-1",
+				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "api-1"}}},
+			},
+			wantSummary:     `entity type "Container" is not in the graph`,
+			wantSuggestions: []string{"gcx kg entities inspect Pod--api-1 --from "},
+			wantNoSuggest:   "Service--api-1",
+		},
+		{
+			name:          "no probe matches leaves only the schema pointer",
+			entityType:    "Widget",
+			check:         typeCheck{verb: "list"},
+			wantSummary:   `entity type "Widget" is not in the graph`,
+			wantNoSuggest: "These return matching entities",
+		},
+		{
+			name:        "empty default window",
+			fake:        &fakeKG{counts: catalogOnly, schema: map[string][]string{}},
+			entityType:  "Service",
+			check:       typeCheck{verb: "list"},
+			wantSummary: "no entities of any type in the window",
+			wantDetails: "the window is the last hour",
+		},
+		{
+			name:        "unknown type in the default window says the window is the last hour",
+			fake:        &fakeKG{counts: map[string]int64{"K6Test": 1}, schema: map[string][]string{"K6Test": {"name"}}},
+			entityType:  "Service",
+			check:       typeCheck{verb: "list"},
+			wantSummary: `entity type "Service" is not in the graph in the window`,
+			wantDetails: "Without --from/--to or --since, the window is the last hour. Entity types in this window: K6Test",
+			wantFirst:   "Pass --from/--to covering the time you are asking about",
+		},
+		{
+			name:        "unknown type in a window the caller chose does not blame the window",
+			fake:        &fakeKG{counts: map[string]int64{"K6Test": 1}, schema: map[string][]string{"K6Test": {"name"}}},
+			entityType:  "Service",
+			check:       typeCheck{verb: "list", windowGiven: true},
+			wantSummary: `entity type "Service" is not in the graph in the window`,
+			wantDetails: "Entity types in this window: K6Test",
+			wantFirst:   "Run 'gcx kg meta schema --from ",
+			wantNoText:  "last hour",
+		},
+		{
+			name:       "empty window the caller chose keeps the empty result",
+			fake:       &fakeKG{counts: catalogOnly, schema: map[string][]string{}},
+			entityType: "Service",
+			check:      typeCheck{verb: "list", windowGiven: true},
+			want:       "Service",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := tt.fake
+			if f == nil {
+				f = &fakeKG{}
+			}
+			if f.counts == nil && !f.countErr {
+				f.counts = counts
+			}
+			if f.schema == nil {
+				f.schema = schema
+			}
+			if f.entities == nil {
+				f.entities = entities
+			}
+			client := newFakeClient(t, f)
+			c := tt.check
+			c.search.startMs, c.search.endMs = 1000, 2000
+			got, err := checkEntityType(t.Context(), client, tt.entityType, c)
+			if tt.wantSummary == "" {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+				return
+			}
+			var de gcxerrors.DetailedError
+			require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+			assert.Contains(t, de.Summary, tt.wantSummary)
+			assert.Contains(t, de.Details, tt.wantDetails)
+			joined := strings.Join(de.Suggestions, "\n")
+			for _, s := range tt.wantSuggestions {
+				assert.Contains(t, joined, s)
+			}
+			if tt.wantNoSuggest != "" {
+				assert.NotContains(t, joined, tt.wantNoSuggest)
+			}
+			if tt.wantFirst != "" {
+				require.NotEmpty(t, de.Suggestions)
+				assert.True(t, strings.HasPrefix(de.Suggestions[0], tt.wantFirst), "first suggestion %q", de.Suggestions[0])
+			}
+			if tt.wantNoText != "" {
+				assert.NotContains(t, de.Summary+"\n"+de.Details, tt.wantNoText)
+			}
+		})
+	}
+}
+
+// TestProbeTypeAlternativesBudget covers a schema with more candidate probes
+// than the budgets allow: types are probed most entities first, name probes
+// have their own budget, and types without entities or outside the schema are
+// not probed.
+func TestProbeTypeAlternativesBudget(t *testing.T) {
+	schema := map[string][]string{}
+	counts := map[string]int64{}
+	for i := range 20 {
+		typ := fmt.Sprintf("A%02d", i) // sorts before the type that holds the entity
+		schema[typ] = []string{"name", "a_type", "b_kind"}
+		counts[typ] = int64(i + 1)
+	}
+	schema["Empty"] = []string{"name", "x_type"}
+	counts["Empty"] = 0
+	schema["Zeta"] = []string{"name"}
+	counts["Zeta"] = 1000
+	counts["EntityType"] = 5000 // a catalog record, not in the schema
+	f := &fakeKG{
+		counts:   counts,
+		schema:   schema,
+		entities: map[string][]SearchResult{"Zeta": {{Name: "target", Type: "Zeta"}}},
+	}
+	client := newFakeClient(t, f)
+	_, err := checkEntityType(t.Context(), client, "Microservice", typeCheck{
+		verb:   "list",
+		name:   "target",
+		search: typeSearch{startMs: 1000, endMs: 2000, propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "target"}}},
+		flags:  []string{"--property name=target"},
+		// A window was given, so the first suggestion is a probe's.
+		windowGiven: true,
+	})
+	var de gcxerrors.DetailedError
+	require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+	assert.Contains(t, de.Suggestions[0], "gcx kg entities list --type Zeta --property name=target --from ")
+	require.Len(t, f.searchReq, maxKindProbes+maxNameProbes)
+	probed := map[string]bool{}
+	for _, req := range f.searchReq {
+		probed[req.FilterCriteria[0].EntityType] = true
+	}
+	assert.True(t, probed["A19"], "the most populous A type is probed")
+	assert.False(t, probed["A00"], "the least populous types fall outside the budget")
+	assert.False(t, probed["Empty"], "a type without entities is not probed")
+	assert.False(t, probed["EntityType"], "a type outside the schema is not probed")
 }
 
 func TestSearchByTypesAllPages(t *testing.T) {
