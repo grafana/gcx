@@ -60,10 +60,10 @@ near-empty result means the window is wrong, not that nothing exists. Pass
 Read:
   graph query  what calls or depends on an entity, what a failure would
                affect, paths between entities, counts (read-only Cypher)
-  entities     list entities of one type (--type is required), optionally
-               within an env, namespace or site, with their properties and
-               active insights (--insight); correlate maps an alert to its
-               entity
+  entities     'entities list --type <T>' lists entities of one type,
+               optionally within an env, namespace or site, with their
+               properties and active insights (--insight); correlate maps an
+               alert to its entity
   meta         entity and relationship types (meta schema), env/namespace/site
                values (meta scopes), and the entity-property to metric, log,
                trace and profile label mappings used to build queries (meta

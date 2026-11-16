@@ -1905,6 +1905,11 @@ Pick the read verb by what you start with:
   list       Default for listing and basic lookups: an entity's identity, scope,
              and properties. Filter to one known entity with
              '--property name=<name>'. Cheap — use this for plain lookups.
+             It returns at most --limit entities (default 50), and the
+             output does not say when it stopped there. --limit 0 follows
+             the backend's pages, up to 50 per type, and pages can leave out
+             rows at their boundaries: for an exact count or a complete
+             list, use 'gcx kg graph query' with count() or DISTINCT.
   correlate  You have a firing alert (its labels) but not the entity → find
              which entity the alert hangs off. The "I have an alert, which
              entity is it?" entry point.
@@ -1934,6 +1939,13 @@ one: its identity (name, type, scope), properties (the labels used to build
 PromQL/Loki queries — job, namespace, container, image, etc.), and a small
 snapshot of its current insights. Filter to a single entity with
 '--property name=<exact-name>'.
+
+It returns at most --limit entities (default 50), with no marker in the
+output when the limit cut it short. --limit 0 follows the backend's pages, up
+to 50 per type. The backend can leave out some rows at page boundaries (list
+drops the rows a later page repeats), so the row count can fall short of the
+true count: for an exact count or a complete list, use 'gcx kg graph query'
+with count() or DISTINCT.
 
 For an entity's full insight timeline or related entities for root-cause
 analysis, use 'gcx kg entities inspect' instead.`,
@@ -2059,9 +2071,12 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
-				cmdio.EmitHint(cmd.ErrOrStderr(),
-					fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all", listOpts.Limit),
-					"")
+				msg := fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit", listOpts.Limit)
+				if !cmd.Flags().Changed("page") {
+					msg += fmt.Sprintf(" (--limit 0 follows up to %d backend pages per type)", maxListPages)
+				}
+				msg += "; for an exact count use 'gcx kg graph query' with count()"
+				cmdio.EmitHint(cmd.ErrOrStderr(), msg, "")
 			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},

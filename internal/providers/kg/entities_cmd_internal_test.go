@@ -122,6 +122,20 @@ func TestEntitiesListCommand(t *testing.T) {
 			wantCountCalls: 1,
 		},
 		{
+			name:         "the limit hint says how far --limit 0 reads",
+			args:         "list --type Service --limit 2 -o json " + testWindow,
+			wantNames:    []string{"api", "db"},
+			wantStderr:   "raise --limit (--limit 0 follows up to 50 backend pages per type); for an exact count use 'gcx kg graph query' with count()",
+			wantNoStderr: "for all",
+		},
+		{
+			name:         "the limit hint with --page",
+			args:         "list --type Service --page 0 --limit 2 -o json " + testWindow,
+			wantNames:    []string{"api", "db"},
+			wantStderr:   "--limit of 2 reached — results may be truncated; raise --limit; for an exact count",
+			wantNoStderr: "follows up to",
+		},
+		{
 			name:      "a found type makes no count call",
 			args:      "list --type Service -o json " + testWindow,
 			wantNames: []string{"api", "db", "gateway"},

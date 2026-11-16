@@ -49,6 +49,15 @@
   comes next. A bare `--insight` took the next flag as its value, and the
   command failed with an unrelated error: `required flag(s) "type" not set`,
   or a time-window error for `--from`.
+- `gcx kg entities --help` and `gcx kg entities list --help` now say that list
+  stops at `--limit` (default 50) with no marker in its output, that
+  `--limit 0` follows the backend's pages up to 50 per type, and that the
+  pages can leave out rows at their boundaries. For an exact count or a
+  complete list they point to `gcx kg graph query` with `count()` or
+  `DISTINCT`. The hint that list prints when it reaches `--limit` no longer
+  says that `--limit 0` returns all: it says how far `--limit 0` reads and
+  points to `gcx kg graph query` for an exact count. The `gcx kg --help`
+  overview names `entities list --type <T>` instead of a bare `entities`.
 - `gcx logs query` and `gcx datasources loki query` now reject a negative
   `--limit`, as generic `gcx datasources query` already did. A negative value
   used to run with Loki's default line limit and exit 0. `--limit 0` still
