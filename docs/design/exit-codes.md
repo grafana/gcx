@@ -12,7 +12,7 @@
 |------|----------|---------|------|
 | 0 | `ExitSuccess` | Success | Command completed without errors |
 | 1 | `ExitGeneralError` | General error | Unexpected error, business logic failure |
-| 2 | `ExitUsageError` | Usage error | Invalid selectors, unknown commands, bad flags or positional arguments, missing required flags |
+| 2 | `ExitUsageError` | Usage error | Invalid selectors, unknown commands, bad flags or positional arguments, missing required flags, or an input file of the wrong shape (for example a dashboard export passed where a resource manifest is expected) |
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
 | 4 | `ExitPartialFailure` | Partial failure | Some resources or mutation stages succeeded, others failed; lint reported violations |
 | 5 | `ExitCancelled` | Cancelled | Ctrl+C (SIGINT), `context.Canceled`, explicit confirmation cancellation (see § 2.4 for legacy exceptions), or server-reported cancellation |

@@ -70,6 +70,18 @@ func NewTestUpdateCommand(client DashboardMutationClient, desc resources.Descrip
 	return newUpdateCommandWithDeps(&mutationDeps{client: client, desc: desc})
 }
 
+// NewTestCreateCommandWithLoader exposes the create command with a config
+// loader, so tests can observe whether it contacts the server.
+func NewTestCreateCommandWithLoader(loader GrafanaConfigLoader) *cobra.Command {
+	return newCreateCommandWithDeps(&mutationDeps{loader: loader})
+}
+
+// NewTestUpdateCommandWithLoader exposes the update command with a config
+// loader, so tests can observe whether it contacts the server.
+func NewTestUpdateCommandWithLoader(loader GrafanaConfigLoader) *cobra.Command {
+	return newUpdateCommandWithDeps(&mutationDeps{loader: loader})
+}
+
 // NewTestDeleteCommand exposes the delete command with an injected mutation
 // client and descriptor, bypassing real K8s discovery.
 func NewTestDeleteCommand(client DashboardMutationClient, desc resources.Descriptor) *cobra.Command {

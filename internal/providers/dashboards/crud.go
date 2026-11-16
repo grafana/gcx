@@ -645,33 +645,36 @@ func classicDashboardError(obj map[string]any) error {
 
 	model := obj
 	source := "a Grafana dashboard export (JSON model)"
+	content := "the dashboard JSON"
 	if inner, ok := obj["dashboard"].(map[string]any); ok {
 		model = inner
 		source = "a Grafana dashboard API response"
+		content = "the dashboard object (without meta)"
 	}
 	if !isDashboardModel(model) {
 		return nil
 	}
 
+	// The uid comes from the file, so only a well-formed one is echoed.
 	name := "<dashboard-uid>"
-	if uid, ok := model["uid"].(string); ok && uid != "" {
+	if uid, ok := model["uid"].(string); ok && isGrafanaUID(uid) {
 		name = uid
 	}
 
 	message := fmt.Sprintf(`the input is %s, not a dashboard resource manifest
 
 Dashboard commands expect apiVersion, kind, metadata and spec.
-Put the dashboard JSON under spec and set metadata.name:
+Put %s under spec and set metadata.name:
 
   apiVersion: dashboard.grafana.app/v1beta1
   kind: Dashboard
   metadata:
     name: %s
   spec:
-    <dashboard JSON>`, source, name)
+    <dashboard JSON>`, source, content, name)
 
 	suggestions := []string{
-		"Pin the version for classic panels and templating: gcx dashboards create --api-version dashboard.grafana.app/v1beta1 -f <manifest>",
+		"Pin the version for classic panels and templating: re-run with --api-version dashboard.grafana.app/v1beta1",
 	}
 	if _, ok := model["__inputs"]; ok {
 		suggestions = append(suggestions,
@@ -681,6 +684,20 @@ Put the dashboard JSON under spec and set metadata.name:
 		"Run 'gcx dashboards get <name> -o yaml' to see an existing dashboard as a manifest")
 
 	return &gcxerrors.UsageError{Message: message, Suggestions: suggestions}
+}
+
+// isGrafanaUID reports whether s has the form Grafana accepts for a dashboard
+// UID: 1 to 40 ASCII letters, digits, hyphens or underscores.
+func isGrafanaUID(s string) bool {
+	if s == "" || len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // isDashboardModel reports whether m has the top-level fields of a dashboard
