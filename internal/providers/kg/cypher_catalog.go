@@ -86,10 +86,17 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 	for i, label := range labels {
 		filters[i] = fmt.Sprintf("labels(n)[0] <> '%s'", label)
 	}
-	return fmt.Sprintf("%d of %d rows hold the graph's own catalog records (%s %s), which describe its entity types, "+
+	rowNoun, verb := "rows", "hold"
+	if len(resp.Rows) == 1 {
+		rowNoun = "row"
+	}
+	if rows == 1 {
+		verb = "holds"
+	}
+	return fmt.Sprintf("%d of %d %s %s the graph's own catalog records (%s %s), which describe its entity types, "+
 		"the relationship types between them and its env values, not observed entities; a node pattern without "+
 		"a label matches them too. A label on each node, or WHERE %s on an unlabeled node n, leaves them out.",
-		rows, len(resp.Rows), noun, strings.Join(labels, ", "), strings.Join(filters, " AND "))
+		rows, len(resp.Rows), rowNoun, verb, noun, strings.Join(labels, ", "), strings.Join(filters, " AND "))
 }
 
 // cypherNamedLabels returns the catalog labels that query, without comments,

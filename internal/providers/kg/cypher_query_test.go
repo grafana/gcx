@@ -95,7 +95,7 @@ func TestGraphQueryCommandCatalogWarning(t *testing.T) {
 			flags:      []string{"-o", "json"},
 			response:   catalogResult,
 			want:       `"warnings": [`,
-			wantStderr: "warn: 1 of 2 rows hold the graph's own catalog records (label Schema)",
+			wantStderr: "warn: 1 of 2 rows holds the graph's own catalog records (label Schema)",
 		},
 		{
 			name:       "yaml gains a warning for catalog rows",
@@ -103,7 +103,7 @@ func TestGraphQueryCommandCatalogWarning(t *testing.T) {
 			flags:      []string{"-o", "yaml"},
 			response:   catalogResult,
 			want:       "warnings:",
-			wantStderr: "warn: 1 of 2 rows hold the graph's own catalog records (label Schema)",
+			wantStderr: "warn: 1 of 2 rows holds the graph's own catalog records (label Schema)",
 		},
 		{
 			name:       "table writes the warning to stderr, not after the rows",
@@ -112,7 +112,7 @@ func TestGraphQueryCommandCatalogWarning(t *testing.T) {
 			response:   catalogResult,
 			want:       "Schema",
 			wantNot:    "catalog records",
-			wantStderr: "warn: 1 of 2 rows hold the graph's own catalog records (label Schema)",
+			wantStderr: "warn: 1 of 2 rows holds the graph's own catalog records (label Schema)",
 		},
 		{
 			name:     "a query naming the catalog label gets no warning",

@@ -36,21 +36,21 @@ func TestCatalogRowsWarning(t *testing.T) {
 			query:   "MATCH ()-[r]->() RETURN labels(startNode(r))[0] AS from_type, type(r) AS rel, labels(endNode(r))[0] AS to_type, count(r) AS n LIMIT 50",
 			columns: []string{"from_type", "rel", "to_type", "n"},
 			rows:    [][]string{{`"Schema"`, `"TYPE_A"`, `"Schema"`, `2`}},
-			want:    []string{"1 of 1 rows", "(label Schema)", "WHERE labels(n)[0] <> 'Schema' on"},
+			want:    []string{"1 of 1 row holds", "(label Schema)", "WHERE labels(n)[0] <> 'Schema' on"},
 		},
 		{
 			name:    "unaliased labels list column",
 			query:   "MATCH (a)-[r:TYPE_A]->(b) RETURN labels(a), a.name, labels(b), b.name LIMIT 10",
 			columns: []string{"labels(a)", "a.name", "labels(b)", "b.name"},
 			rows:    [][]string{{`["Schema"]`, `"svc-type"`, `["Schema"]`, `"pod-type"`}},
-			want:    []string{"1 of 1 rows", "(label Schema)"},
+			want:    []string{"1 of 1 row holds", "(label Schema)"},
 		},
 		{
 			name:    "head of labels with a backtick alias",
 			query:   "MATCH (a) RETURN head(labels(a)) AS `node type`, count(a) AS n LIMIT 10",
 			columns: []string{"node type", "n"},
 			rows:    [][]string{{`"Env"`, `1`}, {`"Pod"`, `40`}},
-			want:    []string{"1 of 2 rows", "(label Env)"},
+			want:    []string{"1 of 2 rows holds", "(label Env)"},
 		},
 		{
 			name:    "unaliased head of labels column",
@@ -71,7 +71,7 @@ func TestCatalogRowsWarning(t *testing.T) {
 			query:   "MATCH p = (a)-[r]->(b) RETURN labels(head(nodes(p))) AS t, count(r) AS n LIMIT 50",
 			columns: []string{"t", "n"},
 			rows:    [][]string{{`["EntityType"]`, `2`}},
-			want:    []string{"1 of 1 rows", "(label EntityType)"},
+			want:    []string{"1 of 1 row holds", "(label EntityType)"},
 		},
 		{
 			name:    "returned nodes",
@@ -85,7 +85,7 @@ func TestCatalogRowsWarning(t *testing.T) {
 			query:   "MATCH p = (a)-[:TYPE_A]->(b) RETURN p LIMIT 1",
 			columns: []string{"p"},
 			rows:    [][]string{{`{"kind":"path","nodes":[` + schemaNode + `],"relationships":[]}`}},
-			want:    []string{"1 of 1 rows", "(label Schema)"},
+			want:    []string{"1 of 1 row holds", "(label Schema)"},
 		},
 		{
 			name:    "observed entities only",
@@ -163,14 +163,14 @@ func TestCatalogRowsWarning(t *testing.T) {
 			query:   "MATCH (a)-[r:TYPE_A]->(b) RETURN labels(a)[0] AS t, count(r) AS n LIMIT 10 // EntityType",
 			columns: []string{"t", "n"},
 			rows:    [][]string{{`"EntityType"`, `1`}},
-			want:    []string{"1 of 1 rows", "(label EntityType)"},
+			want:    []string{"1 of 1 row holds", "(label EntityType)"},
 		},
 		{
 			name:    "a catalog label in a block comment does not name it",
 			query:   "MATCH (a)-[r:TYPE_A]->(b) /* not Schema */ RETURN labels(a)[0] AS t, count(r) AS n LIMIT 10",
 			columns: []string{"t", "n"},
 			rows:    [][]string{{`"Schema"`, `1`}},
-			want:    []string{"1 of 1 rows", "(label Schema)"},
+			want:    []string{"1 of 1 row holds", "(label Schema)"},
 		},
 		{
 			name:    "no rows",
@@ -257,7 +257,7 @@ func TestCypherRowsTableCodecLeavesWarningsOut(t *testing.T) {
 	resp := &CypherQueryResponse{
 		Columns:  []string{"t"},
 		Rows:     [][]json.RawMessage{{json.RawMessage(`"Schema"`)}},
-		Warnings: []string{"1 of 1 rows hold the graph's own catalog records"},
+		Warnings: []string{"1 of 1 row holds the graph's own catalog records"},
 	}
 	var out bytes.Buffer
 	require.NoError(t, (&CypherRowsTableCodec{}).Encode(&out, resp))
