@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,86 @@ func TestGraphQueryCommandOutput(t *testing.T) {
 				assert.Contains(t, out, "name")
 				assert.Contains(t, out, "checkout")
 				assert.Contains(t, out, `"ref":"n0"`)
+			}
+		})
+	}
+}
+
+func TestGraphQueryCommandCatalogWarning(t *testing.T) {
+	const catalogResult = `{"columns":["from_type","to_type","n"],"rows":[["Schema","Schema",1],["Service","Pod",5]],"stats":{"rowCount":2,"columnCount":3,"elapsedMs":1}}`
+	for _, tt := range []struct {
+		name       string
+		query      string
+		flags      []string
+		response   string
+		want       string
+		wantNot    string
+		wantStderr string // "" means stderr stays empty
+	}{
+		{
+			name:       "json gains a warning for catalog rows",
+			query:      "MATCH (a)-[r:TYPE_A]->(b) RETURN labels(a)[0] AS from_type, labels(b)[0] AS to_type, count(r) AS n LIMIT 10",
+			flags:      []string{"-o", "json"},
+			response:   catalogResult,
+			want:       `"warnings": [`,
+			wantStderr: "warn: 1 of 2 rows holds the graph's own catalog records (label Schema)",
+		},
+		{
+			name:       "yaml gains a warning for catalog rows",
+			query:      "MATCH (a)-[r:TYPE_A]->(b) RETURN labels(a)[0] AS from_type, labels(b)[0] AS to_type, count(r) AS n LIMIT 10",
+			flags:      []string{"-o", "yaml"},
+			response:   catalogResult,
+			want:       "warnings:",
+			wantStderr: "warn: 1 of 2 rows holds the graph's own catalog records (label Schema)",
+		},
+		{
+			name:       "table writes the warning to stderr, not after the rows",
+			query:      "MATCH (a)-[r:TYPE_A]->(b) RETURN labels(a)[0] AS from_type, labels(b)[0] AS to_type, count(r) AS n LIMIT 10",
+			flags:      []string{"-o", "table"},
+			response:   catalogResult,
+			want:       "Schema",
+			wantNot:    "catalog records",
+			wantStderr: "warn: 1 of 2 rows holds the graph's own catalog records (label Schema)",
+		},
+		{
+			name:     "a query naming the catalog label gets no warning",
+			query:    "MATCH (a:Schema)-[r]->(b) RETURN labels(a)[0] AS from_type, labels(b)[0] AS to_type, count(r) AS n LIMIT 10",
+			flags:    []string{"-o", "json"},
+			response: catalogResult,
+			wantNot:  "warnings",
+		},
+		{
+			name:     "observed entities get no warning",
+			query:    "RETURN 1 AS value LIMIT 1",
+			flags:    []string{"-o", "json"},
+			response: cypherResult,
+			wantNot:  "warnings",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pinHumanMode(t)
+			forceNoColor(t)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = fmt.Fprint(w, tt.response)
+			}))
+			defer server.Close()
+			loader := &kg.FakeWriteLoader{Cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}}
+			args := append([]string{tt.query, "--from", "1757000000", "--to", "1757003600"}, tt.flags...)
+			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewGraphQueryCommand(loader) }, args, "")
+			require.NoError(t, err)
+			if tt.wantStderr == "" {
+				assert.Empty(t, stderr)
+			} else {
+				assert.Contains(t, stderr, tt.wantStderr)
+			}
+			if tt.want != "" {
+				assert.Contains(t, out, tt.want)
+			}
+			if tt.wantNot != "" {
+				assert.NotContains(t, out, tt.wantNot)
+			}
+			if tt.flags[1] == "json" {
+				decodeSingleJSON(t, []byte(out))
 			}
 		})
 	}
@@ -210,5 +292,18 @@ func TestCypherQueryPreservesGraphValues(t *testing.T) {
 			require.NoError(t, roundTrip.Decode(&actual))
 			assert.Equal(t, expected, actual, "cell values and numeric precision must survive transport unchanged")
 		})
+	}
+}
+
+func TestGraphQueryHelpPathBounds(t *testing.T) {
+	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+	long := strings.Join(strings.Fields(cmd.Long), " ")
+	assert.Contains(t, long, "upper bound of at most 5 hops", "help must state the hop maximum the endpoint enforces")
+	bounds := regexp.MustCompile(`\*(\d*)\.\.(\d+)`).FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
+	require.NotEmpty(t, bounds, "help should show a bounded variable-length relationship")
+	for _, b := range bounds {
+		upper, err := strconv.Atoi(b[2])
+		require.NoError(t, err)
+		assert.LessOrEqual(t, upper, 5, "%s exceeds the hop maximum", b[0])
 	}
 }

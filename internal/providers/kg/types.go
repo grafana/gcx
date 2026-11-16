@@ -418,6 +418,9 @@ type CypherQueryResponse struct {
 	Columns []string            `json:"columns"`
 	Rows    [][]json.RawMessage `json:"rows"`
 	Stats   CypherQueryStats    `json:"stats"`
+	// Warnings are added by gcx about the returned rows, such as rows that hold
+	// the graph's own catalog records; omitted when there are none.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // CypherQueryStats describes the returned result, not the total number of possible matches.

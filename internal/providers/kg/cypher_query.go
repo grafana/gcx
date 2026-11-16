@@ -32,7 +32,11 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "query <cypher-query>",
 		Short: "Run a read-only Cypher query and return its columns and rows.",
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
-The response has columns, rows and stats (rowCount, columnCount, elapsedMs).
+The response has columns, rows and stats (rowCount, columnCount, elapsedMs),
+plus warnings when gcx finds rows that hold the graph's own catalog records,
+which describe entity types, relationship types and env values rather than
+observed entities. Warnings are part of -o json and -o yaml output and are
+written to stderr in every format.
 Each row is an array aligned with columns, values keep their JSON shape, and
 node/relationship refs are local to one response. Output is a table by
 default, or -o json or -o yaml; unlike kg meta, there is no -o text.
@@ -59,9 +63,11 @@ supported (CYPHER_PARAMETERS_NOT_SUPPORTED). Only a fixed subset of Cypher is
 accepted, and anything else is refused (CYPHER_UNSUPPORTED_CONSTRUCT) with a
 message naming the supported form. Common refusals: disconnected or multiple
 MATCH patterns, more than one OPTIONAL MATCH, UNION, id()/elementId(),
-shortestPath(), EXISTS{}/COUNT{} subqueries, unbounded variable-length paths,
-and functions whose output size cannot be bounded, such as collect(), split(),
-reduce() and list comprehensions.
+shortestPath(), EXISTS{}/COUNT{} subqueries, and functions whose output size
+cannot be bounded, such as collect(), split(), reduce() and list
+comprehensions. A variable-length relationship needs an upper bound of at most
+5 hops, so [:TYPE*1..5] is the longest (CYPHER_UNBOUNDED_PATH otherwise); name
+the nodes of a path with nodes(p)[i], as in the last example.
 
 Scope. Match an entity on name, type (node label, e.g. :Service) and scope
 (env, site, namespace) together. Scope is stack-specific: relabel rules decide
@@ -106,8 +112,8 @@ if several entities match, it fails with one command per candidate.`,
   # List the entity types at each end of the HOSTS edges that touch an env's Nodes, in stored direction
   gcx kg graph query "MATCH (n:Node {env: '<env>'})-[r:HOSTS]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
 
-  # Name the hops of HOSTS paths up to 4 long from an env's cluster to one ServiceInstance; hops past a path's length are null
-  gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..4]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
+  # Name the hops of HOSTS paths up to 5 long (the longest allowed) from an env's cluster to one ServiceInstance; hops past a path's length are null
+  gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..5]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4, nodes(p)[5].name AS hop5 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.query = args[0]
@@ -126,7 +132,16 @@ if several entities match, it fails with one command per candidate.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			if warning := catalogRowsWarning(opts.query, resp); warning != "" {
+				resp.Warnings = append(resp.Warnings, warning)
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
+				return err
+			}
+			for _, warning := range resp.Warnings {
+				cmdio.EmitWarn(cmd.ErrOrStderr(), warning)
+			}
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
