@@ -1,6 +1,7 @@
 package alert_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,6 +177,7 @@ func TestReadAlertmanagerUserConfig_TemplateErrors(t *testing.T) {
 		input     string
 		templates []string
 		wantErr   string
+		wantErrIs error
 	}{
 		{
 			name:      "same template name in two --template paths",
@@ -193,7 +195,8 @@ func TestReadAlertmanagerUserConfig_TemplateErrors(t *testing.T) {
 			name:      "missing template path",
 			input:     plainInput,
 			templates: []string{filepath.Join(dir, "missing.tmpl")},
-			wantErr:   "--template " + filepath.Join(dir, "missing.tmpl") + ": no such file or directory",
+			wantErr:   "--template " + filepath.Join(dir, "missing.tmpl") + ": ",
+			wantErrIs: fs.ErrNotExist,
 		},
 		{
 			name:      "template directory",
@@ -209,6 +212,9 @@ func TestReadAlertmanagerUserConfig_TemplateErrors(t *testing.T) {
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
+			if tt.wantErrIs != nil {
+				assert.ErrorIs(t, err, tt.wantErrIs)
+			}
 		})
 	}
 }
