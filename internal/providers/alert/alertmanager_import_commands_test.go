@@ -110,14 +110,15 @@ func TestAlertmanagerImportUpsert_SendsInputAndTemplates(t *testing.T) {
 
 func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    []string
-		stdin   string
-		wantErr string
+		name     string
+		args     []string
+		stdin    string
+		wantErr  string
+		wantExit int
 	}{
-		{name: "missing filename", args: []string{}, wantErr: "--filename is required"},
-		{name: "empty stdin", args: []string{"-f", "-"}, stdin: "\n", wantErr: "input is empty"},
-		{name: "empty identifier", args: []string{" ", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not be empty"},
+		{name: "missing filename", args: []string{}, wantErr: "--filename / -f is required", wantExit: gcxerrors.ExitUsageError},
+		{name: "empty stdin", args: []string{"-f", "-"}, stdin: "\n", wantErr: "input is empty", wantExit: gcxerrors.ExitGeneralError},
+		{name: "empty identifier", args: []string{" ", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not be empty", wantExit: gcxerrors.ExitUsageError},
 		{name: "two identifiers", args: []string{"a", "b", "-f", "-"}, stdin: "route: {}", wantErr: "accepts at most 1 arg(s)"},
 	}
 
@@ -130,6 +131,10 @@ func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T)
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
+			if tt.wantExit != 0 {
+				// Cobra argument-count errors get exit code 2 at the root, not here.
+				assert.Equal(t, tt.wantExit, exitCodeOf(err))
+			}
 			assert.Empty(t, stdout)
 		})
 	}
@@ -384,6 +389,7 @@ func TestAlertmanagerImportCommands_RejectEmptyIdentifier(t *testing.T) {
 			stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(rejectAPICalls(t)), tt.args, "")
 
 			require.EqualError(t, err, "IDENTIFIER must not be empty")
+			assert.Equal(t, gcxerrors.ExitUsageError, exitCodeOf(err))
 			assert.Empty(t, stdout)
 		})
 	}

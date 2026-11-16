@@ -227,11 +227,11 @@ func (o *alertmanagerImportUpsertOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Skip the confirmation prompt of --promote")
 }
 
-func (o *alertmanagerImportUpsertOpts) Validate() error {
+func (o *alertmanagerImportUpsertOpts) Validate(cmd *cobra.Command) error {
 	if o.File == "" {
-		return errors.New("--filename is required (use - to read from stdin)")
+		return gcxerrors.NewCommandUsageError(cmd, "--filename / -f is required (use - to read from stdin)", nil)
 	}
-	if err := validateAlertmanagerImportIdentifier(o.Identifier); err != nil {
+	if err := validateAlertmanagerImportIdentifier(cmd, o.Identifier); err != nil {
 		return err
 	}
 	return o.IO.Validate()
@@ -304,11 +304,11 @@ mode requires it, and so does input from stdin.`,
 		Args:        cobra.MaximumNArgs(1),
 		Annotations: experimentalAnnotations(),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Identifier = DefaultAlertmanagerImportIdentifier
+			opts.Identifier = defaultAlertmanagerImportIdentifier
 			if len(args) == 1 {
 				opts.Identifier = args[0]
 			}
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd); err != nil {
 				return err
 			}
 			userConfig, err := readAlertmanagerUserConfig(opts.File, cmd.InOrStdin(), opts.Templates)
@@ -396,11 +396,11 @@ the Alertmanager configuration, so an import of the output would lose them.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			identifier := DefaultAlertmanagerImportIdentifier
+			identifier := defaultAlertmanagerImportIdentifier
 			if len(args) == 1 {
 				identifier = args[0]
 			}
-			if err := validateAlertmanagerImportIdentifier(identifier); err != nil {
+			if err := validateAlertmanagerImportIdentifier(cmd, identifier); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -468,7 +468,7 @@ Because you cannot undo a promotion, the command asks for confirmation. Use
 				return err
 			}
 			identifier := args[0]
-			if err := validateAlertmanagerImportIdentifier(identifier); err != nil {
+			if err := validateAlertmanagerImportIdentifier(cmd, identifier); err != nil {
 				return err
 			}
 			// The confirmation exchange is a diagnostic, not the result.
@@ -545,7 +545,7 @@ identifier, the command also succeeds. The command asks for confirmation. Use
 				return err
 			}
 			identifier := args[0]
-			if err := validateAlertmanagerImportIdentifier(identifier); err != nil {
+			if err := validateAlertmanagerImportIdentifier(cmd, identifier); err != nil {
 				return err
 			}
 			// The confirmation exchange is a diagnostic, not the result.
@@ -578,9 +578,9 @@ identifier, the command also succeeds. The command asks for confirmation. Use
 	return cmd
 }
 
-func validateAlertmanagerImportIdentifier(identifier string) error {
+func validateAlertmanagerImportIdentifier(cmd *cobra.Command, identifier string) error {
 	if strings.TrimSpace(identifier) == "" {
-		return errors.New("IDENTIFIER must not be empty")
+		return gcxerrors.NewCommandUsageError(cmd, "IDENTIFIER must not be empty", nil)
 	}
 	return nil
 }

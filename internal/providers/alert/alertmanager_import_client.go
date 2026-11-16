@@ -25,9 +25,9 @@ const (
 	configForceReplaceHeader = "X-Grafana-Alerting-Config-Force-Replace"
 )
 
-// DefaultAlertmanagerImportIdentifier is the identifier Grafana uses when a
+// defaultAlertmanagerImportIdentifier is the identifier Grafana uses when a
 // request does not set one.
-const DefaultAlertmanagerImportIdentifier = "imported"
+const defaultAlertmanagerImportIdentifier = "imported"
 
 // alertmanagerImportToggle is the Grafana feature toggle that enables the
 // Alertmanager convert API. Without it, every endpoint returns 501.
