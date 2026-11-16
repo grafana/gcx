@@ -1,5 +1,12 @@
 ## Unreleased
 
+- `gcx dashboards create -f` and `gcx dashboards update -f` now say when the
+  file is a Grafana dashboard JSON export or `/api/dashboards/uid` response
+  rather than a resource manifest, and show the expected
+  `apiVersion`/`kind`/`metadata`/`spec` wrapper. They used to fail with
+  `Unexpected error` and exit 1, echoing the whole dashboard; they now exit 2
+  with `Invalid command usage`. Both commands also read the file before
+  contacting Grafana, so input errors are reported first.
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its
