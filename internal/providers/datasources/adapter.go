@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	dsclient "github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"golang.org/x/sync/errgroup"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -55,6 +57,96 @@ func (a *datasourceAdapter) List(ctx context.Context, opts metav1.ListOptions) (
 		out.Items = append(out.Items, *u)
 	}
 	return out, nil
+}
+
+// maxPullReads bounds concurrent per-datasource reads during a pull.
+const maxPullReads = 10
+
+var _ adapter.PullLister = (*datasourceAdapter)(nil)
+
+// ListForPull lists datasources and reads each one by UID. The legacy list
+// endpoint returns summaries without basicAuthUser, withCredentials or
+// secureJsonFields, so exporting them would drop configuration that
+// `resources get datasources/<uid>` reports. A datasource that cannot be read
+// is left out of the result and reported through adapter.PartialReadError so
+// the remaining datasources are still exported; one deleted since the list is
+// skipped.
+func (a *datasourceAdapter) ListForPull(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	items, err := a.client.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if opts.Limit > 0 && int64(len(items)) > opts.Limit {
+		items = items[:opts.Limit]
+	}
+
+	full := make([]*unstructured.Unstructured, len(items))
+	failed := make([]error, len(items))
+	skipped := make([]bool, len(items))
+	group, readCtx := errgroup.WithContext(ctx)
+	group.SetLimit(maxPullReads)
+	for i, summary := range items {
+		group.Go(func() error {
+			ds, err := a.client.GetByUID(readCtx, summary.UID)
+			if err == nil {
+				full[i], err = datasourceToUnstructured(ds, a.namespace)
+			}
+			switch {
+			case err == nil:
+			case readCtx.Err() != nil:
+				return readCtx.Err()
+			case dsclient.IsNotFound(err):
+				skipped[i] = true
+			default:
+				failed[i] = fmt.Errorf("reading datasource %q: %w", summary.UID, err)
+			}
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
+	out := &unstructured.UnstructuredList{}
+	partial := &datasourceReadError{}
+	for i := range items {
+		switch {
+		case full[i] != nil:
+			out.Items = append(out.Items, *full[i])
+		case skipped[i]:
+			partial.skipped++
+		case failed[i] != nil:
+			partial.failures = append(partial.failures, adapter.ReadFailure{Err: failed[i]})
+		}
+	}
+	if len(partial.failures) > 0 || partial.skipped > 0 {
+		return out, partial
+	}
+	return out, nil
+}
+
+// datasourceReadError reports datasources that a pull could not read.
+type datasourceReadError struct {
+	failures []adapter.ReadFailure
+	skipped  int
+}
+
+func (e *datasourceReadError) Error() string {
+	parts := make([]string, 0, len(e.failures)+1)
+	parts = append(parts, fmt.Sprintf("%d datasource(s) could not be read", len(e.failures)))
+	for _, f := range e.failures {
+		parts = append(parts, f.Err.Error())
+	}
+	return strings.Join(parts, "; ")
+}
+func (e *datasourceReadError) ReadFailures() []adapter.ReadFailure { return e.failures }
+func (e *datasourceReadError) SkippedReads() int                   { return e.skipped }
+func (e *datasourceReadError) Unwrap() []error {
+	errs := make([]error, len(e.failures))
+	for i, f := range e.failures {
+		errs[i] = f.Err
+	}
+	return errs
 }
 
 func (a *datasourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {

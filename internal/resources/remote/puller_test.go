@@ -540,3 +540,35 @@ func TestPullUnavailableCollectionRequiresSelectorFreeRequest(t *testing.T) {
 		})
 	}
 }
+
+// listForPullClient lets ListForPull return different content than List.
+type listForPullClient struct {
+	mockPullClient
+
+	pullList *unstructured.UnstructuredList
+}
+
+func (c *listForPullClient) ListForPull(context.Context, resources.Descriptor, metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return c.pullList, nil
+}
+
+func TestPullUsesPullListerWhenAvailable(t *testing.T) {
+	desc := dashboardDescriptor()
+	summary := makeUnstructuredDashboard("summary")
+	summary.SetGroupVersionKind(desc.GroupVersionKind())
+	full := makeUnstructuredDashboard("full")
+	full.SetGroupVersionKind(desc.GroupVersionKind())
+
+	client := &listForPullClient{
+		mockPullClient: mockPullClient{partialLists: map[string]*unstructured.UnstructuredList{
+			desc.Plural: {Items: []unstructured.Unstructured{summary}},
+		}},
+		pullList: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{full}},
+	}
+	puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+	var dest resources.Resources
+	_, err := puller.Pull(t.Context(), remote.PullRequest{Resources: &dest})
+	require.NoError(t, err)
+	require.Equal(t, 1, dest.Len())
+	require.Equal(t, "full", dest.AsList()[0].Name())
+}

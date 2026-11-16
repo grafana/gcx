@@ -75,6 +75,14 @@ type MultipleGetter interface {
 	GetMultiple(ctx context.Context, names []string, opts metav1.GetOptions) ([]unstructured.Unstructured, error)
 }
 
+// PullLister optionally lists objects for a pull. Adapters whose List returns
+// summaries that omit configuration implement it to return complete objects;
+// List itself stays cheap for every other caller. Per-item failures are
+// returned through PartialReadError alongside the objects that were read.
+type PullLister interface {
+	ListForPull(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error)
+}
+
 // PullSelection retains every fetched object before identity-keyed insertion.
 type PullSelection struct {
 	Filter resources.Filter
