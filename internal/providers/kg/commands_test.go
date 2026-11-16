@@ -145,6 +145,9 @@ func TestParseInsightFlag(t *testing.T) {
 		{in: "scope=foo", wantErr: "unsupported key"},
 		{in: "no-equals", wantErr: "expected 'any'"},
 		{in: "=value", wantErr: "expected 'any'"},
+		{in: "--from", wantErr: "took the next flag \"--from\""},
+		{in: "--from=2026-01-01T00:00:00Z", wantErr: "use --insight any"},
+		{in: "-o", wantErr: "took the next flag"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {

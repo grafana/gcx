@@ -44,6 +44,11 @@
   clusters for `--namespace`, are kept, and `none` matches rows without the
   dimension. A backend that applies the scope filters the same way, so there
   the output is unchanged.
+- `gcx kg entities list --insight` with no value now fails with an error that
+  says to use `--insight any` or `--insight key=value`, also when `--type`
+  comes next. A bare `--insight` took the next flag as its value, and the
+  command failed with an unrelated error: `required flag(s) "type" not set`,
+  or a time-window error for `--from`.
 - `gcx logs query` and `gcx datasources loki query` now reject a negative
   `--limit`, as generic `gcx datasources query` already did. A negative value
   used to run with Loki's default line limit and exit 0. `--limit 0` still

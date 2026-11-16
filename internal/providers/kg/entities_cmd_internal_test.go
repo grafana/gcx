@@ -133,6 +133,16 @@ func TestEntitiesListCommand(t *testing.T) {
 			wantCountCalls: 1,
 		},
 		{
+			name:    "a bare --insight before --type",
+			args:    "list --insight --type Service " + testWindow,
+			wantErr: "use --insight any",
+		},
+		{
+			name:    "a bare --insight before the window",
+			args:    "list --type Service --insight --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
+			wantErr: "use --insight any",
+		},
+		{
 			name:    "an unknown type with a name suggests the command with the caller's flags",
 			args:    "list --type Deployment --property name=api --namespace ns1 " + testWindow,
 			wantErr: `entity type "Deployment" is not in the graph`,

@@ -299,6 +299,9 @@ func parseInsightFlag(s string) (insightMatcher, error) {
 	if strings.EqualFold(strings.TrimSpace(s), "any") {
 		return insightMatcher{}, nil
 	}
+	if strings.HasPrefix(s, "-") {
+		return insightMatcher{}, fmt.Errorf("--insight needs a value but took the next flag %q as its value; use --insight any to match any insight, or --insight key=value", s)
+	}
 	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
 		m := insightMatcher{Key: strings.ToLower(name), Op: "CONTAINS", Value: value}
 		if err := validateInsightMatcher(m); err != nil {
@@ -1939,6 +1942,20 @@ analysis, use 'gcx kg entities inspect' instead.`,
   gcx kg entities list --type Service --env <env> --insight name=Saturation --insight severity=critical
   gcx kg entities list --type Service --env <env> --property name=~api --insight severity=critical
   gcx kg entities list --type Service --env <env> --insight severity=critical --json name,scope`,
+		// A bare --insight takes the next argument as its value. Reject a
+		// flag-looking value here: PreRunE runs before cobra's required-flag
+		// check, which would otherwise report the swallowed flag (for example
+		// --type) as missing, and before RunE, where the leftover value would
+		// surface as an unrelated time-window error.
+		PreRunE: func(_ *cobra.Command, _ []string) error {
+			for _, raw := range listInsightRaw {
+				if strings.HasPrefix(raw, "-") {
+					_, err := parseInsightFlag(raw)
+					return err
+				}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
