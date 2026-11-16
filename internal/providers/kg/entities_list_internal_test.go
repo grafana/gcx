@@ -301,7 +301,7 @@ func TestCheckEntityType(t *testing.T) {
 			wantSuggestions: []string{"gcx kg entities inspect Service--api --env prod --namespace ns1 --from "},
 		},
 		{
-			name:       "inspect keeps the caller's scope when the name has several entities",
+			name:       "inspect suggests list when the name has several entities",
 			entityType: "Deployment",
 			check: typeCheck{
 				verb:   "inspect",
@@ -310,7 +310,8 @@ func TestCheckEntityType(t *testing.T) {
 				flags:  []string{"--env prod"},
 			},
 			wantSummary:     `entity type "Deployment" is not in the graph`,
-			wantSuggestions: []string{"gcx kg entities inspect Service--dup --env prod --from "},
+			wantSuggestions: []string{"gcx kg entities list --type Service --property workload_type=deployment --property name=dup --env prod --from "},
+			wantNoSuggest:   "gcx kg entities inspect Service--dup",
 		},
 		{
 			name:       "a name found under another type without a kind match",
@@ -455,6 +456,31 @@ func TestProbeTypeAlternativesBudget(t *testing.T) {
 	assert.False(t, probed["A00"], "the least populous types fall outside the budget")
 	assert.False(t, probed["Empty"], "a type without entities is not probed")
 	assert.False(t, probed["EntityType"], "a type outside the schema is not probed")
+}
+
+func TestProbeTypeAlternativesSkipsEmptyTypes(t *testing.T) {
+	// Two types with a kind property and room in the budget for both: only
+	// the type that has entities is probed.
+	f := &fakeKG{
+		counts:   map[string]int64{"Busy": 3, "Empty": 0},
+		schema:   map[string][]string{"Busy": {"name", "x_type"}, "Empty": {"name", "x_type"}},
+		entities: map[string][]SearchResult{"Busy": {{Name: "target", Type: "Busy"}}},
+	}
+	client := newFakeClient(t, f)
+	_, err := checkEntityType(t.Context(), client, "Microservice", typeCheck{
+		verb:        "list",
+		name:        "target",
+		search:      typeSearch{startMs: 1000, endMs: 2000, propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "target"}}},
+		windowGiven: true,
+	})
+	require.Error(t, err)
+	require.NotEmpty(t, f.searchReq)
+	probed := map[string]bool{}
+	for _, req := range f.searchReq {
+		probed[req.FilterCriteria[0].EntityType] = true
+	}
+	assert.True(t, probed["Busy"], "a type with entities is probed")
+	assert.False(t, probed["Empty"], "a type without entities is not probed")
 }
 
 func TestSearchByTypesAllPages(t *testing.T) {

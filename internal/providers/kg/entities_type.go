@@ -169,20 +169,24 @@ type typeAlternative struct {
 }
 
 // command renders the command that returns the entities the probe found.
+// For inspect it is an inspect command only when the probe found exactly one
+// entity: inspect needs an entity's full scope and fails on a name that
+// several entities share, so for those it is the list command that returns
+// them all with their scopes.
 func (a typeAlternative) command(c typeCheck, window string) string {
 	var parts []string
 	flags := c.flags
-	if c.verb == "inspect" {
+	if c.verb == "inspect" && a.scope != nil {
 		parts = append(parts, "gcx kg entities inspect "+shellArg(a.entityType+"--"+c.name))
-		if a.scope != nil {
-			// inspect needs the entity's full scope once a scope is given.
-			f := scopeFlags{env: a.scope["env"], namespace: a.scope["namespace"], site: a.scope["site"]}
-			flags = f.args()
-		}
+		f := scopeFlags{env: a.scope["env"], namespace: a.scope["namespace"], site: a.scope["site"]}
+		flags = f.args()
 	} else {
 		parts = append(parts, "gcx kg entities list --type "+shellArg(a.entityType))
 		if a.property != "" {
 			parts = append(parts, "--property "+shellArg(a.property+"="+a.value))
+		}
+		if c.verb == "inspect" {
+			parts = append(parts, "--property "+shellArg("name="+c.name))
 		}
 	}
 	parts = append(parts, flags...)
@@ -281,6 +285,9 @@ func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaR
 			found[i] = len(rows) > 0
 			if c.verb == "inspect" && len(rows) == 1 && !hasMorePages(page) {
 				probes[i].scope = rows[0].Scope
+				if probes[i].scope == nil {
+					probes[i].scope = map[string]string{}
+				}
 			}
 			return nil
 		})

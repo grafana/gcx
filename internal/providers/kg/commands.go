@@ -1905,8 +1905,8 @@ Pick the read verb by what you start with:
   list       Default for listing and basic lookups: an entity's identity, scope,
              and properties. Filter to one known entity with
              '--property name=<name>'. Cheap — use this for plain lookups.
-             It returns at most --limit entities (default 50), and the
-             output does not say when it stopped there. --limit 0 follows
+             It returns at most --limit entities (default 50); when it
+             stops there, only a hint on stderr says so. --limit 0 follows
              the backend's pages, up to 50 per type, and pages can leave out
              rows at their boundaries: for an exact count or a complete
              list, use 'gcx kg graph query' with count() or DISTINCT.
@@ -1940,12 +1940,12 @@ PromQL/Loki queries — job, namespace, container, image, etc.), and a small
 snapshot of its current insights. Filter to a single entity with
 '--property name=<exact-name>'.
 
-It returns at most --limit entities (default 50), with no marker in the
-output when the limit cut it short. --limit 0 follows the backend's pages, up
-to 50 per type. The backend can leave out some rows at page boundaries (list
-drops the rows a later page repeats), so the row count can fall short of the
-true count: for an exact count or a complete list, use 'gcx kg graph query'
-with count() or DISTINCT.
+It returns at most --limit entities (default 50); when the limit cuts the
+list short, the rows carry no marker and only a hint on stderr says so.
+--limit 0 follows the backend's pages, up to 50 per type. The backend can
+leave out some rows at page boundaries (list drops the rows a later page
+repeats), so the row count can fall short of the true count: for an exact
+count or a complete list, use 'gcx kg graph query' with count() or DISTINCT.
 
 For an entity's full insight timeline or related entities for root-cause
 analysis, use 'gcx kg entities inspect' instead.`,

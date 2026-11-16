@@ -281,9 +281,26 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 		args           string
 		wantErr        string
 		wantSuggestion string
+		wantNoSuggest  string
 		wantCountCalls int
 	}{
 		{name: "a found entity makes no count call", args: "inspect Service--api " + testWindow},
+		{
+			// The fake ignores the scope, so only the client-side filter on
+			// the probe keeps an entity of another namespace out.
+			name:           "a probe drops an entity outside the requested scope",
+			args:           "inspect Deployment--api --namespace ns2 " + testWindow,
+			wantErr:        `entity type "Deployment" is not in the graph`,
+			wantNoSuggest:  "These return matching entities",
+			wantCountCalls: 1,
+		},
+		{
+			name:           "a probe keeps an entity inside the requested scope",
+			args:           "inspect Deployment--api --namespace ns1 " + testWindow,
+			wantErr:        `entity type "Deployment" is not in the graph`,
+			wantSuggestion: "These return matching entities: gcx kg entities inspect Service--api --env prod --namespace ns1 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
+			wantCountCalls: 1,
+		},
 		{name: "a type in the wrong case is corrected", args: "inspect service--api " + testWindow, wantCountCalls: 1},
 		{
 			name:           "an unknown type suggests the entity under its type, with its scope",
@@ -314,10 +331,17 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
-				if tt.wantSuggestion != "" {
-					var de gcxerrors.DetailedError
+				var de gcxerrors.DetailedError
+				if tt.wantSuggestion != "" || tt.wantNoSuggest != "" {
 					require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+				}
+				if tt.wantSuggestion != "" {
 					assert.Contains(t, de.Suggestions, tt.wantSuggestion)
+				}
+				if tt.wantNoSuggest != "" {
+					for _, sug := range de.Suggestions {
+						assert.NotContains(t, sug, tt.wantNoSuggest)
+					}
 				}
 			}
 			assert.Equal(t, tt.wantCountCalls, f.countCalls)

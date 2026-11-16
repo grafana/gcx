@@ -24,8 +24,10 @@
   finds entities, the command that returns them: the name under another
   type, or the type name as the value of a kind-like property such as a
   workload type. The suggested command keeps the call's `--property`,
-  `--insight` and window, and its scope (for inspect, the found entity's full
-  scope when the probe finds one entity). When no `--from`/`--to`/`--since`
+  `--insight` and window, and its scope. For inspect, it is an inspect
+  command with the found entity's full scope when the probe finds one
+  entity, and a `list --property name=<name>` command when the name has
+  several entities. When no `--from`/`--to`/`--since`
   was passed, the error also says that the default window is the last hour.
   Behaviour change: when the window holds no entities of any type and no
   window was passed, list now exits 1 (it printed `[]`) and inspect's
@@ -44,13 +46,13 @@
   clusters for `--namespace`, are kept, and `none` matches rows without the
   dimension. A backend that applies the scope filters the same way, so there
   the output is unchanged.
-- `gcx kg entities list --insight` with no value now fails with an error that
-  says to use `--insight any` or `--insight key=value`, also when `--type`
-  comes next. A bare `--insight` took the next flag as its value, and the
+- A bare `gcx kg entities list --insight` followed by another flag (for
+  example `--insight --type Service`) took that flag as its value, and the
   command failed with an unrelated error: `required flag(s) "type" not set`,
-  or a time-window error for `--from`.
+  or a time-window error for `--from`. That value is now rejected with an
+  error that says to use `--insight any` or `--insight key=value`.
 - `gcx kg entities --help` and `gcx kg entities list --help` now say that list
-  stops at `--limit` (default 50) with no marker in its output, that
+  stops at `--limit` (default 50), with only a hint on stderr when it does, that
   `--limit 0` follows the backend's pages up to 50 per type, and that the
   pages can leave out rows at their boundaries. For an exact count or a
   complete list they point to `gcx kg graph query` with `count()` or
