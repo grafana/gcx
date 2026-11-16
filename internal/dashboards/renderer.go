@@ -2,7 +2,6 @@ package dashboards
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/grafana"
 	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
@@ -25,10 +25,8 @@ const (
 	renderDashboardPathFmt = "/render/d/%s/"
 	renderTimeoutOverhead  = 30 * time.Second
 
-	renderErrorExcerptBytes  = 256
-	frontendSettingsPath     = "/api/frontend/settings"
-	frontendSettingsMaxBytes = 16 << 20
-	rendererProbeTimeout     = 10 * time.Second
+	renderErrorExcerptBytes = 256
+	rendererProbeTimeout    = 10 * time.Second
 )
 
 // RenderRequest holds parameters for a dashboard render request.
@@ -151,26 +149,8 @@ func (c *Client) RendererAvailable(ctx context.Context) (bool, bool) {
 	ctx, cancel := context.WithTimeout(ctx, rendererProbeTimeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+frontendSettingsPath, nil)
-	if err != nil {
-		return false, false
-	}
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return false, false
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return false, false
-	}
-
-	var settings struct {
-		RendererAvailable *bool `json:"rendererAvailable"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, frontendSettingsMaxBytes)).Decode(&settings); err != nil {
-		return false, false
-	}
-	if settings.RendererAvailable == nil {
+	settings, err := grafana.FetchFrontendSettings(ctx, c.restConfig.Host, c.httpClient)
+	if err != nil || settings.RendererAvailable == nil {
 		return false, false
 	}
 	return *settings.RendererAvailable, true

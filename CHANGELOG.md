@@ -1,11 +1,11 @@
 ## Unreleased
 
 - `gcx dashboards snapshot` now says when Grafana has no image renderer. When
-  every render fails with a server error and Grafana reports no renderer
+  every render fails, at least one returns a server error, and Grafana reports no renderer
   available, it fails with `Endpoint not available` and suggests setting up
   the remote rendering service, instead of `Unexpected error` with a truncated
   HTML page. Other render failures are classified by HTTP status, and an HTML
-  error page is described rather than printed. The exit code is unchanged.
+  error page is described rather than printed. The missing-renderer case still exits 1; HTTP 401/403 failures now exit 3.
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its

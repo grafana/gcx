@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -94,7 +95,7 @@ func TestSnapshot_RenderFailureDiagnostics(t *testing.T) {
 			wantSummary:    gcxerrors.SummaryEndpointNotAvailable,
 			wantContains: []string{
 				`Rendering "dash-a" failed with HTTP 500`,
-				"Other failures:",
+				"Render failures:",
 				`dashboard name "bad/name" contains invalid path characters`,
 			},
 			wantMissing: true,
@@ -216,16 +217,30 @@ func TestSnapshot_RenderFailureDiagnostics(t *testing.T) {
 			if claimsMissing != tt.wantMissing {
 				t.Errorf("details name a missing renderer = %v, want %v:\n%s", claimsMissing, tt.wantMissing, detailed.Details)
 			}
-			if tt.wantMissing {
-				suggestions := strings.Join(detailed.Suggestions, "\n")
-				for _, want := range []string{"server_url", "callback_url", "gcx api /api/plugins?type=renderer"} {
-					if !strings.Contains(suggestions, want) {
-						t.Errorf("suggestions missing %q: %q", want, detailed.Suggestions)
-					}
+			if !tt.wantMissing {
+				return
+			}
+			statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+			if !ok || statusErr.Status != tt.renderStatus {
+				t.Fatalf("original HTTP status missing from error chain: %v", err)
+			}
+			jsonDetails := detailed.JSONObject(gcxerrors.ExitGeneralError).Details
+			for _, want := range tt.wantContains {
+				if !strings.Contains(jsonDetails, want) {
+					t.Errorf("JSON details missing %q: %s", want, jsonDetails)
 				}
-				if detailed.DocsLink == "" {
-					t.Error("DocsLink is empty, want the image rendering docs")
+			}
+			if strings.Count(rendered, "Render failures:") != 1 {
+				t.Errorf("failure list must render once: %s", rendered)
+			}
+			suggestions := strings.Join(detailed.Suggestions, "\n")
+			for _, want := range []string{"server_url", "callback_url", "gcx api /api/plugins?type=renderer"} {
+				if !strings.Contains(suggestions, want) {
+					t.Errorf("suggestions missing %q: %q", want, detailed.Suggestions)
 				}
+			}
+			if detailed.DocsLink == "" {
+				t.Error("DocsLink is empty, want the image rendering docs")
 			}
 		})
 	}
@@ -265,7 +280,7 @@ func TestSnapshot_NoRendererKeepsOtherHTTPFailures(t *testing.T) {
 	}
 	for _, want := range []string{
 		`Rendering "dash-a" failed with HTTP 500`,
-		"Other failures:",
+		"Render failures:",
 		`failed to render "dash-gone": render request failed with status 404: {"message":"Dashboard not found"}`,
 	} {
 		if !strings.Contains(detailed.Details, want) {

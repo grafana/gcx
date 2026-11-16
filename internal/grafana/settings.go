@@ -18,21 +18,23 @@ type BuildInfo struct {
 }
 
 // FrontendSettings captures the fields exposed at /api/frontend/settings that
-// gcx cares about pre-authentication (target detection).
+// gcx uses for target detection and renderer diagnostics.
 type FrontendSettings struct {
-	BuildInfo BuildInfo `json:"buildInfo"`
+	BuildInfo         BuildInfo `json:"buildInfo"`
+	RendererAvailable *bool     `json:"rendererAvailable,omitempty"`
 }
 
 const frontendSettingsPath = "/api/frontend/settings"
 
-// FetchAnonymousSettings performs an unauthenticated GET of /api/frontend/settings
-// against baseURL, used for pre-auth target detection. When httpClient is nil it
+// FetchFrontendSettings performs a GET of /api/frontend/settings
+// against baseURL using the supplied client, including its authentication.
+// When httpClient is nil it
 // falls back to httputils.NewDefaultClient (so --insecure-log-http-payload is honoured).
 // Respects the supplied context's deadline and cancellation.
 //
 // Errors are returned as-is; callers are responsible for deciding how to classify
 // them (e.g., mapping a non-200 status to TargetUnknown).
-func FetchAnonymousSettings(ctx context.Context, baseURL string, httpClient *http.Client) (*FrontendSettings, error) {
+func FetchFrontendSettings(ctx context.Context, baseURL string, httpClient *http.Client) (*FrontendSettings, error) {
 	settingsURL := strings.TrimSuffix(baseURL, "/") + frontendSettingsPath
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, settingsURL, nil)

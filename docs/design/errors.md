@@ -133,6 +133,16 @@ plugin is absent.
 Non-CLI callers retain an unrendered error, and other HTTP 404
 responses retain their resource or API error handling.
 
+#### Dashboard snapshot renderer availability
+
+When every snapshot fails and at least one render returns HTTP 5xx, snapshot
+checks `rendererAvailable` in `/api/frontend/settings` with a ten-second deadline.
+An explicit `false` reports `Endpoint not available` with renderer setup guidance;
+a true, absent, or unreadable setting keeps the original errors. Successful and
+partial runs make no extra request. The missing-renderer error retains every
+failure in human and JSON output and preserves the original error chain for
+HTTP status telemetry. It exits 1; ordinary HTTP 401/403 failures exit 3.
+
 #### Fleet Management HTTP errors
 
 The `convertFleetHTTPErrors` converter handles typed `fleet.HTTPError` values
