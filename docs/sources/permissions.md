@@ -67,10 +67,11 @@ On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope 
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| View Grafana-managed alert rules, rule groups, and state history (`gcx alert rules`, `gcx alert groups`, `gcx alert state-history`) | `alert.rules:read` |
+| View Grafana-managed alert rules and rule groups (`gcx alert rules`, `gcx alert groups`) | `alert.rules:read`, plus `folders:read` on the rule's folder and `datasources:query` on the data sources the rule queries |
+| View alert state history (`gcx alert state-history`) | `alert.rules:read` and `datasources:query` on the state history data source |
 | View data source-managed rules (`gcx alert ruler`) | `alert.rules.external:read` on the data source |
-| Create, update, or delete data source-managed rules (`gcx alert ruler upsert`, `gcx alert ruler delete`) | `alert.rules.external:write` on the data source |
-| View contact points, mute timings, templates, and notification policies | One of `alert.provisioning:read`, `alert.notifications.provisioning:read`, or `alert.notifications:read` |
+| Create, update, or delete data source-managed rules (`gcx alert ruler groups upsert`, `gcx alert ruler groups delete`, `gcx alert ruler namespaces delete`) | `alert.rules.external:write` on the data source |
+| View contact points, mute timings, templates, and notification policies | `alert.provisioning:read` or `alert.notifications.provisioning:read` (or the per-resource `alert.notifications.*:read` actions) |
 | Create, update, or delete contact points, mute timings, templates, and notification policies | `alert.provisioning:write` or `alert.notifications.provisioning:write` |
 
 ### Fleet Management
@@ -79,8 +80,8 @@ On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope 
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Access the Collector app's named read routes | `grafana-collector-app:read` |
-| Access the Collector app's wildcard routes (required by some read-only commands) | `grafana-collector-app:admin`, or the Admin basic role |
+| Access the Collector app's named read routes | `grafana-collector-app:read` (`plugins:grafana-collector-app:collector-app-reader`, `plugins:grafana-collector-app:collector-app-pipelines-viewer`, or Viewer basic role) |
+| Access the Collector app's wildcard routes (required by some read-only commands) | `grafana-collector-app:admin` (`plugins:grafana-collector-app:collector-app-admin` or Admin basic role) |
 | Look up stack details through the Collector app | Viewer basic role |
 | Check Kubernetes monitoring (`gcx instrumentation clusters list`) | `grafana-collector-app:read` and `grafana-collector-app:admin` |
 
@@ -92,7 +93,8 @@ The Assistant Investigation User role is included in the Editor and Admin basic 
 | --- | --- |
 | Access the Grafana Assistant app | `plugins.app:access` scoped to `plugins:id:grafana-assistant-app` |
 | Read investigations (`gcx assistant investigations list`) | `grafana-assistant-app.investigations:read` (included in the Assistant Investigation User role) |
-| View investigations started automatically by alerts or Grafana Incident Response and Management (IRM) webhooks | `grafana-assistant-app.investigations.system:read` |
+| View investigations started automatically by alerts or Grafana Incident Response and Management (IRM) webhooks | `grafana-assistant-app.investigations.system:read` (Assistant System Investigation Viewer role) |
+| View organization-wide Assistant usage and limits (`gcx assistant usage get`) | `grafana-assistant-app.usage:read` (included in the Assistant Admin role and Admin basic role) |
 
 #### Troubleshoot Assistant permission errors
 
@@ -104,12 +106,14 @@ If a command such as `gcx assistant investigations list` fails, use the error me
 
 ### Frontend Observability
 
-The `gcx frontend apps` commands that change apps need these Frontend Observability permissions:
+`gcx frontend apps` commands use the Frontend Observability plugin (`grafana-kowalski-app`), except `apply-sourcemap`, which uploads directly to the Faro API using a Grafana Cloud credential.
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Create or update apps (`gcx frontend apps create`, `gcx frontend apps update`) | `grafana-kowalski-app.apps:write` (Frontend Observability Editor role) |
-| Delete apps or source map bundles (`gcx frontend apps delete`, `gcx frontend apps delete-sourcemap`) | `grafana-kowalski-app.apps:delete` (Frontend Observability Admin role or Admin basic role) |
+| List or inspect apps and source maps (`gcx frontend apps list`, `gcx frontend apps get`, `gcx frontend apps list-sourcemaps`) | `plugins:grafana-kowalski-app:frontend-observability-viewer` (or Viewer basic role) |
+| Create or update apps (`gcx frontend apps create`, `gcx frontend apps update`) | `grafana-kowalski-app.apps:write` (`plugins:grafana-kowalski-app:frontend-observability-editor` or Editor basic role) |
+| Delete apps or source map bundles (`gcx frontend apps delete`, `gcx frontend apps delete-sourcemap`) | `grafana-kowalski-app.apps:delete` (`plugins:grafana-kowalski-app:frontend-observability-admin` or Admin basic role) |
+| Upload source maps (`gcx frontend apps apply-sourcemap`) | Grafana Cloud credential (plus Grafana sign-in if resolving app names by display name) |
 
 An account with only `grafana-kowalski-app.apps:write` can create and update apps, but can't delete apps or source map bundles.
 
@@ -142,7 +146,7 @@ OnCall personal notification rules don't work with a service account because the
 
 ### Synthetic Monitoring
 
-`gcx sm` commands go through the Synthetic Monitoring data source on your stack, using your Grafana sign-in. You need a Synthetic Monitoring plugin role:
+`gcx synthetic-monitoring` (aliased as `gcx sm`) commands go through the Synthetic Monitoring data source on your stack, using your Grafana sign-in. You need a Synthetic Monitoring plugin role:
 
 | Access or commands | Required role or permission |
 | --- | --- |
@@ -179,12 +183,12 @@ Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-acces
 
 ## Choose Grafana Cloud access policy scopes
 
-Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, such as managing stacks, `gcx k6` with a service account token, and Synthetic Monitoring (`gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../authentication/#grafana-cloud-product-api) for how to add it.
+Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, Adaptive Telemetry (`gcx metrics adaptive`, `gcx logs adaptive`, `gcx logs archive`, and `gcx traces adaptive`), `gcx k6` with a service account token, `gcx frontend apps apply-sourcemap`, and Synthetic Monitoring (`gcx synthetic-monitoring`, aliased as `gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../authentication/#grafana-cloud-product-api) for how to add it.
 
 You can sign in to Grafana Cloud in two ways:
 
 - **Grafana Cloud access policy token:** Recommended for automation. The scopes you give the access policy decide which commands work.
-- **Grafana Cloud OAuth:** The experimental browser flow, with `gcx cloud login` or the Grafana Cloud step of `gcx login`. By default, it requests `profile`, `stacks:read`, `stacks:write`, `stacks:delete`, `metrics:write`, `logs:write`, and `traces:write`. Not every Grafana Cloud product command accepts it yet.
+- **Grafana Cloud OAuth:** The experimental browser flow, with `gcx cloud login` or the Grafana Cloud step of `gcx login`. By default, it requests `profile`, `stacks:read`, `stacks:write`, `stacks:delete`, `metrics:write`, `logs:write`, and `traces:write`. Not every Grafana Cloud product command accepts it yet, though listing your organizations (`gcx cloud orgs list`) requires Grafana Cloud OAuth with the `profile` scope because access policy tokens can't enumerate user organization memberships.
 
 If you use a Grafana Cloud [access policy](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/) token, scope the access policy to the commands you use:
 
@@ -194,12 +198,15 @@ If you use a Grafana Cloud [access policy](https://grafana.com/docs/grafana-clou
 | Access or commands | Required scope |
 | --- | --- |
 | Stack discovery, which resolves the stack slug for all Grafana Cloud commands, plus `gcx k6` reads | `stacks:read` (required) |
-| Synthetic Monitoring (`gcx sm`) direct API token creation | `metrics:write`, `logs:write`, `traces:write` |
 | Create or update stacks | `stacks:write` |
 | Delete stacks (`gcx cloud stacks delete`) | `stacks:delete` |
+| Adaptive Metrics (`gcx metrics adaptive`) | Operation-specific `adaptive-metrics-rules`, `adaptive-metrics-recommendations`, `adaptive-metrics-segments`, or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |
+| Adaptive Logs and Logs Archive (`gcx logs adaptive`, `gcx logs archive`) | `adaptive-logs:admin` |
+| Adaptive Traces (`gcx traces adaptive`) | `adaptive-traces:admin` |
+| Synthetic Monitoring (`gcx sm`) direct API token creation | `metrics:write`, `logs:write`, `traces:write` |
 | Instrumentation Hub setup (`gcx instrumentation setup`) token for the printed Helm command | `set:alloy-data-write`, `metrics:read` |
 
-Fleet Management, IRM, and SLO commands, and signal queries such as `gcx metrics`, `gcx logs`, `gcx traces`, and `gcx profiles`, don't use the Grafana Cloud credential. They use your Grafana sign-in, either OAuth or a service account token.
+Fleet Management, IRM, and SLO commands, and direct telemetry queries such as `gcx metrics query`, `gcx logs query`, `gcx traces`, and `gcx profiles`, don't use the Grafana Cloud credential. They use your Grafana sign-in, either OAuth or a service account token.
 
 If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
 
