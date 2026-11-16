@@ -255,7 +255,7 @@ not in the summary.
 
 | Summary | When to use |
 |---|---|
-| `Invalid command usage` | Wrong flags, conflicting flags, missing required args or flags, or an input file of the wrong shape (for example a dashboard export passed where a resource manifest is expected) |
+| `Invalid command usage` | Wrong flags, conflicting flags, missing required args or flags, or a dashboard export passed where a dashboard manifest is expected |
 | `Invalid configuration` | Bad or unparseable config file, unresolvable context, missing non-credential settings (e.g. SM URL, Cloud stack slug) |
 | `Authentication failed` | gcx has no credential, or the server rejected it: HTTP 401, expired or missing token, missing Cloud credentials or an SM token whose auto-discovery cannot start. Suggestions point at `gcx login` or setting a token. The shared transport converter also recognizes the exact datasource-authentication HTTP 400 message; its remediation concerns the datasource connection |
 | `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
