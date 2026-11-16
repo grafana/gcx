@@ -3,6 +3,7 @@ package dashboards
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -349,13 +350,15 @@ func newCreateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
-			ctx := cmd.Context()
-			client, desc, err := deps.resolve(ctx, opts.APIVersion)
+			// Read the manifest before contacting the server, so input
+			// errors are reported even when Grafana is unreachable.
+			obj, err := readManifest(opts.Filename)
 			if err != nil {
 				return err
 			}
 
-			obj, err := readManifest(opts.Filename)
+			ctx := cmd.Context()
+			client, desc, err := deps.resolve(ctx, opts.APIVersion)
 			if err != nil {
 				return err
 			}
@@ -434,13 +437,15 @@ Recommended workflow:
 				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
-			ctx := cmd.Context()
-			client, desc, err := deps.resolve(ctx, opts.APIVersion)
+			// Read the manifest before contacting the server, so input
+			// errors are reported even when Grafana is unreachable.
+			obj, err := readManifest(opts.Filename)
 			if err != nil {
 				return err
 			}
 
-			obj, err := readManifest(opts.Filename)
+			ctx := cmd.Context()
+			client, desc, err := deps.resolve(ctx, opts.APIVersion)
 			if err != nil {
 				return err
 			}
@@ -594,6 +599,16 @@ func decodeManifest(r io.Reader) (*unstructured.Unstructured, error) {
 	// Detect format upfront: JSON objects/arrays start with '{' or '['.
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+		// A classic dashboard export is valid JSON without a resource envelope.
+		// Explain the expected manifest instead of the decoder's missing-Kind
+		// error, which echoes the whole document.
+		var raw map[string]any
+		if json.Unmarshal(data, &raw) == nil {
+			if err := classicDashboardError(raw); err != nil {
+				return nil, err
+			}
+		}
+
 		// Treat as JSON and surface the parse error directly.
 		obj := &unstructured.Unstructured{}
 		if err := obj.UnmarshalJSON(data); err != nil {
@@ -608,7 +623,93 @@ func decodeManifest(r io.Reader) (*unstructured.Unstructured, error) {
 	if yamlErr := yamlCodec.Decode(bytes.NewReader(data), &rawObj); yamlErr != nil {
 		return nil, fmt.Errorf("manifest is neither valid JSON nor YAML: %w", yamlErr)
 	}
+	if err := classicDashboardError(rawObj); err != nil {
+		return nil, err
+	}
 
 	obj2 := &unstructured.Unstructured{Object: rawObj}
 	return obj2, nil
+}
+
+// classicDashboardError returns a usage error when obj is a Grafana dashboard
+// JSON model, as exported from the UI or returned by /api/dashboards/uid,
+// rather than a dashboard resource manifest. It returns nil for anything else,
+// so incomplete manifests keep the decoder's own diagnostics.
+func classicDashboardError(obj map[string]any) error {
+	if _, ok := obj["apiVersion"]; ok {
+		return nil
+	}
+	if _, ok := obj["kind"]; ok {
+		return nil
+	}
+
+	model := obj
+	source := "a Grafana dashboard export (JSON model)"
+	content := "the dashboard JSON"
+	if inner, ok := obj["dashboard"].(map[string]any); ok {
+		model = inner
+		source = "a Grafana dashboard API response"
+		content = "the dashboard object (without meta)"
+	}
+	if !isDashboardModel(model) {
+		return nil
+	}
+
+	// The uid comes from the file, so only a well-formed one is echoed.
+	name := "<dashboard-uid>"
+	if uid, ok := model["uid"].(string); ok && isGrafanaUID(uid) {
+		name = uid
+	}
+
+	message := fmt.Sprintf(`the input is %s, not a dashboard resource manifest
+
+Dashboard commands expect apiVersion, kind, metadata and spec.
+Put %s under spec and set metadata.name:
+
+  apiVersion: dashboard.grafana.app/v1beta1
+  kind: Dashboard
+  metadata:
+    name: %s
+  spec:
+    <dashboard JSON>`, source, content, name)
+
+	suggestions := []string{
+		"Pin the version for classic panels and templating: re-run with --api-version dashboard.grafana.app/v1beta1",
+	}
+	if _, ok := model["__inputs"]; ok {
+		suggestions = append(suggestions,
+			"Replace the ${DS_...} datasource placeholders declared in __inputs with datasource UIDs from 'gcx datasources list'")
+	}
+	suggestions = append(suggestions,
+		"Run 'gcx dashboards get <name> -o yaml' to see an existing dashboard as a manifest")
+
+	return &gcxerrors.UsageError{Message: message, Suggestions: suggestions}
+}
+
+// isGrafanaUID reports whether s has the form Grafana accepts for a dashboard
+// UID: 1 to 40 ASCII letters, digits, hyphens or underscores.
+func isGrafanaUID(s string) bool {
+	if s == "" || len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// isDashboardModel reports whether m has the top-level fields of a dashboard
+// JSON model.
+func isDashboardModel(m map[string]any) bool {
+	if _, ok := m["title"]; !ok {
+		return false
+	}
+	for _, key := range []string{"panels", "schemaVersion", "rows"} {
+		if _, ok := m[key]; ok {
+			return true
+		}
+	}
+	return false
 }

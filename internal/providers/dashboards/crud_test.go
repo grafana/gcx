@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards"
 	"github.com/grafana/gcx/internal/resources/dynamic"
@@ -95,6 +96,149 @@ func TestDecodeManifest(t *testing.T) {
 			}
 			if tt.wantName != "" && obj.GetName() != tt.wantName {
 				t.Errorf("decodeManifest() GetName() = %q, want %q", obj.GetName(), tt.wantName)
+			}
+		})
+	}
+}
+
+func TestDecodeManifest_ClassicDashboard(t *testing.T) {
+	// A distinctive query string proves the error does not echo the input.
+	const query = `rate(secret_query_marker_total[5m])`
+	export := `{
+  "__inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}],
+  "uid": "example-dashboard",
+  "title": "Example dashboard",
+  "schemaVersion": 39,
+  "panels": [{"type": "timeseries", "targets": [{"datasource": "${DS_PROMETHEUS}", "expr": "` + query + `"}]}]
+}`
+
+	tests := []struct {
+		name            string
+		input           string
+		wantSource      string
+		wantContent     string
+		wantName        string
+		wantInputsHint  bool
+		wantSuggestions int
+	}{
+		{
+			name:            "UI export JSON",
+			input:           export,
+			wantSource:      "dashboard export (JSON model)",
+			wantContent:     "Put the dashboard JSON under spec",
+			wantName:        "name: example-dashboard",
+			wantInputsHint:  true,
+			wantSuggestions: 3,
+		},
+		{
+			name:            "UI export YAML without uid",
+			input:           "title: Example dashboard\nschemaVersion: 39\npanels: []\n",
+			wantSource:      "dashboard export (JSON model)",
+			wantContent:     "Put the dashboard JSON under spec",
+			wantName:        "name: <dashboard-uid>",
+			wantSuggestions: 2,
+		},
+		{
+			name:            "dashboard API response",
+			input:           `{"meta": {"slug": "example"}, "dashboard": {"uid": "api-dash", "title": "API", "panels": []}}`,
+			wantSource:      "dashboard API response",
+			wantContent:     "Put the dashboard object (without meta) under spec",
+			wantName:        "name: api-dash",
+			wantSuggestions: 2,
+		},
+		{
+			name:            "oversized uid falls back to the placeholder",
+			input:           `{"uid": "` + strings.Repeat("a", 41) + `", "title": "Long", "panels": []}`,
+			wantSource:      "dashboard export (JSON model)",
+			wantContent:     "Put the dashboard JSON under spec",
+			wantName:        "name: <dashboard-uid>",
+			wantSuggestions: 2,
+		},
+		{
+			name:            "uid with unexpected characters falls back to the placeholder",
+			input:           `{"uid": "bad uid\nwith: yaml", "title": "Odd", "panels": []}`,
+			wantSource:      "dashboard export (JSON model)",
+			wantContent:     "Put the dashboard JSON under spec",
+			wantName:        "name: <dashboard-uid>",
+			wantSuggestions: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := dashboards.DecodeManifestForTest(strings.NewReader(tt.input))
+
+			usageErr, ok := errors.AsType[*gcxerrors.UsageError](err)
+			if !ok {
+				t.Fatalf("decodeManifest() error = %v (%T), want *gcxerrors.UsageError", err, err)
+			}
+			msg := usageErr.Error()
+			for _, want := range []string{tt.wantSource, tt.wantContent, "not a dashboard resource manifest", "kind: Dashboard", tt.wantName} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("message missing %q:\n%s", want, msg)
+				}
+			}
+			if strings.Contains(msg, query) || strings.Contains(msg, "Object 'Kind' is missing") {
+				t.Errorf("message echoes the input or decoder error:\n%s", msg)
+			}
+			if len(msg) > 600 {
+				t.Errorf("message is %d bytes, want it bounded:\n%s", len(msg), msg)
+			}
+			if len(usageErr.Suggestions) != tt.wantSuggestions {
+				t.Errorf("got %d suggestions, want %d: %q", len(usageErr.Suggestions), tt.wantSuggestions, usageErr.Suggestions)
+			}
+			// create and update both reach this error, so no suggestion
+			// may name one of them.
+			suggestions := strings.Join(usageErr.Suggestions, "\n")
+			if strings.Contains(suggestions, "dashboards create") || strings.Contains(suggestions, "dashboards update") {
+				t.Errorf("suggestions name a specific command: %q", usageErr.Suggestions)
+			}
+			hasInputsHint := strings.Contains(suggestions, "__inputs")
+			if hasInputsHint != tt.wantInputsHint {
+				t.Errorf("__inputs suggestion present = %v, want %v", hasInputsHint, tt.wantInputsHint)
+			}
+		})
+	}
+}
+
+func TestDecodeManifest_NotClassicDashboard(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		errContains string // empty means decoding succeeds
+	}{
+		{
+			// A manifest that only lacks kind keeps the decoder's diagnostic.
+			name:        "manifest missing kind",
+			input:       `{"apiVersion": "dashboard.grafana.app/v1beta1", "metadata": {"name": "x"}, "spec": {"title": "X", "panels": []}}`,
+			errContains: "Object 'Kind' is missing",
+		},
+		{
+			name:        "object without dashboard fields",
+			input:       `{"title": "Just a title"}`,
+			errContains: "Object 'Kind' is missing",
+		},
+		{
+			name:  "valid manifest with dashboard fields in spec",
+			input: "apiVersion: dashboard.grafana.app/v1beta1\nkind: Dashboard\nmetadata:\n  name: x\nspec:\n  title: X\n  schemaVersion: 39\n  panels: []\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := dashboards.DecodeManifestForTest(strings.NewReader(tt.input))
+
+			if _, ok := errors.AsType[*gcxerrors.UsageError](err); ok {
+				t.Fatalf("decodeManifest() returned a classic-dashboard usage error: %v", err)
+			}
+			if tt.errContains == "" {
+				if err != nil {
+					t.Fatalf("decodeManifest() unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("decodeManifest() error = %v, want it to contain %q", err, tt.errContains)
 			}
 		})
 	}
