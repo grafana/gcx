@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -355,6 +356,14 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 			// path (one gcx.error document in agent mode, exit 1), matching
 			// the batch cohort's zero-success convention.
 			if len(renderErrs) > 0 && len(receipt.Files) == 0 {
+				// Grafana answers renders with a 5xx page when it has no
+				// renderer. Ask it before claiming so; when the answer is
+				// unavailable or positive, keep the original errors.
+				if failed, status, others := serverErrorRenders(args, errs); len(failed) > 0 {
+					if available, ok := client.RendererAvailable(ctx); ok && !available {
+						return missingRendererError(failed, status, others)
+					}
+				}
 				return errors.Join(renderErrs...)
 			}
 
@@ -379,6 +388,56 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// serverErrorRenders splits failed renders into the names that failed with an
+// HTTP 5xx response, the first such status, and every other failure.
+func serverErrorRenders(names []string, errs []error) ([]string, int, []error) {
+	var failed []string
+	var others []error
+	status := 0
+	for i, err := range errs {
+		if err == nil {
+			continue
+		}
+		statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+		if !ok || statusErr.Status < http.StatusInternalServerError {
+			others = append(others, err)
+			continue
+		}
+		failed = append(failed, strconv.Quote(names[i]))
+		if status == 0 {
+			status = statusErr.Status
+		}
+	}
+	return failed, status, others
+}
+
+// missingRendererError reports renders that failed because Grafana has no
+// image renderer. It replaces the raw error page with the cause, keeps the
+// failing names and status, and lists failures with other causes unchanged.
+func missingRendererError(failed []string, status int, others []error) error {
+	var details strings.Builder
+	fmt.Fprintf(&details,
+		"Grafana has no image renderer, so it can't render snapshots.\n\n"+
+			"Rendering %s failed with HTTP %d %s, and Grafana reports that no renderer is available.",
+		strings.Join(failed, ", "), status, http.StatusText(status))
+	if len(others) > 0 {
+		details.WriteString("\n\nOther failures:")
+		for _, err := range others {
+			details.WriteString("\n" + err.Error())
+		}
+	}
+
+	return &gcxerrors.DetailedError{
+		Summary: gcxerrors.SummaryEndpointNotAvailable,
+		Details: details.String(),
+		Suggestions: []string{
+			"Run the Grafana Image Renderer as a remote rendering service, set [rendering] server_url and callback_url in the Grafana configuration, and restart Grafana",
+			"Check for installed renderer plugins: gcx api /api/plugins?type=renderer",
+		},
+		DocsLink: "https://grafana.com/docs/grafana/latest/setup-grafana/image-rendering/",
+	}
 }
 
 func renderSnapshotTable(w io.Writer, results []dashboards.SnapshotResult) error {

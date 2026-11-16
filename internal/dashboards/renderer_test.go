@@ -11,9 +11,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/dashboards"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"k8s.io/client-go/rest"
 )
 
@@ -475,4 +477,122 @@ func TestRender_Errors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRender_ErrorCarriesHTTPResponse(t *testing.T) {
+	longText := strings.Repeat("é", 400) // 800 bytes of two-byte runes
+
+	tests := []struct {
+		name              string
+		contentType       string
+		body              string
+		wantServerMessage string // exact, unless empty
+		wantMaxServerLen  int    // when > 0, ServerMessage is at most this long
+	}{
+		{
+			name:        "HTML error page",
+			contentType: "text/html; charset=UTF-8",
+			body:        "<!DOCTYPE html>\n<html lang=\"en\"><head><title>Grafana</title></head><body>error</body></html>",
+		},
+		{
+			name:              "JSON error body is kept unchanged",
+			contentType:       "application/json",
+			body:              `{"message":"Rendering failed: no renderer"}`,
+			wantServerMessage: `{"message":"Rendering failed: no renderer"}`,
+		},
+		{
+			name:             "long plain text is bounded on a rune boundary",
+			contentType:      "text/plain",
+			body:             longText,
+			wantMaxServerLen: 256 + len("…"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", tt.contentType)
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			_, err := newTestClient(t, server).Render(context.Background(), dashboards.RenderRequest{UID: "abc"})
+
+			statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+			if !ok {
+				t.Fatalf("Render() error = %v (%T), want *gcxerrors.HTTPStatusError", err, err)
+			}
+			if statusErr.Status != http.StatusInternalServerError {
+				t.Errorf("Status = %d, want 500", statusErr.Status)
+			}
+			if statusErr.ContentType != tt.contentType {
+				t.Errorf("ContentType = %q, want %q", statusErr.ContentType, tt.contentType)
+			}
+			if !strings.HasPrefix(statusErr.Error(), "render request failed with status 500: ") {
+				t.Errorf("Error() = %q, want the existing render failure prefix", statusErr.Error())
+			}
+			if strings.Contains(statusErr.Error(), "<") {
+				t.Errorf("Error() = %q, want no markup", statusErr.Error())
+			}
+			if tt.wantServerMessage != "" && statusErr.ServerMessage != tt.wantServerMessage {
+				t.Errorf("ServerMessage = %q, want %q", statusErr.ServerMessage, tt.wantServerMessage)
+			}
+			if tt.wantMaxServerLen > 0 {
+				if len(statusErr.ServerMessage) > tt.wantMaxServerLen {
+					t.Errorf("ServerMessage is %d bytes, want at most %d", len(statusErr.ServerMessage), tt.wantMaxServerLen)
+				}
+				if !utf8.ValidString(statusErr.ServerMessage) || !strings.HasSuffix(statusErr.ServerMessage, "…") {
+					t.Errorf("ServerMessage = %q, want valid UTF-8 ending in an ellipsis", statusErr.ServerMessage)
+				}
+			}
+		})
+	}
+}
+
+func TestRendererAvailable(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        int
+		body          string
+		wantAvailable bool
+		wantOK        bool
+	}{
+		{name: "no renderer", status: http.StatusOK, body: `{"rendererAvailable":false}`, wantOK: true},
+		{name: "renderer present", status: http.StatusOK, body: `{"rendererAvailable":true}`, wantAvailable: true, wantOK: true},
+		{name: "setting absent", status: http.StatusOK, body: `{"buildInfo":{}}`},
+		{name: "forbidden", status: http.StatusForbidden, body: `{"message":"forbidden"}`},
+		{name: "not JSON", status: http.StatusOK, body: "<html></html>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/frontend/settings" {
+					t.Errorf("unexpected request path %q", r.URL.Path)
+				}
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+
+			available, ok := newTestClient(t, server).RendererAvailable(context.Background())
+			if available != tt.wantAvailable || ok != tt.wantOK {
+				t.Errorf("RendererAvailable() = (%v, %v), want (%v, %v)", available, ok, tt.wantAvailable, tt.wantOK)
+			}
+		})
+	}
+
+	t.Run("cancelled context", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"rendererAvailable":false}`)
+		}))
+		defer server.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, ok := newTestClient(t, server).RendererAvailable(ctx); ok {
+			t.Error("RendererAvailable() ok = true for a cancelled context, want false")
+		}
+	})
 }
