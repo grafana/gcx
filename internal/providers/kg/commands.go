@@ -353,19 +353,7 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 	}
 	var allResults []SearchResult
 	for _, et := range entityTypes {
-		matchers := append([]PropertyMatcher{{Name: "name", Op: "IS NOT NULL", Type: "String"}}, propertyFilters...)
-		req := SearchRequest{
-			TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
-			FilterCriteria: []EntityMatcher{{
-				EntityType:                 et,
-				HavingAssertion:            assertionsOnly,
-				HavingPropagatedAssertions: assertionsOnly && includePropagated,
-				PropertyMatchers:           matchers,
-			}},
-			ScopeCriteria: sc,
-			PageNum:       pageNum,
-		}
-		page, err := client.Search(ctx, req)
+		page, err := searchTypePage(ctx, client, et, assertionsOnly, includePropagated, sc, startMs, endMs, pageNum, propertyFilters)
 		if err != nil {
 			var apiErr *APIError
 			if errors.As(err, &apiErr) && apiErr.IsServerError() {
@@ -374,7 +362,7 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 			}
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
-		if page.MaxLimitHit || (!page.LastPage && len(page.Entities) > 0) {
+		if hasMorePages(page) {
 			cmdio.EmitHint(cmd.ErrOrStderr(),
 				fmt.Sprintf("more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace",
 					et, pageNum, len(page.Entities), pageNum+1),
@@ -1965,10 +1953,6 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
-			entityTypes, err := resolveEntityTypes(cmd, client, listType)
-			if err != nil {
-				return err
-			}
 			var propertyFilters []PropertyMatcher
 			for _, raw := range listPropertyRaw {
 				pm, err := parsePropertyFlag(raw)
@@ -1985,14 +1969,41 @@ analysis, use 'gcx kg entities inspect' instead.`,
 				}
 				insightMatchers = append(insightMatchers, im)
 			}
-			// --insight requests inlined assertion data so we can filter client-side.
-			fetchInsights := len(insightMatchers) > 0
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, fetchInsights, true, listScope.scopeCriteria(), startMs, endMs, listPage, propertyFilters)
-			if err != nil {
-				return err
+			search := typeSearch{
+				// --insight requests inlined assertion data so we can filter client-side.
+				assertionsOnly:    len(insightMatchers) > 0,
+				includePropagated: true,
+				sc:                listScope.scopeCriteria(),
+				startMs:           startMs,
+				endMs:             endMs,
+				propertyFilters:   propertyFilters,
 			}
 			if len(insightMatchers) > 0 {
-				results = filterByInsightMatchers(results, insightMatchers)
+				search.keep = func(rs []SearchResult) []SearchResult {
+					return filterByInsightMatchers(rs, insightMatchers)
+				}
+			}
+			maxPages := maxListPages
+			if !cmd.Flags().Changed("limit") {
+				maxPages = maxDefaultListPages
+			}
+			run := func(entityType string) ([]SearchResult, error) {
+				entityTypes, err := resolveEntityTypes(cmd, client, entityType)
+				if err != nil {
+					return nil, err
+				}
+				if cmd.Flags().Changed("page") {
+					rs, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, search.assertionsOnly, search.includePropagated, search.sc, startMs, endMs, listPage, propertyFilters)
+					if err != nil {
+						return nil, err
+					}
+					return search.filter(rs), nil
+				}
+				return searchByTypesAllPages(cmd.Context(), cmd, client, entityTypes, search, listOpts.Limit, maxPages)
+			}
+			results, err := run(listType)
+			if err != nil {
+				return err
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
@@ -2004,7 +2015,7 @@ analysis, use 'gcx kg entities inspect' instead.`,
 		},
 	}
 	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
-	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
+	listCmd.Flags().IntVar(&listPage, "page", 0, "Return only this backend page (0-based); without --page, list follows the backend's pages until --limit is reached")
 	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)")
 	listCmd.Flags().StringArrayVar(&listInsightRaw, "insight", nil, "Filter to entities with an active insight: 'any' (has any insight) or key=value (key=~value for substring; name only); valid keys: name, severity (critical|warning|info); repeatable — multiple predicates must match the same assertion")
 	listScope.register(listCmd)
@@ -2028,7 +2039,7 @@ func (o *entitiesListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, EntityTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of entities to return; list fetches further backend pages as needed, up to 10 per type when --limit is not passed and 50 when it is (0 means no limit, still at most 50 pages)")
 }
 
 func EntityTable() cmdio.Table[SearchResult] {

@@ -1,0 +1,171 @@
+package kg
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/spf13/cobra"
+)
+
+// maxListPages bounds how many backend pages 'entities list' follows for one
+// entity type when --limit is passed (including --limit 0).
+const maxListPages = 50
+
+// maxDefaultListPages bounds how many backend pages 'entities list' follows
+// for one entity type when --limit is not passed. A backend page holds more
+// rows than the default limit, so further pages are read only when a
+// client-side filter (--insight, or a scope the backend did not apply) drops
+// rows.
+const maxDefaultListPages = 10
+
+// typeSearch is an entity search without its entity type: the request
+// fields of searchTypePage plus the client-side filter applied to each page.
+type typeSearch struct {
+	assertionsOnly    bool
+	includePropagated bool
+	sc                *ScopeCriteria
+	startMs, endMs    int64
+	propertyFilters   []PropertyMatcher
+	// keep filters a page client-side; nil keeps every row.
+	keep func([]SearchResult) []SearchResult
+}
+
+func (s typeSearch) page(ctx context.Context, client *Client, entityType string, pageNum int) (SearchPage, error) {
+	return searchTypePage(ctx, client, entityType, s.assertionsOnly, s.includePropagated, s.sc, s.startMs, s.endMs, pageNum, s.propertyFilters)
+}
+
+func (s typeSearch) filter(rows []SearchResult) []SearchResult {
+	if s.keep == nil {
+		return rows
+	}
+	return s.keep(rows)
+}
+
+// searchTypePage fetches one backend page of entities of a single type.
+func searchTypePage(ctx context.Context, client *Client, entityType string, assertionsOnly, includePropagated bool, sc *ScopeCriteria, startMs, endMs int64, pageNum int, propertyFilters []PropertyMatcher) (SearchPage, error) {
+	matchers := append([]PropertyMatcher{{Name: "name", Op: "IS NOT NULL", Type: "String"}}, propertyFilters...)
+	req := SearchRequest{
+		TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
+		FilterCriteria: []EntityMatcher{{
+			EntityType:                 entityType,
+			HavingAssertion:            assertionsOnly,
+			HavingPropagatedAssertions: assertionsOnly && includePropagated,
+			PropertyMatchers:           matchers,
+		}},
+		ScopeCriteria: sc,
+		PageNum:       pageNum,
+	}
+	return client.Search(ctx, req)
+}
+
+// hasMorePages reports whether the backend signalled a further page after p.
+func hasMorePages(p SearchPage) bool {
+	return p.MaxLimitHit || (!p.LastPage && len(p.Entities) > 0)
+}
+
+// searchByTypesAllPages is searchByTypes for 'entities list' without --page:
+// for each type it follows the backend's pages until the backend reports the
+// last page, limit matching entities are collected (limit <= 0 means no
+// limit) or maxPages pages are read. A row that an earlier page returned is
+// skipped, and only rows that pass s.keep count against limit. A failure on
+// the first page of a type is handled as searchByTypes does; a failure on a
+// later page aborts the listing, since the rows read so far would be an
+// incomplete answer.
+func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Client, entityTypes []string, s typeSearch, limit int64, maxPages int) ([]SearchResult, error) {
+	if s.startMs == 0 && s.endMs == 0 {
+		now := time.Now().UnixMilli()
+		s.startMs = now - 3600000
+		s.endMs = now
+	}
+	all := []SearchResult{}
+	for _, et := range entityTypes {
+		// s.keep runs over every row read for the type so far, not page by
+		// page, so a filter can judge each row against the type's other rows.
+		var raw, kept []SearchResult
+		// seen holds the rows of earlier pages: the backend can return a row
+		// again on a later page, and a repeat is skipped.
+		seen := map[string]bool{}
+		for pageNum := 0; ; pageNum++ {
+			if pageNum == maxPages {
+				msg := fmt.Sprintf("stopped after %d backend pages for type %q — the list is incomplete; narrow with --property/--namespace, or count with 'gcx kg graph query'", maxPages, et)
+				if maxPages < maxListPages {
+					msg += fmt.Sprintf("; pass --limit N or --limit 0 to read up to %d pages", maxListPages)
+				}
+				cmdio.EmitHint(cmd.ErrOrStderr(), msg, "")
+				break
+			}
+			page, err := s.page(ctx, client, et, pageNum)
+			if err != nil {
+				if pageNum > 0 {
+					return nil, listPageError(et, pageNum, len(raw), err)
+				}
+				var apiErr *APIError
+				if errors.As(err, &apiErr) && apiErr.IsServerError() {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping entity type %q — server error: %v\n", et, apiErr)
+					break
+				}
+				return nil, fmt.Errorf("search entity type %s: %w", et, err)
+			}
+			pageKeys := make([]string, 0, len(page.Entities))
+			for _, r := range page.Entities {
+				k := rowKey(r)
+				if !seen[k] {
+					raw = append(raw, r)
+				}
+				pageKeys = append(pageKeys, k)
+			}
+			for _, k := range pageKeys {
+				seen[k] = true
+			}
+			kept = s.filter(raw)
+			if !hasMorePages(page) || (limit > 0 && int64(len(all)+len(kept)) >= limit) {
+				break
+			}
+		}
+		all = append(all, kept...)
+	}
+	return all, nil
+}
+
+// listPageError reports a failed backend page after the first: the listing
+// stops with an error instead of printing a partial list as if it were whole.
+func listPageError(entityType string, pageNum, read int, err error) error {
+	return gcxerrors.DetailedError{
+		Summary: fmt.Sprintf("listing %s entities failed on backend page %d", entityType, pageNum),
+		Details: fmt.Sprintf("Pages 0-%d returned %d rows, but the list would be incomplete, so none are printed.", pageNum-1, read),
+		Parent:  err,
+		Suggestions: []string{
+			"Retry the command",
+			"Narrow the list with --property or --env/--namespace/--site so it needs fewer pages",
+			"For a count, use 'gcx kg graph query' with count()",
+		},
+	}
+}
+
+// rowKey identifies a search row across pages: by its id, or by type, name
+// and scope when the row has no id.
+func rowKey(r SearchResult) string {
+	if r.ID != 0 {
+		return strconv.Itoa(r.ID)
+	}
+	dims := make([]string, 0, len(r.Scope))
+	for k, v := range r.Scope {
+		dims = append(dims, k+"="+v)
+	}
+	sort.Strings(dims)
+	return resultType(r) + "\x00" + r.Name + "\x00" + strings.Join(dims, ",")
+}
+
+func resultType(r SearchResult) string {
+	if r.Type != "" {
+		return r.Type
+	}
+	return r.EntityType
+}

@@ -4,6 +4,16 @@
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its
   `--share-link` URL now opens an instant query in Explore too. (#1785)
+- `gcx kg entities list` now follows the backend's result pages until
+  `--limit` entities are collected. `--limit 0` used to return the first
+  backend page only; it now reads up to 50 pages per type. Without `--limit`,
+  list reads at most 10 pages per type, which matters only when rows are
+  filtered client-side (as `--insight` does), and the hint printed at that
+  cap says that passing `--limit` reads up to 50. A row that an earlier page
+  returned is skipped, so it is not listed twice. A failed page after the
+  first now ends the command with an error that names the type and the page,
+  instead of printing a partial list. `--page N` still returns that one
+  backend page.
 - `gcx logs query` and `gcx datasources loki query` now reject a negative
   `--limit`, as generic `gcx datasources query` already did. A negative value
   used to run with Loki's default line limit and exit 0. `--limit 0` still
