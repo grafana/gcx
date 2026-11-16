@@ -573,7 +573,7 @@ func ValidateEndpointURL(endpoint string) error {
 		return errors.New("endpoint has no host")
 	}
 
-	hostname := u.Hostname()
+	hostname := strings.ToLower(u.Hostname())
 
 	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
 		return nil
@@ -601,6 +601,7 @@ func hasTrustedDomainSuffix(hostname string) bool {
 	return false
 }
 
+// Trusted Grafana Cloud portal roots for the direct GCOM OAuth flow.
 var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
 	"grafana.com",
 	"grafana-dev.com",
@@ -620,7 +621,7 @@ func validateGCOMURL(rawURL string) error {
 		return errors.New("URL has no host")
 	}
 
-	hostname := u.Hostname()
+	hostname := strings.ToLower(u.Hostname())
 
 	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
 		return nil
