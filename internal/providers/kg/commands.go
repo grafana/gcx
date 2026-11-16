@@ -1978,6 +1978,9 @@ analysis, use 'gcx kg entities inspect' instead.`,
 				}
 				insightMatchers = append(insightMatchers, im)
 			}
+			// The scope is also applied client-side: some backends ignore the
+			// search's scope criteria for plain listings.
+			scope := listScope.scopeMap()
 			search := typeSearch{
 				// --insight requests inlined assertion data so we can filter client-side.
 				assertionsOnly:    len(insightMatchers) > 0,
@@ -1987,9 +1990,11 @@ analysis, use 'gcx kg entities inspect' instead.`,
 				endMs:             endMs,
 				propertyFilters:   propertyFilters,
 			}
-			if len(insightMatchers) > 0 {
+			if len(insightMatchers) > 0 || len(scope) > 0 {
+				dims := newScopeDims(cmd.Context(), client, startMs, endMs)
+				search.dims = dims
 				search.keep = func(rs []SearchResult) []SearchResult {
-					return filterByInsightMatchers(rs, insightMatchers)
+					return filterByInsightMatchers(filterByScope(rs, scope, dims), insightMatchers)
 				}
 			}
 			maxPages := maxListPages
@@ -2538,6 +2543,11 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 					startMs:         startMs,
 					endMs:           endMs,
 					propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: name}},
+				}
+				if want := inspectScope.scopeMap(); want != nil {
+					dims := newScopeDims(cmd.Context(), client, startMs, endMs)
+					search.dims = dims
+					search.keep = func(rs []SearchResult) []SearchResult { return filterByScope(rs, want, dims) }
 				}
 				checked, cerr := checkEntityType(cmd.Context(), client, entityType, typeCheck{
 					verb:        "inspect",

@@ -32,6 +32,18 @@
   not-found error says that the default window is the last hour. With a
   window passed, an empty window gives the same result as before. If the type
   counts or the schema cannot be read, the result is unchanged too.
+- `gcx kg entities list` now applies `--env`, `--namespace` and `--site` to
+  the rows it returns, before they count against `--limit`, and also with
+  `--page N`. Some backends ignore the scope for plain listings (without
+  `--insight`) and returned entities from every scope. A row is now dropped
+  when its scope has a requested dimension with another value, or lacks a
+  dimension that its entity type has. A type has the dimension when a row of
+  that type that list has read carries it or, failing that, when the window's
+  schema (`gcx kg meta schema`) lists it for the type; list reads the schema
+  only in that case. Rows of a type without the dimension, such as nodes or
+  clusters for `--namespace`, are kept, and `none` matches rows without the
+  dimension. A backend that applies the scope filters the same way, so there
+  the output is unchanged.
 - `gcx logs query` and `gcx datasources loki query` now reject a negative
   `--limit`, as generic `gcx datasources query` already did. A negative value
   used to run with Loki's default line limit and exit 0. `--limit 0` still

@@ -36,7 +36,7 @@ func runEntities(t *testing.T, f *fakeKG, args string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
-func entitiesFake() *fakeKG {
+func entitiesFake(applyScope bool) *fakeKG {
 	api := svc("api", "deployment")
 	api.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
 	db := svc("db", "statefulset")
@@ -59,6 +59,7 @@ func entitiesFake() *fakeKG {
 				{Name: "node-2", Type: "Node", Scope: map[string]string{"env": "dev"}},
 			},
 		},
+		applyScope: applyScope,
 	}
 }
 
@@ -75,6 +76,51 @@ func TestEntitiesListCommand(t *testing.T) {
 		wantStderr   string
 		wantNoStderr string
 	}{
+		{
+			name:      "--page 0 applies the scope",
+			args:      "list --type Service --page 0 --namespace ns1 -o json " + testWindow,
+			wantNames: []string{"api"},
+		},
+		{
+			name:      "--page 0 with none",
+			args:      "list --type Service --page 0 --namespace none -o json " + testWindow,
+			wantNames: []string{"gateway"},
+		},
+		{
+			name:      "rows of a type without the dimension are kept",
+			args:      "list --type Node --page 0 --namespace ns1 -o json " + testWindow,
+			wantNames: []string{"node-1", "node-2"},
+		},
+		{
+			name:      "a backend that applies the scope: output unchanged",
+			fake:      entitiesFake(true),
+			args:      "list --type Node --env prod --namespace ns1 -o json " + testWindow,
+			wantNames: []string{"node-1"},
+		},
+		{
+			name:      "a backend that applies the scope: a type with the dimension",
+			fake:      entitiesFake(true),
+			args:      "list --type Service --namespace ns1 -o json " + testWindow,
+			wantNames: []string{"api"},
+		},
+		{
+			name:      "a backend that applies the scope: --insight any",
+			fake:      entitiesFake(true),
+			args:      "list --type Node --namespace ns1 --insight any -o json " + testWindow,
+			wantNames: []string{"node-1"},
+		},
+		{
+			name:      "a backend that applies the scope: --namespace none",
+			fake:      entitiesFake(true),
+			args:      "list --type Node --namespace none -o json " + testWindow,
+			wantNames: []string{"node-1", "node-2"},
+		},
+		{
+			name:           "a name lookup does not hide that the type has a namespace",
+			args:           "list --type Service --property name=gateway --namespace ns1 -o json " + testWindow,
+			wantNames:      []string{},
+			wantCountCalls: 1,
+		},
 		{
 			name:      "a found type makes no count call",
 			args:      "list --type Service -o json " + testWindow,
@@ -137,7 +183,7 @@ func TestEntitiesListCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.fake
 			if f == nil {
-				f = entitiesFake()
+				f = entitiesFake(false)
 			}
 			stdout, stderr, err := runEntities(t, f, tt.args)
 			assert.Contains(t, stderr, tt.wantStderr)
@@ -236,7 +282,7 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.fake
 			if f == nil {
-				f = entitiesFake()
+				f = entitiesFake(false)
 			}
 			_, _, err := runEntities(t, f, tt.args)
 			if tt.wantErr == "" {

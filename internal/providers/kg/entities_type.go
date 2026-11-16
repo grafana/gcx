@@ -57,6 +57,7 @@ func checkEntityType(ctx context.Context, client *Client, entityType string, c t
 		return entityType, nil //nolint:nilerr // best-effort: type validation is advisory
 	}
 	schema := processGraphSchema(schemaResp)
+	c.search.dims.seed(schema) // the probes' scope filter reads the same schema
 	schemaTypes := make([]string, 0, len(schema.EntityTypes))
 	for _, et := range schema.EntityTypes {
 		schemaTypes = append(schemaTypes, et.Type)
