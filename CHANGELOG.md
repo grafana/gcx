@@ -1,5 +1,12 @@
 ## Unreleased
 
+- `gcx alert state-history list` now works when Grafana's alert state
+  historian uses the annotations backend, the default when Loki state history
+  isn't configured. It failed on every query with `Failed to decode state
+  history line`, because it only read the Loki frame layout. It now shows the
+  previous and current state, values, and errors of each transition. Rule
+  title and instance labels are not shown for this backend, because Grafana
+  returns them only inside a free-form text field. (#1661)
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its

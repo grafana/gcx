@@ -29,6 +29,25 @@ const (
 	dfColLabels = "labels"
 )
 
+// Column names of the frame returned by the annotations history backend
+// (grafana/pkg/services/ngalert/state/historian.AnnotationBackend): one
+// transition per row as time, free-form text, previous state, next state, and
+// the annotation's JSON data. The rule UID is carried in the field labels.
+const (
+	dfColPrev = "prev"
+	dfColNext = "next"
+	dfColData = "data"
+
+	dfLabelRuleUID = "ruleUID"
+)
+
+// annotationData mirrors the JSON object stored in the annotations frame's
+// "data" column. Only the fields gcx surfaces are decoded.
+type annotationData struct {
+	Values map[string]any `json:"values"`
+	Error  string         `json:"error"`
+}
+
 // StateHistoryOptions configures a state-history query.
 type StateHistoryOptions struct {
 	// RuleUID filters to a single rule. The annotations history backend
@@ -143,6 +162,10 @@ func transitionsFromFrame(frame *dataframe.Frame) ([]StateTransition, error) {
 		cols[f.Name] = i
 	}
 
+	if isAnnotationsFrame(cols) {
+		return transitionsFromAnnotationsFrame(frame, cols)
+	}
+
 	timeCol := columnValues(frame, cols, dfColTime, 0)
 	lineCol := columnValues(frame, cols, dfColLine, 1)
 	labelCol := columnValues(frame, cols, dfColLabels, 2)
@@ -182,6 +205,73 @@ func transitionsFromFrame(frame *dataframe.Frame) ([]StateTransition, error) {
 		return transitions[i].Time.After(transitions[j].Time)
 	})
 	return transitions, nil
+}
+
+// isAnnotationsFrame reports whether the frame uses the annotations history
+// backend layout rather than the Loki layout.
+func isAnnotationsFrame(cols map[string]int) bool {
+	_, hasLine := cols[dfColLine]
+	_, hasPrev := cols[dfColPrev]
+	_, hasNext := cols[dfColNext]
+	return !hasLine && hasPrev && hasNext
+}
+
+// transitionsFromAnnotationsFrame flattens a frame from the annotations
+// history backend into StateTransition records ordered newest-first. The
+// "text" column is free-form (rule title, labels, and values formatted into
+// one string), so rule title and instance labels are not extracted from it.
+func transitionsFromAnnotationsFrame(frame *dataframe.Frame, cols map[string]int) ([]StateTransition, error) {
+	timeCol := columnValues(frame, cols, dfColTime, -1)
+	prevCol := columnValues(frame, cols, dfColPrev, -1)
+	nextCol := columnValues(frame, cols, dfColNext, -1)
+	dataCol := columnValues(frame, cols, dfColData, -1)
+
+	var ruleUID string
+	if idx, ok := cols[dfColTime]; ok {
+		ruleUID = frame.Schema.Fields[idx].Labels[dfLabelRuleUID]
+	}
+
+	transitions := make([]StateTransition, 0, len(timeCol))
+	for i := range timeCol {
+		st := StateTransition{
+			Time:    frameTime(timeCol[i]),
+			RuleUID: ruleUID,
+		}
+		if i < len(prevCol) {
+			st.Previous, _ = prevCol[i].(string)
+		}
+		if i < len(nextCol) {
+			st.Current, _ = nextCol[i].(string)
+		}
+		if i < len(dataCol) {
+			d, err := decodeAnnotationData(dataCol[i])
+			if err != nil {
+				return nil, err
+			}
+			st.Values = d.Values
+			st.Error = d.Error
+		}
+		transitions = append(transitions, st)
+	}
+
+	sort.SliceStable(transitions, func(i, j int) bool {
+		return transitions[i].Time.After(transitions[j].Time)
+	})
+	return transitions, nil
+}
+
+// decodeAnnotationData decodes the annotations frame's "data" value, which
+// Grafana sends as a JSON-encoded string.
+func decodeAnnotationData(v any) (annotationData, error) {
+	var d annotationData
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return d, nil
+	}
+	if err := json.Unmarshal([]byte(s), &d); err != nil {
+		return d, fmt.Errorf("failed to decode state history data: %w", err)
+	}
+	return d, nil
 }
 
 // columnValues returns the values for the named schema field, falling back to
