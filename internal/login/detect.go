@@ -73,13 +73,13 @@ func isLocalHostname(host string) bool {
 // A valid response with no Cloud markers is definitively on-prem (FR-006c).
 // Any error, timeout, or non-200 status yields TargetUnknown.
 //
-// httpClient is forwarded to FetchAnonymousSettings so that callers can supply
+// httpClient is forwarded to FetchFrontendSettings so that callers can supply
 // a TLS-aware client for mTLS servers. When nil, a default client is used.
 func probeTarget(ctx context.Context, server string, httpClient *http.Client) (Target, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	settings, err := grafana.FetchAnonymousSettings(probeCtx, server, httpClient)
+	settings, err := grafana.FetchFrontendSettings(probeCtx, server, httpClient)
 	if err != nil {
 		// Any error (network failure, timeout, non-200, decode failure) → TargetUnknown.
 		return TargetUnknown, nil

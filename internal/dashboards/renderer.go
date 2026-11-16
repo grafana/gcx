@@ -11,8 +11,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
 
@@ -20,6 +24,9 @@ const (
 	renderSoloPanelPathFmt = "/render/d-solo/%s/"
 	renderDashboardPathFmt = "/render/d/%s/"
 	renderTimeoutOverhead  = 30 * time.Second
+
+	renderErrorExcerptBytes = 256
+	rendererProbeTimeout    = 10 * time.Second
 )
 
 // RenderRequest holds parameters for a dashboard render request.
@@ -109,11 +116,21 @@ func (c *Client) Render(ctx context.Context, req RenderRequest) ([]byte, error) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		excerpt := string(body)
-		if len(excerpt) > 256 {
-			excerpt = excerpt[:256]
+		contentType := resp.Header.Get("Content-Type")
+		serverMessage := boundedText(body, renderErrorExcerptBytes)
+		// The message also appears in joined errors and in snapshot receipts,
+		// where no converter cleans it up, so it never carries raw markup.
+		// ServerMessage keeps the body for the converters' HTML detection.
+		detail := serverMessage
+		if httputils.IsHTML(contentType, body) {
+			detail = "Grafana returned an HTML error page"
 		}
-		return nil, fmt.Errorf("render request failed with status %d: %s", resp.StatusCode, excerpt)
+		return nil, &gcxerrors.HTTPStatusError{
+			Status:        resp.StatusCode,
+			Message:       fmt.Sprintf("render request failed with status %d: %s", resp.StatusCode, detail),
+			ServerMessage: serverMessage,
+			ContentType:   contentType,
+		}
 	}
 
 	if len(body) == 0 {
@@ -121,6 +138,36 @@ func (c *Client) Render(ctx context.Context, req RenderRequest) ([]byte, error) 
 	}
 
 	return body, nil
+}
+
+// RendererAvailable reports whether Grafana says it can render images, read
+// from rendererAvailable in /api/frontend/settings. Grafana sets it when a
+// renderer plugin is installed or [rendering] server_url points at a remote
+// rendering service. The second result is false when the setting could not be
+// read, so callers must not draw conclusions from the first in that case.
+func (c *Client) RendererAvailable(ctx context.Context) (bool, bool) {
+	ctx, cancel := context.WithTimeout(ctx, rendererProbeTimeout)
+	defer cancel()
+
+	settings, err := grafana.FetchFrontendSettings(ctx, c.restConfig.Host, c.httpClient)
+	if err != nil || settings.RendererAvailable == nil {
+		return false, false
+	}
+	return *settings.RendererAvailable, true
+}
+
+// boundedText returns body as trimmed, valid UTF-8 of at most limit bytes,
+// cut on a rune boundary and marked with an ellipsis when shortened.
+func boundedText(body []byte, limit int) string {
+	text := strings.ToValidUTF8(strings.TrimSpace(string(body)), "�")
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
 }
 
 func (c *Client) buildRenderURL(req RenderRequest) (string, error) {

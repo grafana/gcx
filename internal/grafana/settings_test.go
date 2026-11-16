@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/grafana"
+	"k8s.io/client-go/rest"
 )
 
-func TestFetchAnonymousSettings(t *testing.T) {
+func TestFetchFrontendSettings(t *testing.T) {
 	t.Parallel()
 
 	validSettings := grafana.FrontendSettings{
@@ -87,7 +88,7 @@ func TestFetchAnonymousSettings(t *testing.T) {
 				cancel() // cancel immediately before the call
 			}
 
-			got, err := grafana.FetchAnonymousSettings(ctx, srv.URL, nil)
+			got, err := grafana.FetchFrontendSettings(ctx, srv.URL, nil)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil (settings=%+v)", got)
@@ -104,5 +105,26 @@ func TestFetchAnonymousSettings(t *testing.T) {
 				t.Errorf("BuildInfo.GrafanaURL = %q, want %q", got.BuildInfo.GrafanaURL, tc.wantURL)
 			}
 		})
+	}
+}
+
+func TestFetchFrontendSettingsAuthenticatedClient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/frontend/settings" || r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("unexpected request: path=%s auth=%q", r.URL.Path, r.Header.Get("Authorization"))
+		}
+		_, _ = w.Write([]byte(`{"rendererAvailable":false}`))
+	}))
+	defer server.Close()
+	client, err := rest.HTTPClientFor(&rest.Config{Host: server.URL, BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := grafana.FetchFrontendSettings(context.Background(), server.URL+"/", client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.RendererAvailable == nil || *settings.RendererAvailable {
+		t.Fatalf("expected explicit false, got %+v", settings)
 	}
 }

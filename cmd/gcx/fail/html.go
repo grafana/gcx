@@ -3,14 +3,13 @@ package fail
 import (
 	"errors"
 	"fmt"
-	"mime"
 	"net/http"
-	"strings"
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,9 +17,7 @@ import (
 
 // HTML affects rendering only. Status classification remains authoritative.
 func htmlResponseDetails(body, contentType string, status int) (string, bool) {
-	mediaType, _, _ := mime.ParseMediaType(contentType)
-	detected := http.DetectContentType([]byte(strings.TrimSpace(body)))
-	if mediaType != "text/html" && mediaType != "application/xhtml+xml" && !strings.HasPrefix(detected, "text/html") {
+	if !httputils.IsHTML(contentType, []byte(body)) {
 		return "", false
 	}
 	return fmt.Sprintf("invalid response from server: expected an API response, got an HTML page (HTTP %d %s)", status, http.StatusText(status)), true

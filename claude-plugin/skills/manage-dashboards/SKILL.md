@@ -110,7 +110,8 @@ GCX_AGENT_MODE=true gcx dashboards snapshot <dashboard-name> --output-dir ./snap
 
 Read the returned `file_path` PNG and summarize what you see; do not just report the path.
 
-Troubleshooting: `plugin not found`/renderer 500 = image renderer unavailable; wrong data = inspect
+Troubleshooting: `Endpoint not available` naming no image renderer = Grafana has no renderer, so report the
+blocker and its suggestions; `API error` with HTTP 5xx = the render failed on the server; wrong data = inspect
 template variables and rerun with `--var`; auth errors = check `gcx config check`.
 
 ## Version Restore Safety
