@@ -29,8 +29,9 @@ const promoteDefinition = `To promote a staged configuration is to merge it perm
 Alertmanager configuration. Grafana adds its routing tree, receivers, time
 intervals, templates and inhibition rules as editable Grafana-managed
 resources, with the renames that the result shows, and removes the staged
-configuration. A promotion does not discard the imported content, and you
-cannot undo it.`
+configuration. After a promotion, the imported resources stay as normal
+Grafana resources, and the staged configuration is removed. You cannot revert
+a promotion: to remove the resources, delete them one by one.`
 
 // alertmanagerImportKind is the mutation target kind of an imported
 // Alertmanager configuration.
