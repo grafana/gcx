@@ -29,9 +29,9 @@ const promoteDefinition = `To promote a staged configuration is to merge it perm
 Alertmanager configuration. Grafana adds its routing tree, receivers, time
 intervals, templates and inhibition rules as editable Grafana-managed
 resources, with the renames that the result shows, and removes the staged
-configuration. After a promotion, the imported resources stay as normal
-Grafana resources, and the staged configuration is removed. You cannot revert
-a promotion: to remove the resources, delete them one by one.`
+configuration. After a promotion, the imported resources are normal Grafana
+resources. You cannot revert a promotion: to remove the resources, delete them
+one by one.`
 
 // alertmanagerImportKind is the mutation target kind of an imported
 // Alertmanager configuration.
@@ -219,8 +219,7 @@ func (o *alertmanagerImportUpsertOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "",
 		"File containing the Alertmanager configuration or the Mimir/Cortex user configuration (YAML/JSON, use - for stdin)")
 	flags.StringArrayVar(&o.Templates, "template", nil,
-		"Template file, or directory of template files, to import; the template name is the file name. "+
-			"A directory adds its regular files, not recursively, and skips names that start with \".\" (repeatable)")
+		"Template file to import; the template name is the file name (repeatable; directories are not accepted)")
 	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate the configuration and report the changes without saving them")
 	flags.BoolVar(&o.Promote, "promote", false,
 		"Merge the configuration permanently into the Grafana configuration instead of staging it (cannot be undone)")
@@ -268,8 +267,14 @@ The input is one of these formats:
   - A plain Alertmanager configuration (route, receivers, ...). gcx sends the
     file content unchanged.
 
-Use --template to add template files. Each template is named after its file.
-A template name must occur only one time.
+Use --template to add a template file. Repeat the flag to add more files. Each
+template is named after its file. A template name must occur only one time.
+
+This command takes the same configuration and template files as
+"mimirtool alertmanager load", for example the files that
+"mimirtool alertmanager get --output-dir DIR" writes (DIR/config.yaml and
+the template files next to it). Pass each template file in DIR, but not
+DIR/config.yaml.
 
 Grafana renames incoming receivers and time intervals whose names are already
 in use, and the result shows each rename. Use --dry-run to see the changes
@@ -278,10 +283,14 @@ Grafana configuration in one step. You cannot undo a promotion, so --promote
 without --dry-run asks for confirmation. Use --force to skip the prompt; agent
 mode requires it, and so does input from stdin.`,
 		Example: `  # Validate a plain Alertmanager configuration without saving it
-  gcx alert alertmanager-imports upsert -f alertmanager.yaml --template ./templates --dry-run
+  gcx alert alertmanager-imports upsert -f alertmanager.yaml --template templates/email.tmpl --dry-run
 
-  # Stage the configuration under the identifier mimir-prod
-  gcx alert alertmanager-imports upsert mimir-prod -f alertmanager.yaml --template ./templates
+  # Stage the configuration under the identifier mimir-prod with two templates
+  gcx alert alertmanager-imports upsert mimir-prod -f alertmanager.yaml \
+    --template templates/email.tmpl --template templates/slack.tmpl
+
+  # The files come from mimirtool alertmanager get --output-dir out
+  gcx alert alertmanager-imports upsert mimir-prod -f out/config.yaml --template out/email.tmpl --template out/slack.tmpl
 
   # Stage a Mimir user configuration read from stdin
   curl -s -H "X-Scope-OrgID: <tenant>" https://mimir.example.com/api/v1/alerts \

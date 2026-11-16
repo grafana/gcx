@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"sigs.k8s.io/yaml"
 )
@@ -114,9 +114,8 @@ func parseAlertmanagerUserConfig(data []byte) (AlertmanagerUserConfig, error) {
 	return cfg, nil
 }
 
-// addTemplateFiles adds the template files at paths to cfg. A path is a file,
-// or a directory whose regular files (not recursive) are added, except the
-// names that start with ".". The base name of each file is its template name.
+// addTemplateFiles adds the template files at paths to cfg. Each path must be
+// a file, not a directory. The base name of each file is its template name.
 func addTemplateFiles(cfg *AlertmanagerUserConfig, inputName string, paths []string) error {
 	sources := make(map[string]string, len(cfg.TemplateFiles))
 	for name := range cfg.TemplateFiles {
@@ -124,65 +123,30 @@ func addTemplateFiles(cfg *AlertmanagerUserConfig, inputName string, paths []str
 	}
 
 	for _, path := range paths {
-		files, err := templateFilePaths(path)
+		info, err := os.Stat(path)
 		if err != nil {
-			return err
+			if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
+				err = pathErr.Err
+			}
+			return fmt.Errorf("--template %s: %w", path, err)
 		}
-		for _, file := range files {
-			name := filepath.Base(file)
-			if source, ok := sources[name]; ok {
-				return fmt.Errorf("template %q from %s is already defined by %s", name, file, source)
-			}
-			content, err := os.ReadFile(file)
-			if err != nil {
-				return fmt.Errorf("failed to read template file %s: %w", file, err)
-			}
-			if cfg.TemplateFiles == nil {
-				cfg.TemplateFiles = make(map[string]string)
-			}
-			cfg.TemplateFiles[name] = string(content)
-			sources[name] = file
+		if info.IsDir() {
+			return fmt.Errorf("--template %s: is a directory; pass template files (for example %s/*.tmpl)", path, path)
 		}
+
+		name := filepath.Base(path)
+		if source, ok := sources[name]; ok {
+			return fmt.Errorf("template %q from %s is already defined by %s", name, path, source)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read template file %s: %w", path, err)
+		}
+		if cfg.TemplateFiles == nil {
+			cfg.TemplateFiles = make(map[string]string)
+		}
+		cfg.TemplateFiles[name] = string(content)
+		sources[name] = path
 	}
 	return nil
-}
-
-// templateFilePaths returns path when it is a regular file, or the regular
-// files directly in path when it is a directory. In a directory, it skips the
-// names that start with ".", such as editor swap files and .DS_Store.
-func templateFilePaths(path string) ([]string, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read template path %s: %w", path, err)
-	}
-	if !info.IsDir() {
-		if !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("template path %s is not a regular file or a directory", path)
-		}
-		return []string{path}, nil
-	}
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read template directory %s: %w", path, err)
-	}
-	var files []string
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		file := filepath.Join(path, entry.Name())
-		// Stat follows symbolic links, so a link to a regular file counts.
-		entryInfo, err := os.Stat(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %w", file, err)
-		}
-		if entryInfo.Mode().IsRegular() {
-			files = append(files, file)
-		}
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("template directory %s contains no regular files (names that start with \".\" are skipped)", path)
-	}
-	return files, nil
 }

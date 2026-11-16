@@ -138,21 +138,14 @@ func TestReadAlertmanagerUserConfig_RequiresFilename(t *testing.T) {
 func TestReadAlertmanagerUserConfig_Templates(t *testing.T) {
 	dir := t.TempDir()
 	input := writeFile(t, dir, "alertmanager.yaml", plainAlertmanagerConfig)
-	single := writeFile(t, dir, "single.tmpl", "single")
-	templateDir := filepath.Join(dir, "templates")
-	require.NoError(t, os.MkdirAll(filepath.Join(templateDir, "nested"), 0o755))
-	writeFile(t, templateDir, "a.tmpl", "a")
-	writeFile(t, templateDir, "b.tmpl", "b")
-	writeFile(t, templateDir, ".a.tmpl.swp", "swap")
-	writeFile(t, templateDir, ".DS_Store", "finder")
-	writeFile(t, filepath.Join(templateDir, "nested"), "ignored.tmpl", "ignored")
+	first := writeFile(t, dir, "first.tmpl", "first")
+	second := writeFile(t, dir, "second.tmpl", "second")
 
-	got, err := alert.ReadAlertmanagerUserConfig(input, nil, []string{single, templateDir})
+	got, err := alert.ReadAlertmanagerUserConfig(input, nil, []string{first, second})
 
 	require.NoError(t, err)
 	assert.Equal(t, plainAlertmanagerConfig, got.AlertmanagerConfig)
-	assert.Equal(t, map[string]string{"single.tmpl": "single", "a.tmpl": "a", "b.tmpl": "b"}, got.TemplateFiles,
-		"a directory adds its regular files only, without recursion and without names that start with a dot")
+	assert.Equal(t, map[string]string{"first.tmpl": "first", "second.tmpl": "second"}, got.TemplateFiles)
 }
 
 func TestReadAlertmanagerUserConfig_TemplatesMergeWithUserConfig(t *testing.T) {
@@ -176,7 +169,7 @@ func TestReadAlertmanagerUserConfig_TemplateErrors(t *testing.T) {
 	first := writeFile(t, t.TempDir(), "same.tmpl", "first")
 	second := writeFile(t, t.TempDir(), "same.tmpl", "second")
 	colliding := writeFile(t, t.TempDir(), "default.tmpl", "colliding")
-	emptyDir := t.TempDir()
+	templateDir := t.TempDir()
 
 	tests := []struct {
 		name      string
@@ -200,13 +193,13 @@ func TestReadAlertmanagerUserConfig_TemplateErrors(t *testing.T) {
 			name:      "missing template path",
 			input:     plainInput,
 			templates: []string{filepath.Join(dir, "missing.tmpl")},
-			wantErr:   "failed to read template path",
+			wantErr:   "--template " + filepath.Join(dir, "missing.tmpl") + ": no such file or directory",
 		},
 		{
-			name:      "template directory without files",
+			name:      "template directory",
 			input:     plainInput,
-			templates: []string{emptyDir},
-			wantErr:   `contains no regular files (names that start with "." are skipped)`,
+			templates: []string{templateDir},
+			wantErr:   "--template " + templateDir + ": is a directory; pass template files",
 		},
 	}
 
