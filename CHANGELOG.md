@@ -1,5 +1,18 @@
 ## Unreleased
 
+- `gcx kg graph query` now adds a `warnings` entry to its `-o json` and
+  `-o yaml` output, and writes the same warning to stderr in every format,
+  when returned rows hold the graph's own catalog records: nodes labeled
+  `Schema`, `EntityType` or `Env`, which describe entity types, the
+  relationship types between them and env values, not observed entities. A
+  node pattern without a label matches them too, so a query such as
+  `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r)`
+  returned catalog groups next to real ones with nothing telling them apart.
+  The warning counts those rows, names their labels and says how to leave
+  them out. It is detected from returned nodes and from `labels(...)`
+  columns. A catalog label the query names itself, as a label or in a string
+  literal outside comments, is not counted, so a query that filters out one
+  catalog label is still warned about the others. Rows are unchanged.
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its
