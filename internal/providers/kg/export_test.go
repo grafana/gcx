@@ -75,6 +75,17 @@ func ComputeOrientation(in OrientationInput, scope *ScopeFlags) Orientation {
 	return computeOrientation(in, scope)
 }
 
+// EntitiesSummary is an exported alias for the `kg stats` entities block.
+type EntitiesSummary = entitiesSummary
+
+// EntityCount is an exported alias for entityCount.
+type EntityCount = entityCount
+
+// SummarizeEntityCounts wraps the unexported summarizeEntityCounts for testing.
+func SummarizeEntityCounts(counts map[string]int64) EntitiesSummary {
+	return summarizeEntityCounts(counts)
+}
+
 // BuildEntityOverview wraps the unexported buildEntityOverview function for testing.
 func BuildEntityOverview(in OrientationInput) EntityOverview {
 	return buildEntityOverview(in)
@@ -252,4 +263,15 @@ func NewCypherCommand(loader RESTConfigLoader) *cobra.Command { return newCypher
 
 func NewGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 	return newGraphQueryCommand(loader)
+}
+
+// InsightsSummary is an exported alias for the `kg stats` insights block.
+type InsightsSummary = insightsSummary
+
+// InsightGroup is an exported alias for insightGroup.
+type InsightGroup = insightGroup
+
+// SummarizeInsights wraps the unexported summarizeInsights for testing.
+func SummarizeInsights(results []SearchResult) InsightsSummary {
+	return summarizeInsights(results)
 }

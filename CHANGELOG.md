@@ -1,5 +1,15 @@
 ## Unreleased
 
+- `gcx kg stats` now breaks active insights down by category
+  (`insights.byCategory`: failure, error, anomaly, saturation, amend), each
+  with its own total and per-name counts, from the records it already reads.
+  The existing `total`, `bySeverity` and `byName` keys are unchanged.
+- `gcx kg stats` no longer counts the graph's own catalog records (Account,
+  EntityType, Env and Schema) as entities. They inflated `entities.total` and
+  showed up as kinds in `entities.byType`, so `kg stats` disagreed with
+  `kg meta schema`. They are now listed separately under `entities.internal`,
+  which is omitted when there are none, and the diagnose entity overview leaves
+  out Account records too.
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its

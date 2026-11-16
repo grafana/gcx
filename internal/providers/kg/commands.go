@@ -2621,7 +2621,22 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &summaryOpts{}
 	cmd := &cobra.Command{
 		Use:   "stats",
-		Short: "Show entity and active-insight counts, broken down by type, severity, and insight name.",
+		Short: "Show entity counts by type and active-insight counts by category, severity, and insight name.",
+		Long: `Show entity counts by type and active-insight counts by category, severity, and
+insight name, for the requested window (the last hour by default; pass --from/--to
+for older data).
+
+entities.total and entities.byType count only the entities the graph observed in
+your telemetry. Records the graph keeps about itself (its schema catalog and its
+account and environment records) are not part of that total; they are listed
+separately under entities.internal.
+
+insights.byCategory splits insights.total by category (failure, error, anomaly,
+saturation, amend), each with its own total and byName. amend insights record
+changes such as deployments or config updates; like every category they are
+active insights and count in insights.total. Read the categories here instead of
+listing entities; use 'kg entities list --insight' only to see which entities
+carry them.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -2646,13 +2661,10 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typeCounts := map[string]int64{}
+			entities := summarizeEntityCounts(counts)
 			var entityTypes []string
-			var totalEntities int64
 			for t, cnt := range counts {
-				totalEntities += cnt
 				if cnt > 0 {
-					typeCounts[t] = cnt
 					entityTypes = append(entityTypes, t)
 				}
 			}
@@ -2663,45 +2675,12 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			sevCounts := map[string]int{}
-			nameCounts := map[string]int{}
-			totalInsights := 0
-			for _, r := range results {
-				assertions, _ := r.Assertion["assertions"].([]any)
-				for _, a := range assertions {
-					m, ok := a.(map[string]any)
-					if !ok {
-						continue
-					}
-					totalInsights++
-					name, _ := m["assertionName"].(string)
-					if name == "" {
-						name = "UNKNOWN"
-					}
-					nameCounts[name]++
-					sev, _ := m["severity"].(string)
-					if sev == "" {
-						sevCounts["UNKNOWN"]++
-					} else {
-						sevCounts[strings.ToUpper(sev)]++
-					}
-				}
-			}
-			type entitiesSummary struct {
-				Total  int64            `json:"total" yaml:"total"`
-				ByType map[string]int64 `json:"byType" yaml:"byType"`
-			}
-			type insightsSummary struct {
-				Total      int            `json:"total" yaml:"total"`
-				BySeverity map[string]int `json:"bySeverity" yaml:"bySeverity"`
-				ByName     map[string]int `json:"byName" yaml:"byName"`
-			}
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), struct {
 				Entities entitiesSummary `json:"entities" yaml:"entities"`
 				Insights insightsSummary `json:"insights" yaml:"insights"`
 			}{
-				Entities: entitiesSummary{Total: totalEntities, ByType: typeCounts},
-				Insights: insightsSummary{Total: totalInsights, BySeverity: sevCounts, ByName: nameCounts},
+				Entities: entities,
+				Insights: summarizeInsights(results),
 			})
 		},
 	}
@@ -2709,6 +2688,105 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit to a specific entity type")
 	ioOpts.setup(cmd.Flags())
 	return cmd
+}
+
+// entityCount is a total with its per-type breakdown.
+type entityCount struct {
+	Total  int64            `json:"total" yaml:"total"`
+	ByType map[string]int64 `json:"byType" yaml:"byType"`
+}
+
+// entitiesSummary is the entities block of `kg stats`. Total and ByType
+// count observed entities only; the graph's own catalog records are kept
+// out of them and reported under Internal, so a reader does not mistake
+// them for telemetry.
+type entitiesSummary struct {
+	Total    int64            `json:"total" yaml:"total"`
+	ByType   map[string]int64 `json:"byType" yaml:"byType"`
+	Internal *entityCount     `json:"internal,omitempty" yaml:"internal,omitempty"`
+}
+
+// summarizeEntityCounts splits per-type entity counts into observed
+// entities and the graph's own catalog records (see isMetaEntityType).
+// Types with a zero count are dropped.
+func summarizeEntityCounts(counts map[string]int64) entitiesSummary {
+	out := entitiesSummary{ByType: map[string]int64{}}
+	for t, n := range counts {
+		if n <= 0 {
+			continue
+		}
+		if isMetaEntityType(t) {
+			if out.Internal == nil {
+				out.Internal = &entityCount{ByType: map[string]int64{}}
+			}
+			out.Internal.ByType[t] = n
+			out.Internal.Total += n
+			continue
+		}
+		out.ByType[t] = n
+		out.Total += n
+	}
+	return out
+}
+
+// insightGroup is one category's share of the active insights.
+type insightGroup struct {
+	Total  int            `json:"total" yaml:"total"`
+	ByName map[string]int `json:"byName" yaml:"byName"`
+}
+
+// insightsSummary is the insights block of `kg stats`.
+type insightsSummary struct {
+	Total      int                     `json:"total" yaml:"total"`
+	ByCategory map[string]insightGroup `json:"byCategory" yaml:"byCategory"`
+	BySeverity map[string]int          `json:"bySeverity" yaml:"bySeverity"`
+	ByName     map[string]int          `json:"byName" yaml:"byName"`
+}
+
+// summarizeInsights counts the active insights on the given entities by
+// severity, by name, and by category (each category with its own per-name
+// counts). Missing names, severities and categories count as UNKNOWN /
+// unknown.
+func summarizeInsights(results []SearchResult) insightsSummary {
+	out := insightsSummary{
+		ByCategory: map[string]insightGroup{},
+		BySeverity: map[string]int{},
+		ByName:     map[string]int{},
+	}
+	for _, r := range results {
+		assertions, _ := r.Assertion["assertions"].([]any)
+		for _, a := range assertions {
+			m, ok := a.(map[string]any)
+			if !ok {
+				continue
+			}
+			out.Total++
+			name, _ := m["assertionName"].(string)
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			out.ByName[name]++
+			sev, _ := m["severity"].(string)
+			if sev == "" {
+				out.BySeverity["UNKNOWN"]++
+			} else {
+				out.BySeverity[strings.ToUpper(sev)]++
+			}
+			cat, _ := m["category"].(string)
+			cat = strings.ToLower(cat)
+			if cat == "" {
+				cat = "unknown"
+			}
+			g, ok := out.ByCategory[cat]
+			if !ok {
+				g = insightGroup{ByName: map[string]int{}}
+			}
+			g.Total++
+			g.ByName[name]++
+			out.ByCategory[cat] = g
+		}
+	}
+	return out
 }
 
 type summaryOpts struct {
