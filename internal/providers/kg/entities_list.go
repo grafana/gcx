@@ -198,9 +198,10 @@ func (d *scopeDims) seed(schema KGSchemaResult) {
 	}
 }
 
-// has reports whether entityType has scope dimension dim in the schema; ok
-// is false when the schema could not be read or does not list the type.
-func (d *scopeDims) has(entityType, dim string) (has, ok bool) {
+// has reports whether entityType has scope dimension dim in the schema. The
+// second result is false when the schema could not be read or does not list
+// the type.
+func (d *scopeDims) has(entityType, dim string) (bool, bool) {
 	if d == nil {
 		return false, false
 	}

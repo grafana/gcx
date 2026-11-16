@@ -3,7 +3,6 @@ package kg
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -219,7 +218,7 @@ func TestEntitiesListCommand(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 				var de gcxerrors.DetailedError
 				if tt.wantSuggestions != nil {
-					require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+					require.ErrorAs(t, err, &de)
 					assert.Equal(t, append(tt.wantSuggestions, "Run 'gcx kg meta schema --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z' for each type's properties"), de.Suggestions)
 				}
 			} else {
@@ -236,7 +235,7 @@ func TestEntitiesListCommand(t *testing.T) {
 // TestEntitiesListCommandPageBound covers how many backend pages list reads
 // when a client-side filter drops every row.
 func TestEntitiesListCommandPageBound(t *testing.T) {
-	var rows []SearchResult
+	rows := make([]SearchResult, 0, 60)
 	for i := range 60 {
 		rows = append(rows, scoped(fmt.Sprintf("s%02d", i), "prod", "other"))
 	}
@@ -333,7 +332,7 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.wantErr)
 				var de gcxerrors.DetailedError
 				if tt.wantSuggestion != "" || tt.wantNoSuggest != "" {
-					require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+					require.ErrorAs(t, err, &de)
 				}
 				if tt.wantSuggestion != "" {
 					assert.Contains(t, de.Suggestions, tt.wantSuggestion)

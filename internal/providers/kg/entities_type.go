@@ -266,7 +266,9 @@ func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaR
 			nameProbes = append(nameProbes, typeAlternative{entityType: t})
 		}
 	}
-	probes := append(kindProbes, nameProbes...)
+	probes := make([]typeAlternative, 0, len(kindProbes)+len(nameProbes))
+	probes = append(probes, kindProbes...)
+	probes = append(probes, nameProbes...)
 
 	found := make([]bool, len(probes))
 	g, gctx := errgroup.WithContext(ctx)
@@ -277,16 +279,15 @@ func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaR
 			if pr.property != "" {
 				s.propertyFilters = append([]PropertyMatcher{{Name: pr.property, Op: "=", Value: pr.value}}, c.search.propertyFilters...)
 			}
-			page, err := s.page(gctx, client, pr.entityType, 0)
-			if err != nil {
-				return nil
-			}
-			rows := s.filter(page.Entities)
-			found[i] = len(rows) > 0
-			if c.verb == "inspect" && len(rows) == 1 && !hasMorePages(page) {
-				probes[i].scope = rows[0].Scope
-				if probes[i].scope == nil {
-					probes[i].scope = map[string]string{}
+			// A probe that fails finds nothing; it does not fail the check.
+			if page, err := s.page(gctx, client, pr.entityType, 0); err == nil {
+				rows := s.filter(page.Entities)
+				found[i] = len(rows) > 0
+				if c.verb == "inspect" && len(rows) == 1 && !hasMorePages(page) {
+					probes[i].scope = rows[0].Scope
+					if probes[i].scope == nil {
+						probes[i].scope = map[string]string{}
+					}
 				}
 			}
 			return nil

@@ -1920,7 +1920,13 @@ Pick the read verb by what you start with:
              aggregates, and paths, use 'gcx kg graph query'.`,
 	}
 
-	// list subcommand
+	cmd.AddCommand(newEntitiesListCommand(loader), newCorrelateCommand(loader), newEntitiesInspectCommand(loader), newCypherCommand(loader),
+		newEntitiesCreateCommand(loader), newEntitiesDeleteCommand(loader))
+	return cmd
+}
+
+// newEntitiesListCommand returns 'gcx kg entities list'.
+func newEntitiesListCommand(loader RESTConfigLoader) *cobra.Command {
 	var (
 		listType        string
 		listScope       scopeFlags
@@ -1987,25 +1993,9 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
-			var propertyFilters []PropertyMatcher
-			nameFilter := ""
-			for _, raw := range listPropertyRaw {
-				pm, err := parsePropertyFlag(raw)
-				if err != nil {
-					return err
-				}
-				if pm.Name == "name" && pm.Op == "=" {
-					nameFilter = pm.Value
-				}
-				propertyFilters = append(propertyFilters, pm)
-			}
-			var insightMatchers []insightMatcher
-			for _, raw := range listInsightRaw {
-				im, err := parseInsightFlag(raw)
-				if err != nil {
-					return err
-				}
-				insightMatchers = append(insightMatchers, im)
+			propertyFilters, nameFilter, insightMatchers, err := parseListFilters(listPropertyRaw, listInsightRaw)
+			if err != nil {
+				return err
 			}
 			// The scope is also applied client-side: some backends ignore the
 			// search's scope criteria for plain listings.
@@ -2048,16 +2038,12 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			// The type is checked only when the search finds nothing, so a
 			// lookup that finds entities costs no extra call.
 			if listType != "" && ((err == nil && len(results) == 0) || isClientAPIError(err)) {
-				var flags []string
-				flags = append(flags, flagArgs("--property", listPropertyRaw)...)
-				flags = append(flags, flagArgs("--insight", listInsightRaw)...)
-				flags = append(flags, listScope.args()...)
 				checked, cerr := checkEntityType(cmd.Context(), client, listType, typeCheck{
 					verb:        "list",
 					name:        nameFilter,
 					search:      search,
 					windowGiven: listScope.windowGiven(),
-					flags:       flags,
+					flags:       listSuggestionFlags(listPropertyRaw, listInsightRaw, listScope),
 				})
 				if cerr != nil {
 					return cerr
@@ -2071,12 +2057,7 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
-				msg := fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit", listOpts.Limit)
-				if !cmd.Flags().Changed("page") {
-					msg += fmt.Sprintf(" (--limit 0 follows up to %d backend pages per type)", maxListPages)
-				}
-				msg += "; for an exact count use 'gcx kg graph query' with count()"
-				cmdio.EmitHint(cmd.ErrOrStderr(), msg, "")
+				cmdio.EmitHint(cmd.ErrOrStderr(), listLimitHint(listOpts.Limit, cmd.Flags().Changed("page")), "")
 			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
@@ -2091,10 +2072,51 @@ analysis, use 'gcx kg entities inspect' instead.`,
 	listCmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
+	return listCmd
+}
 
-	cmd.AddCommand(listCmd, newCorrelateCommand(loader), newEntitiesInspectCommand(loader), newCypherCommand(loader),
-		newEntitiesCreateCommand(loader), newEntitiesDeleteCommand(loader))
-	return cmd
+// parseListFilters parses list's --property and --insight values. nameFilter
+// is the value of an exact --property name=<value>, if one was given.
+func parseListFilters(propertyRaw, insightRaw []string) ([]PropertyMatcher, string, []insightMatcher, error) {
+	var propertyFilters []PropertyMatcher // stays nil without --property, as before
+	nameFilter := ""
+	for _, raw := range propertyRaw {
+		pm, err := parsePropertyFlag(raw)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		if pm.Name == "name" && pm.Op == "=" {
+			nameFilter = pm.Value
+		}
+		propertyFilters = append(propertyFilters, pm)
+	}
+	var insightMatchers []insightMatcher
+	for _, raw := range insightRaw {
+		im, err := parseInsightFlag(raw)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		insightMatchers = append(insightMatchers, im)
+	}
+	return propertyFilters, nameFilter, insightMatchers, nil
+}
+
+// listSuggestionFlags renders the caller's filters for a suggested list command.
+func listSuggestionFlags(propertyRaw, insightRaw []string, scope scopeFlags) []string {
+	scopeArgs := scope.args()
+	flags := make([]string, 0, len(propertyRaw)+len(insightRaw)+len(scopeArgs))
+	flags = append(flags, flagArgs("--property", propertyRaw)...)
+	flags = append(flags, flagArgs("--insight", insightRaw)...)
+	return append(flags, scopeArgs...)
+}
+
+// listLimitHint is the hint list prints when it returned --limit entities.
+func listLimitHint(limit int64, singlePage bool) string {
+	msg := fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit", limit)
+	if !singlePage {
+		msg += fmt.Sprintf(" (--limit 0 follows up to %d backend pages per type)", maxListPages)
+	}
+	return msg + "; for an exact count use 'gcx kg graph query' with count()"
 }
 
 type entitiesListOpts struct {
@@ -2512,8 +2534,8 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 			}
 			// lookup inspects entityType/name. notFound reports that the
 			// entity was not found, which is when the type is checked.
-			lookup := func(entityType string) (result map[string]any, scope map[string]string, notFound bool, err error) {
-				scope = inspectScope.scopeMap()
+			lookup := func(entityType string) (map[string]any, map[string]string, bool, error) {
+				scope := inspectScope.scopeMap()
 				if scope == nil {
 					discovered, err := discoverEntityScope(cmd, client, entityType, name, inspectDomain, startMs, endMs)
 					if err != nil {
@@ -2539,7 +2561,7 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 					IncludeSuggestions:                            true,
 					IncludeRcaPatterns:                            false,
 				}
-				result, err = client.LLMSummary(cmd.Context(), llmReq)
+				result, err := client.LLMSummary(cmd.Context(), llmReq)
 				if err != nil {
 					var apiErr *APIError
 					if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {

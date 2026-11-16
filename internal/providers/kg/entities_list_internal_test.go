@@ -80,13 +80,19 @@ func (f *fakeKG) handler(t *testing.T) http.HandlerFunc {
 
 func (f *fakeKG) search(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	t.Helper()
+	// The handler runs outside the test goroutine, so it reports with
+	// t.Errorf and returns instead of stopping the test.
 	var raw map[string]any
-	assert.NoError(t, json.NewDecoder(r.Body).Decode(&raw))
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		t.Errorf("decode request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	if _, ok := raw["definitionId"]; ok {
 		f.mu.Lock()
 		f.schemaCalls++
 		f.mu.Unlock()
-		var ents []map[string]any
+		ents := make([]map[string]any, 0, len(f.schema))
 		for typ, props := range f.schema {
 			p := map[string]any{}
 			for _, name := range props {
@@ -94,12 +100,22 @@ func (f *fakeKG) search(t *testing.T, w http.ResponseWriter, r *http.Request) {
 			}
 			ents = append(ents, map[string]any{"name": typ, "properties": p})
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"entities": ents}})
+		if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"entities": ents}}); err != nil {
+			t.Errorf("encode schema: %v", err)
+		}
 		return
 	}
-	b, _ := json.Marshal(raw)
+	b, err := json.Marshal(raw)
+	if err != nil {
+		t.Errorf("re-encode request: %v", err)
+		return
+	}
 	var req SearchRequest
-	assert.NoError(t, json.Unmarshal(b, &req))
+	if err := json.Unmarshal(b, &req); err != nil {
+		t.Errorf("decode search request: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	f.mu.Lock()
 	f.searchReq = append(f.searchReq, req)
 	f.mu.Unlock()
@@ -120,11 +136,13 @@ func (f *fakeKG) search(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	}
 	from := min(req.PageNum*size, len(rows))
 	to := min(from+size, len(rows))
-	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
 		"entities": rows[from:to],
 		"pageNum":  req.PageNum,
 		"lastPage": to >= len(rows),
-	}})
+	}}); err != nil {
+		t.Errorf("encode page: %v", err)
+	}
 }
 
 // backendScopeMatches models the live backend's scope criteria for row e of
@@ -392,7 +410,7 @@ func TestCheckEntityType(t *testing.T) {
 				return
 			}
 			var de gcxerrors.DetailedError
-			require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+			require.ErrorAs(t, err, &de)
 			assert.Contains(t, de.Summary, tt.wantSummary)
 			assert.Contains(t, de.Details, tt.wantDetails)
 			joined := strings.Join(de.Suggestions, "\n")
@@ -445,7 +463,7 @@ func TestProbeTypeAlternativesBudget(t *testing.T) {
 		windowGiven: true,
 	})
 	var de gcxerrors.DetailedError
-	require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+	require.ErrorAs(t, err, &de)
 	assert.Contains(t, de.Suggestions[0], "gcx kg entities list --type Zeta --property name=target --from ")
 	require.Len(t, f.searchReq, maxKindProbes+maxNameProbes)
 	probed := map[string]bool{}
@@ -484,7 +502,7 @@ func TestProbeTypeAlternativesSkipsEmptyTypes(t *testing.T) {
 }
 
 func TestSearchByTypesAllPages(t *testing.T) {
-	var five []SearchResult
+	five := make([]SearchResult, 0, 5)
 	for _, n := range []string{"a", "b", "c", "d", "e"} {
 		five = append(five, svc(n, map[bool]string{true: "statefulset", false: "deployment"}[n == "b" || n == "e"]))
 	}
@@ -536,7 +554,7 @@ func TestSearchByTypesAllPages(t *testing.T) {
 			}
 			if tt.wantErr != "" {
 				var de gcxerrors.DetailedError
-				require.True(t, errors.As(err, &de), "want DetailedError, got %v", err)
+				require.ErrorAs(t, err, &de)
 				assert.Contains(t, de.Summary, tt.wantErr)
 				assert.Contains(t, de.Details, "Pages 0-0 returned 2 rows")
 				return
