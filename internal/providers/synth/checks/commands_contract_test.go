@@ -1034,11 +1034,12 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 	tests := []struct {
 		name       string
 		agentMode  bool
+		args       []string
 		wantStdout string
-		checkEmpty bool
 	}{
-		{name: "human default sends notice to stderr", wantStdout: ""},
-		{name: "agent mode emits one empty JSON document", agentMode: true, checkEmpty: true},
+		{name: "human default prints the empty table", args: []string{"status"}, wantStdout: "NAME  JOB  TARGET  SUCCESS  LATENCY  STATUS\n"},
+		{name: "human graph prints nothing", args: []string{"status", "-o", "graph"}, wantStdout: ""},
+		{name: "agent mode emits one empty JSON document", agentMode: true, args: []string{"status"}, wantStdout: "[]\n"},
 	}
 
 	for _, tc := range tests {
@@ -1046,16 +1047,17 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 			st := &checkAPIState{probesOnline: true}
 			srv := newCheckServer(t, st)
 
-			stdout, stderr, err := runChecks(t, srv.URL, tc.agentMode, "", "status")
+			stdout, stderr, err := runChecks(t, srv.URL, tc.agentMode, "", tc.args...)
 			require.NoError(t, err)
 
-			if tc.checkEmpty {
-				doc, ok := decodeSingleJSONValue(t, stdout).([]any)
-				require.True(t, ok, "empty status must encode as a JSON array, got: %q", stdout)
-				assert.Empty(t, doc)
+			assert.Equal(t, tc.wantStdout, stdout)
+			if tc.agentMode {
+				var rec map[string]any
+				require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &rec), "stderr: %q", stderr)
+				assert.Equal(t, "hint", rec["class"])
+				assert.Equal(t, "no checks found", rec["summary"])
 			} else {
-				assert.NotContains(t, stdout, "No checks found.")
-				assert.Contains(t, stderr, "No checks found.")
+				assert.Equal(t, "hint: no checks found\n", stderr)
 			}
 		})
 	}

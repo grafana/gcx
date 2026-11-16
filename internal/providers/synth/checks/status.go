@@ -221,7 +221,7 @@ Prometheus datasource, the values here come only from the app.`,
 
 			if len(filtered) == 0 {
 				// The hint is diagnostic: stdout carries only the empty result.
-				cmdio.Info(cmd.ErrOrStderr(), "No checks found.")
+				cmdio.EmitHint(cmd.ErrOrStderr(), "no checks found", "")
 				return opts.IO.Encode(cmd.OutOrStdout(), []CheckStatusResult{})
 			}
 

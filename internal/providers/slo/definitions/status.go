@@ -118,7 +118,7 @@ grafana_slo_* metrics.`,
 
 			if len(slos) == 0 {
 				// The hint is diagnostic: stdout carries only the empty result.
-				cmdio.Info(cmd.ErrOrStderr(), "No SLO definitions found.")
+				cmdio.EmitHint(cmd.ErrOrStderr(), "no SLO definitions found", "")
 				return opts.IO.Encode(cmd.OutOrStdout(), []StatusResult{})
 			}
 
@@ -407,6 +407,10 @@ func (c *statusGraphCodec) Encode(w io.Writer, v any) error {
 	results, ok := v.([]StatusResult)
 	if !ok {
 		return errors.New("invalid data type for status graph codec: expected []StatusResult")
+	}
+	if len(results) == 0 {
+		// The command reports the empty result on stderr.
+		return nil
 	}
 
 	items := make([]graph.PercentageBarItem, 0, len(results))

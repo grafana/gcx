@@ -129,12 +129,6 @@ grafana_slo_sli_window metrics.`,
 				}
 			}
 
-			if len(rpts) == 0 {
-				// The hint is diagnostic: every format still encodes the
-				// (empty) payload so stdout carries only the result.
-				cmdio.Info(cmd.ErrOrStderr(), "No SLO reports found.")
-			}
-
 			// Collect all unique SLO UUIDs across all reports.
 			uuidSet := make(map[string]struct{})
 			for _, r := range rpts {
@@ -183,6 +177,13 @@ grafana_slo_sli_window metrics.`,
 				step = definitions.AutoStep(start, end)
 			}
 
+			if len(rpts) == 0 {
+				// The hint is diagnostic: every format still encodes the
+				// (empty) payload so stdout carries only the result. It comes
+				// after the time range checks so a bad range only reports the error.
+				cmdio.EmitHint(cmd.ErrOrStderr(), "no SLO reports found", "")
+			}
+
 			// Create Prometheus client and fetch range metrics.
 			var points map[string][]definitions.SLOTimeSeriesPoint
 			if len(referencedSLOs) > 0 {
@@ -229,6 +230,10 @@ func (c *ReportTimelineGraphCodec) Encode(w io.Writer, v any) error {
 	payload, ok := v.(ReportTimelinePayload)
 	if !ok {
 		return fmt.Errorf("reportTimelineGraphCodec: expected ReportTimelinePayload, got %T", v)
+	}
+	if len(payload.Reports) == 0 {
+		// The command reports the empty result on stderr.
+		return nil
 	}
 
 	anyData := false

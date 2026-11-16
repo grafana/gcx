@@ -481,28 +481,23 @@ func TestDefinitionsStatusEmptyContract(t *testing.T) {
 	tests := []struct {
 		name       string
 		agentMode  bool
+		args       []string
 		wantStdout string
-		checkEmpty bool
 	}{
-		{name: "human default sends notice to stderr", wantStdout: ""},
-		{name: "agent mode emits one empty JSON document", agentMode: true, checkEmpty: true},
+		{name: "human default prints the empty table", args: []string{"status"}, wantStdout: "NAME  UUID  OBJECTIVE  WINDOW  SLI  BUDGET  STATUS\n"},
+		{name: "human graph prints nothing", args: []string{"status", "-o", "graph"}, wantStdout: ""},
+		{name: "agent mode emits one empty JSON document", agentMode: true, args: []string{"status"}, wantStdout: "[]\n"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newSLOServer(t, &sloAPIState{})
 
-			stdout, stderr, err := runDefinitions(t, srv.URL, tc.agentMode, "", "status")
+			stdout, stderr, err := runDefinitions(t, srv.URL, tc.agentMode, "", tc.args...)
 			require.NoError(t, err)
 
-			if tc.checkEmpty {
-				doc, ok := decodeSingleJSONValue(t, stdout).([]any)
-				require.True(t, ok, "empty status must encode as a JSON array, got: %q", stdout)
-				assert.Empty(t, doc)
-			} else {
-				assert.NotContains(t, stdout, "No SLO definitions found.")
-				assert.Contains(t, stderr, "No SLO definitions found.")
-			}
+			assert.Equal(t, tc.wantStdout, stdout)
+			assertEmptyHint(t, tc.agentMode, stderr, "no SLO definitions found")
 		})
 	}
 }
@@ -511,17 +506,19 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 	tests := []struct {
 		name       string
 		agentMode  bool
+		args       []string
 		wantStdout string
 	}{
-		{name: "human default sends notice to stderr", wantStdout: ""},
-		{name: "agent mode emits one JSON document", agentMode: true},
+		{name: "human default graph prints nothing", args: []string{"timeline"}, wantStdout: ""},
+		{name: "human explicit graph prints nothing", args: []string{"timeline", "-o", "graph"}, wantStdout: ""},
+		{name: "agent mode emits one JSON document", agentMode: true, args: []string{"timeline"}},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newSLOServer(t, &sloAPIState{})
 
-			stdout, stderr, err := runDefinitions(t, srv.URL, tc.agentMode, "", "timeline")
+			stdout, stderr, err := runDefinitions(t, srv.URL, tc.agentMode, "", tc.args...)
 			require.NoError(t, err)
 
 			if tc.agentMode {
@@ -530,11 +527,34 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 				assert.Contains(t, doc, "SLOs")
 				assert.Contains(t, doc, "Points")
 			} else {
-				assert.NotContains(t, stdout, "No SLO definitions found.")
-				assert.Contains(t, stderr, "No SLO definitions found.")
+				assert.Equal(t, tc.wantStdout, stdout)
 			}
+			assertEmptyHint(t, tc.agentMode, stderr, "no SLO definitions found")
 		})
 	}
+}
+
+func TestDefinitionsTimelineInvalidRangeSkipsHint(t *testing.T) {
+	srv := newSLOServer(t, &sloAPIState{})
+
+	stdout, stderr, err := runDefinitions(t, srv.URL, false, "", "timeline", "--from", "not-a-time")
+	require.ErrorContains(t, err, "invalid --from")
+	assert.Empty(t, stdout)
+	assert.NotContains(t, stderr, "no SLO definitions found")
+}
+
+// assertEmptyHint checks that the empty-result notice is the only stderr output
+// and is a typed hint record in agent mode.
+func assertEmptyHint(t *testing.T, agentMode bool, stderr, summary string) {
+	t.Helper()
+	if !agentMode {
+		assert.Equal(t, "hint: "+summary+"\n", stderr)
+		return
+	}
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &rec), "stderr: %q", stderr)
+	assert.Equal(t, "hint", rec["class"])
+	assert.Equal(t, summary, rec["summary"])
 }
 
 func TestDefinitionsPushPreservesLegacyIdentity(t *testing.T) {

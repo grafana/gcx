@@ -138,12 +138,6 @@ grafana_slo_sli_window metrics.`,
 				}
 			}
 
-			if len(slos) == 0 {
-				// The hint is diagnostic: every format still encodes the
-				// (empty) payload so stdout carries only the result.
-				cmdio.Info(cmd.ErrOrStderr(), "No SLO definitions found.")
-			}
-
 			// Parse time range.
 			now := time.Now()
 			start, err := parseTimelineTime(opts.From, now)
@@ -164,6 +158,13 @@ grafana_slo_sli_window metrics.`,
 				}
 			} else {
 				step = AutoStep(start, end)
+			}
+
+			if len(slos) == 0 {
+				// The hint is diagnostic: every format still encodes the
+				// (empty) payload so stdout carries only the result. It comes
+				// after the time range checks so a bad range only reports the error.
+				cmdio.EmitHint(cmd.ErrOrStderr(), "no SLO definitions found", "")
 			}
 
 			// Create Prometheus client for range queries.
@@ -488,6 +489,10 @@ func (c *TimelineGraphCodec) Encode(w io.Writer, v any) error {
 	payload, ok := v.(SLITrendPayload)
 	if !ok {
 		return fmt.Errorf("timelineGraphCodec: expected SLITrendPayload, got %T", v)
+	}
+	if len(payload.SLOs) == 0 {
+		// The command reports the empty result on stderr.
+		return nil
 	}
 
 	if len(payload.Points) == 0 {
