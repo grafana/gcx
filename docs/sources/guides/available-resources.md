@@ -24,6 +24,10 @@ You can work with resources in two ways:
 
 You can also [query your telemetry](#query-telemetry), such as metrics, logs, traces, and profiles, from the command line.
 
+{{< admonition type="note" >}}
+For the Grafana roles, RBAC actions, and Grafana Cloud access policy scopes each area requires, refer to [Roles and permissions](../../permissions/).
+{{< /admonition >}}
+
 ## Declarative resource workflows
 
 Use [`gcx resources`](../../cli-reference/#gcx-resources) to pull, push, inspect, edit, validate, and delete resources as JSON or YAML manifests. The same commands work for Grafana-native resources, such as `dashboards`, `folders`, `alertrules`, `routingtrees`, `templategroups`, and `timeintervals`, and for supported Grafana Cloud provider resources.
