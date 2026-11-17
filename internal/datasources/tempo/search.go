@@ -1,6 +1,7 @@
 package tempo
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -75,7 +76,7 @@ the Exceptions tab instead of the trace list. The view requires
 				return fmt.Errorf("invalid --drilldown-view %q: must be traceList or exceptions", drilldownView)
 			}
 			if drilldownView != "" && !drilldown.Enabled() {
-				return fmt.Errorf("--drilldown-view requires --drilldown-link or --open-drilldown")
+				return errors.New("--drilldown-view requires --drilldown-link or --open-drilldown")
 			}
 
 			ctx := cmd.Context()
