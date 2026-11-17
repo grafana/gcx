@@ -49,6 +49,8 @@ func readAlertmanagerUserConfig(file string, stdin io.Reader, templatePaths []st
 }
 
 // readImportInput returns the raw bytes of file, or of stdin when file is "-".
+// It does not use providers.ReadFileOrStdin because that function parses YAML,
+// but a plain Alertmanager configuration must remain byte-for-byte unchanged.
 func readImportInput(file string, stdin io.Reader) ([]byte, error) {
 	if file == "" {
 		return nil, errors.New("--filename is required (use - to read from stdin)")
