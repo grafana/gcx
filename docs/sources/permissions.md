@@ -303,7 +303,7 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Synthetic Monitoring (`gcx sm`) direct API token creation | `metrics:write`, `logs:write`, `traces:write` |
 | Instrumentation Hub setup (`gcx instrumentation setup`) token for the printed Helm command | `set:alloy-data-write`, `metrics:read` |
 
-Fleet Management, IRM, and SLO commands, and direct telemetry queries such as `gcx metrics query`, `gcx logs query`, `gcx traces`, and `gcx profiles`, don't use the Grafana Cloud credential. They use your Grafana sign-in, either OAuth or a service account token.
+Fleet Management, IRM, and SLO commands, and direct telemetry queries such as `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles`, don't use the Grafana Cloud credential. They use your Grafana sign-in, either OAuth or a service account token.
 
 If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
 
