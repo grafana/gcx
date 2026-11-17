@@ -234,6 +234,21 @@ func NewDescribeAllCommand(loader RESTConfigLoader) *cobra.Command {
 	return newDescribeAllCmd(loader)
 }
 
+// NewDescribeLogsCommand exposes `kg meta logs` for tests.
+func NewDescribeLogsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newDescribeLogsCmd(loader)
+}
+
+// NewDescribeTracesCommand exposes `kg meta traces` for tests.
+func NewDescribeTracesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newDescribeTracesCmd(loader)
+}
+
+// NewDescribeProfilesCommand exposes `kg meta profiles` for tests.
+func NewDescribeProfilesCommand(loader RESTConfigLoader) *cobra.Command {
+	return newDescribeProfilesCmd(loader)
+}
+
 // EncodeDiagnoseResult wraps encodeDiagnoseResult for testing.
 func EncodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
 	return encodeDiagnoseResult(w, ioOpts, result, failed, total)

@@ -1,5 +1,12 @@
 ## Unreleased
 
+- `gcx kg meta logs`, `traces` and `profiles` no longer fail with
+  "fetch ... configs: EOF" when the server answers with an empty body. They
+  exit 0, print no configs, and add a `notes` entry for the section that says
+  the server returned no drill-down configs. `kg meta all` records such a
+  section under `notes` instead of `errors`, and `kg diagnose` reports it as
+  "no ... drilldown configs" instead of an API error. Connection errors, error
+  statuses, bodies cut short and malformed JSON are still errors.
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its
