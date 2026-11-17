@@ -27,4 +27,4 @@ Refer to the following documents to learn about specific workflows to use `gcx`:
 
 Refer to these guides in other Grafana documentation:
 
-- [Use gcx to manage alerting resources](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/gcx-provisioning/): Provision and manage Grafana Alerting resources with `gcx`.
+- [Use gcx to manage alerting resources](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/alerting/set-up/provision-alerting-resources/gcx-provisioning/): Provision and manage Grafana Alerting resources with `gcx`.
