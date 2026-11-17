@@ -4,8 +4,10 @@
   "extends": [
     "github>grafana/grafana-renovate-config//presets/base"
   ],
-  "dependencyDashboard": true,
-  "dependencyDashboardTitle": "Renovate Dependency Dashboard",
+  "dependencyDashboard": {
+    "enabled": true,
+    "title": "Renovate Dependency Dashboard"
+  },
   "prConcurrentLimit": 3,
   "prHourlyLimit": 0,
   "rebaseWhen": "conflicted",
