@@ -497,6 +497,11 @@ type KGMetadataOutput struct {
 	// "failed to load" from "empty". Never set by the single-section
 	// commands, which fail outright instead.
 	Errors map[string]string `json:"errors,omitempty"`
+
+	// Notes explains an empty drill-down section, keyed by section name
+	// (logs, traces, profiles): set when the server returned no configs for
+	// it, so an empty result is not mistaken for a failed read.
+	Notes map[string]string `json:"notes,omitempty"`
 }
 
 // ModelRuleNames is the response shape for GET /v1/config/model-rules (ModelRuleNamesDto).

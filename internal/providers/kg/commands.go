@@ -2049,6 +2049,34 @@ func EntityTable() cmdio.Table[SearchResult] {
 // Insights commands
 // ---------------------------------------------------------------------------
 
+// sourcesLong is the Long help of kg insights sources.
+const sourcesLong = `List the underlying metrics (name + label matchers) that source a specific
+insight on an entity.
+
+The server finds the insight's rule by the label set it is sent: --insight
+sets alertname, the entity sets asserts_entity_type and asserts_entity_name,
+the scope flags set env, namespace and site, and --label adds the rest,
+usually copied from 'gcx kg entities inspect' timeLines[].labels. Rules key on
+different labels. For example, request insights such as ErrorRatioBreach need
+asserts_request_type and asserts_error_type, saturation insights need
+asserts_resource_type, and alert-rule and change insights need
+asserts_alert_category, which inspect shows as the timeline entry's category
+field, not among its labels. An empty array means that nothing matched the
+labels sent in that window: the same labels can return metrics for one window
+and an empty array for another, so check that --from/--to (or --since) covers
+the insight before changing labels. The output lists each metric's name and
+label matchers, not the rule's expression or threshold. When the timeline
+entry's labels include grafana_rule_uid, 'gcx alert rules get <uid>' shows
+that alert rule, including its query.
+
+When the labels have an alertname but no asserts_alert_category and the
+lookup returns an empty array, sources searches the entity's insights in the
+same window and scope (or, when the entity has none of that name, the
+insights listed for its connected entities, such as a Service's pods). If that
+insight name has exactly one category there, it retries once with
+asserts_alert_category set to it and prints the metrics that retry returns;
+otherwise it prints the empty array.`
+
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
@@ -2146,6 +2174,15 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	sourceMetricsCmd := &cobra.Command{
 		Use:   "sources [Type--Name]",
 		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
+		Long:  sourcesLong,
+		Example: `  # Metrics behind a Kubernetes alert or change insight
+  gcx kg insights sources Service--svc-a --env prod-x --namespace ns1 \
+    --insight "Deployment Updated" --since 1h
+
+  # Metrics behind a request insight, with the labels from its timeline entry
+  gcx kg insights sources Service--svc-a --env prod-x --namespace ns1 \
+    --insight ErrorRatioBreach --since 1h \
+    --label asserts_request_type=inbound --label asserts_error_type=server_errors`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := sourcesOpts.IO.Validate(); err != nil {
 				return err
@@ -2202,7 +2239,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					Labels:    labels,
 				}
 			}
-			results, err := client.AssertionSourceMetrics(cmd.Context(), req)
+			results, err := sourceMetricsWithCategoryFill(cmd, client, req)
 			if err != nil {
 				return err
 			}
@@ -2214,7 +2251,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	sourceMetricsCmd.Flags().String("name", "", "Entity name")
 	sourceMetricsCmd.Flags().String("type", "", "Entity type")
 	sourceMetricsCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
-	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)")
+	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels; alert-rule and change insights also need asserts_alert_category=<the timeline entry's category>)")
 	sourceMetricsScope.register(sourceMetricsCmd)
 
 	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)
@@ -3310,6 +3347,12 @@ func (c *DescribeTextCodec) Encode(w io.Writer, v any) error {
 		sections = append(sections, telHeader+"\n\n"+strings.Join(telSections, "\n\n"))
 	}
 
+	for _, key := range []string{"logs", "traces", "profiles"} {
+		if note, ok := out.Notes[key]; ok {
+			sections = append(sections, "Note ("+key+"): "+note)
+		}
+	}
+
 	if out.Metrics != nil {
 		sections = append(sections, formatMetricSection(*out.Metrics))
 	}
@@ -3427,11 +3470,52 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
+// drillDownNote is the notes entry for a drill-down section the server
+// returned no configs for.
+func drillDownNote(signal, backend string) string {
+	return "the server returned no " + signal + " drill-down configs for this stack " +
+		"(an empty answer, not a failed request), so there is no entity-property to " +
+		backend + " label mapping to show"
+}
+
+// drillDownFlagError reports a time-range flag passed to kg meta logs,
+// traces or profiles with the reason it is not accepted; every other flag
+// error goes to the parent command's handler unchanged.
+func drillDownFlagError(signal string) func(*cobra.Command, error) error {
+	return func(cmd *cobra.Command, err error) error {
+		name, ok := strings.CutPrefix(err.Error(), "unknown flag: --")
+		if ok && (name == "from" || name == "to" || name == "since") {
+			path := cmd.CommandPath()
+			usage := gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf(
+				"unknown flag: --%s (%s takes no --from, --to or --since: it reads the "+
+					"%s drill-down configs as currently stored, not for a time range)",
+				name, path, signal), err)
+			usage.Suggestions = []string{fmt.Sprintf("Run '%s' without --from, --to or --since", path)}
+			return usage
+		}
+		if parent := cmd.Parent(); parent != nil {
+			return parent.FlagErrorFunc()(cmd, err)
+		}
+		return err
+	}
+}
+
+// drillDownSection describes one of kg meta logs, traces and profiles.
+type drillDownSection struct {
+	use, short string
+	// backend names the datasource in notes (Loki, Tempo, Pyroscope), signal
+	// names the configs (log, trace, profile), and key is
+	// the section's notes key.
+	backend, signal, key string
+	// fetch reads the section's configs and reports whether there were none.
+	fetch func(ctx context.Context, client *Client) (out KGMetadataOutput, empty bool, err error)
+}
+
+func newDrillDownCmd(loader RESTConfigLoader, sec drillDownSection) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
-		Use:   "logs",
-		Short: "Show Loki label mappings for log drilldown.",
+		Use:   sec.use,
+		Short: sec.short,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -3444,71 +3528,52 @@ func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logResp, err := client.FetchLogConfigs(cmd.Context())
+			out, empty, err := sec.fetch(cmd.Context(), client)
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Logs: logResp.LogDrilldownConfigs})
+			if empty {
+				out.Notes = map[string]string{sec.key: drillDownNote(sec.signal, sec.backend)}
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd.Flags())
+	cmd.SetFlagErrorFunc(drillDownFlagError(sec.signal))
 	return cmd
+}
+
+func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
+	return newDrillDownCmd(loader, drillDownSection{
+		use: "logs", short: "Show Loki label mappings for log drilldown.",
+		backend: "Loki", signal: "log", key: "logs",
+		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
+			resp, err := client.FetchLogConfigs(ctx)
+			return KGMetadataOutput{Logs: resp.LogDrilldownConfigs}, len(resp.LogDrilldownConfigs) == 0, err
+		},
+	})
 }
 
 func newDescribeTracesCmd(loader RESTConfigLoader) *cobra.Command {
-	opts := &describeOpts{}
-	cmd := &cobra.Command{
-		Use:   "traces",
-		Short: "Show Tempo label mappings for trace drilldown.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			traceResp, err := client.FetchTraceConfigs(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Traces: traceResp.TraceDrilldownConfigs})
+	return newDrillDownCmd(loader, drillDownSection{
+		use: "traces", short: "Show Tempo label mappings for trace drilldown.",
+		backend: "Tempo", signal: "trace", key: "traces",
+		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
+			resp, err := client.FetchTraceConfigs(ctx)
+			return KGMetadataOutput{Traces: resp.TraceDrilldownConfigs}, len(resp.TraceDrilldownConfigs) == 0, err
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 func newDescribeProfilesCmd(loader RESTConfigLoader) *cobra.Command {
-	opts := &describeOpts{}
-	cmd := &cobra.Command{
-		Use:   "profiles",
-		Short: "Show Pyroscope label mappings for profile drilldown.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			profileResp, err := client.FetchProfileConfigs(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Profiles: profileResp.ProfileDrilldownConfigs})
+	return newDrillDownCmd(loader, drillDownSection{
+		use: "profiles", short: "Show Pyroscope label mappings for profile drilldown.",
+		backend: "Pyroscope", signal: "profile", key: "profiles",
+		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
+			resp, err := client.FetchProfileConfigs(ctx)
+			return KGMetadataOutput{Profiles: resp.ProfileDrilldownConfigs}, len(resp.ProfileDrilldownConfigs) == 0, err
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
@@ -3553,6 +3618,13 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				out.Errors[key] = err.Error()
 			}
+			// recordEmptySection must be called with mu held.
+			recordEmptySection := func(key, signal, backend string) {
+				if out.Notes == nil {
+					out.Notes = make(map[string]string)
+				}
+				out.Notes[key] = drillDownNote(signal, backend)
+			}
 			g.Go(func() error {
 				schemaResp, schemaErr := client.FetchGraphSchema(gCtx, startMs, endMs)
 				if schemaErr != nil {
@@ -3584,6 +3656,9 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				mu.Lock()
 				out.Logs = logResp.LogDrilldownConfigs
+				if len(out.Logs) == 0 {
+					recordEmptySection("logs", "log", "Loki")
+				}
 				mu.Unlock()
 				return nil
 			})
@@ -3595,6 +3670,9 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				mu.Lock()
 				out.Traces = traceResp.TraceDrilldownConfigs
+				if len(out.Traces) == 0 {
+					recordEmptySection("traces", "trace", "Tempo")
+				}
 				mu.Unlock()
 				return nil
 			})
@@ -3606,6 +3684,9 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				mu.Lock()
 				out.Profiles = profileResp.ProfileDrilldownConfigs
+				if len(out.Profiles) == 0 {
+					recordEmptySection("profiles", "profile", "Pyroscope")
+				}
 				mu.Unlock()
 				return nil
 			})

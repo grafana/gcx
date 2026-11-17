@@ -1,5 +1,30 @@
 ## Unreleased
 
+- `gcx kg insights sources` now retries once with the insight's category when
+  a lookup returns an empty array and the labels have an `alertname` but no
+  `asserts_alert_category`. Alert-rule and change insights (for example
+  Kubernetes alerts and "Deployment Updated") are matched on that label, which
+  `kg entities inspect` shows as a timeline entry's `category` rather than
+  among its labels, so a lookup built from the timeline labels returned `[]`.
+  The category comes from one entity search over the same window and scope,
+  and is used only when the insight name has exactly one category there. A
+  lookup that returns metrics the first time sends no extra request. The help
+  now names the labels that request, saturation, alert-rule and change
+  insights need, says that the same labels can return an empty array for a
+  window that does not cover the insight, says that the output lists metrics
+  and label matchers, not the rule's expression or threshold, and points to
+  `gcx alert rules get` for a timeline entry that carries `grafana_rule_uid`.
+- `gcx kg meta logs`, `traces` and `profiles` given `--from`, `--to` or
+  `--since` still fail with exit 2, and the error now says that these
+  commands take no time range because they read the drill-down configs as
+  currently stored.
+- `gcx kg meta logs`, `traces` and `profiles` no longer fail with
+  "fetch ... configs: EOF" when the server answers with an empty body. They
+  exit 0, print no configs, and add a `notes` entry for the section that says
+  the server returned no drill-down configs. `kg meta all` records such a
+  section under `notes` instead of `errors`, and `kg diagnose` reports it as
+  "no ... drilldown configs" instead of an API error. Connection errors, error
+  statuses, bodies cut short and malformed JSON are still errors.
 - `gcx logs metrics` with no time flags now runs an instant query and returns
   one value per series. It used to run a range query over the last minute and
   return two points per series, so summing them doubled counts. Its
