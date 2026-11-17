@@ -2049,6 +2049,34 @@ func EntityTable() cmdio.Table[SearchResult] {
 // Insights commands
 // ---------------------------------------------------------------------------
 
+// sourcesLong is the Long help of kg insights sources.
+const sourcesLong = `List the underlying metrics (name + label matchers) that source a specific
+insight on an entity.
+
+The server finds the insight's rule by the label set it is sent: --insight
+sets alertname, the entity sets asserts_entity_type and asserts_entity_name,
+the scope flags set env, namespace and site, and --label adds the rest,
+usually copied from 'gcx kg entities inspect' timeLines[].labels. Rules key on
+different labels. For example, request insights such as ErrorRatioBreach need
+asserts_request_type and asserts_error_type, saturation insights need
+asserts_resource_type, and alert-rule and change insights need
+asserts_alert_category, which inspect shows as the timeline entry's category
+field, not among its labels. An empty array means that nothing matched the
+labels sent in that window: the same labels can return metrics for one window
+and an empty array for another, so check that --from/--to (or --since) covers
+the insight before changing labels. The output lists each metric's name and
+label matchers, not the rule's expression or threshold. When the timeline
+entry's labels include grafana_rule_uid, 'gcx alert rules get <uid>' shows
+that alert rule, including its query.
+
+When the labels have an alertname but no asserts_alert_category and the
+lookup returns an empty array, sources searches the entity's insights in the
+same window and scope (or, when the entity has none of that name, the
+insights listed for its connected entities, such as a Service's pods). If that
+insight name has exactly one category there, it retries once with
+asserts_alert_category set to it and prints the metrics that retry returns;
+otherwise it prints the empty array.`
+
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "insights",
@@ -2146,6 +2174,15 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	sourceMetricsCmd := &cobra.Command{
 		Use:   "sources [Type--Name]",
 		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
+		Long:  sourcesLong,
+		Example: `  # Metrics behind a Kubernetes alert or change insight
+  gcx kg insights sources Service--svc-a --env prod-x --namespace ns1 \
+    --insight "Deployment Updated" --since 1h
+
+  # Metrics behind a request insight, with the labels from its timeline entry
+  gcx kg insights sources Service--svc-a --env prod-x --namespace ns1 \
+    --insight ErrorRatioBreach --since 1h \
+    --label asserts_request_type=inbound --label asserts_error_type=server_errors`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := sourcesOpts.IO.Validate(); err != nil {
 				return err
@@ -2202,7 +2239,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 					Labels:    labels,
 				}
 			}
-			results, err := client.AssertionSourceMetrics(cmd.Context(), req)
+			results, err := sourceMetricsWithCategoryFill(cmd, client, req)
 			if err != nil {
 				return err
 			}
@@ -2214,7 +2251,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	sourceMetricsCmd.Flags().String("name", "", "Entity name")
 	sourceMetricsCmd.Flags().String("type", "", "Entity type")
 	sourceMetricsCmd.Flags().String("insight", "", "Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label")
-	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)")
+	sourceMetricsCmd.Flags().StringArrayVar(&sourceMetricsLabels, "label", nil, "Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels; alert-rule and change insights also need asserts_alert_category=<the timeline entry's category>)")
 	sourceMetricsScope.register(sourceMetricsCmd)
 
 	cmd.AddCommand(entityMetricCmd, sourceMetricsCmd)

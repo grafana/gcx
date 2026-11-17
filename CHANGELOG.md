@@ -1,5 +1,19 @@
 ## Unreleased
 
+- `gcx kg insights sources` now retries once with the insight's category when
+  a lookup returns an empty array and the labels have an `alertname` but no
+  `asserts_alert_category`. Alert-rule and change insights (for example
+  Kubernetes alerts and "Deployment Updated") are matched on that label, which
+  `kg entities inspect` shows as a timeline entry's `category` rather than
+  among its labels, so a lookup built from the timeline labels returned `[]`.
+  The category comes from one entity search over the same window and scope,
+  and is used only when the insight name has exactly one category there. A
+  lookup that returns metrics the first time sends no extra request. The help
+  now names the labels that request, saturation, alert-rule and change
+  insights need, says that the same labels can return an empty array for a
+  window that does not cover the insight, says that the output lists metrics
+  and label matchers, not the rule's expression or threshold, and points to
+  `gcx alert rules get` for a timeline entry that carries `grafana_rule_uid`.
 - `gcx kg meta logs`, `traces` and `profiles` given `--from`, `--to` or
   `--since` still fail with exit 2, and the error now says that these
   commands take no time range because they read the drill-down configs as
