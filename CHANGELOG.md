@@ -1,3 +1,67 @@
+## v1.8.0 (2026-11-17)
+
+- Add `gcx annotations` commands to manage Grafana annotations.
+- Add `gcx logs archive` commands (experimental).
+- Add `gcx ml` commands for forecasts, holidays, and outlier detectors.
+- Add `gcx profiles diff` to compare two profiles.
+- Add `gcx resources search` for hybrid search (experimental).
+- Add `--filename-by=title` to `gcx resources pull`.
+- Add `--drilldown-link` to the Loki, Prometheus, Tempo, and Pyroscope queries.
+- Add `gcx help exit-codes` help topic.
+- Add Assistant usage views.
+- Add native Windows installation and runtime support.
+- Add a cost budget guard for Loki queries on Grafana Cloud targets.
+- Add `thresholds` upsert, delete, and update commands to the Knowledge Graph (KG).
+- Add `--skip-promql-eval` to KG `prom-rules upsert`.
+- Show write API availability in `gcx kg status`.
+- Add Agent Observability model cards and `model-rates resolve`.
+- Add rule actions to evaluators and `experiments list-filter-values`.
+- Let `gcx synth checks test` target existing checks.
+- Add OnCall personal notification rules, and align OnCall schemas.
+- Fix Loki: send `queryType` instant for metric queries without a time range.
+- Fix Loki: send `supportingQueryType` on `/api/ds/query` requests.
+- Fix Loki: include total count in `query-patterns` JSON and YAML output.
+- Clarify the zero limit behavior for logs.
+- Fix Pyroscope: keep profile selection in pprof exports.
+- Fix profiles: stop double-counting recursive CPU time.
+- Fix profiles: report unsupported adaptive management.
+- Fix Assistant: read investigation chats by engine.
+- Fix Assistant: explain missing permissions on 403 errors.
+- Fix Assistant: keep legacy conversation tool fields.
+- Fix Agent Observability: always request a bounded page size.
+- Fix Agent Observability: keep `execution_mode` and `filterable_tag_keys` on rules.
+- Fix Agent Observability: explain a missing plugin.
+- Fix Faro: reject unknown fields in frontend app manifests.
+- Fix Faro: resolve app arguments safely.
+- Fix IRM: reject incident description on create.
+- Fix IRM: reject unsupported incident delete previews.
+- Fix IRM: restore personal notification rules with user authentication.
+- Fix SLO: update pushes without a UUID by resource name.
+- Fix resources: skip unsupported provider list operations.
+- Fix resources: keep dashboard schemas that convert successfully.
+- Fix resources: show returned push identities on request.
+- Fix dashboards: report actual snapshot image dimensions.
+- Fix k6: keep configured run threshold options.
+- Fix synthetic monitoring: keep `basicMetricsOnly` false on checks.
+- Fix lint: resolve datasource variables before PromQL validation.
+- Fix BigQuery: filterable metadata lists and clearer permission errors.
+- Reject absolute URLs in `gcx api` paths.
+- Classify datasource proxy authentication failures.
+- Honor an explicit `-o` over agent mode for error output.
+- Show API server warnings at the default verbosity.
+- Report failed instrumentation checks as unknown, and exit 3 on authentication errors.
+- Keep angle-bracket placeholders in terminal `--help` output.
+- Let `GCX_AUTO_APPROVE` unlock `thresholds update -f -`.
+- Unify table output with shared adapters across many commands.
+- Shorten plugin skill descriptions.
+- Add the `Invocation.HomeFS` read-only home to the sandbox.
+- Update to Go 1.27, and update Go dependencies and `golangci-lint`.
+- Update Kubernetes dependencies, and the Docker base image digest.
+- Add the Authentication and Permissions pages, and rewrite the README and guides.
+- Add the installation docs for `asdf` and Windows.
+- Propose organization access and SCIM commands in an RFC.
+
+
 ## Unreleased
 
 - `gcx logs metrics` with no time flags now runs an instant query and returns
