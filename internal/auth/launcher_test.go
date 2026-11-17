@@ -292,6 +292,44 @@ func TestPasteRouteStopsOnBrowserCancel(t *testing.T) {
 	assert.Equal(t, "callback", capture.CurrentLoginStage(), "a pasted Cancel ends the wait")
 }
 
+// TestPasteRouteEndsOnExchangeFailure covers a pasted redirect URL whose token
+// exchange fails. The paste route has taken the exchange guard and the code is
+// spent, so no later paste or browser callback can finish the login. The flow
+// must end with the error instead of asking for another URL.
+func TestPasteRouteEndsOnExchangeFailure(t *testing.T) {
+	remoteSessionForTest(t)
+	browser := recordBrowser(t)
+	reader, writerEnd, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writerEnd.Close() })
+	t.Cleanup(auth.SwapPasteTerminal(reader, true))
+
+	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(exchange.Close)
+
+	var out syncBuffer
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	done := startFlow(ctx, auth.NewFlow("https://mystack.grafana.net", auth.Options{Writer: &out}))
+
+	params := consentParams(t, browser.next(t))
+	waitForOutput(t, &out, "Redirect URL")
+	pasted := url.Values{
+		"state":            {params.Get("state")},
+		"code":             {"auth-code"},
+		"endpoint":         {exchange.URL},
+		"instanceEndpoint": {"https://mystack.grafana.net"},
+	}
+	_, err = writerEnd.WriteString(callbackURL(params.Get("callback_port"), pasted) + "\n")
+	require.NoError(t, err)
+
+	outcome := waitForOutcome(t, done)
+	require.ErrorContains(t, outcome.err, "token exchange failed")
+	assert.NotContains(t, out.String(), "That URL did not work")
+}
+
 // TestLauncherAndSignupURLs pins where the browser goes. Without a stack the
 // consent URL is the Grafana Cloud launcher on the configured portal. A signup
 // goes through the launcher to the stack's sign-in route, which carries the
