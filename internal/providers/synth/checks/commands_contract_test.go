@@ -1313,7 +1313,7 @@ func TestChecksTimelineContract(t *testing.T) {
 		}
 	}
 
-	t.Run("clamp notice goes to stderr, no-data notice keeps human stdout", func(t *testing.T) {
+	t.Run("clamp notice goes to stderr, no-data notice goes to stderr", func(t *testing.T) {
 		srv := newCheckServer(t, newState())
 
 		stdout, stderr, err := runChecks(t, srv.URL, false, "", "timeline", "42", "--datasource-uid", "test-uid")
@@ -1321,7 +1321,19 @@ func TestChecksTimelineContract(t *testing.T) {
 
 		// --since default (6h) exceeds check age (30m) → clamped.
 		assert.Contains(t, stderr, "window adjusted to match")
-		assert.Equal(t, "🛈 No time-series data available for check 42.\n", stdout)
+		assert.Empty(t, stdout)
+		assert.Contains(t, stderr, "hint: No time-series data available for check 42.")
+	})
+
+	t.Run("table output with no data is header-only on stdout", func(t *testing.T) {
+		srv := newCheckServer(t, newState())
+
+		stdout, stderr, err := runChecks(t, srv.URL, false, "", "timeline", "42", "--datasource-uid", "test-uid", "-o", "table")
+		require.NoError(t, err)
+
+		assert.Contains(t, stdout, "PROBE")
+		assert.NotContains(t, stdout, "No time-series data")
+		assert.Contains(t, stderr, "hint: No time-series data available for check 42.")
 	})
 
 	t.Run("agent mode emits one JSON document even with no data", func(t *testing.T) {
