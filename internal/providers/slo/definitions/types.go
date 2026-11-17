@@ -42,7 +42,8 @@ type GrafanaQueries struct {
 
 // FreeformQuery is a freeform PromQL query.
 type FreeformQuery struct {
-	Query string `json:"query"`
+	Query               string `json:"query"`
+	SourceDatasourceUID string `json:"sourceDatasourceUid,omitempty"`
 }
 
 // RatioQuery defines an SLO using success/total metric ratio.
@@ -50,6 +51,8 @@ type RatioQuery struct {
 	SuccessMetric MetricDef `json:"successMetric"`
 	TotalMetric   MetricDef `json:"totalMetric"`
 	GroupByLabels []string  `json:"groupByLabels,omitempty"`
+
+	SourceDatasourceUID string `json:"sourceDatasourceUid,omitempty"`
 }
 
 // ThresholdQuery defines an SLO using a threshold expression.
@@ -58,6 +61,7 @@ type ThresholdQuery struct {
 	FailureThresholdExpression string    `json:"failureThresholdExpression,omitempty"`
 	Threshold                  Threshold `json:"threshold"`
 	GroupByLabels              []string  `json:"groupByLabels,omitempty"`
+	SourceDatasourceUID        string    `json:"sourceDatasourceUid,omitempty"`
 }
 
 // MetricDef defines a metric used in ratio queries.

@@ -462,3 +462,24 @@ func TestQuery_GrafanaQueriesRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, raw, string(out))
 }
+
+// sourceDatasourceUid on freeform, ratio and threshold queries must survive a
+// decode/encode round trip, otherwise push drops it and Grafana falls back to
+// the destination datasource.
+func TestQuery_SourceDatasourceUIDRoundTrip(t *testing.T) {
+	tests := map[string]string{
+		"freeform":         `{"type":"freeform","freeform":{"query":"up","sourceDatasourceUid":"source-ds"}}`,
+		"ratio":            `{"type":"ratio","ratio":{"successMetric":{"prometheusMetric":"ok"},"totalMetric":{"prometheusMetric":"all"},"sourceDatasourceUid":"source-ds"}}`,
+		"threshold":        `{"type":"threshold","threshold":{"thresholdExpression":"x","threshold":{"value":1,"operator":"<"},"sourceDatasourceUid":"source-ds"}}`,
+		"failureThreshold": `{"type":"failureThreshold","failureThreshold":{"failureThresholdExpression":"x","threshold":{"value":1,"operator":">"},"sourceDatasourceUid":"source-ds"}}`,
+	}
+	for name, raw := range tests {
+		t.Run(name, func(t *testing.T) {
+			var q definitions.Query
+			require.NoError(t, json.Unmarshal([]byte(raw), &q))
+			out, err := json.Marshal(q)
+			require.NoError(t, err)
+			assert.JSONEq(t, raw, string(out))
+		})
+	}
+}
