@@ -71,9 +71,13 @@ schema is not installed on this stack yet. Stop and say so.
 Ask which local checkouts to scan if the user has not said. For each one:
 
 ```bash
-git -C <dir> remote get-url origin | sed -E 's#^([a-z+]+://)[^@/]*@#\1#'
-git -C <dir> symbolic-ref --short refs/remotes/origin/HEAD
+git -C '<dir>' remote get-url origin | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1#'
+git -C '<dir>' symbolic-ref --short refs/remotes/origin/HEAD
 ```
+
+Keep `<dir>` in single quotes, so a path with spaces or shell characters stays
+one argument. A path that itself contains a single quote: ask the user for
+another path to that checkout.
 
 A remote URL can hold a user name and a token between the scheme and the host,
 ending with `@`. The `sed` removes that part before the URL is printed, so it
