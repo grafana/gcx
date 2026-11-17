@@ -2655,3 +2655,23 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
 }
+
+// TestRunCloudOAuthLeavesBrowserCancelUnwrapped keeps a Cancel on the
+// grafana.com consent page mappable to "Operation cancelled" (exit 5): a
+// DetailedError around it would be returned as-is and exit 1.
+func TestRunCloudOAuthLeavesBrowserCancelUnwrapped(t *testing.T) {
+	opts := internallogin.Options{
+		Hooks: internallogin.Hooks{
+			NewCloudAuthFlow: func(internalauth.GCOMOptions) internallogin.CloudAuthFlow {
+				return &stubCloudAuthFlow{err: fmt.Errorf("OAuth flow failed: %w", internalauth.ErrBrowserCancelled)}
+			},
+		},
+	}
+
+	err := runCloudOAuth(context.Background(), &opts)
+	require.ErrorIs(t, err, internalauth.ErrBrowserCancelled)
+	var detailed gcxerrors.DetailedError
+	assert.NotErrorAs(t, err, &detailed, "a cancel must not be wrapped in a DetailedError")
+	var detailedPtr *gcxerrors.DetailedError
+	assert.NotErrorAs(t, err, &detailedPtr, "a cancel must not be wrapped in a DetailedError")
+}
