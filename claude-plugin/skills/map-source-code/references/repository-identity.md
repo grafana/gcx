@@ -3,20 +3,28 @@
 A `Repository` entity's **name** is its canonical id: host and path, with no
 scheme, no user, no port and no `.git` suffix. The same repository must always
 get the same name, whoever scans it and whichever remote form their checkout
-uses. Otherwise the graph gets duplicates.
+uses. Otherwise the graph gets duplicates. So apply only the rules below, never
+a rule that depends on who scans or what they say.
 
 ## From remote URL to canonical name
 
 Lowercase the host. On github.com, gitlab.com, bitbucket.org, dev.azure.com,
-and on GitHub Enterprise, GitLab, Bitbucket, Azure DevOps Server or Gitea
-servers, lowercase the path too: these providers ignore case in repository
+visualstudio.com, and on GitHub Enterprise, GitLab, Bitbucket, Azure DevOps
+Server or Gitea servers, lowercase the path too: these providers ignore case in repository
 paths, so `Contoso/Shop` and `contoso/shop` are the same repository. Keep the
 original case in `fullName`. On any other host, keep the path's case as the
 remote shows it.
 
-Drop the port: the SSH and HTTPS remotes of one repository use different ports.
-Keep `host:port` only when the user says that one host serves different
-repositories on different web ports.
+Always drop the port: the SSH and HTTPS remotes of one repository use
+different ports.
+
+Azure DevOps has its own SSH and legacy host names. Rewrite each of them to the
+`dev.azure.com` HTTPS form, `dev.azure.com/<organization>/<project>/_git/<repository>`:
+
+- `ssh.dev.azure.com:v3/<organization>/<project>/<repository>`
+- `vs-ssh.visualstudio.com:v3/<organization>/<project>/<repository>`
+- `<organization>.visualstudio.com/<project>/_git/<repository>`, with or without
+  `DefaultCollection/` after the host
 
 The table shows remotes as Step 2 prints them, with any user part already
 removed: `git@github.com:contoso/shop.git` prints as `github.com:contoso/shop.git`.
@@ -30,6 +38,8 @@ removed: `git@github.com:contoso/shop.git` prints as `github.com:contoso/shop.gi
 | `https://bitbucket.org/contoso/shop.git` | `bitbucket.org/contoso/shop` |
 | `https://dev.azure.com/contoso/payments/_git/api` | `dev.azure.com/contoso/payments/_git/api` |
 | `ssh.dev.azure.com:v3/contoso/payments/api` | `dev.azure.com/contoso/payments/_git/api` |
+| `vs-ssh.visualstudio.com:v3/contoso/payments/api` | `dev.azure.com/contoso/payments/_git/api` |
+| `https://contoso.visualstudio.com/payments/_git/api` | `dev.azure.com/contoso/payments/_git/api` |
 | A form that still has a user name or token before the host, ending with `@` | drop them; never write credentials |
 
 If a checkout has no `origin`, or the remote is a local path, skip it and say
