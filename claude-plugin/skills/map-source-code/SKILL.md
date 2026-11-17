@@ -17,8 +17,8 @@ Knowledge Graph already knows, and write the links. The result in the graph:
 - `Service -[BUILT_FROM]-> Repository` for application code
 - `Service -[DEPLOYED_FROM]-> Repository` for deployment config (Helm,
   Kustomize, Tanka/jsonnet, Terraform, plain manifests)
-- one `CloudResource` entity per bucket, queue, topic or table the code uses,
-  in the `sourcecode` domain
+- one `CloudResource` entity per bucket, queue, topic, Pub/Sub subscription or
+  table the code uses, in the `sourcecode` domain
 - `Service -[READS_FROM]-> CloudResource` and
   `Service -[WRITES_TO]-> CloudResource`
 
@@ -114,9 +114,9 @@ deployment config, the environment and namespace it deploys to.
 
 ## Step 4: Find the resources each service uses
 
-Look for buckets, queues, topics and tables that each service reads or writes:
-infrastructure code, IAM policies, SDK calls, and the environment variables and
-values in the deploy config. For each resource, find its full id for each
+Look for buckets, queues, topics, Pub/Sub subscriptions and tables that each
+service reads or writes: infrastructure code, IAM policies, SDK calls, and the
+environment variables and values in the deploy config. For each resource, find its full id for each
 environment and whether the service reads it, writes it, or both.
 
 [Resources](references/resources.md) lists where to look, how to tell read from

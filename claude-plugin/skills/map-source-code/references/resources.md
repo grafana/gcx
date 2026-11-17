@@ -1,8 +1,9 @@
 # Resources a service uses
 
 A `CloudResource` is a bucket, queue, topic or table that a service's code reads
-or writes. Write one for each resource you find, whether or not telemetry knows
-it. Then link the Service to it with `READS_FROM` or `WRITES_TO`.
+or writes. A Pub/Sub subscription counts as a queue here: a service that pulls
+from one reads that subscription, not its topic. Write one for each resource you
+find, whether or not telemetry knows it. Then link the Service to it with `READS_FROM` or `WRITES_TO`.
 
 Always link to the `CloudResource`, never to a telemetry entity such as
 `S3Bucket`. When telemetry also has an S3 bucket, SQS queue or DynamoDB table,
@@ -14,7 +15,7 @@ are not linked to telemetry yet.
 
 | Source | What it gives |
 |---|---|
-| Terraform, Pulumi, CloudFormation, Crossplane: `aws_s3_bucket`, `aws_sqs_queue`, `aws_sns_topic`, `aws_dynamodb_table`, `google_storage_bucket`, `google_pubsub_topic`, `KafkaTopic` resources | The resource itself, with its name, account or project, and region |
+| Terraform, Pulumi, CloudFormation, Crossplane: `aws_s3_bucket`, `aws_sqs_queue`, `aws_sns_topic`, `aws_dynamodb_table`, `google_storage_bucket`, `google_pubsub_topic`, `google_pubsub_subscription`, `KafkaTopic` resources | The resource itself, with its name, account or project, and region |
 | IAM policies and roles attached to the service | The access (the actions) and the resource (the ARN) |
 | SDK calls in the code | Whether the service reads or writes |
 | Environment variables and values in the deploy config | The real name for each environment |
@@ -63,7 +64,7 @@ this form, so write them the same way.
 |---|---|---|
 | `kind` | From the table above | yes |
 | `provider` | From the table above | yes |
-| `resource_name` | The short name: bucket, queue, table or topic | no |
+| `resource_name` | The short name: bucket, queue, subscription, table or topic | no |
 | `arn` | For AWS kinds, the same value as the node name. Without it, telemetry cannot join | AWS only |
 | `account_id`, `region` | AWS account and region, when known. An S3 ARN has neither | no |
 | `project_id`, `region` | GCP project and location | no |
