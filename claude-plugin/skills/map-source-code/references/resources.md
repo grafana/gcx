@@ -5,8 +5,10 @@ or writes. Write one for each resource you find, whether or not telemetry knows
 it. Then link the Service to it with `READS_FROM` or `WRITES_TO`.
 
 Always link to the `CloudResource`, never to a telemetry entity such as
-`S3Bucket`. When telemetry also has the resource, the Knowledge Graph links its
-node to the `CloudResource` by itself, by matching `arn`.
+`S3Bucket`. When telemetry also has an S3 bucket, SQS queue or DynamoDB table,
+the Knowledge Graph links its node to the `CloudResource` by itself, by matching
+`arn`. Other kinds, such as topics and GCS buckets, are written the same way but
+are not linked to telemetry yet.
 
 ## Where to find references
 

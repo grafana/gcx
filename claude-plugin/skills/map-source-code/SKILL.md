@@ -2,7 +2,7 @@
 name: map-source-code
 description: >-
   Links services to the repositories that build and deploy them and to the
-  buckets, queues and tables their code uses: scans local checkouts and writes
+  buckets, queues, topics and tables their code uses: scans local checkouts and writes
   the links to the Knowledge Graph sourcecode schema. Not for debugging missing
   telemetry entities or edges (use diagnose-entity-graph).
 ---
@@ -241,7 +241,9 @@ so entries that were already written are only written again.
 
 | Answer | Meaning | What to do |
 |---|---|---|
-| 403 | The write API is not enabled for this stack | Stop. Keep the files for later. |
+| 401 | gcx is not signed in to the stack, or its token expired | Stop. Ask the user to fix the gcx login, then run the file again. |
+| 403 that says the write API is not enabled | Writes were turned off after Step 1 | Stop. Keep the files for later. |
+| Any other 403 | The account gcx uses may not write to the Knowledge Graph | Stop. Keep the files, and tell the user to get write access from a stack admin. |
 | 422 that names the domain or `Repository` | The `sourcecode` schema is not installed on this stack | Stop and say so. |
 | 422 that names `CloudResource`, `READS_FROM` or `WRITES_TO` | The stack has an older `sourcecode` schema without resources | Do not write `resources.yaml` or `resource-links.yaml`. Keep them for later, and say so. |
 | 422 or 404 about an endpoint | No Service with that name and scope | Check the match from Step 5, fix or remove that entry, and run the file again. |
@@ -275,8 +277,10 @@ The links are in the `sourcecode` domain. Default views of a Service hide nodes
 from other domains, so a `Repository` or `CloudResource` may not appear next to
 its Service in the entity graph UI even when the link exists.
 
-When telemetry also has an AWS resource, the Knowledge Graph links it to the
-`CloudResource` with `DEPLOYMENT_OF` on the next model build. This needs no
+When telemetry also has the S3 bucket, SQS queue or DynamoDB table, the
+Knowledge Graph links its node to the `CloudResource` with `DEPLOYMENT_OF` on
+the next model build. Other kinds, including SNS, Pub/Sub and Kafka topics and
+GCS buckets, have no such link yet. This needs no
 write from you, and may take a while to appear.
 
 ## Keeping links fresh
