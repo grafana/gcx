@@ -3,6 +3,7 @@ package remote
 import (
 	"errors"
 	"maps"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -22,6 +23,7 @@ type OperationSummary struct {
 	skipReasons  map[string]int
 	warnings     []string
 	successes    []OperationSuccess
+	planned      []OperationSuccess
 }
 
 // OperationFailure describes a single resource operation failure.
@@ -155,4 +157,32 @@ func (s *OperationSummary) Successes() []OperationSuccess {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]OperationSuccess(nil), s.successes...)
+}
+
+// RecordPlanned records what a dry-run would have done for one resource. It is
+// kept apart from RecordApplied, which holds identities of real writes only.
+func (s *OperationSummary) RecordPlanned(result OperationSuccess) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.planned = append(s.planned, result)
+}
+
+// Planned returns a copy of the dry-run plan. Resources finish in a
+// nondeterministic order under concurrency, so the copy is sorted by kind,
+// requested name, then source path to keep output stable across runs.
+func (s *OperationSummary) Planned() []OperationSuccess {
+	s.mu.Lock()
+	out := append([]OperationSuccess(nil), s.planned...)
+	s.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Kind != b.Kind {
+			return a.Kind < b.Kind
+		}
+		if a.RequestedName != b.RequestedName {
+			return a.RequestedName < b.RequestedName
+		}
+		return a.SourcePath < b.SourcePath
+	})
+	return out
 }
