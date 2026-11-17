@@ -300,7 +300,7 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Adaptive Metrics (`gcx metrics adaptive`) | Operation-specific `adaptive-metrics-rules`, `adaptive-metrics-recommendations`, `adaptive-metrics-segments`, or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |
 | Adaptive Logs and Logs Archive (`gcx logs adaptive`, `gcx logs archive`) | `adaptive-logs:admin` |
 | Adaptive Traces (`gcx traces adaptive`) | `adaptive-traces:admin` |
-| Synthetic Monitoring (`gcx sm`) direct API token creation | `metrics:write`, `logs:write`, `traces:write` |
+| Synthetic Monitoring (`gcx synthetic-monitoring`) direct API token creation | `metrics:write`, `logs:write`, `traces:write` |
 | Instrumentation Hub setup (`gcx instrumentation setup`) token for the printed Helm command | `set:alloy-data-write`, `metrics:read` |
 
 Fleet Management, IRM, and SLO commands, and direct telemetry queries such as `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles`, don't use the Grafana Cloud credential. They use your Grafana sign-in, either OAuth or a service account token.
