@@ -1,22 +1,28 @@
 # Repository identity
 
 A `Repository` entity's **name** is its canonical id: host and path, with no
-scheme, no user, no port and no `.git` suffix. The same repository must always
-get the same name, whoever scans it and whichever remote form their checkout
-uses. Otherwise the graph gets duplicates. So apply only the rules below, never
-a rule that depends on who scans or what they say.
+scheme, no user, no SSH port and no `.git` suffix. The same repository must
+always get the same name, whoever scans it and whichever remote form their
+checkout uses. Otherwise the graph gets duplicates. So apply only the rules
+below, never a rule that depends on who scans or what they say.
+
+Two different repositories must never get the same name: their links would
+merge. When a rule cannot tell, it keeps the names apart. A duplicate node for
+one repository is the smaller harm.
 
 ## From remote URL to canonical name
 
-Lowercase the host. On github.com, gitlab.com, bitbucket.org, dev.azure.com,
-visualstudio.com, and on GitHub Enterprise, GitLab, Bitbucket, Azure DevOps
-Server or Gitea servers, lowercase the path too: these providers ignore case in repository
-paths, so `Contoso/Shop` and `contoso/shop` are the same repository. Keep the
-original case in `fullName`. On any other host, keep the path's case as the
-remote shows it.
+Lowercase the host. On github.com, gitlab.com, bitbucket.org, dev.azure.com
+and visualstudio.com, lowercase the path too: these hosts ignore case in
+repository paths, so `Contoso/Shop` and `contoso/shop` are the same repository.
+Keep the original case in `fullName`. On any other host, including self-hosted
+servers, keep the path's case as the remote shows it: you cannot tell from the
+remote whether that server ignores case.
 
-Always drop the port: the SSH and HTTPS remotes of one repository use
-different ports.
+Drop the port of an SSH remote (`ssh://` or scp-style): the SSH port never
+tells two repositories apart. Keep a port other than 80 or 443 on an `http` or
+`https` remote, as `host:port`: one host can run different servers on different
+web ports.
 
 Azure DevOps has its own SSH and legacy host names. Rewrite each of them to the
 `dev.azure.com` HTTPS form, `dev.azure.com/<organization>/<project>/_git/<repository>`:
@@ -34,6 +40,8 @@ removed: `git@github.com:contoso/shop.git` prints as `github.com:contoso/shop.gi
 | `https://github.com/contoso/shop.git` | `github.com/contoso/shop` |
 | `github.com:contoso/shop.git` (scp-style) | `github.com/contoso/shop` |
 | `ssh://github.example.com:2222/platform/shop.git` | `github.example.com/platform/shop` |
+| `https://git.example.com:8443/Platform/Shop.git` (self-hosted, web port) | `git.example.com:8443/Platform/Shop` |
+| `https://git.example.com:443/Platform/Shop.git` | `git.example.com/Platform/Shop` |
 | `https://gitlab.com/contoso/team/shop.git` (nested groups) | `gitlab.com/contoso/team/shop` |
 | `https://bitbucket.org/contoso/shop.git` | `bitbucket.org/contoso/shop` |
 | `https://dev.azure.com/contoso/payments/_git/api` | `dev.azure.com/contoso/payments/_git/api` |
@@ -55,9 +63,9 @@ so leave out `languages` (a list) and `archived` (a bool).
 |---|---|---|
 | `provider` | `github`, `gitlab`, `bitbucket`, `azuredevops`, `gitea`, `gerrit`, `codecommit`, or another short name. Take it from the host, for example `github.com` or a host the user names as GitHub Enterprise gives `github` | yes |
 | `vcs` | `git` for every repository this skill reads | yes |
-| `host` | The host part of the canonical name | no |
+| `host` | The host part of the canonical name, without any port | no |
 | `url` | The repository's web URL, for example `https://github.com/contoso/shop` | no |
-| `hosting` | `cloud` for `github.com`, `gitlab.com`, `bitbucket.org` and `dev.azure.com`; `selfhosted` otherwise | no |
+| `hosting` | `cloud` for `github.com`, `gitlab.com`, `bitbucket.org`, `dev.azure.com` and `visualstudio.com`; `selfhosted` otherwise | no |
 | `owner` | The org, user or group. For Azure DevOps, `org/project` | no |
 | `fullName` | The display name in the case the remote shows, for example `Contoso/Shop` | no |
 | `defaultBranch` | From `git symbolic-ref --short refs/remotes/origin/HEAD`, without the `origin/` prefix | no |
