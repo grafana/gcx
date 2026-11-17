@@ -73,7 +73,7 @@ schema is not installed on this stack yet. Stop and say so.
 Ask which local checkouts to scan if the user has not said. For each one:
 
 ```bash
-git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#' -e 's#^[^/]*@##' -e 's#[?#].*$##'
+git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#' -e 's#^[^/]*@([^@/:]+:)#\1#' -e 's#[?#].*$##'
 git -C '<dir>' symbolic-ref --short refs/remotes/origin/HEAD
 ```
 
@@ -85,7 +85,8 @@ A remote URL can hold a user name and a token between the scheme and the host,
 ending with `@`. An scp-style remote (`host:path`, with no scheme) can carry
 a user name, a token, or both at its start, ending with `@`. A token can itself
 contain `@`, and a URL can also carry a token in its query string (`?...`). The
-`sed` removes everything up to the last `@` before the host in both forms,
+`sed` removes everything up to the last `@` before the host in both forms (an
+`@` later in the path stays),
 including a plain `git@`, and drops any query string or `#` fragment, before
 the URL is printed, so none of it reaches your output. Always read the remote this way, never with plain
 `git remote -v` or `git config`, and never repeat a URL that still has that

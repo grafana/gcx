@@ -1,7 +1,7 @@
 # Repository identity
 
 A `Repository` entity's **name** is its canonical id: host and path, with no
-scheme, no user, no SSH port and no `.git` suffix. The same repository must
+scheme, no user, no default port and no `.git` suffix. The same repository must
 always get the same name, whoever scans it and whichever remote form their
 checkout uses. Otherwise the graph gets duplicates. So apply only the rules
 below, never a rule that depends on who scans or what they say.
@@ -19,10 +19,11 @@ Keep the original case in `fullName`. On any other host, including self-hosted
 servers, keep the path's case as the remote shows it: you cannot tell from the
 remote whether that server ignores case.
 
-Drop the port of an SSH remote (`ssh://` or scp-style): the SSH port never
-tells two repositories apart. Keep a port other than 80 or 443 on an `http` or
-`https` remote, as `host:port`: one host can run different servers on different
-web ports.
+Drop a default port: 22 on an `ssh://` remote, 80 on `http`, 443 on `https`.
+Keep any other port, as `host:port`: one host can run different servers on
+different ports. An scp-style remote has no port. So the SSH and HTTPS remotes
+of one repository get one name only when both use default ports; otherwise the
+repository gets two names, which is the smaller harm.
 
 Azure DevOps has its own SSH and legacy host names. Rewrite each of them to the
 `dev.azure.com` HTTPS form, `dev.azure.com/<organization>/<project>/_git/<repository>`:
@@ -39,7 +40,8 @@ removed: `git@github.com:contoso/shop.git` prints as `github.com:contoso/shop.gi
 |---|---|
 | `https://github.com/contoso/shop.git` | `github.com/contoso/shop` |
 | `github.com:contoso/shop.git` (scp-style) | `github.com/contoso/shop` |
-| `ssh://github.example.com:2222/platform/shop.git` | `github.example.com/platform/shop` |
+| `ssh://github.example.com:2222/platform/shop.git` (non-default SSH port) | `github.example.com:2222/platform/shop` |
+| `ssh://github.example.com:22/platform/shop.git` | `github.example.com/platform/shop` |
 | `https://git.example.com:8443/Platform/Shop.git` (self-hosted, web port) | `git.example.com:8443/Platform/Shop` |
 | `https://git.example.com:443/Platform/Shop.git` | `git.example.com/Platform/Shop` |
 | `https://gitlab.com/contoso/team/shop.git` (nested groups) | `gitlab.com/contoso/team/shop` |
