@@ -299,15 +299,8 @@ func TestPasteRouteStopsOnBrowserCancel(t *testing.T) {
 func TestPasteRouteEndsOnExchangeFailure(t *testing.T) {
 	remoteSessionForTest(t)
 	browser := recordBrowser(t)
-	reader, writerEnd, err := os.Pipe()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = writerEnd.Close() })
-	t.Cleanup(auth.SwapPasteTerminal(reader, true))
-
-	exchange := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "boom", http.StatusInternalServerError)
-	}))
-	t.Cleanup(exchange.Close)
+	writerEnd := pasteTerminal(t)
+	exchange := newGatedExchange(t)
 
 	var out syncBuffer
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -316,18 +309,26 @@ func TestPasteRouteEndsOnExchangeFailure(t *testing.T) {
 
 	params := consentParams(t, browser.next(t))
 	waitForOutput(t, &out, "Redirect URL")
-	pasted := url.Values{
-		"state":            {params.Get("state")},
-		"code":             {"auth-code"},
-		"endpoint":         {exchange.URL},
-		"instanceEndpoint": {"https://mystack.grafana.net"},
-	}
-	_, err = writerEnd.WriteString(callbackURL(params.Get("callback_port"), pasted) + "\n")
+	port := params.Get("callback_port")
+	pasted := stackPaste(params.Get("state"), exchange.URL)
+	_, err := writerEnd.WriteString(callbackURL(port, pasted) + "\n")
 	require.NoError(t, err)
+	exchange.waitEntered(t)
+
+	// The guard is claimed while the exchange is in flight: the browser route
+	// answers without a second exchange and does not end the login.
+	status, _ := sendCallback(t, http.MethodGet, callbackURL(port, pasted))
+	assert.Equal(t, http.StatusOK, status)
+	assertNotEnded(t, done)
+	exchange.open()
 
 	outcome := waitForOutcome(t, done)
 	require.ErrorContains(t, outcome.err, "token exchange failed")
+	var statusErr *auth.ExchangeStatusError
+	require.ErrorAs(t, outcome.err, &statusErr)
+	assert.Equal(t, http.StatusInternalServerError, statusErr.StatusCode)
 	assert.NotContains(t, out.String(), "That URL did not work")
+	assert.Equal(t, int32(1), exchange.hits.Load(), "the spent code is exchanged once")
 }
 
 // TestLauncherAndSignupURLs pins where the browser goes. Without a stack the

@@ -245,7 +245,7 @@ func awaitCallbackOrPaste[T any](
 					return nil, cerr.err
 				}
 				if cerr.spent {
-					return nil, cerr.err
+					return nil, spentError(ctx, cerr)
 				}
 				if errors.Is(cerr.err, errExchangeClaimed) {
 					// The callback server won the race. Its result is already on
@@ -260,6 +260,16 @@ func awaitCallbackOrPaste[T any](
 			return nil, ctx.Err()
 		}
 	}
+}
+
+// spentError is the error that ends a login whose exchange failed. Ctrl-C
+// during the exchange fails it with the context's error: return that itself, so
+// the cancellation stays silent instead of printing a wrapped exchange failure.
+func spentError(ctx context.Context, cerr *callbackError) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return cerr.err
 }
 
 // handleCallbackParams validates the redirect query parameters, exchanges the
