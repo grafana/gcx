@@ -198,6 +198,32 @@ current-context: default
 		assert.Contains(t, stderr, "Explore link: ")
 	})
 
+	t.Run("prints an exceptions tab link", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--exceptions-link", "--since", "1h", "-o", "json", `{ resource.service.name = "adaptive-profiles-api" }`})
+		require.NoError(t, err)
+		assert.Contains(t, stderr, "Traces Drilldown Exceptions link: ")
+		assert.Contains(t, stderr, "actionView=exceptions")
+		assert.Contains(t, stderr, "var-metric=errors")
+		assert.Contains(t, stderr, "resource.service.name")
+	})
+
+	t.Run("exceptions link falls back to explore for an unsupported expression", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--exceptions-link", "--since", "1h", "-o", "json", `{ span.http.status_code >= 500 }`})
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "Traces Drilldown Exceptions link:")
+		assert.Contains(t, stderr, "Explore link: ")
+	})
+
+	t.Run("exceptions link refuses a link without a time range and says why", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--exceptions-link", "-o", "json", `{ resource.service.name = "checkout" }`})
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "Traces Drilldown Exceptions link:")
+		assert.Contains(t, stderr, "Traces Drilldown Exceptions links require --since or --from/--to")
+	})
+
 	t.Run("refuses a link without a time range and says why", func(t *testing.T) {
 		stdout, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
 			[]string{"query", "--drilldown-link", "-o", "json", `{ span.http.status_code = 500 }`})
