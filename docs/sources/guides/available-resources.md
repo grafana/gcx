@@ -48,7 +48,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Annotations** | Annotations on dashboards and panels, organization-wide annotations, and annotation tags | [`gcx annotations`](../../cli-reference/#gcx-annotations) | |
 | **Folders** | Folders | [`gcx resources`](../../cli-reference/#gcx-resources) | |
 | **Data sources** | Data source configurations and health checks | [`gcx datasources`](../../cli-reference/#gcx-datasources) | |
-| **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../../cli-reference/#gcx-alert), [`gcx resources`](../../cli-reference/#gcx-resources) | [Lint resources](../lint-resources/) |
+| **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../../cli-reference/#gcx-alert), [`gcx resources`](../../cli-reference/#gcx-resources) | [Lint resources](../lint-resources/), [Use gcx to manage alerting resources](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/gcx-provisioning/) |
 | **SLOs** | SLO definitions and reports | [`gcx slo`](../../cli-reference/#gcx-slo), [`gcx resources`](../../cli-reference/#gcx-resources) | |
 | **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../../cli-reference/#gcx-irm-incidents), [`gcx resources`](../../cli-reference/#gcx-resources) | [Incident descriptions](../manage-resources/#incident-descriptions) |
 | **IRM OnCall** | Schedules, escalation chains, integrations, and other OnCall configuration | [`gcx irm oncall`](../../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](../manage-oncall-notification-rules/) |
