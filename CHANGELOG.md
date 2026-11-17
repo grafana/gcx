@@ -1,5 +1,27 @@
 ## v1.8.0 (2026-11-17)
 
+### Breaking changes
+
+- `gcx setup status` now reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled. It exits 3 on authentication failures
+  and 1 on other probe failures. It used to exit 4. The JSON document gains an
+  optional `error` object. Update scripts that branch on exit 4 or on
+  `enabled: false`. (#1699)
+- `gcx logs metrics` with no time flags now runs an instant query. It returns
+  one value per series. It used to run a range query over the last minute and
+  return two points per series. Callers that sum the points now get the
+  correct count, so their totals change. The `--share-link` URL now opens an
+  instant query in Explore. (#1785)
+- `gcx logs query` and `gcx datasources loki query` now reject a negative
+  `--limit`. A negative value used to run with the Loki default line limit and
+  exit 0. Remove the negative value from scripts. `--limit 0` still sends no
+  limit. (#1404)
+- `gcx api` now rejects an absolute URL as the path and exits 2. It used to
+  join the URL to the configured Grafana host, which sent the request to a
+  wrong address. Pass a path that is relative to the stack. (#1735)
+
+### New commands and improvements
+
 - Add `gcx annotations` commands to manage Grafana annotations.
 - Add `gcx logs archive` commands (experimental).
 - Add `gcx ml` commands for forecasts, holidays, and outlier detectors.
@@ -21,7 +43,6 @@
 - Fix Loki: send `queryType` instant for metric queries without a time range.
 - Fix Loki: send `supportingQueryType` on `/api/ds/query` requests.
 - Fix Loki: include total count in `query-patterns` JSON and YAML output.
-- Clarify the zero limit behavior for logs.
 - Fix Pyroscope: keep profile selection in pprof exports.
 - Fix profiles: stop double-counting recursive CPU time.
 - Fix profiles: report unsupported adaptive management.
@@ -45,11 +66,12 @@
 - Fix synthetic monitoring: keep `basicMetricsOnly` false on checks.
 - Fix lint: resolve datasource variables before PromQL validation.
 - Fix BigQuery: filterable metadata lists and clearer permission errors.
-- Reject absolute URLs in `gcx api` paths.
 - Classify datasource proxy authentication failures.
 - Honor an explicit `-o` over agent mode for error output.
+- Record the last `gcx signup` step as `signup_stage` in anonymous usage statistics.
+  gcx shows the one-time telemetry notice again to disclose the new field.
+  A failed OAuth token exchange in `gcx login` or `gcx signup` now reports its HTTP status.
 - Show API server warnings at the default verbosity.
-- Report failed instrumentation checks as unknown, and exit 3 on authentication errors.
 - Keep angle-bracket placeholders in terminal `--help` output.
 - Let `GCX_AUTO_APPROVE` unlock `thresholds update -f -`.
 - Unify table output with shared adapters across many commands.
@@ -61,43 +83,6 @@
 - Add the installation docs for `asdf` and Windows.
 - Propose organization access and SCIM commands in an RFC.
 
-
-## Unreleased
-
-- `gcx logs metrics` with no time flags now runs an instant query and returns
-  one value per series. It used to run a range query over the last minute and
-  return two points per series, so summing them doubled counts. Its
-  `--share-link` URL now opens an instant query in Explore too. (#1785)
-- `gcx logs query` and `gcx datasources loki query` now reject a negative
-  `--limit`, as generic `gcx datasources query` already did. A negative value
-  used to run with Loki's default line limit and exit 0. `--limit 0` still
-  sends no limit, so Loki's default line limit applies. The help now says so,
-  and a hint on stderr says that the results may be incomplete. (#1404)
-- Keep `execution_mode` and `filterable_tag_keys` on Agent Observability
-  evaluation rules. `gcx agento11y rules create -f` and `rules update -f`
-  dropped both fields without an error, so a `sequential` rule was created as
-  `parallel` and its tag keys were lost. `rules get` and `rules list` with
-  `-o json` or `-o yaml`, and `gcx resources pull`, now include both, so a
-  pulled rule keeps them when pushed back. A file that leaves either field
-  out still gets the server default on create and keeps the stored value on
-  update; `filterable_tag_keys: []` clears the keys.
-- `gcx setup status` reports a failed instrumentation check as unknown
-  (`enabled: null`) instead of disabled, names the missing permission when
-  known on HTTP 401/403 failures, and omits raw Fleet response bodies and RPC
-  paths from auth diagnostics. It exits 3 on auth failures and 1 on other
-  probe failures instead of 4. The
-  `fleet-management` row also has `enabled: null` when the plugin state is
-  unknown, and the JSON document gains an optional `error` object. (#1699)
-- Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a
-  false value from the request, so the API applied its default of `true`, and
-  `checks update` switched a full-metrics check back to basic metrics.
-  `checks get` and `checks list` now also show `basicMetricsOnly: false`, so
-  a get and update round trip keeps full metrics. A spec that leaves the field
-  out still gets the API default (#1395)
-- Anonymous usage statistics for `gcx signup` now record the last step it
-  reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
-  `gcx signup` reports its HTTP status. The one-time telemetry notice is shown
-  again to disclose the new field.
 
 ## v1.7.1 (2026-10-21)
 
