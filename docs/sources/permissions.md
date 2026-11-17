@@ -70,6 +70,20 @@ On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope 
 
 To learn more about roles and permissions for dashboards, folders, and data sources, refer to [Manage dashboard permissions](https://grafana.com/docs/grafana/latest/administration/user-management/manage-dashboard-permissions/) and [Data source management](https://grafana.com/docs/grafana/latest/administration/data-source-management/).
 
+### Adaptive Telemetry
+
+Adaptive Metrics, Adaptive Logs, Logs Archive, and Adaptive Traces commands (`gcx metrics adaptive`, `gcx logs adaptive`, `gcx logs archive`, and `gcx traces adaptive`) call Grafana Cloud APIs, so they use a Grafana Cloud credential instead of your Grafana sign-in.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Adaptive Metrics (`gcx metrics adaptive`) | Operation-specific `adaptive-metrics-*` scopes |
+| Adaptive Logs and Logs Archive (`gcx logs adaptive`, `gcx logs archive`) | `adaptive-logs:admin` scope |
+| Adaptive Traces (`gcx traces adaptive`) | `adaptive-traces:admin` scope |
+
+Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-access-policy-scopes) for the full list of scopes.
+
+To learn more about roles and permissions for Adaptive Telemetry, refer to [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/).
+
 ### Agent Observability
 
 `gcx agento11y` commands use the Agent Observability plugin (`grafana-agento11y-app`) on your stack through your Grafana sign-in.
@@ -120,8 +134,6 @@ To learn more about roles and permissions for Application Observability, refer t
 | Access or commands | Required role or permission |
 | --- | --- |
 | List and inspect monitored database instances (`gcx dbo11y instances list`, `get`) | `plugins:grafana-dbo11y-app:reader` (Viewer basic role or higher), plus `datasources:query` on your Prometheus data source |
-| Administer Database Observability plugin settings | `plugins:grafana-dbo11y-app:admin` (Admin basic role) |
-
 To learn more about roles and permissions for Database Observability, refer to [Grafana Cloud app plugin role definitions](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-control/plugin-role-definitions/).
 
 ### Fleet Management
@@ -138,13 +150,14 @@ To learn more about roles and permissions for Fleet Management, refer to [Role-b
 
 ### Frontend Observability
 
-`gcx frontend apps` commands use the Frontend Observability plugin (`grafana-kowalski-app`), except `apply-sourcemap`, which uploads directly to the Faro API using a Grafana Cloud credential.
+`gcx frontend` commands use the Frontend Observability plugin (`grafana-kowalski-app`), except `apply-sourcemap`, which uploads directly to the Faro API using a Grafana Cloud credential. `gcx frontend sessions get` also queries the Loki or Pinot data source that stores your session data.
 
 | Access or commands | Required role or permission |
 | --- | --- |
 | List or inspect apps and source maps (`gcx frontend apps list`, `gcx frontend apps get`, `gcx frontend apps list-sourcemaps`) | `plugins:grafana-kowalski-app:frontend-observability-viewer` (or Viewer basic role) |
 | Create or update apps (`gcx frontend apps create`, `gcx frontend apps update`) | `grafana-kowalski-app.apps:write` (`plugins:grafana-kowalski-app:frontend-observability-editor` or Editor basic role) |
 | Delete apps or source map bundles (`gcx frontend apps delete`, `gcx frontend apps delete-sourcemap`) | `grafana-kowalski-app.apps:delete` (`plugins:grafana-kowalski-app:frontend-observability-admin` or Admin basic role) |
+| Read user sessions (`gcx frontend sessions get`) | `plugins:grafana-kowalski-app:frontend-observability-viewer` (or Viewer basic role), plus `datasources:read` and `datasources:query` on the Loki or Pinot data source |
 | Upload source maps (`gcx frontend apps apply-sourcemap`) | Grafana Cloud credential (plus Grafana sign-in if resolving app names by display name) |
 
 An account with only `grafana-kowalski-app.apps:write` can create and update apps, but can't delete apps or source map bundles.
