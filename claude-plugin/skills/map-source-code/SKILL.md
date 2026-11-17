@@ -71,13 +71,15 @@ schema is not installed on this stack yet. Stop and say so.
 Ask which local checkouts to scan if the user has not said. For each one:
 
 ```bash
-git -C <dir> remote get-url origin
+git -C <dir> remote get-url origin | sed -E 's#^([a-z+]+://)[^@/]*@#\1#'
 git -C <dir> symbolic-ref --short refs/remotes/origin/HEAD
 ```
 
 A remote URL can hold a user name and a token between the scheme and the host,
-ending with `@`. Remove that part before you show, store or use the URL, and
-never repeat the original URL, in chat or in any file.
+ending with `@`. The `sed` removes that part before the URL is printed, so it
+never reaches your output. Always read the remote this way, never with plain
+`git remote -v` or `git config`, and never repeat a URL that still has that
+part, in chat or in any file.
 
 Turn the remote URL into the canonical repository name and the `Repository`
 properties as described in
@@ -227,19 +229,22 @@ so entries that were already written are only written again.
 ## Step 8: Check the result
 
 Query one relationship type at a time, over the same `--since 7d` window as
-Step 5, so a Service that was quiet in the last hour still shows up:
+Step 5, so a Service that was quiet in the last hour still shows up. Filter on
+`managed_by` so you see only this skill's links, and return the full scope so
+you can tell same-named Services apart:
 
 ```bash
-gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) RETURN s.name, s.env, repo.name, r.path ORDER BY s.name, s.env, repo.name SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) RETURN s.name, s.env, repo.name, r.path ORDER BY s.name, s.env, repo.name SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) RETURN s.name, s.env, res.name, r.path ORDER BY s.name, s.env, res.name SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) RETURN s.name, s.env, res.name, r.path ORDER BY s.name, s.env, res.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, repo.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, repo.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, res.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, res.name SKIP 0 LIMIT 300" --since 7d
 ```
 
 A query returns at most `LIMIT` rows and says nothing about more. When a query
 returns 300 rows, run it again with `SKIP 300`, then `SKIP 600`, and so on,
 until a page has fewer than 300 rows. Compare the rows with the plan: every
-written link should be there.
+written link should be there, with the same name, `env`, `namespace` and `site`
+as the Service in the plan.
 
 The links are in the `sourcecode` domain. Default views of a Service hide nodes
 from other domains, so a `Repository` or `CloudResource` may not appear next to
