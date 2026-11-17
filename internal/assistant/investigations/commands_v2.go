@@ -40,6 +40,19 @@ func requireV2(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	return NewClient(base), nil
 }
 
+// investigationNotFoundError is returned when an ID matches no v2
+// investigation. The Assistant UI URL carries a chat ID
+// (assistantConversationId), which is a different identifier from the
+// investigation ID and is not accepted here; the server has no chat-to-
+// investigation lookup, so name both kinds and point at where to find the
+// right one.
+func investigationNotFoundError(id string) error {
+	return fmt.Errorf("investigation %q not found: %s", id, idKindsHint)
+}
+
+const idKindsHint = "expected an investigation ID (the `id` field of `gcx assistant investigations list`), " +
+	"not a chat ID such as the assistantConversationId in an Assistant URL (the `chatId` field)"
+
 // resolveID maps a user-supplied investigation identifier to the canonical
 // investigationId expected by /api/v2 endpoints.
 func resolveID(ctx context.Context, client *Client, id string) (string, error) {
@@ -48,22 +61,22 @@ func resolveID(ctx context.Context, client *Client, id string) (string, error) {
 		return "", err
 	}
 	if status == http.StatusNotFound {
-		return "", fmt.Errorf("investigation %q not found", id)
+		return "", investigationNotFoundError(id)
 	}
 	return resp.InvestigationID, nil
 }
 
 // resolveChatID maps a user-supplied investigation identifier to the chatId
-// regardless of API mode. Used by chat-thread commands, which read from the
-// v1 /chats/{chatId}/all-messages endpoint that's outside the investigations
-// surface and not affected by the v2 rollout.
+// regardless of API mode. Used by chat-thread commands, which read the chat's
+// transcript from the v1 /chats/{chatId} endpoints (see GetChatThread); those
+// are outside the investigations surface and not affected by the v2 rollout.
 func resolveChatID(ctx context.Context, client *Client, id string) (string, error) {
 	resp, status, err := client.ResolveByID(ctx, id)
 	if err != nil {
 		return "", err
 	}
 	if status == http.StatusNotFound {
-		return "", fmt.Errorf("investigation %q not found", id)
+		return "", investigationNotFoundError(id)
 	}
 	return resp.ChatID, nil
 }

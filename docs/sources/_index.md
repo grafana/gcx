@@ -35,6 +35,10 @@ cards:
       description: Move a legacy `gcx` configuration to the version 1 format.
       href: migrate-configuration/
       height: 24
+    - title: Permissions
+      description: Permissions that `gcx` commands need, and how to fix authorization errors.
+      href: permissions/
+      height: 24
     - title: Usage statistics
       description: Understand which statistics `gcx` reports to Grafana Labs, and what they're used for. 
       href: anonymous-usage-statistics/

@@ -17,6 +17,7 @@ const (
 	SummaryResourceConflict          = "Resource conflict"
 	SummaryInvalidStackRequest       = "Invalid stack request"
 	SummaryInvalidQuery              = "Invalid query"
+	SummaryQueryBlocked              = "Query blocked"
 	SummaryUnsupportedGrafanaVersion = "Unsupported Grafana version"
 	SummaryPartialFailure            = "Partial failure"
 	SummaryNetworkError              = "Network error"
@@ -44,6 +45,7 @@ func Summaries() []string {
 		SummaryResourceConflict,
 		SummaryInvalidStackRequest,
 		SummaryInvalidQuery,
+		SummaryQueryBlocked,
 		SummaryUnsupportedGrafanaVersion,
 		SummaryPartialFailure,
 		SummaryNetworkError,

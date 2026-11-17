@@ -49,6 +49,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx annotations list-tags": {Cost: "small", Hint: "-o json"},
 
 	// assistant
+	"gcx assistant usage get":                      {Cost: "large (many users need attention)", Hint: "Monthly Assistant limits. JSON groups metrics into yourUsage and, for admins, orgUsage. orgUsage.usersNeedingAttention includes only users at or above 80% of their cap. Use --jq \".orgUsage.usersNeedingAttention\" for the attention array. --top limits text rows only."},
 	"gcx assistant investigations cancel":          {Cost: "small"},
 	"gcx assistant investigations create":          {Cost: "small", Hint: "Starts a multi-agent Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user requests a Grafana Assistant investigation or continues an authorized Assistant workflow; handle an ordinary request to investigate or root-cause with direct signal queries. v1 stacks require --title and v2 stacks require --instruction; pass both to cover either. Example: --title=\"Checkout latency\" --instruction=\"Checkout latency spike after deploy\""},
 	"gcx assistant investigations get":             {Cost: "medium", Hint: "<id> -o json"},
