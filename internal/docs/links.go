@@ -97,18 +97,18 @@ const (
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
 
 	// Keychain documents credential storage and keychain error procedures for gcx.
-	Keychain = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/keychain.md"
+	Keychain = "https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/keychain.md"
 
 	// ConfigMigration documents migrating a legacy (unversioned) gcx config
 	// to the version 1 stacks/cloud/contexts format, including the manual
 	// field mapping. Referenced by the loader's automatic migration on both
 	// success and failure.
-	ConfigMigration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration.md"
+	ConfigMigration = "https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/migrate-configuration.md"
 
 	// AnonymousUsageStats documents gcx's anonymous usage statistics: what is
 	// collected and how to opt out. Referenced by the first-run telemetry
 	// notice.
-	AnonymousUsageStats = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics.md"
+	AnonymousUsageStats = "https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/anonymous-usage-statistics.md"
 
 	// CloudAPI documents the Grafana Cloud API (GCOM), the canonical reference
 	// for stack create/update parameters — including the slug rules (stack
