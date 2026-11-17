@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -19,12 +21,16 @@ import (
 // alertmanagerImportPath is Grafana's Mimir-compatible Alertmanager convert
 // API. It stages an imported Alertmanager configuration next to the Grafana
 // configuration, and it promotes it into the Grafana configuration.
+const alertmanagerImportPath = "/api/convert/api/v1/alerts"
+
+// The datasource proxy path exposes the raw Mimir/Cortex Alertmanager user
+// configuration. Error responses are read with a bounded size and displayed
+// with the same 1 KiB limit as Grafana's external Alertmanager sync error.
 const (
-	alertmanagerImportPath              = "/api/convert/api/v1/alerts"
-	alertmanagerDatasourcePath          = "/api/datasources/uid/"
-	alertmanagerDatasourceProxyPath     = "/api/datasources/proxy/uid/"
-	alertmanagerDatasourceConfigPath    = "/api/v1/alerts"
-	alertmanagerDatasourceErrorBodySize = 1 << 10
+	alertmanagerDatasourceProxyPath        = "/api/datasources/proxy/uid/"
+	alertmanagerDatasourceConfigPath       = "/api/v1/alerts"
+	alertmanagerDatasourceMaxErrorBodySize = 1 << 20
+	alertmanagerDatasourceErrorDisplaySize = 1 << 10
 )
 
 // Request headers of the Alertmanager convert API.
@@ -67,14 +73,6 @@ type AlertmanagerUserConfig struct {
 	TemplateFiles      map[string]string `json:"template_files" yaml:"template_files"`
 }
 
-type alertmanagerDatasource struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	JSONData struct {
-		Implementation string `json:"implementation"`
-	} `json:"jsonData"`
-}
-
 // AlertmanagerImportOptions configures an import request.
 type AlertmanagerImportOptions struct {
 	// Identifier names the import and the routing tree that it adds.
@@ -114,9 +112,23 @@ type AlertmanagerMergeResult struct {
 // Mimir or Cortex Alertmanager behind a Grafana datasource and its datasource
 // name. It does not parse or re-serialize the Alertmanager configuration.
 func (c *Client) AlertmanagerConfigFromDatasource(ctx context.Context, uid string) (*AlertmanagerUserConfig, string, error) {
-	datasource, err := c.getAlertmanagerDatasource(ctx, uid)
+	datasource, err := datasources.NewClientWithHTTP(c.host, c.httpClient).GetByUID(ctx, uid)
 	if err != nil {
+		if apiErr, ok := errors.AsType[*datasources.APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			return nil, "", fmt.Errorf("datasource %s not found", uid)
+		}
 		return nil, "", err
+	}
+	if datasource.Type != "alertmanager" {
+		return nil, "", fmt.Errorf("datasource must be of type alertmanager, got %s", datasource.Type)
+	}
+	implementation, _ := datasource.JSONData["implementation"].(string)
+	implementation = strings.ToLower(implementation)
+	if implementation == "" {
+		implementation = "mimir"
+	}
+	if implementation != "mimir" && implementation != "cortex" {
+		return nil, "", fmt.Errorf("datasource implementation %s is not supported; only Mimir and Cortex Alertmanagers expose their configuration", implementation)
 	}
 
 	path := alertmanagerDatasourceProxyPath + url.PathEscape(uid) + alertmanagerDatasourceConfigPath
@@ -149,7 +161,11 @@ func (c *Client) AlertmanagerConfigFromDatasource(ctx context.Context, uid strin
 }
 
 func alertmanagerDatasourceProxyError(resp *http.Response, uid string) error {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, alertmanagerDatasourceErrorBodySize))
+	if resp.StatusCode < http.StatusBadRequest {
+		return fmt.Errorf("datasource proxy returned %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, alertmanagerDatasourceMaxErrorBodySize))
 	if err != nil {
 		return fmt.Errorf("datasource proxy returned %s and its response body could not be read: %w", resp.Status, err)
 	}
@@ -158,50 +174,23 @@ func alertmanagerDatasourceProxyError(resp *http.Response, uid string) error {
 			Message string `json:"message"`
 		}
 		if json.Unmarshal(body, &proxyError) == nil && proxyError.Message != "" {
-			return fmt.Errorf("datasource proxy returned 404: %s", proxyError.Message)
+			message := truncateAlertmanagerDatasourceError([]byte(proxyError.Message))
+			return fmt.Errorf("datasource proxy returned 404: %s", message)
 		}
 		return fmt.Errorf("the Alertmanager behind datasource %s has no stored configuration", uid)
 	}
-	if len(body) == 0 {
-		return fmt.Errorf("datasource proxy returned %s", resp.Status)
-	}
-	return fmt.Errorf("datasource proxy returned %s: %s", resp.Status, body)
+	return fmt.Errorf("datasource proxy: %w", providers.FormatError(resp.StatusCode, truncateAlertmanagerDatasourceError(body)))
 }
 
-func (c *Client) getAlertmanagerDatasource(ctx context.Context, uid string) (*alertmanagerDatasource, error) {
-	path := alertmanagerDatasourcePath + url.PathEscape(uid)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create datasource request: %w", err)
+func truncateAlertmanagerDatasourceError(body []byte) []byte {
+	if len(body) <= alertmanagerDatasourceErrorDisplaySize {
+		return body
 	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute datasource request: %w", err)
+	body = body[:alertmanagerDatasourceErrorDisplaySize]
+	for !utf8.Valid(body) {
+		body = body[:len(body)-1]
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("datasource %s not found", uid)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, providers.HandleErrorResponse(resp)
-	}
-
-	var datasource alertmanagerDatasource
-	if err := json.NewDecoder(resp.Body).Decode(&datasource); err != nil {
-		return nil, fmt.Errorf("failed to decode datasource: %w", err)
-	}
-	if datasource.Type != "alertmanager" {
-		return nil, fmt.Errorf("datasource must be of type alertmanager, got %s", datasource.Type)
-	}
-	implementation := strings.ToLower(datasource.JSONData.Implementation)
-	if implementation == "" {
-		implementation = "mimir"
-	}
-	if implementation != "mimir" && implementation != "cortex" {
-		return nil, fmt.Errorf("datasource implementation %s is not supported; only Mimir and Cortex Alertmanagers expose their configuration", implementation)
-	}
-	return &datasource, nil
+	return body
 }
 
 // ImportAlertmanagerConfig stages, validates (DryRun), or promotes (Promote)

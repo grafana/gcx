@@ -39,8 +39,6 @@ one by one.`
 // Alertmanager configuration.
 const alertmanagerImportKind = "alertmanager-import"
 
-var alertmanagerImportIdentifierInvalidCharacters = regexp.MustCompile(`[^a-z0-9]+`)
-
 // alertmanagerImportIdentifierMaxLength matches ualert.UIDMaxLength as used by
 // parseConfigIdentifierHeader in Grafana's pkg/services/ngalert/api/api_convert_prometheus.go.
 // It is also the managed route name limit that identifiers derived from a datasource name follow.
@@ -276,6 +274,10 @@ func (o *alertmanagerImportUpsertOpts) action() string {
 	}
 }
 
+// alertmanagerImportIdentifierInvalidCharacters mirrors Grafana's
+// nonIdentifierChars server regular expression.
+var alertmanagerImportIdentifierInvalidCharacters = regexp.MustCompile(`[^a-z0-9]+`)
+
 // alertmanagerImportIdentifierFromDatasourceName copies Grafana's
 // syncIdentifierFromName rule for external Alertmanager sync identifiers.
 func alertmanagerImportIdentifierFromDatasourceName(name string) string {
@@ -295,29 +297,33 @@ func (o *alertmanagerImportUpsertOpts) readUserConfig(
 	cmd *cobra.Command,
 	loader GrafanaConfigLoader,
 	explicitIdentifier bool,
-) (*AlertmanagerUserConfig, *Client, error) {
+) (*AlertmanagerUserConfig, *Client, string, error) {
 	if o.FromDatasource == "" {
 		cfg, err := readAlertmanagerUserConfig(o.File, cmd.InOrStdin(), o.Templates)
-		return &cfg, nil, err
+		if err != nil {
+			return nil, nil, "", err
+		}
+		return &cfg, nil, o.Identifier, nil
 	}
 
 	ctx := cmd.Context()
 	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	client, err := NewClient(restCfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	userConfig, datasourceName, err := client.AlertmanagerConfigFromDatasource(ctx, o.FromDatasource)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
+	identifier := o.Identifier
 	if !explicitIdentifier {
-		o.Identifier = alertmanagerImportIdentifierFromDatasourceName(datasourceName)
+		identifier = alertmanagerImportIdentifierFromDatasourceName(datasourceName)
 	}
-	return userConfig, client, nil
+	return userConfig, client, identifier, nil
 }
 
 func newAlertmanagerImportUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -400,10 +406,11 @@ with --promote.`,
 			}
 
 			ctx := cmd.Context()
-			userConfig, client, err := opts.readUserConfig(cmd, loader, explicitIdentifier)
+			userConfig, client, identifier, err := opts.readUserConfig(cmd, loader, explicitIdentifier)
 			if err != nil {
 				return err
 			}
+			opts.Identifier = identifier
 			if opts.Promote {
 				// The confirmation exchange is a diagnostic, not the result.
 				ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,

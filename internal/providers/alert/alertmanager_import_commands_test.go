@@ -254,10 +254,12 @@ func TestAlertmanagerImportUpsert_FromDatasource(t *testing.T) {
 		proxyBody:      string(proxyBody),
 		convertBody:    mergeResponseWithRenames,
 	}
-	stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(serveDatasourceImportAPI(t, fixture)),
+	stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(serveDatasourceImportAPI(t, fixture)),
 		[]string{"alertmanager-imports", "upsert", "--from-datasource", "am/uid"}, "")
 
 	require.NoError(t, err)
+	assert.NotContains(t, stdout+stderr, "super-secret-value")
+	assert.NotContains(t, stdout+stderr, "super-secret-template")
 	assert.Equal(t, []string{
 		"/api/datasources/uid/am%2Fuid",
 		"/api/datasources/proxy/uid/am%2Fuid/api/v1/alerts",
@@ -289,6 +291,21 @@ func TestAlertmanagerImportUpsert_FromDatasourceExplicitIdentifierWins(t *testin
 	assert.Contains(t, stdout, `Alertmanager configuration "explicit"`)
 }
 
+func TestAlertmanagerImportUpsert_FromDatasourceDerivedIdentifierInTextOutput(t *testing.T) {
+	setAgentMode(t, false)
+	fixture := &datasourceImportFixture{
+		datasourceBody: `{"name":"Derived Name","type":"alertmanager","jsonData":{}}`,
+		proxyBody:      "alertmanager_config: 'route: {}'\n",
+		convertBody:    mergeResponseWithRenames,
+	}
+	stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(serveDatasourceImportAPI(t, fixture)),
+		[]string{"alertmanager-imports", "upsert", "--from-datasource", "am"}, "")
+
+	require.NoError(t, err)
+	assert.Empty(t, stderr)
+	assert.Contains(t, stdout, `Alertmanager configuration "derived-name"`)
+}
+
 func TestAlertmanagerImportIdentifierFromDatasourceName(t *testing.T) {
 	tests := []struct {
 		name string
@@ -297,6 +314,7 @@ func TestAlertmanagerImportIdentifierFromDatasourceName(t *testing.T) {
 		{name: "MixedCase", want: "mixedcase"},
 		{name: "dots.and spaces", want: "dots-and-spaces"},
 		{name: "---leading and trailing!!!", want: "leading-and-trailing"},
+		{name: "Ünïcode AM", want: "n-code-am"},
 		{name: strings.Repeat("a", 39) + "--tail", want: strings.Repeat("a", 39)},
 		{name: "!@#$", want: "imported"},
 	}
@@ -309,11 +327,19 @@ func TestAlertmanagerImportIdentifierFromDatasourceName(t *testing.T) {
 }
 
 func TestAlertmanagerImportUpsert_FromDatasourceImplementations(t *testing.T) {
-	for _, implementation := range []string{"", "cortex"} {
-		t.Run("implementation "+implementation, func(t *testing.T) {
+	tests := []struct {
+		name           string
+		implementation string
+	}{
+		{name: "empty", implementation: `""`},
+		{name: "cortex", implementation: `"cortex"`},
+		{name: "non-string", implementation: `123`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			setAgentMode(t, false)
 			fixture := &datasourceImportFixture{
-				datasourceBody: fmt.Sprintf(`{"name":"AM","type":"alertmanager","jsonData":{"implementation":%q}}`, implementation),
+				datasourceBody: fmt.Sprintf(`{"name":"AM","type":"alertmanager","jsonData":{"implementation":%s}}`, tt.implementation),
 				proxyBody:      "alertmanager_config: 'route: {}'\n",
 				convertBody:    mergeResponseWithRenames,
 			}
@@ -333,6 +359,7 @@ func TestAlertmanagerImportUpsert_FromDatasourceErrors(t *testing.T) {
 		proxyCode      int
 		proxyBody      string
 		wantErr        string
+		wantExit       int
 	}{
 		{
 			name:           "datasource not found",
@@ -372,11 +399,47 @@ func TestAlertmanagerImportUpsert_FromDatasourceErrors(t *testing.T) {
 			wantErr:        "the Alertmanager behind datasource missing has no stored configuration",
 		},
 		{
+			name:           "proxy forbidden",
+			datasourceBody: `{"name":"AM","type":"alertmanager","jsonData":{}}`,
+			proxyCode:      http.StatusForbidden,
+			proxyBody:      `{"message":"forbidden"}`,
+			wantErr:        "datasource proxy: request failed with status 403: forbidden",
+			wantExit:       gcxerrors.ExitAuthFailure,
+		},
+		{
 			name:           "proxy server error",
 			datasourceBody: `{"name":"AM","type":"alertmanager","jsonData":{}}`,
 			proxyCode:      http.StatusBadGateway,
 			proxyBody:      strings.Repeat("x", 2048),
-			wantErr:        "datasource proxy returned 502 Bad Gateway: " + strings.Repeat("x", 1024),
+			wantErr:        "datasource proxy: request failed with status 502: " + strings.Repeat("x", 1024),
+		},
+		{
+			name:           "proxy error does not split UTF-8",
+			datasourceBody: `{"name":"AM","type":"alertmanager","jsonData":{}}`,
+			proxyCode:      http.StatusBadGateway,
+			proxyBody:      strings.Repeat("x", 1023) + "€tail",
+			wantErr:        "datasource proxy: request failed with status 502: " + strings.Repeat("x", 1023),
+		},
+		{
+			name:           "proxy JSON 404 is parsed before display truncation",
+			datasourceBody: `{"name":"AM","type":"alertmanager","jsonData":{}}`,
+			proxyCode:      http.StatusNotFound,
+			proxyBody:      fmt.Sprintf(`{"message":%q}`, strings.Repeat("x", 2048)),
+			wantErr:        "datasource proxy returned 404: " + strings.Repeat("x", 1024),
+		},
+		{
+			name:           "non-200 success does not include body",
+			datasourceBody: `{"name":"AM","type":"alertmanager","jsonData":{}}`,
+			proxyCode:      http.StatusAccepted,
+			proxyBody:      "super-secret-value",
+			wantErr:        "datasource proxy returned 202 Accepted",
+		},
+		{
+			name:           "redirect does not include body",
+			datasourceBody: `{"name":"AM","type":"alertmanager","jsonData":{}}`,
+			proxyCode:      http.StatusMultipleChoices,
+			proxyBody:      "super-secret-value",
+			wantErr:        "datasource proxy returned 300 Multiple Choices",
 		},
 	}
 
@@ -394,7 +457,11 @@ func TestAlertmanagerImportUpsert_FromDatasourceErrors(t *testing.T) {
 				[]string{"alertmanager-imports", "upsert", "--from-datasource", "missing"}, "")
 
 			require.EqualError(t, err, tt.wantErr)
-			assert.Equal(t, gcxerrors.ExitGeneralError, exitCodeOf(err))
+			wantExit := tt.wantExit
+			if wantExit == 0 {
+				wantExit = gcxerrors.ExitGeneralError
+			}
+			assert.Equal(t, wantExit, exitCodeOf(err))
 			assert.Empty(t, stdout)
 			assert.Empty(t, fixture.convertRequest.body)
 		})
@@ -427,6 +494,7 @@ func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T)
 		{name: "missing source", args: []string{}, wantErr: "--filename / -f or --from-datasource is required", wantExit: gcxerrors.ExitUsageError},
 		{name: "datasource with filename", args: []string{"-f", "input.yaml", "--from-datasource", "am"}, wantErr: "mutually exclusive", wantExit: gcxerrors.ExitUsageError},
 		{name: "datasource with template", args: []string{"--from-datasource", "am", "--template", "a.tmpl"}, wantErr: "mutually exclusive", wantExit: gcxerrors.ExitUsageError},
+		{name: "empty datasource UID", args: []string{"--from-datasource", ""}, wantErr: "--from-datasource UID must not be empty", wantExit: gcxerrors.ExitUsageError},
 		{name: "empty stdin", args: []string{"-f", "-"}, stdin: "\n", wantErr: "input is empty", wantExit: gcxerrors.ExitGeneralError},
 		{name: "empty identifier", args: []string{" ", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not be empty", wantExit: gcxerrors.ExitUsageError},
 		{name: "identifier with leading space", args: []string{" mimir-prod", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not have leading or trailing whitespace", wantExit: gcxerrors.ExitUsageError},
