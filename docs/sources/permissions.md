@@ -134,6 +134,7 @@ To learn more about roles and permissions for Application Observability, refer t
 | Access or commands | Required role or permission |
 | --- | --- |
 | List and inspect monitored database instances (`gcx dbo11y instances list`, `get`) | `plugins:grafana-dbo11y-app:reader` (Viewer basic role or higher), plus `datasources:query` on your Prometheus data source |
+
 To learn more about roles and permissions for Database Observability, refer to [Grafana Cloud app plugin role definitions](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-control/plugin-role-definitions/).
 
 ### Fleet Management
