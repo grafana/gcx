@@ -7,7 +7,16 @@ uses. Otherwise the graph gets duplicates.
 
 ## From remote URL to canonical name
 
-Lowercase the host. Keep the path's case as the provider shows it.
+Lowercase the host. On github.com, gitlab.com, bitbucket.org, dev.azure.com,
+and on GitHub Enterprise, GitLab, Bitbucket, Azure DevOps Server or Gitea
+servers, lowercase the path too: these providers ignore case in repository
+paths, so `Contoso/Shop` and `contoso/shop` are the same repository. Keep the
+original case in `fullName`. On any other host, keep the path's case as the
+remote shows it.
+
+Drop the port: the SSH and HTTPS remotes of one repository use different ports.
+Keep `host:port` only when the user says that one host serves different
+repositories on different web ports.
 
 | Remote URL form | Canonical name |
 |---|---|
@@ -37,7 +46,7 @@ so leave out `languages` (a list) and `archived` (a bool).
 | `url` | The repository's web URL, for example `https://github.com/contoso/shop` | no |
 | `hosting` | `cloud` for `github.com`, `gitlab.com`, `bitbucket.org` and `dev.azure.com`; `selfhosted` otherwise | no |
 | `owner` | The org, user or group. For Azure DevOps, `org/project` | no |
-| `fullName` | The display name, for example `contoso/shop` | no |
+| `fullName` | The display name in the case the remote shows, for example `Contoso/Shop` | no |
 | `defaultBranch` | From `git symbolic-ref --short refs/remotes/origin/HEAD`, without the `origin/` prefix | no |
 | `visibility` | `public`, `internal` or `private`, only when the user tells you or a provider CLI they already use reports it. Otherwise leave it out | no |
 | `license` | The SPDX id, only when the license file clearly matches one. Otherwise leave it out | no |

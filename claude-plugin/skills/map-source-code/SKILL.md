@@ -110,26 +110,36 @@ Find the Service and its exact scope. Scope is part of a Service's identity, so
 an edge needs the same name and the same `env`, `namespace` and `site` values as
 the Service.
 
+Every lookup here covers a time window, 1 hour by default. A Service that sent
+no telemetry in that hour, such as a nightly job, does not show up. Use
+`--since 7d` for every lookup in this step.
+
 First find candidates. A `name=~` filter matches any name that contains the
 text, so use it only to discover names:
 
 ```bash
-gcx kg meta scopes
-gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=~<part-of-name>
+gcx kg meta scopes --since 7d
+gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=~<part-of-name> --since 7d --limit 0
 ```
+
+`entities list` returns 50 rows unless you pass `--limit 0`, and the backend can
+still split the result into pages. If it prints a hint that results may be
+truncated, read the next `--page` too, or narrow the filter, before you decide
+that a Service is missing.
 
 Then confirm each Service by its exact name and read its full scope. For one
 Service, filter on every scope key it has, including `site`:
 
 ```bash
-gcx kg entities list --type Service --env <env> --namespace <namespace> --site <site> --property name=<exact-name>
+gcx kg entities list --type Service --env <env> --namespace <namespace> --site <site> --property name=<exact-name> --since 7d
 ```
 
 For several names at once, use Cypher with exact names. Keep `LIMIT` at 300 or
-lower:
+lower. If a query returns as many rows as its `LIMIT`, split the name list and
+run it again:
 
 ```bash
-gcx kg graph query "MATCH (s:Service) WHERE s.name IN ['checkout', 'cart'] RETURN s.name, s.env, s.namespace, s.site LIMIT 300"
+gcx kg graph query "MATCH (s:Service) WHERE s.name IN ['checkout', 'cart'] RETURN s.name, s.env, s.namespace, s.site LIMIT 300" --since 7d
 ```
 
 Copy `env`, `namespace` and `site` from the result into the link. Leave out
@@ -158,7 +168,8 @@ Write four files in a working folder outside the scanned repositories:
 - `resource-links.yaml`: the `READS_FROM` and `WRITES_TO` links
 
 Keep repository and resource links in separate files, so a stack without the
-resource types can still take the repository links. The exact format is in
+resource types can still take the repository links. Create a file only when it
+has at least one entry: gcx rejects an empty file. The exact format is in
 [Write files](references/write-files.md).
 
 - Set `ttlSeconds` on every object. The default is 7 days (`604800`). A link
@@ -184,6 +195,8 @@ gcx kg relationships upsert -f repository-links.yaml
 gcx kg entities upsert -f resources.yaml
 gcx kg relationships upsert -f resource-links.yaml
 ```
+
+Skip the command for a file you did not create because it had no entries.
 
 gcx writes a file's entries in order and stops at the first one that fails. The
 entries before it stay written, and the ones after it are not written. Fix or
