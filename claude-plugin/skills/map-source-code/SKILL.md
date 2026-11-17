@@ -213,14 +213,20 @@ so entries that were already written are only written again.
 
 ## Step 8: Check the result
 
-Query one relationship type at a time:
+Query one relationship type at a time, over the same `--since 7d` window as
+Step 5, so a Service that was quiet in the last hour still shows up:
 
 ```bash
-gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) RETURN s.name, s.env, repo.name, r.path LIMIT 100" --since 1h
-gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) RETURN s.name, s.env, repo.name, r.path LIMIT 100" --since 1h
-gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) RETURN s.name, s.env, res.name, r.path LIMIT 100" --since 1h
-gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) RETURN s.name, s.env, res.name, r.path LIMIT 100" --since 1h
+gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) RETURN s.name, s.env, repo.name, r.path ORDER BY s.name, s.env, repo.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) RETURN s.name, s.env, repo.name, r.path ORDER BY s.name, s.env, repo.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) RETURN s.name, s.env, res.name, r.path ORDER BY s.name, s.env, res.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) RETURN s.name, s.env, res.name, r.path ORDER BY s.name, s.env, res.name SKIP 0 LIMIT 300" --since 7d
 ```
+
+A query returns at most `LIMIT` rows and says nothing about more. When a query
+returns 300 rows, run it again with `SKIP 300`, then `SKIP 600`, and so on,
+until a page has fewer than 300 rows. Compare the rows with the plan: every
+written link should be there.
 
 The links are in the `sourcecode` domain. Default views of a Service hide nodes
 from other domains, so a `Repository` or `CloudResource` may not appear next to
