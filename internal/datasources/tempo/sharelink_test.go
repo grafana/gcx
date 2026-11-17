@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/datasources/tempo"
@@ -213,7 +214,7 @@ current-context: default
 			[]string{"query", "--drilldown-link", "--drilldown-view", "exceptions", "--since", "1h", "-o", "json", `{ span.http.status_code >= 500 }`})
 		require.NoError(t, err)
 		assert.NotContains(t, stderr, "actionView=exceptions")
-		assert.Contains(t, stderr, "Explore link: ")
+		assert.Equal(t, 1, strings.Count(stderr, "Explore link: "))
 	})
 
 	t.Run("exceptions view refuses a link without a time range and says why", func(t *testing.T) {
