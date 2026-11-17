@@ -156,7 +156,7 @@ gcx config view
 
 ## Configuration reference
 
-This schema describes configuration fields and their types in gcx **v1.7.1**.
+This schema describes configuration fields and their types in gcx **v1.8.0**.
 
 ```yaml
 # Config holds the information needed to connect to remote Grafana instances.
