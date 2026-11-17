@@ -411,13 +411,9 @@ Requires a Prometheus datasource containing SM metrics.`,
 			series := buildTimelineSeries(resp)
 
 			if len(series) == 0 {
-				// Prose formats keep the historical notice; structured
-				// formats (json/yaml/agents) fall through and encode the
-				// (empty) payload so stdout still carries one document.
-				if opts.IO.OutputFormat == "graph" || opts.IO.OutputFormat == "table" {
-					cmdio.Info(cmd.OutOrStdout(), "No time-series data available for check %d.", id)
-					return nil
-				}
+				// The hint is diagnostic: every format still encodes the
+				// (empty) payload so stdout carries only the result.
+				cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("no time-series data available for check %d", id), "")
 				series = []TimelineSeries{}
 			}
 
@@ -1013,7 +1009,7 @@ func (c *TimelineGraphCodec) Encode(w io.Writer, v any) error {
 	}
 
 	if len(payload.Series) == 0 {
-		fmt.Fprintln(w, "No time-series data available.")
+		// The command reports the empty result on stderr.
 		return nil
 	}
 
