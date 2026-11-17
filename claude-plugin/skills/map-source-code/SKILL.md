@@ -71,7 +71,7 @@ schema is not installed on this stack yet. Stop and say so.
 Ask which local checkouts to scan if the user has not said. For each one:
 
 ```bash
-git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1#' -e 's#^[^/:@]+:[^/@]+@##'
+git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1#' -e 's#^[^/:@]+(:[^/@]*)?@##'
 git -C '<dir>' symbolic-ref --short refs/remotes/origin/HEAD
 ```
 
@@ -81,8 +81,8 @@ another path to that checkout.
 
 A remote URL can hold a user name and a token between the scheme and the host,
 ending with `@`. An scp-style remote (`host:path`, with no scheme) can carry
-the same part at its start. The `sed` removes it in both forms before the URL
-is printed, so it
+a user name, a token, or both at its start, ending with `@`. The `sed` removes
+that part in both forms before the URL is printed, including a plain `git@`, so it
 never reaches your output. Always read the remote this way, never with plain
 `git remote -v` or `git config`, and never repeat a URL that still has that
 part, in chat or in any file.

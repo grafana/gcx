@@ -18,16 +18,19 @@ Drop the port: the SSH and HTTPS remotes of one repository use different ports.
 Keep `host:port` only when the user says that one host serves different
 repositories on different web ports.
 
+The table shows remotes as Step 2 prints them, with any user part already
+removed: `git@github.com:contoso/shop.git` prints as `github.com:contoso/shop.git`.
+
 | Remote URL form | Canonical name |
 |---|---|
 | `https://github.com/contoso/shop.git` | `github.com/contoso/shop` |
-| `git@github.com:contoso/shop.git` | `github.com/contoso/shop` |
-| `ssh://git@github.example.com:2222/platform/shop.git` | `github.example.com/platform/shop` |
+| `github.com:contoso/shop.git` (scp-style) | `github.com/contoso/shop` |
+| `ssh://github.example.com:2222/platform/shop.git` | `github.example.com/platform/shop` |
 | `https://gitlab.com/contoso/team/shop.git` (nested groups) | `gitlab.com/contoso/team/shop` |
 | `https://bitbucket.org/contoso/shop.git` | `bitbucket.org/contoso/shop` |
 | `https://dev.azure.com/contoso/payments/_git/api` | `dev.azure.com/contoso/payments/_git/api` |
-| `git@ssh.dev.azure.com:v3/contoso/payments/api` | `dev.azure.com/contoso/payments/_git/api` |
-| Any form with a user name or token before the host, ending with `@` | drop them; never write credentials |
+| `ssh.dev.azure.com:v3/contoso/payments/api` | `dev.azure.com/contoso/payments/_git/api` |
+| A form that still has a user name or token before the host, ending with `@` | drop them; never write credentials |
 
 If a checkout has no `origin`, or the remote is a local path, skip it and say
 why.
