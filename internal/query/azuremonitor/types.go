@@ -275,7 +275,7 @@ func appendFrameRows(resp *TableResponse, frame dataframe.Frame) {
 			v := colValues[i]
 			if resp.Columns[colIdx].Type == "time" && v != nil {
 				if ms, ok := toFloat64(v); ok {
-					v = time.UnixMilli(int64(ms)).UTC().Format(time.RFC3339)
+					v = time.UnixMilli(int64(ms)).UTC().Format(time.RFC3339Nano)
 				}
 			}
 			row[colIdx] = v

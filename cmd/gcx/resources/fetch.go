@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"io"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -12,13 +13,16 @@ import (
 
 type FetchRequest struct {
 	Config             config.NamespacedRESTConfig
+	Warn               io.Writer
 	StopOnError        bool
 	ExcludeManaged     bool
+	ExcludeReadOnly    bool
 	ExpectSingleTarget bool
 	Processors         []remote.Processor
 	// Limit caps the number of items per resource type. Zero means no limit.
 	// Set to 1 for field discovery (--json ?) to avoid full list operations.
-	Limit int64
+	Limit              int64
+	IdentityOnlyDelete bool
 }
 
 type FetchResponse struct {
@@ -29,6 +33,12 @@ type FetchResponse struct {
 }
 
 func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*FetchResponse, error) {
+	return fetchResources(ctx, opts, args, nil)
+}
+
+// fetchResources validates resolved filters before pulling when the caller needs
+// to reject an operation independently of whether any resources match.
+func fetchResources(ctx context.Context, opts FetchRequest, args []string, validateFilters func(resources.Filters) error) (*FetchResponse, error) {
 	sels, err := resources.ParseSelectors(args)
 	if err != nil {
 		return nil, err
@@ -48,10 +58,17 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors:            sels,
+		Warn:                 opts.Warn,
 		PreferredVersionOnly: true,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if validateFilters != nil {
+		if err := validateFilters(filters); err != nil {
+			return nil, err
+		}
 	}
 
 	pull, err := remote.NewDefaultPullerWithRegistry(opts.Config, reg)
@@ -65,12 +82,14 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 	}
 
 	req := remote.PullRequest{
-		Filters:        filters,
-		Resources:      &res.Resources,
-		Processors:     opts.Processors,
-		ExcludeManaged: opts.ExcludeManaged,
-		StopOnError:    opts.StopOnError || sels.IsSingleTarget(),
-		Limit:          opts.Limit,
+		Filters:            filters,
+		Resources:          &res.Resources,
+		Processors:         opts.Processors,
+		ExcludeManaged:     opts.ExcludeManaged,
+		StopOnError:        opts.StopOnError || sels.IsSingleTarget(),
+		Limit:              opts.Limit,
+		IdentityOnlyDelete: opts.IdentityOnlyDelete,
+		ExcludeReadOnly:    opts.ExcludeReadOnly,
 	}
 
 	summary, err := pull.Pull(ctx, req)

@@ -1,6 +1,9 @@
 package alert
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/grafana/gcx/internal/providers/native"
+	"github.com/spf13/cobra"
+)
 
 // Exported command constructors for external test packages only. Commands
 // bind their output flags (and resolve the agent-mode default format) at
@@ -26,14 +29,34 @@ func NewContactPointsDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Com
 	return newContactPointsDeleteCommand(loader)
 }
 
+func NewContactPointsCreateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newContactPointsCreateCommand(loader)
+}
+
+func NewContactPointsUpdateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newContactPointsUpdateCommand(loader)
+}
+
 // NewMuteTimingsDeleteCommandForTest wraps newMuteTimingsDeleteCommand.
 func NewMuteTimingsDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newMuteTimingsDeleteCommand(loader)
 }
 
+func NewMuteTimingsCreateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newMuteTimingsCreateCommand(loader)
+}
+
+func NewMuteTimingsUpdateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newMuteTimingsUpdateCommand(loader)
+}
+
 // NewTemplatesDeleteCommandForTest wraps newTemplatesDeleteCommand.
 func NewTemplatesDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newTemplatesDeleteCommand(loader)
+}
+
+func NewTemplatesUpsertCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newTemplatesUpsertCommand(loader)
 }
 
 // NewNotificationPoliciesSetCommandForTest wraps newNotificationPoliciesSetCommand.
@@ -64,4 +87,10 @@ func RulerSubtypeForDatasourceType(dsType string) (string, error) {
 // RulerCommands exposes the ruler command tree to tests.
 func RulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return rulerCommands(loader)
+}
+
+// NewRoutingTreesCommandForTest wraps newRoutingTreesCommand so tests can
+// inject a native binding (native.Fixed / native.Func).
+func NewRoutingTreesCommandForTest(binding native.Binding) *cobra.Command {
+	return newRoutingTreesCommand(binding)
 }

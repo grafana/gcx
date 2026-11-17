@@ -462,7 +462,7 @@ func payloadFromInput(input ServerInput) map[string]any {
 
 // headerWire is the wire shape for one header entry in an Update payload.
 // An omitted Value signals "keep the stored value" to the backend
-// (ADR-021 Decision 5) -- this encoding is an assumption against a
+// (RFC 022 Decision 5) -- this encoding is an assumption against a
 // closed-source backend and is centralized here so it can be revisited in
 // one place if the wire contract differs.
 type headerWire struct {

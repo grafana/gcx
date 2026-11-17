@@ -1,0 +1,2 @@
+# Keep source, embedded assets, and test fixtures identical on every platform.
+* text=auto eol=lf

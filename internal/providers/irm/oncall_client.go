@@ -25,7 +25,8 @@ const (
 	// BasePath is the plugin resources root for the IRM app.
 	BasePath = "/api/plugins/grafana-irm-app/resources"
 
-	integrationsPath = "alert_receive_channels/"
+	notificationPoliciesPath = "notification_policies/"
+	integrationsPath         = "alert_receive_channels/"
 	// integrationTemplatesPath addresses the alert templates of an
 	// integration. The templates live behind their own collection, keyed by
 	// the integration ID, and never travel inside the Integration object.
@@ -213,6 +214,12 @@ func collectN[T any](it iter.Seq2[T, error], n int) ([]T, error) {
 }
 
 func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string) (*T, error) {
+	return getResourceWithNotFound[T](ctx, c, basePath, id, resourceType,
+		fmt.Errorf("irm: %s %q not found", resourceType, id))
+}
+
+// getResourceWithNotFound lets a resource opt in to a typed missing-object error.
+func getResourceWithNotFound[T any](ctx context.Context, c *OnCallClient, basePath, id, resourceType string, notFound error) (*T, error) {
 	resp, err := c.DoRequest(ctx, http.MethodGet, fmt.Sprintf("%s%s/", basePath, url.PathEscape(id)), nil)
 	if err != nil {
 		return nil, fmt.Errorf("irm: get %s: %w", resourceType, err)
@@ -220,7 +227,7 @@ func getResource[T any](ctx context.Context, c *OnCallClient, basePath, id, reso
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("irm: %s %q not found", resourceType, id)
+		return nil, notFound
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, providers.HandleErrorResponse(resp)
@@ -483,11 +490,11 @@ func (c *OnCallClient) DeleteSchedule(ctx context.Context, id string) error {
 }
 
 // ListFilterEvents returns resolved on-call events for a schedule.
-func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ, startingDate string, days int) (*FilterEventsResponse, error) {
+func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ, date string, days int) (*FilterEventsResponse, error) {
 	params := url.Values{}
 	params.Set("type", "final")
 	params.Set("user_tz", userTZ)
-	params.Set("starting_date", startingDate)
+	params.Set("date", date)
 	params.Set("days", strconv.Itoa(days))
 	path := fmt.Sprintf("%s%s/filter_events/?%s", schedulesPath, url.PathEscape(scheduleID), params.Encode())
 

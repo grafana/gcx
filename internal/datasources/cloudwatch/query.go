@@ -32,6 +32,7 @@ type queryOpts struct {
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	dsquery.RegisterCodecs(&opts.IO, true)
 	opts.IO.BindFlags(flags)
 	opts.SetupTimeFlags(flags)

@@ -163,6 +163,7 @@ func TestRulerClient_UpsertGroup(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/api/ruler/my-ds/api/v1/rules/ns", r.URL.Path)
+				assert.Empty(t, r.Header.Values("X-Disable-Provenance"))
 				// Grafana's ruler proxy binds POST bodies as JSON only.
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				body, err := io.ReadAll(r.Body)

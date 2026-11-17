@@ -1,0 +1,4 @@
+NAME              JOB            TARGET                    SUCCESS  LATENCY  STATUS
+shop-frontend-42  Shop Frontend  https://shop.example.com  99.72%   250ms    OK
+ping-check-43     ping-check     db.example.com            0.00%    1108ms   FAILING
+new-check         new check      https://new.example.com   --       --       NODATA

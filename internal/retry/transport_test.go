@@ -3,9 +3,13 @@ package retry_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -457,4 +461,58 @@ func TestTransport_BytesBufferBodyGetBody(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, int32(2), attempts.Load())
+}
+
+// transientError classifies itself, as the wasip1 host transport's errors do.
+type transientError bool
+
+func (e transientError) Error() string   { return "host error" }
+func (e transientError) Transient() bool { return bool(e) }
+
+// timeoutError is a net.Error that is not a *net.OpError.
+type timeoutError bool
+
+func (e timeoutError) Error() string   { return "timeout" }
+func (e timeoutError) Timeout() bool   { return bool(e) }
+func (e timeoutError) Temporary() bool { return bool(e) }
+
+func TestIsTransientConnectionError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"op error", &net.OpError{Op: "dial", Err: errors.New("x")}, true},
+		{"temporary DNS", &net.DNSError{IsTemporary: true}, true},
+		{"permanent DNS", &net.DNSError{IsNotFound: true}, false},
+		{"wrapped transient", fmt.Errorf("host: %w", transientError(true)), true},
+		{"wrapped permanent", fmt.Errorf("host: %w", transientError(false)), false},
+		{"net.Error timeout", timeoutError(true), true},
+		{"net.Error without timeout", timeoutError(false), false},
+		{"other", errors.New("x"), false},
+		{"nil", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, retry.IsTransientConnectionError(tc.err))
+		})
+	}
+}
+
+func TestOperationWithoutRetriesMakesOneAttempt(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+		for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+			t.Run(method+"/"+strconv.Itoa(status), func(t *testing.T) {
+				var count atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { count.Add(1); w.WriteHeader(status) }))
+				defer server.Close()
+				req, err := http.NewRequestWithContext(retry.WithoutRetries(t.Context()), method, server.URL, strings.NewReader(`{}`))
+				require.NoError(t, err)
+				response, err := (&http.Client{Transport: &retry.Transport{}}).Do(req)
+				require.NoError(t, err)
+				defer response.Body.Close()
+				assert.Equal(t, status, response.StatusCode)
+				assert.Equal(t, int32(1), count.Load())
+			})
+		}
+	}
 }

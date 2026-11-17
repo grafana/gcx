@@ -1,6 +1,9 @@
 package prometheus_test
 
 import (
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -111,5 +114,28 @@ func TestConvertGrafanaResponse_ResultTypeReflectsIntent(t *testing.T) {
 				tt.assertSample(t, got.Data.Result[0])
 			}
 		})
+	}
+}
+
+func TestConvertGrafanaResponse_PreservesSampleValues(t *testing.T) {
+	for _, isRange := range []bool{false, true} {
+		for _, tc := range []struct {
+			name  string
+			value any
+			want  string
+		}{
+			{"null", nil, "NaN"}, {"nan", "NaN", "NaN"}, {"invalid", "invalid", "invalid"},
+			{"zero", float64(0), "0"}, {"infinity", "+Inf", "+Inf"}, {"negative", -3.5, "-3.5"},
+		} {
+			t.Run(fmt.Sprintf("%s/range=%t", tc.name, isRange), func(t *testing.T) {
+				resp := prometheus.ConvertGrafanaResponse(grafanaResp(frameWith([]any{1250.0}, []any{tc.value})), isRange)
+				_, rows, err := resp.CSVRecords()
+				require.NoError(t, err)
+				require.Equal(t, [][]string{{"1.25", tc.want, "up"}}, rows)
+				encoded, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), strconv.Quote(tc.want))
+			})
+		}
 	}
 }

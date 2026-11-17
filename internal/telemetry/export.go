@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/gcx/internal/version"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // defaultEndpoint is the usage-stats receiver. GCX_TELEMETRY_ENDPOINT
@@ -46,11 +46,16 @@ func export(event Event, endpoint string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", version.UserAgent())
-	// Deliberately not the shared httputils client: its retry transport would
-	// burn the whole exportTimeout budget on an unreachable endpoint, and this
-	// runs synchronously before exit on every telemetry-enabled invocation.
-	client := &http.Client{Timeout: exportTimeout}
+	// No retry: backoff would burn the whole exportTimeout budget on an
+	// unreachable endpoint, and this runs synchronously before exit on every
+	// telemetry-enabled invocation. No request logging either: the request
+	// has no command context, so its logger would not honour -v, and
+	// best-effort telemetry should stay silent.
+	client := httputils.NewClient(httputils.ClientOpts{
+		Timeout:      exportTimeout,
+		DisableRetry: true,
+		Middlewares:  []httputils.Middleware{},
+	})
 	resp, err := client.Do(req)
 	if err != nil {
 		return

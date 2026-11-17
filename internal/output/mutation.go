@@ -47,11 +47,12 @@ type MutationSummary struct {
 	Skipped   int `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 
-// MutationFailure is one failed target with the reason. Successes and skips
-// are counted, not enumerated — failures are what a consumer must act on.
+// MutationFailure is one failed target with the reason.
 type MutationFailure struct {
 	Target MutationTarget `json:"target" yaml:"target"`
 	Error  string         `json:"error" yaml:"error"`
+	// Source identifies the input file when available; it is not the API name.
+	Source string `json:"source,omitempty" yaml:"source,omitempty"`
 }
 
 // SingleMutation is the finite result of one verb applied to one target.
@@ -77,14 +78,27 @@ func NewSingleMutation(action string, target MutationTarget) SingleMutation {
 	}
 }
 
+// MutationSuccess is the identity receipt for one real write.
+// It contains no resource body or credentials.
+type MutationSuccess struct {
+	Requested MutationTarget `json:"requested" yaml:"requested"`
+	Action    string         `json:"action" yaml:"action"`
+	Target    MutationTarget `json:"target" yaml:"target"`
+	// Source identifies the input file when available; it is not the API name.
+	Source string `json:"source,omitempty" yaml:"source,omitempty"`
+}
+
 // BatchMutation is the finite result of one verb applied across many targets.
 type BatchMutation struct {
 	Type          string          `json:"type" yaml:"type"`
 	SchemaVersion string          `json:"schema_version" yaml:"schema_version"`
 	Action        string          `json:"action" yaml:"action"`
 	Summary       MutationSummary `json:"summary" yaml:"summary"`
-	// Failures is always present — [] when nothing failed — so consumers
-	// never need a nil check before ranging.
+	// SkippedReasons explains skip counts; omitted when no skips were recorded.
+	SkippedReasons map[string]int `json:"skipped_reasons,omitempty" yaml:"skipped_reasons,omitempty"`
+	// Successes contains only identities from real API writes.
+	Successes *[]MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
+	// Failures is always present, including an empty slice.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`
 	DryRun   bool              `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`
 }
@@ -118,10 +132,12 @@ type ArtifactReceipt struct {
 	Action        string `json:"action" yaml:"action"`
 	Dir           string `json:"dir,omitempty" yaml:"dir,omitempty"`
 	// Format is the on-disk content format of the written files.
-	Format   string            `json:"format" yaml:"format"`
-	Files    []ArtifactFile    `json:"files" yaml:"files"`
-	Summary  MutationSummary   `json:"summary" yaml:"summary"`
-	Failures []MutationFailure `json:"failures" yaml:"failures"`
+	Format  string          `json:"format" yaml:"format"`
+	Files   []ArtifactFile  `json:"files" yaml:"files"`
+	Summary MutationSummary `json:"summary" yaml:"summary"`
+	// SkippedReasons explains skip counts; omitted when no skips were recorded.
+	SkippedReasons map[string]int    `json:"skipped_reasons,omitempty" yaml:"skipped_reasons,omitempty"`
+	Failures       []MutationFailure `json:"failures" yaml:"failures"`
 }
 
 // NewArtifactReceipt returns an ArtifactReceipt with the discriminators set

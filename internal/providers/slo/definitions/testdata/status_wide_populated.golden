@@ -1,0 +1,4 @@
+NAME         UUID    OBJECTIVE  WINDOW  SLI     BUDGET  BURN_RATE  SLI_1H  SLI_1D   STATUS
+payment-api  abc123  99.50%     28d     99.72%  44.0%   1.50x      99.91%  99.80%   OK
+checkout     def456  99.90%     7d      99.85%  -50.0%  0.00x      0.00%   100.00%  BREACHING
+new-service  ghi789  99.00%     28d     --      --      --         --      --       Creating

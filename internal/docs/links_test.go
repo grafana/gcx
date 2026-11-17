@@ -39,8 +39,77 @@ func TestAllURLsAreMarkdown(t *testing.T) {
 	}
 }
 
+// registryConstants lists every exported URL constant that must appear in
+// AllNamed(). Add a new entry here when introducing a registry constant.
+//
+//nolint:gochecknoglobals // static test fixture list; never mutated.
+var registryConstants = []struct {
+	name string
+	url  string
+}{
+	{"ServiceAccounts", docs.ServiceAccounts},
+	{"AccessPolicies", docs.AccessPolicies},
+	{"RolesAndPermissions", docs.RolesAndPermissions},
+	{"GrafanaInstallation", docs.GrafanaInstallation},
+	{"PromQL", docs.PromQL},
+	{"LogQL", docs.LogQL},
+	{"TraceQL", docs.TraceQL},
+	{"PyroscopeQueries", docs.PyroscopeQueries},
+	{"DashboardJSONModel", docs.DashboardJSONModel},
+	{"SyntheticMonitoring", docs.SyntheticMonitoring},
+	{"FleetManagement", docs.FleetManagement},
+	{"KubernetesMonitoring", docs.KubernetesMonitoring},
+	{"AdaptiveMetrics", docs.AdaptiveMetrics},
+	{"AdaptiveLogs", docs.AdaptiveLogs},
+	{"AdaptiveTraces", docs.AdaptiveTraces},
+	{"AssistantPricing", docs.AssistantPricing},
+	{"SyntheticMonitoringInvoice", docs.SyntheticMonitoringInvoice},
+	{"PerformanceTestingInvoice", docs.PerformanceTestingInvoice},
+	{"IRMInvoice", docs.IRMInvoice},
+	{"Keychain", docs.Keychain},
+	{"ConfigMigration", docs.ConfigMigration},
+	{"AnonymousUsageStats", docs.AnonymousUsageStats},
+	{"CloudAPI", docs.CloudAPI},
+}
+
+// TestAllNamedContainsEveryConstant guards against a constant being defined
+// but left out of AllNamed() — the drift that omitted RolesAndPermissions and
+// ConfigMigration before this PR.
+func TestAllNamedContainsEveryConstant(t *testing.T) {
+	byName := map[string]string{}
+	for _, l := range docs.AllNamed() {
+		byName[l.Name] = l.URL
+	}
+	for _, want := range registryConstants {
+		got, ok := byName[want.name]
+		if !ok {
+			t.Errorf("docs.AllNamed() is missing %q", want.name)
+			continue
+		}
+		if got != want.url {
+			t.Errorf("docs.AllNamed()[%q] = %q, want %q", want.name, got, want.url)
+		}
+	}
+}
+
+// TestAllNamedHasUniqueNames asserts every registry entry has a unique,
+// non-empty name.
+func TestAllNamedHasUniqueNames(t *testing.T) {
+	seenNames := map[string]bool{}
+	for i, l := range docs.AllNamed() {
+		if l.Name == "" {
+			t.Errorf("entry %d has empty name (url %q)", i, l.URL)
+		}
+		if seenNames[l.Name] {
+			t.Errorf("duplicate name in registry: %q", l.Name)
+		}
+		seenNames[l.Name] = true
+	}
+}
+
 // TestAllContainsCloudAPI guards against the constant being defined but left
-// out of All() — the shape test above only checks what All() returns.
+// out of the registry — CloudAPI is surfaced to agents as a DetailedError
+// DocsLink, so it must be discoverable via docs.All()/AllNamed().
 func TestAllContainsCloudAPI(t *testing.T) {
 	if !slices.Contains(docs.All(), docs.CloudAPI) {
 		t.Errorf("docs.CloudAPI (%q) is missing from docs.All()", docs.CloudAPI)

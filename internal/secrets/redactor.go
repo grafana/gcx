@@ -68,7 +68,7 @@ func redactSecrets(curr reflect.Value, redact bool) error {
 			currFieldValue := actualCurrValue.Field(fieldIndex)
 			currFieldType := actualCurrValue.Type().Field(fieldIndex)
 			policyTag := currFieldType.Tag.Get(dataPolicyTag)
-			policy := strings.Split(policyTag, ",")[0]
+			policy, _, _ := strings.Cut(policyTag, ",")
 
 			if policy == "secret" {
 				err := redactSecrets(currFieldValue, true)

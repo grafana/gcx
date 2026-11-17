@@ -10,7 +10,9 @@ import (
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	intgrafana "github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/resources/discovery"
+	"github.com/grafana/grafana-openapi-client-go/client/signed_in_user"
 )
 
 // grafanaClient is satisfied by any type that can return the Grafana version.
@@ -91,16 +93,14 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 // runtime.APIError in the chain, or 0 for transport-level failures (dial, TLS,
 // timeout) where no HTTP response was received.
 func extractGoAPIStatus(err error) int {
-	var apiErr *runtime.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*runtime.APIError](err); ok {
 		return apiErr.Code
 	}
 	return 0
 }
 
 func extractGCOMStatus(err error) int {
-	var httpErr *cloud.GCOMHTTPError
-	if errors.As(err, &httpErr) {
+	if httpErr, ok := errors.AsType[*cloud.GCOMHTTPError](err); ok {
 		return httpErr.Status
 	}
 	return 0
@@ -139,6 +139,12 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 		},
 	}
 
+	if opts.UseBasicAuth {
+		grafanaCtx.Grafana.AuthMethod = "basic"
+		grafanaCtx.Grafana.User = opts.GrafanaUser
+		grafanaCtx.Grafana.Password = opts.GrafanaPassword
+	}
+
 	v := &validator{
 		grafana: &realGrafanaClient{cfgCtx: grafanaCtx},
 		discovery: func(ctx context.Context, cfg config.NamespacedRESTConfig) error {
@@ -165,4 +171,32 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 	}
 
 	return v.validate(ctx, opts, restCfg) //nolint:wrapcheck
+}
+
+func validateBasicAuth(ctx context.Context, cfg config.Context) error {
+	client, tlsConfig, err := intgrafana.ClientFromContextWithTLS(&cfg)
+	if err != nil {
+		return err
+	}
+	client.WithHTTPClient(httputils.NewDefaultClientWithTLS(ctx, tlsConfig))
+	user, err := client.SignedInUser.GetSignedInUserWithParams(signed_in_user.NewGetSignedInUserParams().WithContext(ctx))
+	if err != nil {
+		// HTTP error bodies can echo credentials; retain causes only without a status.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		status := extractGoAPIStatus(err)
+		var response interface{ Code() int }
+		if errors.As(err, &response) {
+			status = response.Code()
+		}
+		if status == 0 {
+			return &BasicAuthCheckError{Cause: err}
+		}
+		return &BasicAuthCheckError{Status: status}
+	}
+	if user.Payload == nil || user.Payload.ID == 0 {
+		return &BasicAuthCheckError{}
+	}
+	return nil
 }

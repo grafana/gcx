@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -48,7 +47,7 @@ type alertGroupListOpts struct {
 	// endpoint's `next` cursors to exhaustion.
 	Limit int
 
-	// Filter flags. See ADR 001 § 1 (alert-groups list defaults).
+	// Filter flags. See RFC 020 § 1 (alert-groups list defaults).
 	States             []string
 	Teams              []string
 	Integrations       []string
@@ -248,7 +247,7 @@ type alertGroupListFilters struct {
 }
 
 // resolveAlertGroupListFilters validates and normalizes the user-facing flag
-// set into wire-ready filters, applying ADR 001 § 1 defaults:
+// set into wire-ready filters, applying RFC 020 § 1 defaults:
 //   - status defaults to firing+acknowledged+silenced (excluding resolved),
 //   - is_root=true is always applied (excluding child groups merged into parents),
 //   - --all bypasses both defaults,
@@ -825,9 +824,9 @@ type alertGroupPageInfo struct {
 // pagination ends at or before the limit, and always at limit == 0. Nothing
 // is silenced here; each caller decides how to surface the page info. The
 // list command emits list_meta plus stderr hints; resolveBulkTargets
-// discards it, so a bounded bulk-by-filter sweep is still silent — tracked
-// for a per-command decision in
-// docs/research/2026-07-17-global-limit-investigation.md § 6.
+// discards it, so a bounded bulk-by-filter sweep is still silent. See the
+// open disclosure decision in docs/design/output.md § 15.7
+// (IRM bulk-by-filter mutations).
 func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error) {
 	params := url.Values{}
 	if w := filters.StartedAt; w != nil {
@@ -1020,7 +1019,7 @@ func alertCollapseKey(env alertEnvelope) string {
 	return "id:" + env.Metadata.Name
 }
 
-// applyAlertCollapse implements the ADR §6 collapse semantics for
+// applyAlertCollapse implements the RFC 020 §6 collapse semantics for
 // `alert-groups list-alerts`. With history=false (default), groups stored
 // alerts by alertCollapseKey; emits one envelope per unique key with
 // status.occurrences = count within that group; preserves the first-seen
@@ -1244,7 +1243,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Collapse semantics (ADR §6 + brief A2): default mode groups
+			// Collapse semantics (RFC 020 §6 + brief A2): default mode groups
 			// stored alerts by their AM fingerprint (== hash of labels) and
 			// emits one row per unique label set with occurrences=N. With
 			// --history the collapse is bypassed: every stored alert is its
@@ -1330,7 +1329,7 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 	o.Start = today
 	o.End = endDate
 
-	o.IO.RegisterCustomCodec("table", &finalShiftTableCodec{})
+	cmdio.RegisterTable(&o.IO, finalShiftTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Start, "start", o.Start, "Start date (YYYY-MM-DD)")
@@ -1800,27 +1799,14 @@ func alertRichToEnvelope(api *alertAPI, rich *AlertRich, groupID, namespace stri
 	}, nil
 }
 
-type finalShiftTableCodec struct{ noDecodeCodec }
-
-func (c *finalShiftTableCodec) Format() format.Format { return "table" }
-
-func (c *finalShiftTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]FlatShift)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []FlatShift")
+func finalShiftTable() cmdio.Table[FlatShift] {
+	return cmdio.Table[FlatShift]{
+		Columns: []cmdio.Column[FlatShift]{
+			{Header: "USER_PK", Content: func(s FlatShift) string { return s.UserPK }},
+			{Header: "EMAIL", Content: func(s FlatShift) string { return s.UserEmail }},
+			{Header: "USERNAME", Content: func(s FlatShift) string { return s.UserUsername }},
+			{Header: "START", Content: func(s FlatShift) string { return s.ShiftStart[:min(len(s.ShiftStart), 16)] }},
+			{Header: "END", Content: func(s FlatShift) string { return s.ShiftEnd[:min(len(s.ShiftEnd), 16)] }},
+		},
 	}
-
-	t := style.NewTable("USER_PK", "EMAIL", "USERNAME", "START", "END")
-	for _, item := range items {
-		start := item.ShiftStart
-		if len(start) > 16 {
-			start = start[:16]
-		}
-		end := item.ShiftEnd
-		if len(end) > 16 {
-			end = end[:16]
-		}
-		t.Row(item.UserPK, item.UserEmail, item.UserUsername, start, end)
-	}
-	return t.Render(w)
 }

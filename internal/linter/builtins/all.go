@@ -7,7 +7,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/tester"
-	"github.com/open-policy-agent/opa/v1/topdown/print"
+	opaprint "github.com/open-policy-agent/opa/v1/topdown/print"
 	"github.com/open-policy-agent/opa/v1/types"
 )
 
@@ -90,7 +90,7 @@ func assertReportsMatch() func(*rego.Rego) {
 				return ast.BooleanTerm(true), nil
 			}
 
-			printCtx := print.Context{
+			printCtx := opaprint.Context{
 				Context:  ctx.Context,
 				Location: actual.Location,
 			}

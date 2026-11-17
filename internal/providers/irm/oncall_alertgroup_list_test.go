@@ -103,6 +103,10 @@ func rawAlertGroups(n int) []json.RawMessage {
 	return items
 }
 
+func alertGroupListContinuation(limit int) string {
+	return cmdio.BuildListLimitCommand([]string{"gcx", "irm", "oncall", "alert-groups", "list"}, limit)
+}
+
 func TestAlertGroupList_RichPath_UserLimitTruncates(t *testing.T) {
 	fake := &fakeRichListAPI{items: rawAlertGroups(2), page: alertGroupPageInfo{HasMore: true}}
 	payload, stderr := runAlertGroupList(t, fake, "--limit", "2")
@@ -126,10 +130,10 @@ func TestAlertGroupList_RichPath_UserLimitTruncates(t *testing.T) {
 	// The continuation derives from argv (filters would survive) and doubles
 	// the limit — the total is unknown here (the source was not drained), so
 	// a doubled limit is the honest next step rather than --limit 0.
-	if meta.Continue != "gcx irm oncall alert-groups list --limit 4" {
+	if meta.Continue != alertGroupListContinuation(4) {
 		t.Errorf("list_meta.continue = %q, want doubled-limit continuation", meta.Continue)
 	}
-	want := "hint: showing first 2; more results are available. See more with: gcx irm oncall alert-groups list --limit 4"
+	want := "hint: showing first 2; more results are available. See more with: " + alertGroupListContinuation(4)
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr missing truncation hint %q:\n%s", want, stderr)
 	}
@@ -193,7 +197,7 @@ func TestAlertGroupList_LegacyPath_OverFetchDetectsTruncation(t *testing.T) {
 	if meta == nil || !meta.Truncated || meta.Returned != 3 || meta.Total != nil || meta.Cap != 0 {
 		t.Fatalf("list_meta = %+v, want truncated page of 3 with unknown total and no cap", meta)
 	}
-	want := "hint: showing first 3; more results are available. See more with: gcx irm oncall alert-groups list --limit 6"
+	want := "hint: showing first 3; more results are available. See more with: " + alertGroupListContinuation(6)
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr missing truncation hint %q:\n%s", want, stderr)
 	}

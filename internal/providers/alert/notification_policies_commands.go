@@ -62,14 +62,16 @@ func newNotificationPoliciesGetCommand(loader GrafanaConfigLoader) *cobra.Comman
 }
 
 type notificationPoliciesSetOpts struct {
-	IO    cmdio.Options
-	File  string
-	Force bool
+	IO             cmdio.Options
+	File           string
+	Force          bool
+	AllowUIUpdates bool
 }
 
 func (o *notificationPoliciesSetOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the policy tree (JSON/YAML, use - for stdin)")
 	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
+	flags.BoolVar(&o.AllowUIUpdates, "allow-ui-updates", true, "Keep the notification policy editable in the Grafana UI (false disables UI edits)")
 	// The set result is a SingleMutation document through the codec system:
 	// the default text codec prints the familiar one-line success; agent
 	// mode and explicit -o json/yaml get the structured document.
@@ -85,6 +87,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Replace the entire notification policy tree.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -113,7 +116,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			if err != nil {
 				return err
 			}
-			if err := client.SetNotificationPolicy(ctx, policy); err != nil {
+			if err := client.SetNotificationPolicy(ctx, policy, opts.AllowUIUpdates); err != nil {
 				return err
 			}
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "notification-policy"})

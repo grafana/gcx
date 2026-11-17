@@ -225,6 +225,31 @@ func CurrentGrafanaAuthMethod() string {
 	return ""
 }
 
+// loginStage is the last step the login pipeline entered, written as login
+// and signup move through it and read once at exit. The wire vocabulary lives
+// in the telemetry package.
+//
+//nolint:gochecknoglobals // process-wide invocation fact; see package doc.
+var loginStage atomic.Pointer[string]
+
+// SetLoginStage records the login step the invocation just entered. The last
+// call wins; an empty stage is ignored.
+func SetLoginStage(stage string) {
+	if stage == "" {
+		return
+	}
+	loginStage.Store(&stage)
+}
+
+// CurrentLoginStage returns the last recorded login step, or "" when this
+// invocation never entered the login pipeline.
+func CurrentLoginStage() string {
+	if stage := loginStage.Load(); stage != nil {
+		return *stage
+	}
+	return ""
+}
+
 // Reset clears every captured value.
 //
 // Production code never needs this — the process exits after one invocation.
@@ -236,4 +261,5 @@ func Reset() {
 	httpStatus.Store(0)
 	k8sReason.Store(nil)
 	grafanaAuthMethod.Store(nil)
+	loginStage.Store(nil)
 }

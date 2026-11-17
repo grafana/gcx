@@ -26,7 +26,7 @@ func StatusDocForTest(enabled bool, clusters int) setupStatus {
 		CollectorRowForTest(true, true, true, true, true),
 		{
 			Product: "instrumentation",
-			Enabled: enabled,
+			Enabled: new(enabled),
 			Health:  "healthy",
 			Details: fmt.Sprintf("%d clusters", clusters),
 		},
@@ -55,6 +55,6 @@ func UnknownPluginRowForTest(status int) setupProductStatus {
 
 // StatusRowFieldsForTest exposes a product row's fields to external tests, in
 // the order product, enabled, health, details.
-func StatusRowFieldsForTest(row setupProductStatus) (string, bool, string, string) {
+func StatusRowFieldsForTest(row setupProductStatus) (string, *bool, string, string) {
 	return row.Product, row.Enabled, row.Health, row.Details
 }

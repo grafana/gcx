@@ -37,6 +37,7 @@ type logsOpts struct {
 }
 
 func (opts *logsOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	opts.SetupTimeFlags(flags)

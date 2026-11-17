@@ -19,6 +19,7 @@ func NewTestOnCallNounCmds() []*cobra.Command {
 		newWebhooksCmd(loader),
 		newResolutionNotesCmd(loader),
 		newShiftSwapsCmd(loader),
+		newPersonalNotificationRulesCmd(loader),
 		newTeamsCmd(loader),
 		newUserGroupsCmd(loader),
 		newSlackChannelsCmd(loader),

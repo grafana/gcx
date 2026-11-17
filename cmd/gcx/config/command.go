@@ -46,6 +46,16 @@ func (opts *Options) BindFlags(flags *pflag.FlagSet) {
 	_ = cobra.MarkFlagFilename(flags, "config", "yaml", "yml")
 }
 
+// EffectiveContext returns the context selection for this invocation: an
+// explicit --context flag wins, falling back to the GCX_CONTEXT environment
+// variable when the flag is unset.
+func (opts *Options) EffectiveContext() string {
+	if opts.Context != "" {
+		return opts.Context
+	}
+	return os.Getenv(config.ContextEnvVar)
+}
+
 // LoadConfigTolerant loads the configuration file (default, or explicitly set via flags)
 // and returns it without validation.
 // This function should only be used by config-related commands, to allow the
@@ -56,13 +66,13 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 	// Select the target context before applying context-scoped environment
 	// variables. Otherwise --context switches only after env values have already
 	// been written into the context named by current-context.
-	if opts.Context != "" {
+	if contextName := opts.EffectiveContext(); contextName != "" {
 		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(opts.Context) {
-				return config.ContextNotFound(opts.Context, cfg.ContextNames())
+			if !cfg.HasContext(contextName) {
+				return config.ContextNotFound(contextName, cfg.ContextNames())
 			}
 
-			cfg.CurrentContext = opts.Context
+			cfg.CurrentContext = contextName
 			return nil
 		})
 	}
@@ -591,7 +601,7 @@ Without --context, checks every configured context. With --context, checks only 
 			// map, so ordering was previously non-deterministic). An explicit
 			// --context scopes the diagnostic to the selected context.
 			names := []string{cfg.CurrentContext}
-			if configOpts.Context == "" {
+			if configOpts.EffectiveContext() == "" {
 				names = make([]string, 0, len(cfg.Contexts))
 				for name := range cfg.Contexts {
 					names = append(names, name)

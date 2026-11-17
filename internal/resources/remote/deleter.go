@@ -8,10 +8,12 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -37,7 +39,7 @@ func NewDeleter(ctx context.Context, cfg config.NamespacedRESTConfig, guard Guar
 		return nil, err
 	}
 
-	guarded := newGuardedDynamicClient(dynamicClient, guard)
+	guarded := newGuardedRetryDynamicClient(dynamicClient, guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
@@ -74,6 +76,14 @@ type DeleteRequest struct {
 
 	// If set to true, the deleter will simulate the delete operations.
 	DryRun bool
+
+	// ResolveLocalIdentities selects strict identities from complete local envelopes
+	// before any delete. Selector-based callers already performed this selection.
+	ResolveLocalIdentities bool
+}
+
+type deleteSelectionClient interface {
+	SelectDelete(ctx context.Context, filter resources.Filter, manifests []unstructured.Unstructured) ([]unstructured.Unstructured, bool, error)
 }
 
 func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*OperationSummary, error) {
@@ -82,6 +92,13 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 
 	if request.MaxConcurrency < 1 {
 		request.MaxConcurrency = 1
+	}
+	if request.ResolveLocalIdentities {
+		selected, err := deleter.selectLocalIdentities(ctx, request, supported, summary)
+		if err != nil {
+			return summary, err
+		}
+		request.Resources = selected
 	}
 
 	err := request.Resources.ForEachConcurrently(ctx, request.MaxConcurrency,
@@ -111,8 +128,13 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 			if err := deleter.deleteResource(ctx, desc, res, request.DryRun); err != nil {
 				// The guard blocked a dry-run delete against an API that ignores server-side
 				// dryRun. Record it as skipped (not a failure) and keep going, like the puller.
+				if errors.Is(err, errReadOnlyNative) {
+					summary.RecordSkipped("read-only")
+					logger.Info(err.Error())
+					return nil
+				}
 				if errors.Is(err, errDryRunUnverified) {
-					summary.RecordSkipped()
+					summary.RecordSkipped("not server-verified")
 					logger.Info("Dry-run: deletion not verified (server-side dry-run unsupported); no delete sent")
 					return nil
 				}
@@ -122,7 +144,7 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 					return err
 				}
 
-				logger.Warn("Failed to delete resource", logs.Err(err))
+				logger.Warn("Failed to delete resource", "source", res.SourcePath(), logs.Err(err))
 				return nil
 			}
 
@@ -139,6 +161,23 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 }
 
 func (deleter *Deleter) deleteResource(ctx context.Context, descriptor resources.Descriptor, res *resources.Resource, dryRun bool) error {
+	if err := adapter.CheckMutation(descriptor, "delete"); err != nil {
+		return err
+	}
+	if resources.IsReadOnlyNative(&res.Object) {
+		return fmt.Errorf("%w: %w", errReadOnlyNative, resources.ReadOnlyNativeError(&res.Object))
+	}
+	if res.Name() == "" && resources.HasServerDerivedName(res.GroupVersionKind()) {
+		field, command := "name", "time-intervals"
+		if res.Kind() == "TemplateGroup" {
+			field, command = "title", "template-groups"
+		}
+		title, _, _ := unstructured.NestedString(res.Object.Object, "spec", field)
+		if title == "" {
+			title = "<title>"
+		}
+		return fmt.Errorf("%s %q has no metadata.name; delete it with 'gcx alert %s delete %q' or use a pulled manifest with its real API name", res.Kind(), title, command, title)
+	}
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}
@@ -158,4 +197,60 @@ func (deleter *Deleter) supportedDescriptors() map[schema.GroupVersionKind]resou
 	}
 
 	return supportedDescriptors
+}
+
+// selectLocalIdentities retains each authored envelope through owned selection.
+// Selection failures cannot allow any manifest in the failed kind to be deleted.
+func (deleter *Deleter) selectLocalIdentities(ctx context.Context, request DeleteRequest, supported map[schema.GroupVersionKind]resources.Descriptor, summary *OperationSummary) (*resources.Resources, error) {
+	client, ok := deleter.client.(deleteSelectionClient)
+	if !ok {
+		return request.Resources, nil
+	}
+	grouped := make(map[schema.GroupVersionKind][]*resources.Resource)
+	_ = request.Resources.ForEach(func(res *resources.Resource) error {
+		gvk := resources.NormalizeGVK(res.GroupVersionKind())
+		grouped[gvk] = append(grouped[gvk], res)
+		return nil
+	})
+	selected := resources.NewResources()
+	for gvk, sources := range grouped {
+		desc, exists := supported[gvk]
+		if !exists || adapter.CheckMutation(desc, "delete") != nil {
+			for _, source := range sources {
+				selected.AddDistinct(source)
+			}
+			continue
+		}
+		manifests := make([]unstructured.Unstructured, len(sources))
+		for i, source := range sources {
+			manifests[i] = source.ToUnstructured()
+		}
+		items, handled, err := client.SelectDelete(ctx, resources.Filter{Type: resources.FilterTypeAll, Descriptor: desc}, manifests)
+		if !handled {
+			for _, source := range sources {
+				selected.AddDistinct(source)
+			}
+			continue
+		}
+		if err != nil {
+			for _, source := range sources {
+				summary.RecordFailure(source, err)
+			}
+			if request.StopOnError {
+				return selected, err
+			}
+			continue
+		}
+		for i := range items {
+			res, err := resources.FromUnstructured(&items[i])
+			if err != nil {
+				return selected, err
+			}
+			if len(items) == len(sources) {
+				res.SetSource(sources[i].Source)
+			}
+			selected.Add(res)
+		}
+	}
+	return selected, nil
 }

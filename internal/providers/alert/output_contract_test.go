@@ -450,7 +450,7 @@ func TestGroupsStatusOutputContract(t *testing.T) {
 
 		// Byte-identical to the (unchanged) table codec rendering.
 		var want bytes.Buffer
-		require.NoError(t, (&alert.GroupsStatusTableCodec{}).Encode(&want, testStatusGroups()))
+		require.NoError(t, alert.GroupsStatusTable().Codec("table").Encode(&want, testStatusGroups()))
 		assert.Equal(t, want.String(), stdout)
 	})
 }

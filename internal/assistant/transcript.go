@@ -81,8 +81,13 @@ func (t ConversationTranscript) FormatText() string {
 
 func (t ConversationTranscript) hasNonTextParts() bool {
 	for _, message := range t.Messages {
-		if message.Hidden {
+		if message.Hidden || (message.Role != "user" && message.Role != "assistant") {
 			continue
+		}
+		for _, block := range message.Content {
+			if block.Type != "" && block.Type != "text" {
+				return true
+			}
 		}
 		var parts []struct {
 			Type string `json:"type"`

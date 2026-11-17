@@ -1,6 +1,310 @@
-## Unreleased
+## v1.8.0 (2026-11-17)
 
-- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` is off unless set. Both are aimed at shrinking large traces before `--llm` analysis.
+### Breaking changes
+
+- `gcx setup status` now reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled. It exits 3 on authentication failures
+  and 1 on other probe failures. It used to exit 4. The JSON document gains an
+  optional `error` object. Update scripts that branch on exit 4 or on
+  `enabled: false`. (#1699)
+- `gcx logs metrics` with no time flags now runs an instant query. It returns
+  one value per series. It used to run a range query over the last minute and
+  return two points per series. Callers that sum the points now get the
+  correct count, so their totals change. The `--share-link` URL now opens an
+  instant query in Explore. (#1786)
+- `gcx logs query` and `gcx datasources loki query` now reject a negative
+  `--limit`. A negative value used to run with the Loki default line limit and
+  exit 0. Remove the negative value from scripts. `--limit 0` still sends no
+  limit. (#1404)
+- `gcx api` now rejects an absolute URL as the path and exits 2. It used to
+  join the URL to the configured Grafana host, which sent the request to a
+  wrong address. Pass a path that is relative to the stack. (#1735)
+- On Grafana Cloud targets, `gcx logs query`, `gcx logs metrics`, and the
+  `gcx datasources loki` commands now estimate the cost of a Loki query before
+  they run it. A query that is too expensive fails with a `Query blocked`
+  error and exit 1. Narrow the selector or the time range, or pass `--force`.
+  gcx enforces only a budget that your stack policy serves. Without a served
+  policy, gcx logs what it would block and runs the query. Self-managed
+  targets are not checked. (#1759)
+- `gcx frontend apps create` and `update` now reject an unknown or misspelled
+  field in a manifest, such as `allowedOrigins` instead of `corsOrigins`. They
+  used to drop the field and report success. (#1758)
+- `gcx irm` incident create now rejects a non-empty `spec.description`, and
+  incident delete previews now fail with exit 4. The IRM API supports neither
+  action. Both used to report success. (#1737, #1736)
+- An explicit human-format `-o`, such as `-o yaml`, now overrides agent mode
+  for errors. gcx prints the error on stderr. It no longer writes a
+  `gcx.error` JSON document to stdout. (#1655)
+
+### New commands and improvements
+
+- Add `gcx annotations` commands to manage Grafana annotations.
+- Add `gcx logs archive` commands (experimental).
+- Add `gcx ml` commands for forecasts, holidays, and outlier detectors.
+- Add `gcx profiles diff` to compare two profiles.
+- Add `gcx resources search` for hybrid search (experimental).
+- Add `--filename-by=title` to `gcx resources pull`.
+- Add `--drilldown-link` to the Loki, Prometheus, Tempo, and Pyroscope queries.
+- Add `gcx help exit-codes` help topic.
+- Add Assistant usage views.
+- Add native Windows installation and runtime support.
+- Add `thresholds` upsert, delete, and update commands to the Knowledge Graph (KG).
+- Add `--skip-promql-eval` to KG `prom-rules upsert`.
+- Show write API availability in `gcx kg status`.
+- Add Agent Observability model cards and `model-rates resolve`.
+- Add rule actions to evaluators and `experiments list-filter-values`.
+- Let `gcx synth checks test` target existing checks.
+- Add OnCall personal notification rules, and align OnCall schemas.
+- Fix Loki: send `queryType` instant for metric queries without a time range.
+- Fix Loki: send `supportingQueryType` on `/api/ds/query` requests.
+- Fix Loki: include total count in `query-patterns` JSON and YAML output.
+- Fix Pyroscope: keep profile selection in pprof exports.
+- Fix profiles: stop double-counting recursive CPU time.
+- Fix profiles: report unsupported adaptive management.
+- Fix Assistant: read investigation chats by engine.
+- Fix Assistant: explain missing permissions on 403 errors.
+- Fix Assistant: keep legacy conversation tool fields.
+- Fix Agent Observability: always request a bounded page size.
+- Fix Agent Observability: keep `execution_mode` and `filterable_tag_keys` on rules.
+- Fix Agent Observability: explain a missing plugin.
+- Fix Faro: resolve app arguments safely.
+- Fix IRM: restore personal notification rules with user authentication.
+- Fix SLO: update pushes without a UUID by resource name.
+- Fix resources: skip unsupported provider list operations.
+- Fix resources: keep dashboard schemas that convert successfully.
+- Fix resources: show returned push identities on request.
+- Fix dashboards: report actual snapshot image dimensions.
+- Fix k6: keep configured run threshold options.
+- Fix synthetic monitoring: keep `basicMetricsOnly` false on checks.
+- Fix lint: resolve datasource variables before PromQL validation.
+- Fix BigQuery: filterable metadata lists and clearer permission errors.
+- Classify datasource proxy authentication failures.
+- Record the last `gcx signup` step as `signup_stage` in anonymous usage statistics.
+  gcx shows the one-time telemetry notice again to disclose the new field.
+  A failed OAuth token exchange in `gcx login` or `gcx signup` now reports its HTTP status.
+- Show API server warnings at the default verbosity.
+- Keep angle-bracket placeholders in terminal `--help` output.
+- Let `GCX_AUTO_APPROVE` unlock `thresholds update -f -`.
+- Unify table output with shared adapters across many commands.
+- Shorten plugin skill descriptions.
+- Add the `Invocation.HomeFS` read-only home to the sandbox.
+- Update to Go 1.27, and update Go dependencies and `golangci-lint`.
+- Update Kubernetes dependencies, and the Docker base image digest.
+- Add the Authentication and Permissions pages, and rewrite the README and guides.
+- Add the installation docs for `asdf` and Windows.
+- Propose organization access and SCIM commands in an RFC.
+
+
+## v1.7.1 (2026-10-21)
+
+- Build release binaries with Go 1.26.10 and update `golang.org/x/net` to
+  v0.60.0, picking up standard library security fixes and five HTTP/2
+  fixes (GO-2026-6603, -6610, -6611, -6612, -6617) (#1625)
+- Fix the container image build, which stopped the v1.7.0 release before
+  it published binaries or images (#1623)
+
+
+## v1.7.0 (2026-10-20)
+
+### Breaking changes
+
+- Some failures now exit with different codes. HTTP 401/403 from product
+  commands, Assistant helpers and `gcx api`, and missing Cloud or Synthetic
+  Monitoring credentials exit 3 instead of 1. Unknown flags and missing or
+  extra positional arguments exit 2 instead of 1. Error summaries use a fixed
+  vocabulary (`Authentication failed`, `Authorization failed`,
+  `Resource not found`, `Resource conflict`, `Invalid command usage`).
+  Update scripts that branch on exit 1 or match the old error text. (#1483)
+- Contact points, notification policies, templates and mute timings that gcx
+  writes now stay editable in the Grafana UI by default. Pass
+  `--allow-ui-updates=false` to keep them provisioned. Updating a contact
+  point that is already provisioned requires `--allow-ui-updates=false`;
+  without it Grafana rejects the update. Alert rules are unchanged. (#1553)
+- `gcx synthetic-monitoring checks status` and `checks get --show-status` now
+  read from the Synthetic Monitoring datasource and require Synthetic
+  Monitoring app v1.64.0 or later. `SUCCESS` (JSON `success`) is now
+  reachability over 3 hours instead of a 5-minute `probe_success` average, so
+  some checks may change between `OK` and `FAILING`. `--datasource-uid` is
+  hidden and ignored; it is still accepted, with a warning. (#1489)
+- `gcx logs query` and `gcx datasources loki query` (including generic
+  `datasources query` against Loki) now reject metric queries such as
+  `rate(...)` in every output format, instead of printing metric values as
+  log lines. Run metric queries with `gcx logs metrics`. (#1580)
+- `gcx kg notifications upsert` now rejects unknown or misspelled fields, and
+  input containing more than one YAML document. Both previously succeeded,
+  dropping the unknown key or the extra documents. It now also accepts the
+  output of `notifications get` and `list` directly. Correct field names in
+  saved notification files before you upgrade. (#1571)
+
+### New commands and improvements
+
+- Add Assistant Watchers: inspect, export, create, update and lifecycle commands
+- Watchers: run history, version restore, calibration and notification routing
+- Add alerting time interval and template group workflows
+- Add `kg` graph queries and threshold commands; deprecate legacy entity queries
+- Improve `kg` graph query and meta schema help, with `--jq` examples
+- Add `synthetic-monitoring suggestions list`
+- Add CSV output (`-o csv`) for Prometheus, Loki, SQL, tabular, Cloud,
+  search-metrics, Tempo and Pyroscope queries
+- Add `datasources loki query-patterns` and `logs query-patterns`
+- Render `-o graph` for Loki log queries as a log-volume histogram
+- Describe the profiling workflow in `profiles` help
+- Select the active context with the `GCX_CONTEXT` environment variable
+- Detect Hermes Agent and OpenClaw to turn on agent mode
+- Publish a container image to ghcr.io and Docker Hub, signed with keyless cosign
+- Make SLO, Synthetic, Alerting, k6, Fleet, stack and telemetry tables consistent
+- Fix decoding of SLOs that use grafanaQueries
+- Fix `irm oncall schedules list-final-shifts` ignoring `--start`
+- Fix OAuth login callback by using an OS-assigned port
+- Fix config validation errors and legacy mTLS with env-only auth or tokens
+- Fix Linux keychain prompting for unlock in headless sessions
+- Fix instrumentation sending a Pyroscope URL ending in `/ingest`
+- Sandbox recovers from a broken compilation cache and reports why
+- Docs: CLI reference now ships with releases; added Grafana MCP comparison
+
+## v1.6.0 (2026-10-13)
+
+### Breaking changes
+
+- Faro app writes now reject `spec.settings.geolocationLevel: region`.
+  Change it to `subdivision` in saved manifests before you upgrade.
+  This affects `gcx frontend apps` writes and resource pushes. Before this
+  release, gcx ignored Faro app settings on writes, so `region` never took
+  effect. Faro settings now reach the API. (#1444)
+- `gcx datasources loki labels` and `gcx logs labels` now reject stray
+  positional arguments. They also reject an explicit empty `--query` or
+  `--label`. Omit these flags for an unscoped label list. Give each flag
+  a nonempty value when you use it. (#1325)
+
+### New commands and improvements
+
+- Add `gcx signup` to create a Grafana Cloud account and save its first
+  connection. Complete account setup in the browser. If the connection
+  fails after signup, finish it with `gcx login`. (#1383)
+- Let `gcx login --cloud --oauth` open the stack chooser when no server
+  is set. Browser cancellation now exits with code 5. On macOS, the
+  terminal watcher uses its own device, so SSH paste works. (#1383)
+- Add `gcx docs` commands to search and read Grafana product docs.
+  (#1234)
+- Add `gcx alert routing-trees` commands to manage native alert routing
+  trees. (#1472)
+- Add experimental `gcx profiles query-anomalies` and
+  `gcx datasources pyroscope query-anomalies` commands. Their flags and
+  output may change. (#1435)
+- Add `--query` to scope Loki label and value lists. (#1325)
+- Add `--dry-run` to Synthetic Monitoring check create and update.
+  (#1429)
+- Add an experimental Go sandbox module that runs gcx as WebAssembly.
+  Reduce its build size and startup time. (#1440)
+- Keep resource manager identity stable across gcx upgrades. Resolve
+  resource selectors with dotted API groups. (#1537, #1441)
+- Correct Faro app settings writes. Preserve labels and mobile
+  classification on create. Report truncated lists and accept app names
+  in get. (#1444, #1390, #1445)
+- Read service map metadata correctly. Fix the SLO server interval
+  example. Scope k6 load tests to the selected project. (#1457, #1452,
+  #1450)
+- Name missing permissions in Faro proxy errors. Show native alert rule
+  selectors in help. Recover after concurrent config writes. (#1518,
+  #1458, #1485)
+- Detect Codex, Gemini, and other agent hosts. Let
+  `GCX_AGENT_SPILL_BYTES=0` disable output spilling. (#1461, #1439)
+- Update docs, security reporting guidance, and on-call command
+  discovery. (#1520, #1206, #1305)
+
+## v1.5.0 (2026-10-05)
+
+## Breaking changes: Cloud stack creation
+
+- `gcx cloud stacks create` now requires `--org <org-slug>`, including
+  dry runs. The Cloud API validates access to the selected organisation.
+- Successful creation defaults to YAML and returns only `name`, `orgSlug`,
+  `slug`, `status`, and `url` in every output format. Use 
+  `gcx cloud stacks get <slug> -o json` for full details. Dry runs still
+  return a request preview.
+- Creation trims whitespace around `--org` and `--name`; stack slugs retain
+  strict lowercase-alphanumeric validation. Blank values are rejected.
+
+Update scripts before upgrading:
+
+```sh
+# Add the explicit destination organisation to existing create commands.
+gcx cloud stacks create --org example-org --name demo --slug demo --region us --dry-run
+
+# After creation, retrieve fields omitted from the concise result.
+gcx cloud stacks get demo -o json
+```
+
+## Cloud organisation discovery and creation
+
+- Add `gcx cloud orgs list` to show organisation slugs and membership roles
+  for the signed-in user.
+  - Fresh Cloud OAuth logins request `profile`. Rerun `gcx cloud login` if
+  your saved login lacks that scope. 
+- Allow two minutes for stack creation. If it times out, check
+  `gcx cloud stacks get <slug>` with the same config/context before retrying:
+  the stack may already exist or still be provisioning.
+- Reject blank organisation values in `cloud stacks list`; that command
+  already required `--org` before this release.
+
+## Other improvements
+
+- Preserve Synthetic Monitoring `spec.folderUid` in check manifests,
+  responses, and resource workflows. Omit it to retain the assignment;
+  supply an empty string to clear it.
+- Explain how `--since` or `--from`/`--to` can speed up trace-ID lookup.
+  Use the correct time range; one that excludes the trace returns not found.
+- Show an Interactive Learning link after text-mode login when the
+  Pathfinder plugin is installed and enabled. JSON/YAML output is unchanged.
+- Add a contributor RFC for unified alerting resource workflows; it does
+  not introduce a new runtime alerting API.
+
+## v1.4.0 (2026-10-02)
+
+**Metrics and traces**
+- Add `gcx metrics search metric-names/label-names/label-values` and
+  `gcx datasources prometheus search-metric-names/search-label-names/search-label-values`,
+  backed by the experimental Prometheus/Mimir search API (#1374)
+- Add experimental TraceByID options to `gcx traces get` and
+  `gcx datasources tempo get`: `--filter` keeps the spans that match a TraceQL
+  spanset expression, shaped by `--keep-hierarchy`, `--match-depth` and
+  `--ancestor-depth`; `--prune` (with `--prune-group-by`, `--prune-min-spans`,
+  `--prune-max-parent-depth`) collapses repeated sibling spans. Both are off
+  unless set, and aim at shrinking large traces before `--llm` analysis (#1250)
+
+**Authentication and configuration**
+- Add Basic authentication to `gcx login` (#1389)
+- List the available contexts when the requested context is not found (#1210)
+
+**Agent Observability**
+- Add `gcx agento11y model-rates` to set your own negotiated model prices (#1377)
+
+**Synthetic Monitoring and IRM**
+- Add `gcx synthetic-monitoring queries list/get` for named queries (#1373)
+- Manage IRM OnCall integration alert templates and maintenance mode (#1188)
+
+**Application Observability**
+- Add `gcx appo11y operations list/get` (#1334)
+- Show service metadata, Explore links and Knowledge Graph data for services
+  (#1330, #1333)
+- Resolve scoped Knowledge Graph services by their exact name (#1384)
+
+**Security and debugging**
+- `--insecure-log-http-payload` dumps now run at the innermost transport layer
+  and show every header that reaches the wire, including the OAuth bearer
+  token. They also show the OAuth token refresh exchange, which carries the
+  refresh token and the rotated token pair. Treat captured debug logs as
+  secrets (#1190)
+- Label the dumps `http request dump` and `http response dump`, include
+  `Content-Length` and `Accept-Encoding` in request dumps, report why a dump
+  failed, and document that dumps log at Debug level (`-vvv`) (#1190)
+
+**Docs and internals**
+- Add guides for managing resources and diagnosing missing telemetry
+  (#1413, #1368)
+- Clarify the MkDocs setup and fix broken links (#1378, #1417)
+- Move Knowledge Graph transport into a shared internal client (#1331, #1332)
+
 ## v1.3.1 (2026-09-22)
 
 **Synthetic Monitoring**
@@ -146,7 +450,6 @@
 
 - irm: `gcx irm oncall alert-groups list --limit 0` returns every matching alert group instead of stopping at 1000, and `--limit N` above 1000 is honored (#1157).
 - instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
-
 ## v1.1.0 (2026-08-14)
 
 **Breaking changes**

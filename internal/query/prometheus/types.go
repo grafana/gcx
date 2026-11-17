@@ -145,13 +145,13 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *Qu
 			for i := range timeValues {
 				// Convert milliseconds to seconds for Prometheus compatibility
 				ts := toFloat64(timeValues[i]) / 1000.0
-				val := toFloat64(valueValues[i])
-				sample.Values[i] = []any{ts, formatValue(val)}
+				val := dataframe.MetricValue(valueValues[i])
+				sample.Values[i] = []any{ts, val}
 			}
 		} else {
 			ts := toFloat64(timeValues[0]) / 1000.0
-			val := toFloat64(valueValues[0])
-			sample.Value = []any{ts, formatValue(val)}
+			val := dataframe.MetricValue(valueValues[0])
+			sample.Value = []any{ts, val}
 		}
 
 		result.Data.Result = append(result.Data.Result, sample)
@@ -174,8 +174,4 @@ func toFloat64(v any) float64 {
 	default:
 		return 0
 	}
-}
-
-func formatValue(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
 }

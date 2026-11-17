@@ -1,0 +1,3 @@
+ID        NAME            ENABLED  URL
+server-1  Shared tools    true     https://mcp.example.com/mcp
+server-2  Personal tools  false    https://personal.example.com/mcp

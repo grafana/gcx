@@ -14,10 +14,9 @@ import (
 // manualCallbackPort is the port gcx puts in the callback URL when it runs
 // without a listener. The browser cannot connect to that port, and that
 // failure is the point: the full redirect URL stays in the address bar for the
-// user to copy. 54321 is the first port of the normal auto-pick range, so both
-// the Grafana plugin (which requires 1024-65535) and grafana.com already
-// accept it.
-const manualCallbackPort = 54321
+// user to copy. No listener ever binds this port, so any value accepted by
+// the Grafana plugin and grafana.com (both require 1024-65535) works.
+const manualCallbackPort = 20000
 
 // maxPastedURLBytes bounds one pasted line.
 const maxPastedURLBytes = 8192
@@ -176,15 +175,21 @@ func printRemoteSessionHint(w io.Writer, port int, command string) {
 }
 
 // printManualInstructions prints the numbered steps of the manual paste flow.
-// verification is the code that the consent page shows. Pass an empty string
-// for a flow that does not show one.
-func printManualInstructions(w io.Writer, authURL, verification string) {
+// browserStep is what the user does in the browser before the consent page,
+// and verification is the code that the consent page shows. Pass an empty
+// string for a flow that has no such step or shows no code.
+func printManualInstructions(w io.Writer, authURL, browserStep, verification string) {
 	fmt.Fprintln(w, "Manual OAuth mode. gcx does not start a callback server.")
 	fmt.Fprintln(w)
 
 	step := 1
 	fmt.Fprintf(w, "%d. Open this URL in a browser on your computer:\n", step)
 	fmt.Fprintf(w, "     %s\n\n", authURL)
+
+	if browserStep != "" {
+		step++
+		fmt.Fprintf(w, "%d. %s\n\n", step, browserStep)
+	}
 
 	if verification != "" {
 		step++

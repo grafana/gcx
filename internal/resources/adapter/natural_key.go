@@ -13,25 +13,50 @@ import (
 // resource lacks the required fields.
 type NaturalKeyExtractor func(obj *unstructured.Unstructured) (string, bool)
 
+// NaturalKeyPolicy controls ambiguous matches for one resource type.
+type NaturalKeyPolicy struct {
+	// RequireUnique rejects multiple resources with the same normalized key.
+	RequireUnique bool
+	// IDLabel names the explicit identifier in recovery messages.
+	IDLabel string
+}
+
+type naturalKeyRegistration struct {
+	extractor NaturalKeyExtractor
+	policy    NaturalKeyPolicy
+}
+
 //nolint:gochecknoglobals // Self-registration pattern (same as adapter.registry).
 var (
 	naturalKeyMu       sync.RWMutex
-	naturalKeyRegistry = make(map[schema.GroupVersionKind]NaturalKeyExtractor)
+	naturalKeyRegistry = make(map[schema.GroupVersionKind]naturalKeyRegistration)
 )
 
 // RegisterNaturalKey registers a natural key extractor for a GVK.
 // Providers call this during init to enable cross-stack identity matching.
 func RegisterNaturalKey(gvk schema.GroupVersionKind, fn NaturalKeyExtractor) {
+	RegisterNaturalKeyWithPolicy(gvk, fn, NaturalKeyPolicy{})
+}
+
+// RegisterNaturalKeyWithPolicy registers an extractor and its ambiguity policy.
+func RegisterNaturalKeyWithPolicy(gvk schema.GroupVersionKind, fn NaturalKeyExtractor, policy NaturalKeyPolicy) {
 	naturalKeyMu.Lock()
 	defer naturalKeyMu.Unlock()
-	naturalKeyRegistry[gvk] = fn
+	naturalKeyRegistry[gvk] = naturalKeyRegistration{extractor: fn, policy: policy}
 }
 
 // GetNaturalKeyExtractor returns the registered extractor for a GVK, or nil.
 func GetNaturalKeyExtractor(gvk schema.GroupVersionKind) NaturalKeyExtractor {
 	naturalKeyMu.RLock()
 	defer naturalKeyMu.RUnlock()
-	return naturalKeyRegistry[gvk]
+	return naturalKeyRegistry[gvk].extractor
+}
+
+// GetNaturalKeyPolicy returns the policy for a GVK, or the default policy.
+func GetNaturalKeyPolicy(gvk schema.GroupVersionKind) NaturalKeyPolicy {
+	naturalKeyMu.RLock()
+	defer naturalKeyMu.RUnlock()
+	return naturalKeyRegistry[gvk].policy
 }
 
 // SpecFieldKey returns a NaturalKeyExtractor that reads named fields from the
@@ -65,5 +90,5 @@ func SpecFieldKey(fields ...string) NaturalKeyExtractor {
 func resetNaturalKeyRegistry() {
 	naturalKeyMu.Lock()
 	defer naturalKeyMu.Unlock()
-	naturalKeyRegistry = make(map[schema.GroupVersionKind]NaturalKeyExtractor)
+	naturalKeyRegistry = make(map[schema.GroupVersionKind]naturalKeyRegistration)
 }

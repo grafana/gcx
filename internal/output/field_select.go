@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	goio "io"
@@ -268,7 +269,9 @@ func toMap(value any) (map[string]any, error) {
 		return nil, err
 	}
 	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber() // Field selection must not round integer values through float64.
+	if err := decoder.Decode(&m); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -282,7 +285,9 @@ func toSlice(value any) ([]map[string]any, error) {
 		return nil, err
 	}
 	var arr []map[string]any
-	if err := json.Unmarshal(data, &arr); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&arr); err != nil {
 		return nil, err
 	}
 	return arr, nil

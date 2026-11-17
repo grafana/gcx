@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/namedquery"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
+	"github.com/grafana/gcx/internal/providers/synth/suggestions"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
@@ -29,7 +30,7 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 
 // checkSchema returns a JSON Schema for the SM Check resource type.
 func checkSchema() json.RawMessage {
-	return adapter.SchemaFromType[checks.CheckSpec](checks.StaticDescriptor())
+	return adapter.SchemaFromType[checks.CheckSpec](checks.StaticDescriptor())()
 }
 
 // checkExample returns an example SM Check manifest as JSON.
@@ -60,7 +61,7 @@ func checkExample() json.RawMessage {
 
 // probeSchema returns a JSON Schema for the SM Probe resource type.
 func probeSchema() json.RawMessage {
-	return adapter.SchemaFromType[probes.Probe](probes.StaticDescriptor())
+	return adapter.SchemaFromType[probes.Probe](probes.StaticDescriptor())()
 }
 
 // probeExample returns an example SM Probe manifest as JSON.
@@ -118,6 +119,8 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 	synthCmd.AddCommand(checks.Commands(loader))
 	synthCmd.AddCommand(probes.Commands(loader))
 	synthCmd.AddCommand(namedquery.Commands(loader))
+	synthCmd.AddCommand(namedquery.QueriesCommands(loader))
+	synthCmd.AddCommand(suggestions.Commands(loader))
 
 	return []*cobra.Command{synthCmd}
 }
@@ -150,7 +153,7 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     checks.NewAdapterFactory(loader),
 			Descriptor:  checks.StaticDescriptor(),
 			GVK:         checks.StaticGVK(),
-			Schema:      checkSchema(),
+			Schema:      checkSchema,
 			Example:     checkExample(),
 			URLTemplate: "/a/grafana-synthetic-monitoring-app/checks/{name}",
 		},
@@ -158,7 +161,7 @@ func (p *SynthProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     probes.NewAdapterFactory(loader),
 			Descriptor:  probes.StaticDescriptor(),
 			GVK:         probes.StaticGVK(),
-			Schema:      probeSchema(),
+			Schema:      probeSchema,
 			Example:     probeExample(),
 			URLTemplate: "/a/grafana-synthetic-monitoring-app/probes/{name}",
 		},

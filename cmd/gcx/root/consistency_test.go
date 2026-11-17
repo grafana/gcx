@@ -2,10 +2,12 @@ package root_test
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -209,6 +211,38 @@ func TestConsistency_SkillMappingResolvesToCommands(t *testing.T) {
 		t.Run(skillPath, func(t *testing.T) {
 			if !paths[skillPath] {
 				t.Errorf("skill mapping key %q does not match any command in the tree", skillPath)
+			}
+		})
+	}
+}
+
+// TestConsistency_AssistantWorkDisclosesBilling verifies that commands which
+// start Grafana Assistant work link Assistant pricing in both llm_hint and
+// Long. help-tree shows only the hint and --help shows only Long, so dropping
+// either sentence hides the cost from that reader. Add a row when a command
+// starts Assistant work.
+func TestConsistency_AssistantWorkDisclosesBilling(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	for _, path := range []string{
+		"gcx assistant prompt",
+		"gcx assistant investigations create",
+		"gcx assistant investigations resume",
+		"gcx assistant watchers create",
+		"gcx assistant watchers start",
+		"gcx assistant watchers run",
+		"gcx instrumentation check",
+	} {
+		t.Run(path, func(t *testing.T) {
+			cmd, _, err := rootCmd.Find(strings.Fields(path)[1:])
+			if err != nil || cmd.CommandPath() != path {
+				t.Fatalf("command %q not found in the tree", path)
+			}
+			if !strings.Contains(cmd.Annotations[agent.AnnotationLLMHint], docs.AssistantPricing) {
+				t.Errorf("%s does not link %s", agent.AnnotationLLMHint, docs.AssistantPricing)
+			}
+			if !strings.Contains(cmd.Long, docs.AssistantPricing) {
+				t.Errorf("Long does not link %s", docs.AssistantPricing)
 			}
 		})
 	}

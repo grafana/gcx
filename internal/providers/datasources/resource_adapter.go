@@ -71,7 +71,7 @@ const apiVersionPattern = `^([a-z0-9][a-z0-9-]*\.)?datasource\.grafana\.app/v0al
 func DatasourceSchema() json.RawMessage {
 	// Reflect the spec shape (title-keyed, no secrets) via the shared helper,
 	// then adapt the envelope: relax apiVersion and add the `secure` sibling.
-	base := adapter.SchemaFromType[dsclient.DataSourceSpec](StaticDescriptor())
+	base := adapter.SchemaFromType[dsclient.DataSourceSpec](StaticDescriptor())()
 
 	var env map[string]any
 	if err := json.Unmarshal(base, &env); err != nil {

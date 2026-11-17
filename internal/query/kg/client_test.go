@@ -176,6 +176,12 @@ func TestReadError(t *testing.T) {
 			wantMsg:    "invalid request",
 		},
 		{
+			name:       "cypher policy error code",
+			statusCode: http.StatusUnprocessableEntity,
+			body:       `{"message":"LIMIT is required","code":"CYPHER_LIMIT_REQUIRED"}`,
+			wantMsg:    "CYPHER_LIMIT_REQUIRED: LIMIT is required",
+		},
+		{
 			name:       "raw body fallback",
 			statusCode: http.StatusInternalServerError,
 			body:       "not json",
@@ -195,7 +201,9 @@ func TestReadError(t *testing.T) {
 				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer server.Close()
-			resp, err := http.Get(server.URL) //nolint:noctx
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
+			require.NoError(t, err)
+			resp, err := server.Client().Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 

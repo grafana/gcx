@@ -450,6 +450,11 @@ func SloResource() adapter.Resource[Slo] {
 }
 ```
 
+Use `PullStripFields` for spec keys that get and list must retain but saved pull
+manifests must omit. These keys are removed only by `resources pull`.
+`StripFields` removes keys from all adapter output. The same pull policy is
+available on `RegistrationMeta` for providers that use `BuildRegistration`.
+
 Implement only the capability interfaces your client's API actually
 supports — an unimplemented interface resolves to `errors.ErrUnsupported`
 with no nil-`Fn` plumbing and no provider-side flags:

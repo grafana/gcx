@@ -34,6 +34,7 @@ type metricsOpts struct {
 }
 
 func (opts *metricsOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, true)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.opensearch is configured)")
 	flags.StringVar(&opts.Agg, "agg", "count", "Metric aggregation: count, avg, sum, min, max, or cardinality")

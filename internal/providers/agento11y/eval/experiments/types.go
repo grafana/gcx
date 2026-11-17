@@ -300,3 +300,11 @@ type TestCaseTrialResult struct {
 	Scores     []ScoreItem   `json:"scores"`
 	Artifacts  []Artifact    `json:"artifacts"`
 }
+
+// ExperimentFacets are the distinct owners, suites and tags across a tenant's
+// experiments, as used for filter options.
+type ExperimentFacets struct {
+	Owners []string `json:"owners"`
+	Suites []string `json:"suites"`
+	Tags   []string `json:"tags"`
+}

@@ -1,0 +1,2 @@
+✔ entity "checkout" created
+warn: failed to upsert entity "cart" (1/2 succeeded): kg: upsert entity: kg: request failed with status 500: {"error":"boom"}

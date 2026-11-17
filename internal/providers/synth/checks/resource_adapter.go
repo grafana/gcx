@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -175,6 +176,34 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 			return &cr, nil
 		},
 
+		// ValidateFn backs `resources push --dry-run`. It asks the SM API to
+		// validate each check without persisting it. Probe names are sent as-is
+		// (the server resolves them), so no tenant or probe lookup is needed.
+		// Scripts are encoded the way CreateFn/UpdateFn (via SpecToCheck) send
+		// them, so the verdict is for the document a push would write.
+		ValidateFn: func(ctx context.Context, items []*checkResource) error {
+			var errs []error
+			for _, item := range items {
+				spec := item.CheckSpec
+				spec.Settings = encodeScriptSettings(spec.Settings)
+
+				result, err := checksClient.Validate(ctx, spec, item.checkID)
+				if errors.Is(err, ErrValidateUnsupported) {
+					// Older servers can't validate: report "skipped", not a false success.
+					return fmt.Errorf("%w: %w", adapter.ErrDryRunUnverified, err)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to validate check %q: %w", item.Job, err)
+				}
+
+				if err := result.Error(); err != nil {
+					errs = append(errs, fmt.Errorf("check %q failed validation:\n%w", item.Job, err))
+				}
+			}
+
+			return errors.Join(errs...)
+		},
+
 		DeleteFn: func(ctx context.Context, name string) error {
 			id, ok := extractIDFromSlug(name)
 			if !ok {
@@ -254,6 +283,7 @@ func checkToResource(check Check, probeNames map[int64]string) checkResource {
 			BasicMetricsOnly: check.BasicMetricsOnly,
 			AlertSensitivity: check.AlertSensitivity,
 			Channels:         check.Channels,
+			FolderUID:        check.FolderUID,
 		},
 		name:    name,
 		checkID: check.ID,

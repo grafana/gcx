@@ -52,7 +52,7 @@ func TestReportResource(t *testing.T) {
 				return adapter.ClientDeps{HTTP: server.Client(), BaseURL: server.URL, Namespace: "stack"}, nil
 			}, reports.ReportResource())
 			reg := p.TypedRegistrations()[0]
-			require.NotEmpty(t, reg.Schema)
+			require.NotEmpty(t, reg.Schema())
 			require.NotEmpty(t, reg.Example)
 			a, err := reg.Factory(t.Context())
 			require.NoError(t, err)

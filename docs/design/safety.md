@@ -1,6 +1,6 @@
 # Confirmation and Safety
 
-> Covers when to prompt users before destructive operations, the --force/GCX_AUTO_APPROVE pattern, dry-run support, and push idempotency.
+> Covers when to prompt users before destructive operations, the --force/GCX_AUTO_APPROVE pattern, dry-run support, push idempotency, and query cost guardrails.
 
 ---
 
@@ -8,24 +8,25 @@
 
 ### 3.1 When to Prompt
 
-Prompt the user before:
-- Deleting remote resources (single or bulk)
-- Bulk overwrite operations (`push --overwrite` on an existing resource set)
+New destructive provider commands prompt before deleting remote resources
+(single or bulk). `resources delete` retains its existing selector guard:
+named targets may be deleted directly; broader selectors require `--force`.
+It does not use an interactive confirmation prompt.
 
 Do NOT prompt for:
-- Push (create-or-update) — it's idempotent
-- Pull (local write) — easily reversible via git
+- Push (create-or-update) — it is idempotent
+- Pull (local write) — callers manage local changes through their normal workflow
 - Config changes — low-risk, undoable
 
 ### 3.2 The `--force` Flag and `providers.ConfirmDestructive` `[IMPLEMENTED]`
 
 All destructive provider commands use the shared `providers.ConfirmDestructive()`
-helper. It applies a 3-layer bypass chain before falling through to an
+helper. It applies this bypass chain, in order, before falling through to an
 interactive prompt:
 
 1. **`--force` flag** — explicit per-invocation bypass
 2. **`GCX_AUTO_APPROVE` env var** — enables non-interactive operation in CI/CD
-3. **Agent mode without `--force`** — fails with actionable error
+3. **Agent mode without either bypass above** — fails with actionable error
 4. **Interactive prompt** — asks the user to confirm (`[y/N]`)
 
 If none of the bypass conditions are met and stdin is closed/empty, the prompt's
@@ -39,9 +40,19 @@ if err != nil {
     return err
 }
 if !proceed {
-    return nil
+    exitCode := gcxerrors.ExitCancelled
+    return &gcxerrors.DetailedError{
+        Summary: "delete cancelled",
+        ExitCode: &exitCode,
+    }
 }
 ```
+
+For new commands, a declined prompt returns exit 5 as above. The helper itself
+returns `(false, nil)` for a negative answer, so the caller owns the exit code.
+Several shipped commands still return success on decline; preserve that
+behavior until a deliberate compatibility change. See
+[exit-codes.md § 2.4](exit-codes.md#24-declined-confirmations) for examples.
 
 **Convention:** Use `--force` (long flag only, no `-f` shorthand per
 [naming.md](naming.md) § 9.4). Do not use `--yes`, `--skip-confirmations`,
@@ -55,19 +66,42 @@ The `resources delete` command additionally supports `--yes` (`-y`) which
 auto-enables the `--force` flag. This is a legacy pattern specific to the
 resources layer; new provider commands should use `--force` directly.
 
-### 3.3 Agent Mode Requires Explicit `--force` `[IMPLEMENTED]`
+### 3.3 Agent Mode Rejects Unbypassed Destructive Operations `[IMPLEMENTED]`
 
-When agent mode is active ([agent-mode.md](agent-mode.md)), `providers.ConfirmDestructive`
-**rejects** the operation with an actionable error unless `--force` is passed.
-This forces agents to deliberately acknowledge destructive operations rather
-than silently proceeding — creating an explicit audit trail and preventing
-rogue agents from accidentally deleting resources.
+Agent mode does not approve destructive operations. The shared bypass check
+uses the following order; other documents should link here rather than copy it.
+
+| `--force` | `GCX_AUTO_APPROVE` | Agent mode | Result from the shared bypass/prompt path |
+|---|---|---|---|
+| yes | any | any | Proceed without a prompt |
+| no | `1`, `t`, `T`, `true`, `TRUE`, `True` | any | Proceed without a prompt |
+| no | `0`, `f`, `F`, `false`, `FALSE`, `False`, empty, or unset | yes | Reject with `ErrAgentModeRequiresForce` |
+| no | Same false/empty/unset values | no | Interactive `[y/N]` prompt |
+| no | Any other value (such as `yes` or `on`) | any | Fail while parsing CLI options |
+
+`GCX_AUTO_APPROVE` uses `strconv.ParseBool`; an empty value is skipped by
+`parseEnvTags`. Setting the variable to `false` does not enable approval.
+This differs from [agent-mode detection](agent-mode.md#61-detection), whose
+environment vocabulary accepts `yes`/`no`.
+
+The first row describes `CheckDestructiveBypass` itself, which short-circuits
+on `--force`. A caller that loads CLI options earlier can still reject an
+invalid environment value. `resources delete` does that and also accepts
+`--yes`/`-y`; `gcx agent skills uninstall` has a separate `--yes`/`--all` flow
+and loads the same options even for a single skill. Neither path should be
+inferred from the provider confirmation table.
+
+Implementation: `CheckDestructiveBypass` and `ConfirmDestructive` in
+`internal/providers/confirm.go`; CLI parsing in `internal/config/envparse.go`.
 
 ### 3.4 Dry-Run
 
-`--dry-run` is available on `push`, `delete`, and (implicitly) `validate`. It passes
-`DryRun: []string{"All"}` to Kubernetes API options. Always document dry-run
-support in new commands that modify remote state.
+`gcx resources push` and `gcx resources delete` expose `--dry-run`;
+`gcx resources validate` always uses the dry-run path. For K8s requests this
+passes `DryRun: []string{"All"}` to API options. Provider commands vary: document
+whether the specific command supports dry-run and whether it validates remotely,
+previews locally, or skips unsupported operations. Resource-layer support does
+not imply that every provider mutation has a `--dry-run` flag.
 
 **Fail-safe guard.** Some Grafana APIs (all alerting resources today) ignore
 server-side `dryRun` and apply the mutation anyway. A client-side guard
@@ -94,3 +128,34 @@ gcx resources push ./dashboards/
 ```
 
 Reference: `data-flows.md` Section 2 (PUSH Pipeline)
+
+### 3.6 Query Cost Guardrails `[IMPLEMENTED]`
+
+Some read commands refuse work that is too expensive to run, before it runs.
+Today that is the Loki guardrail on Grafana Cloud targets (`logs query`,
+`logs metrics` and the `datasources loki` equivalents, in
+`internal/datasources/loki/guard.go`). It is **not** a destructive-operation
+confirmation, so the bypass chain in § 3.2–3.3 does not apply to it:
+
+- **A refusal, not an approval.** In `enforce` mode an over-budget query fails
+  with `Query blocked`; there is no `[y/N]` prompt, in a terminal or in agent
+  mode. The error carries what to narrow, so the caller (usually an agent) can
+  correct the query and retry. In `shadow` mode it only logs, and `off` skips it.
+- **`--force` is the only override.** It skips the policy fetch and the stats
+  probe. `GCX_AUTO_APPROVE` does **not** bypass it: that variable approves
+  destructive operations, and it is commonly set for agents and CI, so honouring
+  it would silently turn the guard off for them.
+- **`--force` is not proof of a human.** gcx cannot tell who typed the flag, and
+  an agent can add it to any command. Treat the guard as a strong default, not a
+  hard limit. To keep agents from reaching for it, agent-mode `Query blocked`
+  errors from a budget or range refusal do not name `--force`; the can't-estimate
+  error does, because there it is the only way through. Terminal users are told
+  about `--force` in both. `--help` documents it for everyone.
+- **Failures never block on their own.** An unparseable query runs, so Loki
+  reports its own syntax error. A failed cost estimate blocks only in agent mode.
+  When no policy is served the guard runs in `shadow` mode with a 50 GiB / 24h
+  default.
+
+New guardrails of this kind should follow the same shape: refuse with actionable
+guidance, offer one explicit per-invocation override, and keep it separate from
+`GCX_AUTO_APPROVE`.

@@ -49,11 +49,10 @@ func parseSharedConversationURL(input string) (ConversationReference, error) {
 	}
 
 	escapedPath := parsed.EscapedPath()
-	marker := strings.LastIndex(escapedPath, sharedConversationPath)
-	if marker < 0 {
+	_, escapedID, ok := strings.CutLast(escapedPath, sharedConversationPath)
+	if !ok {
 		return ConversationReference{}, fmt.Errorf("unsupported conversation URL: expected %s<conversation-id>", sharedConversationPath)
 	}
-	escapedID := escapedPath[marker+len(sharedConversationPath):]
 	if escapedID == "" || strings.Contains(escapedID, "/") {
 		return ConversationReference{}, fmt.Errorf("unsupported conversation URL: expected exactly one ID segment after %s", sharedConversationPath)
 	}

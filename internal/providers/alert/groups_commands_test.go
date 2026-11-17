@@ -10,34 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGroupRulesTableCodec_Encode(t *testing.T) {
-	codec := &alert.GroupRulesTableCodec{}
-	assert.Equal(t, "table", string(codec.Format()))
-
-	group := &alert.RuleGroup{
-		Name: "test-group",
-		Rules: []alert.RuleStatus{
-			{UID: "uid-1", Name: "Rule 1", State: alert.StateFiring, Health: "ok", IsPaused: false},
-			{UID: "uid-2", Name: "Rule 2", State: alert.StateInactive, Health: "ok", IsPaused: true},
-		},
-	}
-
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, group)
-	require.NoError(t, err)
-
-	output := buf.String()
-	assert.Contains(t, output, "uid-1")
-	assert.Contains(t, output, "uid-2")
-	assert.Contains(t, output, alert.StateFiring)
-	assert.Contains(t, output, alert.StateInactive)
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	require.Len(t, lines, 3, "header + 2 rules")
-}
-
 func TestGroupsStatusTableCodec_Encode(t *testing.T) {
-	codec := &alert.GroupsStatusTableCodec{}
+	codec := alert.GroupsStatusTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 
 	groups := []alert.RuleGroup{
@@ -81,7 +55,7 @@ func TestGroupsStatusTableCodec_Encode(t *testing.T) {
 }
 
 func TestGroupsStatusTableCodec_InvalidType(t *testing.T) {
-	codec := &alert.GroupsStatusTableCodec{}
+	codec := alert.GroupsStatusTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not a slice")
 	require.Error(t, err)

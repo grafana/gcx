@@ -18,7 +18,7 @@ import (
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
-			Group:   "sigil.ext.grafana.app",
+			Group:   "agento11y.ext.grafana.app",
 			Version: "v1alpha1",
 		},
 		Kind:     "EvalRule",
@@ -29,7 +29,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // RuleSchema returns a JSON Schema for the EvalRule resource type.
 func RuleSchema() json.RawMessage {
-	return adapter.SchemaFromType[eval.RuleDefinition](StaticDescriptor())
+	return adapter.SchemaFromType[eval.RuleDefinition](StaticDescriptor())()
 }
 
 func ruleStripFields() []string {

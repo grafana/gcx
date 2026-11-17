@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -138,7 +139,7 @@ func runLintTests(cmd *cobra.Command, args []string, opts *testOpts) error {
 
 	if direct {
 		err := runner.Run(cmd.Context(), cmd.OutOrStdout(), args, opts.toOptions(opts.IO.OutputFormat))
-		if errors.Is(err, linter.ErrTestsFailed) {
+		if errors.Is(err, linterr.ErrTestsFailed) {
 			// The full report (with FAIL entries) is already on stdout —
 			// EmittedError carries the failure exit code without a second
 			// error document.
@@ -154,7 +155,7 @@ func runLintTests(cmd *cobra.Command, args []string, opts *testOpts) error {
 	// anything is written to stdout.
 	var buf bytes.Buffer
 	runErr := runner.Run(cmd.Context(), &buf, args, opts.toOptions("json"))
-	if runErr != nil && !errors.Is(runErr, linter.ErrTestsFailed) {
+	if runErr != nil && !errors.Is(runErr, linterr.ErrTestsFailed) {
 		return runErr
 	}
 

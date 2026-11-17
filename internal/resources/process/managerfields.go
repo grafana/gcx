@@ -2,15 +2,13 @@ package process
 
 import (
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 )
 
 // ManagerIdentity returns the manager identity that gcx writes on a pushed resource.
-// The value carries the gcx version, so an operator can see which build pushed the
-// resource. A build without version information reports "gcx/SNAPSHOT".
+// Keep this value stable because Grafana checks it when gcx updates a resource.
 func ManagerIdentity() string {
-	return "gcx/" + version.Get()
+	return "gcx"
 }
 
 // ManagerFieldsAppender is a processor that appends manager and source fields to a resource.

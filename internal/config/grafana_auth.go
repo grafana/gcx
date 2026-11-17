@@ -100,6 +100,8 @@ const grafanaAuthMethodAnonymous = "anonymous"
 // over a persisted auth-method from another mode. The marker lives only on the
 // resolved Context, so this derived selector can never be serialized back into
 // the stack's auth-method field.
+// The selection's explicit flag follows the persisted auth-method to preserve
+// its TLS policy even when the runtime token selects a different mode.
 //
 // Every decided selection is also recorded for the anonymous usage event here
 // rather than in any one consumer, because this method is the single authority
@@ -111,7 +113,7 @@ const grafanaAuthMethodAnonymous = "anonymous"
 // allowlist on the way out.
 func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	if context != nil && context.runtimeSecretOverrides[credentials.FieldGrafanaToken] {
-		selection := grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}
+		selection := grafanaAuthSelection{mode: grafanaAuthToken, explicit: context.Grafana != nil && strings.TrimSpace(context.Grafana.AuthMethod) != ""}
 		capture.SetGrafanaAuthMethod(grafanaAuthMethodLabel(context.Grafana, selection, nil))
 		return selection, nil
 	}

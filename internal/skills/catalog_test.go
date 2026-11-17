@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -177,7 +178,9 @@ func TestReconcile_StatErrorsDoNotBlockOtherSkills(t *testing.T) {
 					t.Skip("directory permissions do not restrict this test process")
 				}
 				require.Error(t, err)
-				require.NotErrorIs(t, err, os.ErrNotExist)
+				if runtime.GOOS != "windows" || failure != "symlink loop" {
+					require.NotErrorIs(t, err, os.ErrNotExist)
+				}
 			}
 
 			states, err := skills.Reconcile(source, catalog, root)

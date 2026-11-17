@@ -40,7 +40,7 @@ func ExemptionDescriptor() resources.Descriptor { return exemptionDescriptorVar 
 
 // ExemptionSchema returns a JSON Schema for the Exemption resource type.
 func ExemptionSchema() json.RawMessage {
-	return adapter.SchemaFromType[Exemption](ExemptionDescriptor())
+	return adapter.SchemaFromType[Exemption](ExemptionDescriptor())()
 }
 
 // ExemptionExample returns an example Exemption manifest as JSON.
@@ -141,7 +141,7 @@ func SegmentDescriptor() resources.Descriptor { return segmentDescriptorVar }
 
 // SegmentSchema returns a JSON Schema for the LogSegment resource type.
 func SegmentSchema() json.RawMessage {
-	return adapter.SchemaFromType[LogSegment](SegmentDescriptor())
+	return adapter.SchemaFromType[LogSegment](SegmentDescriptor())()
 }
 
 // SegmentExample returns an example LogSegment manifest as JSON.
@@ -215,7 +215,7 @@ func DropRuleDescriptor() resources.Descriptor { return dropRuleDescriptorVar }
 
 // DropRuleSchema returns a JSON Schema for the DropRule resource type.
 func DropRuleSchema() json.RawMessage {
-	return adapter.SchemaFromType[DropRule](DropRuleDescriptor())
+	return adapter.SchemaFromType[DropRule](DropRuleDescriptor())()
 }
 
 // DropRuleExample returns an example DropRule manifest as JSON.

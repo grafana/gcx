@@ -1,7 +1,7 @@
 // Package instrumentation provides the top-level "gcx instrumentation" command
 // and its action-verb subcommand tree for managing Grafana Instrumentation Hub.
 //
-// The command tree follows the action-verb design from ADR-018:
+// The command tree follows the action-verb design from RFC 019:
 //
 //	gcx instrumentation
 //	├── setup              — guided onboarding wizard
@@ -19,9 +19,7 @@
 package instrumentation
 
 import (
-	"github.com/grafana/gcx/cmd/gcx/instrumentation/check"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/clusters"
-	"github.com/grafana/gcx/cmd/gcx/instrumentation/explain"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/setup"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/status"
@@ -72,12 +70,10 @@ The instrumentation command tree provides:
 	cmd.AddCommand(
 		setup.Command(loader),
 		status.Command(loader),
-		check.Command(loader),
-		explain.Command(),
-		explain.ListCommand(),
 		clusters.Command(loader),
 		services.Command(loader),
 	)
+	cmd.AddCommand(localCommands(loader)...)
 
 	return cmd
 }

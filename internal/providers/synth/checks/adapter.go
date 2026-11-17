@@ -50,6 +50,7 @@ func ToResource(check Check, namespace string, probeNames map[int64]string) (*re
 		BasicMetricsOnly: check.BasicMetricsOnly,
 		AlertSensitivity: check.AlertSensitivity,
 		Channels:         check.Channels,
+		FolderUID:        check.FolderUID,
 	}
 
 	// Marshal spec to generic map for the K8s envelope.
@@ -156,6 +157,7 @@ func SpecToCheck(spec *CheckSpec, id, tenantID int64, probeIDs []int64) Check {
 		BasicMetricsOnly: spec.BasicMetricsOnly,
 		AlertSensitivity: spec.AlertSensitivity,
 		Channels:         spec.Channels,
+		FolderUID:        spec.FolderUID,
 	}
 }
 

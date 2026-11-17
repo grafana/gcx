@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -307,7 +306,7 @@ func (guard LoginMutationGuard) changedDuringPlanningError(reason string) error 
 		),
 		Suggestions: []string{
 			"Review the changed config and retry login",
-			"Or re-run with --config " + strconv.Quote(guard.sourcePath) + " after reviewing that owner",
+			"Or re-run with --config " + quoteConfigPath(guard.sourcePath) + " after reviewing that owner",
 		},
 	}
 }
@@ -322,7 +321,7 @@ func (guard LoginMutationGuard) changedDuringAuthenticationError(reason string) 
 		),
 		Suggestions: []string{
 			"Review the changed config and retry login",
-			"Or re-run with --config " + strconv.Quote(guard.sourcePath) + " after reviewing that owner",
+			"Or re-run with --config " + quoteConfigPath(guard.sourcePath) + " after reviewing that owner",
 		},
 	}
 }
@@ -605,7 +604,7 @@ func VerifyLoginMutationBindings(
 		),
 		Suggestions: []string{
 			"Review the changed config and retry",
-			"Or re-run with --config " + strconv.Quote(target.Path) + " to select this owner explicitly",
+			"Or re-run with --config " + quoteConfigPath(target.Path) + " to select this owner explicitly",
 		},
 	}
 }
@@ -644,7 +643,7 @@ func (config *Config) LoginCloudMutationSafety(contextName string, target Config
 func (config *Config) loginMutationTargetError(contextName, details string) error {
 	suggestions := make([]string, 0, len(config.Sources)+1)
 	for _, source := range config.Sources {
-		suggestions = append(suggestions, "Review the owner, then re-run with --config "+strconv.Quote(source.Path))
+		suggestions = append(suggestions, "Review the owner, then re-run with --config "+quoteConfigPath(source.Path))
 	}
 	if contextName != "" {
 		suggestions = append(suggestions, fmt.Sprintf("Keep stack and Cloud bindings for context %q together in one config file", contextName))

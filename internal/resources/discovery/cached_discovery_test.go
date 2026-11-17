@@ -1,7 +1,7 @@
 package discovery_test
 
 import (
-	"strings"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -59,8 +59,7 @@ func TestDiscoveryCacheDir_StableForSameServer(t *testing.T) {
 func TestDiscoveryCacheDir_HashLength(t *testing.T) {
 	// Hash should be 16 bytes = 32 hex chars for sufficient collision resistance.
 	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
-	parts := strings.Split(dir, "/")
-	hash := parts[len(parts)-1]
+	hash := filepath.Base(dir)
 	assert.Len(t, hash, 32, "hash should be 32 hex chars (16 bytes)")
 }
 
@@ -89,7 +88,7 @@ func TestDiscoveryCacheDir_RelativeEnvIgnored(t *testing.T) {
 	// Relative path in env var should be ignored.
 	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
 	assert.NotEqual(t, "relative/path", dir, "relative env var should be ignored")
-	assert.True(t, strings.HasPrefix(dir, "/"), "should fall through to absolute default path")
+	assert.True(t, filepath.IsAbs(dir), "should fall through to absolute default path")
 }
 
 func TestDiscoveryCacheDir_ExplicitOverrideDir(t *testing.T) {

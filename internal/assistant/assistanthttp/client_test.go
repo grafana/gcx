@@ -2,6 +2,8 @@ package assistanthttp_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -73,23 +76,113 @@ func TestDoRequest_NoContentTypeForGET(t *testing.T) {
 	assert.Empty(t, gotContentType)
 }
 
-func TestHandleErrorResponse_WithBody(t *testing.T) {
-	resp := &http.Response{
-		StatusCode: http.StatusNotFound,
-		Body:       io.NopCloser(strings.NewReader("investigation not found")),
+func TestForbiddenErrorRequiredPermission(t *testing.T) {
+	const readAction = "grafana-assistant-app.investigations:read"
+	const systemReadAction = "grafana-assistant-app.investigations.system:read"
+	for _, tc := range []struct {
+		name, body, action string
+	}{
+		{"details action", `{"name":"forbidden","message":"viewing system-created investigations requires the investigations.system:read permission","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction},
+		{"error envelope", `{"status":"error","error":"insufficient permissions","name":"forbidden","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction},
+		{"top-level action", `{"requiredPermission":"` + systemReadAction + `"}`, systemReadAction},
+		{"details precedence", `{"requiredPermission":"` + readAction + `","details":{"requiredPermission":"` + systemReadAction + `"}}`, systemReadAction},
+		{"absent action", `{"message":"insufficient permissions"}`, readAction},
+		{"empty action", `{"details":{"requiredPermission":""}}`, readAction},
+		{"non-string action", `{"details":{"requiredPermission":123}}`, readAction},
+		{"null action", `{"requiredPermission":null}`, readAction},
+		{"whitespace action", `{"details":{"requiredPermission":"investigations: read"}}`, readAction},
+		{"newline action", `{"requiredPermission":"investigations:read\n"}`, readAction},
+		{"unicode whitespace", `{"requiredPermission":"investigations:\u00a0read"}`, readAction},
+		{"invalid action", `{"requiredPermission":"permission"}`, readAction},
+		{"punctuation", `{"requiredPermission":"investigations:read;"}`, readAction},
+		{"action at limit", `{"requiredPermission":"` + strings.Repeat("a", 251) + `:read"}`, strings.Repeat("a", 251) + ":read"},
+		{"action too long", `{"requiredPermission":"` + strings.Repeat("a", 252) + `:read"}`, readAction},
+		{"malformed JSON", `{"details":{"requiredPermission":"` + systemReadAction + `"}`, readAction},
+		{"non-JSON", "insufficient permissions", readAction},
+		{"details string", `{"requiredPermission":"` + systemReadAction + `","details":"forbidden"}`, systemReadAction},
+		{"details array", `{"requiredPermission":"` + systemReadAction + `","details":[]}`, systemReadAction},
+		{"details null", `{"requiredPermission":"` + systemReadAction + `","details":null}`, systemReadAction},
+		{"invalid details action with valid top-level", `{"requiredPermission":"` + systemReadAction + `","details":{"requiredPermission":123}}`, systemReadAction},
+		{"empty body", "", readAction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := &assistanthttp.ForbiddenError{
+				HTTPStatusError: &gcxerrors.HTTPStatusError{Status: http.StatusForbidden, ServerMessage: tc.body},
+				Permission:      readAction,
+			}
+			assert.Equal(t, tc.action, err.RequiredPermission())
+		})
 	}
-	err := assistanthttp.HandleErrorResponse(resp)
-	assert.EqualError(t, err, "request failed with status 404: investigation not found")
 }
 
-func TestHandleErrorResponse_EmptyBody(t *testing.T) {
-	resp := &http.Response{
-		StatusCode: http.StatusInternalServerError,
-		Body:       io.NopCloser(strings.NewReader("")),
+func TestHandleErrorResponse(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"plain text", http.StatusNotFound, "investigation not found", "request failed with status 404: investigation not found"},
+		{"empty body", http.StatusInternalServerError, "", "request failed with status 500"},
+		{"forbidden without body", http.StatusForbidden, "", "request failed with status 403"},
+		{"json remains raw", http.StatusForbidden, `{"message":"forbidden","traceID":"abc123"}`, `request failed with status 403: {"message":"forbidden","traceID":"abc123"}`},
+		{"HTML remains raw", http.StatusUnauthorized, "<html>login</html>", "request failed with status 401: <html>login</html>"},
 	}
-	err := assistanthttp.HandleErrorResponse(resp)
-	assert.EqualError(t, err, "request failed with status 500")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: tt.status,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}
+			err := assistanthttp.HandleErrorResponse(resp)
+			require.EqualError(t, err, tt.want)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, tt.status, statusErr.HTTPStatusCode())
+			assert.Equal(t, tt.body, statusErr.ServerMessage)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+			assert.Empty(t, statusErr.TraceID, "Assistant preserves the raw body without parsing JSON")
+			var forbidden *assistanthttp.ForbiddenError
+			assert.Equal(t, tt.status == http.StatusForbidden, errors.As(err, &forbidden))
+			if forbidden != nil {
+				assert.Empty(t, forbidden.Permission)
+			}
+			require.NoError(t, errors.Unwrap(statusErr))
+		})
+	}
 }
+
+func TestHandleErrorResponse_ReadFailure(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			readErr := errors.New("body read failed")
+			resp := &http.Response{
+				StatusCode: status,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(failingReader{err: readErr}),
+			}
+			err := assistanthttp.HandleErrorResponse(resp)
+			require.EqualError(t, err, fmt.Sprintf("request failed with status %d (could not read body: body read failed)", status))
+			require.ErrorIs(t, err, readErr)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, status, statusErr.HTTPStatusCode())
+			assert.Empty(t, statusErr.ServerMessage)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+			assert.Empty(t, statusErr.TraceID)
+			var forbidden *assistanthttp.ForbiddenError
+			assert.Equal(t, status == http.StatusForbidden, errors.As(err, &forbidden))
+			if forbidden != nil {
+				assert.Empty(t, forbidden.Permission)
+			}
+		})
+	}
+}
+
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestFormatTime(t *testing.T) {
 	tests := []struct {
@@ -105,4 +198,42 @@ func TestFormatTime(t *testing.T) {
 			assert.Equal(t, tt.want, assistanthttp.FormatTime(tt.time))
 		})
 	}
+}
+
+func TestHandleErrorResponse_BodyLimit(t *testing.T) {
+	const limit = 1 << 20
+	for _, tc := range []struct {
+		name string
+		size int
+	}{
+		{name: "below limit", size: limit - 1},
+		{name: "at limit", size: limit},
+		{name: "above limit", size: limit + 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.NewReader(strings.Repeat("x", tc.size))
+			resp := &http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(body)}
+			err := assistanthttp.HandleErrorResponse(resp)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Len(t, statusErr.ServerMessage, min(tc.size, limit))
+			assert.Equal(t, max(0, tc.size-limit), body.Len(), "must not read beyond the limit")
+		})
+	}
+}
+
+type failingResponseBody struct{ err error }
+
+func (b failingResponseBody) Read([]byte) (int, error) { return 0, b.err }
+func (b failingResponseBody) Close() error             { return nil }
+
+func TestHandleErrorResponse_BodyReadFailure(t *testing.T) {
+	cause := errors.New("body read failed")
+	resp := &http.Response{StatusCode: http.StatusBadGateway, Body: failingResponseBody{err: cause}}
+	err := assistanthttp.HandleErrorResponse(resp)
+	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusBadGateway, statusErr.Status)
+	require.ErrorIs(t, err, cause)
 }

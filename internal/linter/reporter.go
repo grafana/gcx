@@ -87,7 +87,7 @@ func (reporter PrettyReporter) Publish(_ context.Context, out io.Writer, r Repor
 		switch violation.Severity {
 		case "warning":
 			numsWarning++
-		case "error":
+		case "error", "fatal":
 			numsError++
 		}
 	}

@@ -30,13 +30,13 @@ UX requirements. All items are unless marked otherwise.
 ### UX Compliance
 
 - [ ] All data-display commands support `-o json/yaml` (inherited from `io.Options`)
-- [ ] List/get commands register a `text` table codec as default format
-- [ ] List/get commands register a `wide` codec showing additional detail columns
+- [ ] List commands default to a narrow table codec (`text` or `table`, matching siblings); get commands may default to `yaml` for editable single objects (see [output.md § 11](output.md#11-codec-requirements-by-command-type))
+- [ ] A `wide` codec exists only where it shows columns the narrow view omits — hand-registered, or automatic via `RegisterTableAs` for `Table[T]` commands (see [output.md § 11](output.md))
 - [ ] Error messages include actionable suggestions with exact CLI commands
 - [ ] No `os.Exit()` calls in command code — return errors, let `handleError` exit
-- [ ] Status messages use `cmdio.Success/Warning/Error/Info`
+- [ ] Status messages use `cmdio.Success/Warning/Error/Info`, written to `cmd.ErrOrStderr()`
 - [ ] `--config` and `--context` inherited via `configOpts` persistent flags
-- [ ] Destructive operations document `--dry-run` support
+- [ ] Mutating commands document whether and how they support `--dry-run`; never imply support inherited from another command
 - [ ] Help text follows [help-text.md](help-text.md) standards (Short/Long/Examples)
 - [ ] New canonical verbs and command placement follow [command-naming.md](command-naming.md);
   uncovered verbs or identity shapes have explicit maintainer review

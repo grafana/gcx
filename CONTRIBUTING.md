@@ -1,59 +1,81 @@
-# Contributing Guidelines
+# Contributing to gcx
 
-This document is a guide to help you through the process of contributing to `gcx`.
+You can contribute to gcx by participating in discussions, helping us triage existing issues, improving documentation, reporting bugs, suggesting new functionality or submitting code. We welcome your help, whether this is your first contribution or you've worked on gcx before.
 
-Before implementing features or commands, read:
+For discussions, join `#gcx` on [Grafana Community Slack](https://grafana.slack.com/archives/C0AUPDVAGSC) or use [the GitHub discussions platform](https://github.com/grafana/gcx/discussions).
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture, pipeline diagrams, ADR index
-- [DESIGN.md](DESIGN.md) — CLI UX design: command grammar, output model, taste rules
-- [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
-- [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
+## Contents
 
-Naming a command? Start with the
-[command naming and placement guide](docs/design/command-naming.md).
+- [Triaging issues](#triaging-issues)
+- [Reporting bugs](#reporting-bugs)
+- [Proposing new functionality](#proposing-new-functionality)
+- [Contributing code](#contributing-code)
+  - [Submitting a pull request](#submitting-a-pull-request)
+  - [Using AI to contribute](#using-ai-to-contribute)
+  - [Code ownership](#code-ownership)
+- [Making changes](#making-changes)
+  - [Development environment](#development-environment)
+  - [Testing against a real Grafana API](#testing-against-a-real-grafana-api)
+- [Releasing gcx](#releasing-gcx)
 
-Adding, extending, or reviewing a gcx capability — a provider, datasource kind,
-resource adapter, cloud command, or bundled skill? Ask your coding agent to use
-the [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) skill. It
-settles whether a new command is warranted at all and where it belongs, then
-designs the command's agent-facing contract before any code gets written. It
-hands implementation off to `add-provider` or `add-datasource` where those
-apply, and runs a pre-review self-check over the finished diff.
+## Triaging issues
 
-## Code ownership
+You can help us triage existing issues by voting for feature requests, reproducing bugs, identifying duplicates, or adding useful context in comments. This helps us prioritize and focus on the most important work.
 
-The code in this repository is owned by multiple teams. The ownership is codified in the [CODEOWNERS](./.github/CODEOWNERS) file. The @grafana/grafana-gcx team is responsible for the overall architecture of the repository, along with any features or functionality that are not specific to any particular provider.
+You can also open new issues, but before you do so, please make sure to check the [existing issues](https://github.com/grafana/gcx/issues) and [pull requests](https://github.com/grafana/gcx/pulls). If you find a match, please add any useful context there, instead of opening new issues, to help us keep the discussion together.
 
-### Product teams
+## Reporting bugs
 
-Grafana engineering teams are welcome to contribute to and maintain their areas of the codebase without any interaction from the @grafana/grafana-gcx team. The [CODEOWNERS](./.github/CODEOWNERS) file should be such that these teams only need approvals from their own team to merge pull requests in their product area. If you find this is not the case, please do reach out to the @grafana/grafana-gcx team, or raise a pull request with a [CODEOWNERS](./.github/CODEOWNERS) change. If you are unsure, please reach out in the #gcx channel and we'd be happy to discuss.
+Please use the [Bug report form](https://github.com/grafana/gcx/issues/new?template=1-bug-report.yml). Describe what happened, what you expected, and the steps to reproduce it. Include your gcx version, the command you ran, and relevant error output. If you can't reproduce the problem reliably, share what you've observed. Please remove credentials and replace identifying details with placeholders before posting.
 
-We have tools in place to help maintain a consistent command surface and output conventions across the codebase, as well as LLM-assisted code review to try and ensure that the architecture and design conventions are followed. For more details on these tools, see:
+Please report security vulnerabilities privately through the [security policy](https://github.com/grafana/gcx/security/policy).
 
-- [The claude code review GH action, with prompt & references](.github/workflows/claude-code-review.yml). This should encourage authors to adhere to the guidelines linked above.
-- [Prefer existing command operations over creating new ones](docs/design/command-naming.md)  (test files are [here](cmd/gcx/root/commandoperations_test.go))
-- [Syntax for experimental commands](docs/design/experimental-commands.md) (test files are referenced from the docs)
+## Proposing new functionality
 
+Have an idea for gcx? Use the [Feature proposal form](https://github.com/grafana/gcx/issues/new?template=2-feature-proposal.yml) to explain the problem you want to solve and show how the feature would work, with usage examples where helpful. The [project vision](VISION.md) and [design guidelines](DESIGN.md) can help you shape your proposal.
 
-## Issue Tracking
+For a new command, consider its [name and placement](docs/design/command-naming.md) and whether it should be [experimental](docs/design/experimental-commands.md). If you have a technical approach in mind, include a short outline that fits the [architecture](ARCHITECTURE.md). You don't need a complete design to suggest an idea.
 
-Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
-Use the issue templates when creating new issues - they set the correct issue
-type and labels automatically.
+If you're unsure where your idea fits, ask us in Slack or [GitHub discussions](https://github.com/grafana/gcx/discussions). We're happy to help you work through it.
+
+## Contributing code
+
+You're welcome to open a PR directly for documentation changes and bug fixes, without an accepted issue. Please link an existing issue if there is one.
+
+For other code contributions, please start with an issue accepted by the team. Leave a comment to let us know you would like to work on it so we can coordinate implementation and review with you.
+
+For new features, please submit an RFC as a PR using the [RFC template](.agents/skills/create-rfc/references/rfc-template.md) before you start coding. This gives us a chance to agree on the design and how it fits with the rest of the project. See the [RFC guide](docs/rfcs/README.md) for details and [Code ownership](#code-ownership) for the product-team exception.
+
+### Submitting a pull request
+
+To help us review your PR, please:
+
+1. Add or update tests and documentation for the behavior you changed.
+2. Run `GCX_AGENT_MODE=false mise run all` to check skills, lint, tests, the build, the Docker image, and documentation. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
+3. Sign your commits. See Grafana's [signed-commit requirement](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
+4. Use a descriptive PR title such as `fix(traces): handle empty results` or `docs: clarify setup` and the repository's [PR template](.github/pull_request_template.md).
+
+Before we can merge your PR, the required CI checks need to pass and a code owner needs to approve it. Please work through actionable feedback from automated review and human reviewers, and ask if anything is unclear. If you are contributing from a fork, a maintainer may need to approve the CI runs.
+
+### Using AI to contribute
+
+You're welcome to use AI tools when contributing. Please make sure you understand, review, and test the changes you submit, just as you would with any contribution.
+
+The repository's [`contribute`](.agents/skills/contribute/SKILL.md) skill can help your agent find the relevant guidance. Contributor skills live in `.agents/skills`; `.claude/skills` is a relative symlink to that directory, so both tools read the same files without a sync command. Edit skills in `.agents/skills` and preserve the symlink. As with `CLAUDE.md`, your Git checkout needs symlink support. You can use whichever development tools and planning approach work for you.
+
+### Code ownership
+
+[CODEOWNERS](.github/CODEOWNERS) identifies the teams responsible for each area. The @grafana/grafana-gcx team owns the overall architecture and shared features.
+
+Grafana product teams can contribute within their existing owned area without prior agreement from the gcx team. Proposals are welcome there, but optional. The same review and quality requirements apply. Changes to shared commands, new top-level areas, or work outside the team's area need maintainer agreement.
+
+If ownership is unclear or CODEOWNERS needs updating, please ask the gcx team in Slack or [GitHub discussions](https://github.com/grafana/gcx/discussions), or propose a CODEOWNERS change.
 
 ## Making changes
 
-### Agentic coding
-
-If you are using a coding agent to make changes to this repository, there are skills in [.claude/skills](.claude/skills) for contributing:
-
-- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx. 
-- [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
-- [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
-
 ### Development environment
 
-`gcx` relies on [`mise`](https://mise.jdx.dev/) for tooling, and [Docker](https://docs.docker.com/get-started/get-docker/) for local development dependencies.
+`gcx` relies on [`mise`](https://mise.jdx.dev/) for tooling and [Docker](https://docs.docker.com/get-started/get-docker/) for local development dependencies.
 
 Install mise and set up the project. For macOS:
 
@@ -61,10 +83,12 @@ Install mise and set up the project. For macOS:
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go modules and Python requirements, including MkDocs
+$ mise run deps            # install Go modules
 ```
 
-Run `mise run deps` before `mise run docs` or `mise run all`.
+Run `mise run deps` before `mise run all`. The Docker image and documentation builds require Docker.
+`mise run docs` builds `docs/sources` using Grafana’s website image without
+regenerating reference files; `mise run serve-docs` starts a local preview.
 
 Some mise commands for local development:
 
@@ -72,15 +96,32 @@ Some mise commands for local development:
 $ mise run build           # build to bin/gcx
 $ mise run lint            # run golangci-lint
 $ mise run tests           # run all tests
-$ mise run all             # lint + tests + build + docs
+$ mise run all             # lint + tests + build + docker:build + docs
 $ mise tasks               # list all available tasks
 ```
+
+For native Windows development, install Go at the version in `go.mod`. Run
+these commands in PowerShell:
+
+```powershell
+$env:GCX_AGENT_MODE = 'false'
+go test ./...
+New-Item -ItemType Directory -Path bin -Force | Out-Null
+go build -buildvcs=false -o bin/gcx.exe ./cmd/gcx/
+./bin/gcx.exe --version
+./scripts/install_test.ps1
+```
+
+Run the installer tests in PowerShell 7 and Windows PowerShell 5.1 on AMD64.
+The Windows CI job also runs the Go tests, build, and PowerShell 7 installer
+tests on ARM64. The `mise run build` and `mise run install` tasks use Bash and
+Unix paths. Use the commands above for a native Windows build.
 
 ### Testing against a real Grafana API
 
 While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `gcx` works correctly with the actual Grafana API.
 
-### Quick Start
+#### Start the test environment
 
 The repository includes a `docker-compose.yml` file that sets up a complete test environment with:
 
@@ -107,8 +148,7 @@ You can use the provided config file to get gcx to use the local Grafana instanc
 $ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
-
-### Stopping the test environment
+#### Stop the test environment
 
 When you're done testing, stop the services:
 
@@ -122,24 +162,24 @@ To remove all data (including database volumes):
 $ mise run test-env-clean
 ```
 
-### Customizing the test environment
+#### Customize the test environment
 
-#### Modifying Grafana configuration
+##### Modify Grafana configuration
 
-The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. You can modify this file (you will need to restart the service)
+The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. After editing this file, restart the service:
 
 ```console
 $ docker-compose restart grafana
 ```
 
-#### Using a different Grafana version
+##### Use a different Grafana version
 
 To test against a different Grafana version, modify the `image` field in `docker-compose.yml`:
 
 ```yaml
 services:
   grafana:
-    image: grafana/grafana:12.1  # or any other version
+    image: grafana/grafana:12.1 # or any other version
 ```
 
 Then restart the service:
@@ -148,7 +188,7 @@ Then restart the service:
 $ docker-compose up -d --force-recreate grafana
 ```
 
-### View local grafana logs
+#### View Grafana logs
 
 To view logs from all services:
 
@@ -162,12 +202,11 @@ To view logs from a specific service:
 $ docker-compose logs -f grafana
 ```
 
-
 ## Releasing gcx
 
 ### Generating a changelog and tagging
 
-Releases are automated via `mise run tag`. It requires the `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Releases are automated via `mise run tag`. It requires the `claude` CLI; `svu` is installed by `mise install`.
 
 ```console
 $ mise run tag -- patch   # or minor, major

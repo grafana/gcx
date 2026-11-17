@@ -1,13 +1,10 @@
 ---
 name: gcx-observability
-description: >
-  (Experimental) End-to-end observability setup for Grafana Cloud using gcx.
-  Covers instrumentation, SLOs, alerting, synthetic monitoring, k6 load
-  testing, IRM on-call, dashboards, cost optimization, and GitOps export.
-  Use when the user wants to set up observability for an application from
-  scratch or run a full observability rollout - phrases like "set up
-  monitoring", "instrument my app", "add observability", or "onboard my
-  service to Grafana Cloud".
+description: >-
+  (Experimental) Runs an end-to-end observability rollout for an application on
+  Grafana Cloud via gcx: instrumentation, SLOs, alerts, synthetic checks, k6,
+  IRM, dashboards, cost, GitOps. Use to set up monitoring for a service from
+  scratch. For LLM apps use agento11y-instrument.
 user-invocable: true
 argument-hint: "[phases]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion, TaskCreate, TaskUpdate, TaskList, TaskGet

@@ -3,17 +3,46 @@ package loki
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
 )
+
+// queryTagsHeader carries Loki query tags. Loki records "Source=<value>" in its
+// query logs, which is how gcx traffic is identified for requests to
+// /api/datasources/.../resources paths. For /api/ds/query requests, this has no
+// effect (loki reads the source from the request body instead).
+const queryTagsHeader = "X-Query-Tags"
+
+// queryTagsTransport tags every Loki request as coming from gcx unless the
+// caller already set tags.
+type queryTagsTransport struct {
+	base http.RoundTripper
+}
+
+func (t *queryTagsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if req.Header.Get(queryTagsHeader) != "" {
+		return base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set(queryTagsHeader, "Source=gcx")
+	return base.RoundTrip(clone)
+}
 
 type Client struct {
 	restConfig  config.NamespacedRESTConfig
@@ -21,11 +50,17 @@ type Client struct {
 	queryClient *grafanaquery.Client
 }
 
+var contentFields = map[string]bool{ //nolint:gochecknoglobals // constant-like lookup table
+	"Line": true, "line": true, "body": true, "Body": true, "value": true,
+}
+
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
+
+	httpClient.Transport = &queryTagsTransport{base: httpClient.Transport}
 
 	return &Client{
 		restConfig:  cfg,
@@ -35,7 +70,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, true)
+	body, err := buildLogQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +80,25 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		return nil, err
 	}
 
+	for _, frame := range grafanaResp.Results["A"].Frames {
+		var hasTime, hasValue, hasLine bool
+		for _, field := range frame.Schema.Fields {
+			hasTime = hasTime || field.Type == "time"
+			hasValue = hasValue || field.Type == "number"
+			hasLine = hasLine || contentFields[field.Name]
+		}
+		if hasTime && hasValue && !hasLine {
+			return nil, errors.New("query returned metrics instead of log streams; use `gcx logs metrics` with the same datasource and expression")
+		}
+	}
+
 	return convertGrafanaResponse(grafanaResp), nil
 }
 
 // MetricQuery executes a metric LogQL query and returns a Prometheus-compatible time-series response.
 // Metric LogQL expressions (e.g., rate, count_over_time) return time-series data rather than log streams.
 func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req QueryRequest) (*MetricQueryResponse, error) {
-	body, err := c.buildQueryBody(datasourceUID, req, false)
+	body, err := buildMetricQueryBody(datasourceUID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -64,48 +111,60 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 	return convertMetricResponse(grafanaResp), nil
 }
 
-// buildQueryBody builds the Grafana datasource query API request body shared by
-// Query and MetricQuery. includeMaxLines controls whether req.Limit is sent as
-// maxLines — MetricQuery results are time-series, not log lines, so it doesn't apply.
-func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeMaxLines bool) ([]byte, error) {
+// buildLogQueryBody builds the request body for a log query. Loki rejects
+// instant log queries, so a log query with no time range runs as a range query
+// over the last minute.
+func buildLogQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	return queryBody(datasourceUID, req, "range", req.Limit)
+}
+
+// buildMetricQueryBody builds the request body for a metric query. With no
+// time range it is an instant query. Line limits do not apply.
+func buildMetricQueryBody(datasourceUID string, req QueryRequest) ([]byte, error) {
+	queryType := "instant"
+	if req.IsRange() {
+		queryType = "range"
+	}
+	return queryBody(datasourceUID, req, queryType, 0)
+}
+
+// queryBody builds the Grafana datasource query API request body. Grafana's
+// Loki datasource reads queryType and ignores the legacy instant field. With no
+// time range the request covers the last minute: Grafana evaluates an instant
+// query at "to", and "from" still feeds $__range and the step. A maxLines of 0
+// omits the field.
+func queryBody(datasourceUID string, req QueryRequest, queryType string, maxLines int) ([]byte, error) {
 	query := map[string]any{
 		"refId": "A",
 		"datasource": map[string]any{
 			"type": "loki",
 			"uid":  datasourceUID,
 		},
-		"expr":       req.Query,
-		"intervalMs": 60000,
+		"expr":                req.Query,
+		"intervalMs":          60000,
+		"queryType":           queryType,
+		"supportingQueryType": "gcx",
 	}
-
-	var from, to string
+	from, to := "now-1m", "now"
 	if req.IsRange() {
 		from = strconv.FormatInt(req.Start.UnixMilli(), 10)
 		to = strconv.FormatInt(req.End.UnixMilli(), 10)
 		if req.Step > 0 {
 			query["intervalMs"] = req.Step.Milliseconds()
 		}
-	} else {
-		from = "now-1m"
-		to = "now"
-		query["instant"] = true
+	}
+	if maxLines > 0 {
+		query["maxLines"] = maxLines
 	}
 
-	if includeMaxLines && req.Limit > 0 {
-		query["maxLines"] = req.Limit
-	}
-
-	bodyMap := map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"queries": []any{query},
 		"from":    from,
 		"to":      to,
-	}
-
-	body, err := json.Marshal(bodyMap)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-
 	return body, nil
 }
 
@@ -136,12 +195,20 @@ func (c *Client) executeQuery(ctx context.Context, body []byte, operation string
 	return &grafanaResp, nil
 }
 
-func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
+// Labels returns all label names. An optional query (LogQL stream selector)
+// scopes the result to matching streams; empty means unscoped.
+func (c *Client) Labels(ctx context.Context, datasourceUID, query string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelsPath(datasourceUID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if query != "" {
+		q := httpReq.URL.Query()
+		q.Set("query", query)
+		httpReq.URL.RawQuery = q.Encode()
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -167,12 +234,20 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	return &result, nil
 }
 
-func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string) (*LabelsResponse, error) {
+// LabelValues returns the values a label takes. An optional query (LogQL
+// stream selector) scopes the result to matching streams; empty means unscoped.
+func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName, query string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelValuesPath(datasourceUID, labelName)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if query != "" {
+		q := httpReq.URL.Query()
+		q.Set("query", query)
+		httpReq.URL.RawQuery = q.Encode()
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -237,6 +312,86 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	return &result, nil
 }
 
+// Patterns queries Loki's patterns endpoint for a bare stream selector over the
+// given time range; Loki rejects pipeline stages and metric expressions. step
+// (a duration like "15s" or a float number of seconds) is optional; pass "" to
+// let Loki choose a bucket size.
+// Returned patterns carry a gcx-derived totalCount and sort by total descending, then pattern text, rather than backend order.
+//
+// The result is what the backend retained, not a complete inventory: Loki
+// prunes low-volume patterns and caps results, and retention varies by
+// deployment. The endpoint needs a Loki version with the patterns API and the
+// pattern ingester/querier enabled; when it is unavailable the error is
+// returned as-is, never converted to an empty result.
+func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, start, end time.Time, step string) (*PatternsResponse, error) {
+	if !start.Before(end) {
+		return nil, fmt.Errorf("invalid time range: start (%s) must be before end (%s)", start, end)
+	}
+
+	apiPath := c.buildPatternsPath(datasourceUID)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	q := httpReq.URL.Query()
+	q.Set("query", query)
+	q.Set("start", strconv.FormatInt(start.UnixNano(), 10))
+	q.Set("end", strconv.FormatInt(end.UnixNano(), 10))
+	if step != "" {
+		q.Set("step", step)
+	}
+	httpReq.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get patterns: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// Experimental: lets the CLI explain an unambiguous route-absent response.
+		apiErr := queryerror.FromBody("loki", "patterns query", resp.StatusCode, respBody).WithAvailability(false, true)
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w (HTTP 404 can mean the patterns endpoint is unavailable here: it needs a Loki version with the patterns API and the pattern ingester/querier enabled)", apiErr)
+		}
+		return nil, apiErr
+	}
+
+	var result PatternsResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	summarizePatterns(result.Data)
+	return &result, nil
+}
+
+func summarizePatterns(patterns []Pattern) {
+	for i := range patterns {
+		var total int64
+		for _, sample := range patterns[i].Samples {
+			if len(sample) >= 2 {
+				total += sample[1]
+			}
+		}
+		patterns[i].TotalCount = total
+	}
+	sort.Slice(patterns, func(i, j int) bool {
+		if patterns[i].TotalCount != patterns[j].TotalCount {
+			return patterns[i].TotalCount > patterns[j].TotalCount
+		}
+		// Break ties by text so backend ordering cannot make identical results awkward to diff.
+		return patterns[i].Pattern < patterns[j].Pattern
+	})
+}
+
 func (c *Client) buildLabelsPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", url.PathEscape(datasourceUID))
 }
@@ -248,6 +403,10 @@ func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", url.PathEscape(datasourceUID))
+}
+
+func (c *Client) buildPatternsPath(datasourceUID string) string {
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/patterns", url.PathEscape(datasourceUID))
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
@@ -431,10 +590,6 @@ func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
 	labels := make(map[string]string)
 
 	var fallbackValueIdx = -1
-	contentFields := map[string]bool{
-		"Line": true, "line": true, "body": true, "Body": true, "value": true,
-	}
-
 	for i, field := range frame.Schema.Fields {
 		switch field.Type {
 		case "time":
@@ -640,13 +795,13 @@ func convertMetricResponse(grafanaResp *GrafanaQueryResponse) *MetricQueryRespon
 			sample.Values = make([][]any, len(timeValues))
 			for i := range timeValues {
 				ts := toFloat64(timeValues[i]) / 1000.0
-				val := toFloat64(valueValues[i])
-				sample.Values[i] = []any{ts, strconv.FormatFloat(val, 'f', -1, 64)}
+				val := dataframe.MetricValue(valueValues[i])
+				sample.Values[i] = []any{ts, val}
 			}
 		} else {
 			ts := toFloat64(timeValues[0]) / 1000.0
-			val := toFloat64(valueValues[0])
-			sample.Value = []any{ts, strconv.FormatFloat(val, 'f', -1, 64)}
+			val := dataframe.MetricValue(valueValues[0])
+			sample.Value = []any{ts, val}
 		}
 
 		result.Data.Result = append(result.Data.Result, sample)

@@ -117,14 +117,16 @@ func newContactPointsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type contactPointsMutateOpts struct {
-	IO   cmdio.Options
-	File string
+	IO             cmdio.Options
+	File           string
+	AllowUIUpdates bool
 }
 
 func (o *contactPointsMutateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the contact point definition (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.AllowUIUpdates, "allow-ui-updates", true, "Keep the contact point editable in the Grafana UI (false disables UI edits)")
 }
 
 func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -132,6 +134,7 @@ func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new contact point.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -149,7 +152,7 @@ func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			created, err := client.CreateContactPoint(ctx, cp)
+			created, err := client.CreateContactPoint(ctx, cp, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}
@@ -183,7 +186,7 @@ func newContactPointsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			updated, err := client.UpdateContactPoint(ctx, args[0], cp)
+			updated, err := client.UpdateContactPoint(ctx, args[0], cp, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}

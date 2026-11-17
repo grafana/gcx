@@ -91,6 +91,21 @@ func (r *Resource) ToUnstructured() unstructured.Unstructured {
 
 // Ref returns a unique identifier for the resource.
 func (r *Resource) Ref() ResourceRef {
+	if r.Name() == "" && HasServerDerivedName(r.GroupVersionKind()) {
+		identity, _, err := NativeIdentity(&r.Object)
+		if err != nil {
+			// Deduplicate repeated reads of an invalid file while preserving
+			// distinct inputs so the pusher can report each failure.
+			if r.SourcePath() != "" {
+				return ResourceRef(fmt.Sprintf("\x00invalid-native/source/%q", r.SourcePath()))
+			}
+			// In-memory objects have no source path to distinguish their inputs.
+			return ResourceRef(fmt.Sprintf("\x00invalid-native/instance/%p", r))
+		}
+		// Keep logical keys separate from API addresses, and quote arbitrary
+		// identity strings to avoid delimiter collisions.
+		return ResourceRef(fmt.Sprintf("\x00native/%s/%q/%q", r.GroupVersionKind(), r.Namespace(), identity))
+	}
 	return ResourceRef(
 		fmt.Sprintf("%s/%s-%s", r.GroupVersionKind().String(), r.Namespace(), r.Name()),
 	)
@@ -243,6 +258,23 @@ func (r *Resources) Add(resources ...*Resource) {
 		for _, cb := range r.onChangeFuncs {
 			cb(resource)
 		}
+	}
+}
+
+// AddDistinct retains an envelope even when another has the same resource ref.
+// It is used only by opt-in batch identity planning; authored metadata is intact.
+func (r *Resources) AddDistinct(resource *Resource) {
+	ref := resource.Ref()
+	key := ref
+	for n := 1; r.collection[key] != nil; n++ {
+		key = ResourceRef(fmt.Sprintf("%s\x00%d", ref, n))
+	}
+	if r.collection == nil {
+		r.collection = make(map[ResourceRef]*Resource)
+	}
+	r.collection[key] = resource
+	for _, cb := range r.onChangeFuncs {
+		cb(resource)
 	}
 }
 

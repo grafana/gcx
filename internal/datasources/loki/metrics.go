@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "metrics [EXPR]",
@@ -25,13 +27,27 @@ func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
-time-series data with proper table, graph, and JSON formatters.
+time-series data with table, graph, JSON, and CSV formatters.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every metric LogQL expression is wrapped in an
+aggregation function (rate, count_over_time, ...), which Logs Drilldown's
+filter model can never represent — use 'loki query' for Drilldown links.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap, or when its stream
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -89,6 +105,10 @@ open it in your browser after the query succeeds.`,
 				Step:  step,
 			}
 
+			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), force, datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
+				return err
+			}
+
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
@@ -129,9 +149,11 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), true)
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
+	cmd.Flags().BoolVar(&force, "force", false, "Run the query even if the Grafana Cloud cost guardrail would refuse it")
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd

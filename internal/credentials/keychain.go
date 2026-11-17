@@ -31,6 +31,9 @@ type keychainStore struct{}
 // secret ever falls back to plaintext either. Plaintext is only ever chosen
 // through the separate, explicit GCX_KEYCHAIN=off opt-out, not through Open.
 func Open() Store {
+	if err := headlessKeychainError(); err != nil {
+		return errorStore{err: err}
+	}
 	// Probe with a read for an account we never write. A working backend
 	// returns ErrNotFound; an unreachable one returns a transport/platform
 	// error, which the caller must treat as fatal.

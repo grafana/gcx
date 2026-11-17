@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The published usage-statistics page states both wire vocabularies in full,
+// The published usage-statistics page states the wire vocabularies in full,
 // and disclosure accuracy is a contract of this telemetry program: the
 // notice-revision mechanism exists precisely to re-disclose changed
 // collection. A vocabulary entry added in Go and forgotten on the page would
@@ -33,5 +33,9 @@ func TestUsageStatsPageListsTheFullWireVocabularies(t *testing.T) {
 	for _, bucket := range telemetry.Buckets() {
 		assert.Contains(t, text, "`"+bucket+"`",
 			"batch bucket %q is collectable but missing from the published vocabulary", bucket)
+	}
+	for _, stage := range telemetry.SignupStageLabels() {
+		assert.Contains(t, text, "`"+stage+"`",
+			"signup_stage value %q is collectable but missing from the published vocabulary", stage)
 	}
 }

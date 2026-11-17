@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -93,7 +94,9 @@ current-context: default
 				require.NoError(t, err)
 				info, statErr := os.Stat(path)
 				require.NoError(t, statErr)
-				assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+				if runtime.GOOS != "windows" {
+					assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+				}
 				assert.Contains(t, string(raw), "token: new-service-token")
 				assert.NotContains(t, string(raw), "token: keychain:gcx:")
 				assert.Positive(t, opened, "a deliberate opt-out must still be opened and consulted before falling back to plaintext")

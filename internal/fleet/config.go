@@ -105,9 +105,10 @@ func getStackInfo(ctx context.Context, host string, httpClient *http.Client) (cl
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return cloud.StackInfo{}, &HTTPError{
-			Status: resp.StatusCode,
-			Path:   stackInfoPath,
-			Body:   ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        stackInfoPath,
+			Body:        ReadErrorBody(resp),
 		}
 	}
 

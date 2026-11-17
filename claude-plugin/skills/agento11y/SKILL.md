@@ -1,16 +1,10 @@
 ---
 name: agento11y
-description: >
+description: >-
   Inspects and manages Grafana Agent Observability resources via gcx:
-  conversations, generations, experiments, evaluators, rules, scores, and
-  templates. Use when the user wants to list or search conversations, export
-  experiment conversations, inspect generations, manage evaluators (upsert,
-  test, delete), set up evaluation rules, check scores, or browse evaluator
-  templates. Trigger on phrases like "list conversations", "export experiment
-  conversations", "build a fine-tuning dataset", "search generations", "what
-  did the agent do", "debug LLM conversation",
-  "create evaluator", "set up evaluation rule", "test evaluator", "check scores",
-  "evaluate generation quality", or "set up online evaluation".
+  conversations, generations, experiments, evaluators, rules, scores, templates.
+  Use to search or export conversations, debug an LLM conversation, or manage
+  evaluators. For guided production eval setup use agento11y-prod-setup.
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -137,6 +131,8 @@ match:
   agent_name:
     - my-agent
 ```
+
+Optional rule fields: `execution_mode: sequential` runs `evaluator_ids` as an ordered gate chain (default `parallel`), and `filterable_tag_keys` exposes generation tag keys as labels on score metrics. See [rule-templates.md](references/rule-templates.md) for both.
 
 There is no `evaluators update` command; to change an evaluator, re-run `upsert` with the same `evaluator_id` and a new `version` (re-using an existing version is rejected with a 409).
 

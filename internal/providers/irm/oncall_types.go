@@ -114,6 +114,12 @@ func ApplyListOpts(opts []ListOption) ListConfig {
 //
 //nolint:interfacebloat // accepted: covers the full OnCall surface area
 type OnCallAPI interface {
+	ListPersonalNotificationRules(ctx context.Context) ([]PersonalNotificationRule, error)
+	GetPersonalNotificationRule(ctx context.Context, id string) (*PersonalNotificationRule, error)
+	CreatePersonalNotificationRule(ctx context.Context, rule PersonalNotificationRule) (*PersonalNotificationRule, error)
+	UpdatePersonalNotificationRule(ctx context.Context, id string, rule PersonalNotificationRule) (*PersonalNotificationRule, error)
+	DeletePersonalNotificationRule(ctx context.Context, id string) error
+
 	ListIntegrations(ctx context.Context) ([]Integration, error)
 	GetIntegration(ctx context.Context, id string) (*Integration, error)
 	CreateIntegration(ctx context.Context, i Integration) (*Integration, error)
@@ -142,7 +148,7 @@ type OnCallAPI interface {
 	CreateSchedule(ctx context.Context, s Schedule) (*Schedule, error)
 	UpdateSchedule(ctx context.Context, id string, s Schedule) (*Schedule, error)
 	DeleteSchedule(ctx context.Context, id string) error
-	ListFilterEvents(ctx context.Context, scheduleID, userTZ, startingDate string, days int) (*FilterEventsResponse, error)
+	ListFilterEvents(ctx context.Context, scheduleID, userTZ, date string, days int) (*FilterEventsResponse, error)
 
 	ListShifts(ctx context.Context) ([]Shift, error)
 	GetShift(ctx context.Context, id string) (*Shift, error)
@@ -303,13 +309,14 @@ type EscalationPolicy struct {
 type Schedule struct {
 	ID                 string `json:"id,omitempty"`
 	Name               string `json:"name"`
-	Type               any    `json:"type,omitempty"`
+	Type               any    `json:"type"`
 	Team               any    `json:"team,omitempty"`
 	TimeZone           string `json:"time_zone,omitempty"`
 	OnCallNow          any    `json:"on_call_now,omitempty"`
 	SlackChannel       any    `json:"slack_channel,omitempty"`
 	UserGroup          any    `json:"user_group,omitempty"`
 	EnableWebOverrides any    `json:"enable_web_overrides,omitempty"`
+	ICalURLOverrides   string `json:"ical_url_overrides,omitempty"`
 }
 
 //nolint:recvcheck

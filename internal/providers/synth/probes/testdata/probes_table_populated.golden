@@ -1,0 +1,3 @@
+ID  NAME           REGION     PUBLIC  ONLINE
+42  public-probe   us-west-2  true    true
+43  private probe  eu-west-1  false   false

@@ -3,6 +3,7 @@ package dashboards
 import (
 	"io"
 
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -17,9 +18,13 @@ import (
 //nolint:gochecknoglobals // test-only export; required to expose unexported function to dashboards_test package.
 var FormatAgeForTest = formatAge
 
-// NewDashboardTableCodecForTest constructs a dashboardTableCodec for testing.
-func NewDashboardTableCodecForTest(wide bool, grafanaURL string) *dashboardTableCodec {
-	return newDashboardTableCodec(wide, grafanaURL)
+// NewDashboardTableCodecForTest constructs the dashboard list codec for testing.
+func NewDashboardTableCodecForTest(wide bool, grafanaURL string) format.Codec { //nolint:ireturn // tests exercise the registered codec interface.
+	name := "table"
+	if wide {
+		name = "wide"
+	}
+	return dashboardListTable(grafanaURL).Codec(name)
 }
 
 // DecodeManifestForTest exposes the unexported decodeManifest function for table-driven tests.

@@ -1,3 +1,3 @@
-ID     NAME        TRIGGER   ENABLED
-row-1  servicenow  resolved  true
-row-2                        false
+ID     NAME        TRIGGER  ENABLED
+row-1  servicenow  3        true
+row-2                       false

@@ -210,8 +210,32 @@ func TestClient_UploadPromRules(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server)
-	err := client.UploadPromRules(t.Context(), "groups:\n- name: test\n  rules: []")
+	err := client.UploadPromRules(t.Context(), "groups:\n- name: test\n  rules: []", false)
 	require.NoError(t, err)
+}
+
+func TestClient_UploadPromRules_SkipPromQLEval(t *testing.T) {
+	tests := []struct {
+		name string
+		skip bool
+		want string
+	}{
+		{name: "default omits the parameter", skip: false, want: ""},
+		{name: "skip sets the parameter", skip: true, want: "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPut, r.Method)
+				assert.Equal(t, tt.want, r.URL.Query().Get("skipPromQLEval"))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			require.NoError(t, client.UploadPromRules(t.Context(), "name: test", tt.skip))
+		})
+	}
 }
 
 func TestClient_Search(t *testing.T) {

@@ -41,7 +41,7 @@ func intentionalReferences() []driftAllowance {
 // the CLI surface moves out from under them.
 //
 // Both trees are checked: the embedded portable bundle, and the repo-local
-// contributor skills under .claude/skills, which agents load from the checkout.
+// contributor skills under .agents/skills, which agents load from the checkout.
 func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	rootCmd := buildRootCmd()
 	rootCmd.InitDefaultHelpCmd()
@@ -58,9 +58,9 @@ func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 		docs, roots := bundledSkillDocs(t), bundledSkillRoots(t)
 		checkSkillInvocations(t, rootCmd, "claude-plugin/skills", docs, roots)
 	})
-	t.Run(".claude/skills", func(t *testing.T) {
+	t.Run(".agents/skills", func(t *testing.T) {
 		docs, roots := repoLocalSkillDocs(t)
-		checkSkillInvocations(t, rootCmd, ".claude/skills", docs, roots)
+		checkSkillInvocations(t, rootCmd, ".agents/skills", docs, roots)
 	})
 }
 
@@ -153,9 +153,9 @@ func repoLocalSkillDocs(t *testing.T) (map[string]string, []string) {
 	t.Helper()
 
 	repoRoot := filepath.Join("..", "..", "..")
-	out, err := exec.CommandContext(t.Context(), "git", "-C", repoRoot, "ls-files", "-z", "--", ".claude/skills").Output()
+	out, err := exec.CommandContext(t.Context(), "git", "-C", repoRoot, "ls-files", "-z", "--", ".agents/skills").Output()
 	if err != nil {
-		t.Fatalf("cannot enumerate tracked .claude/skills files with git: %v", err)
+		t.Fatalf("cannot enumerate tracked .agents/skills files with git: %v", err)
 	}
 
 	docs := map[string]string{}
@@ -164,7 +164,7 @@ func repoLocalSkillDocs(t *testing.T) (map[string]string, []string) {
 		if rel == "" {
 			continue
 		}
-		// ".claude/skills/<root>/SKILL.md" — a tracked SKILL.md directly under a
+		// ".agents/skills/<root>/SKILL.md" — a tracked SKILL.md directly under a
 		// directory is what makes it a skill this repo owns. Exactly four
 		// segments: a deeper SKILL.md is a nested sub-skill, and treating its
 		// grandparent as a root would demand a SKILL.md that need not exist.

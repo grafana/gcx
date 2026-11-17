@@ -36,7 +36,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // OverridesSchema returns a JSON Schema for the Overrides resource type.
 func OverridesSchema() json.RawMessage {
-	return adapter.SchemaFromType[MetricsGeneratorConfig](StaticDescriptor())
+	return adapter.SchemaFromType[MetricsGeneratorConfig](StaticDescriptor())()
 }
 
 // OverridesExample returns an example Overrides manifest as JSON.

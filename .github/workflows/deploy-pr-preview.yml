@@ -18,7 +18,9 @@ jobs:
       id-token: write
       pull-requests: write
       statuses: write
-    if: "!github.event.pull_request.head.repo.fork"
+    # The preview looks up the PR in grafana/gcx (repo: gcx below), so it
+    # fails in any other repository. Skip it outside the canonical repo.
+    if: github.repository == 'grafana/gcx' && !github.event.pull_request.head.repo.fork
     uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main # zizmor: ignore[unpinned-uses]
     with:
       branch: ${{ github.head_ref }}
@@ -29,7 +31,7 @@ jobs:
         [
           {
             "index_file": null,
-            "relative_prefix": "/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/",
+            "relative_prefix": "/docs/grafana/next/ai-tools/grafana-cli/gcx/",
             "repo": "grafana",
             "source_directory": "docs/sources",
             "website_directory": "content/docs/grafana/next",
@@ -37,10 +39,10 @@ jobs:
           },
           {
             "index_file": null,
-            "relative_prefix": "/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/",
+            "relative_prefix": "/docs/grafana/next/ai-tools/grafana-cli/gcx/",
             "repo": "gcx",
             "source_directory": "docs/sources",
-            "website_directory": "content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx"
+            "website_directory": "content/docs/grafana/next/ai-tools/grafana-cli/gcx"
           }
         ]
       title: ${{ github.event.pull_request.title }}

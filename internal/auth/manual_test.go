@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -299,6 +300,57 @@ func TestFlowRun_ManualHonoursContextCancellation(t *testing.T) {
 
 	_, err := flow.Run(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// TestFlowRun_ManualRecordsCallbackOnlyWhenTheWaitEnds pins where a pasted
+// answer moves the login stage. A pasted error that the manual route rejects
+// leaves it waiting, so an interrupt afterwards is still an interrupt while
+// waiting for the browser; a pasted Cancel ends the wait. Not parallel: it
+// reads the process-wide capture slot.
+func TestFlowRun_ManualRecordsCallbackOnlyWhenTheWaitEnds(t *testing.T) {
+	t.Run("rejected access_denied then interrupted", func(t *testing.T) {
+		capture.Reset()
+		t.Cleanup(capture.Reset)
+		pr, pw := io.Pipe()
+		t.Cleanup(func() { _ = pw.Close() })
+		var out syncBuffer
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := auth.NewFlow("https://mystack.grafana.net", auth.Options{Manual: true, Writer: &out, Reader: pr}).Run(ctx)
+			done <- err
+		}()
+
+		waitForOutput(t, &out, "state=")
+		match := stateParamRE.FindStringSubmatch(out.String())
+		require.Len(t, match, 2)
+		state, err := url.QueryUnescape(match[1])
+		require.NoError(t, err)
+		denied := url.Values{"state": {state}, "error": {"access_denied"}}
+		_, err = io.WriteString(pw, "http://127.0.0.1:54321/callback?"+denied.Encode()+"\n")
+		require.NoError(t, err)
+		waitForOutput(t, &out, "That URL did not work")
+
+		cancel()
+		require.ErrorIs(t, <-done, context.Canceled)
+		assert.Empty(t, capture.CurrentLoginStage(), "the rejected paste did not end the wait")
+	})
+
+	t.Run("pasted Cancel", func(t *testing.T) {
+		capture.Reset()
+		t.Cleanup(capture.Reset)
+		var writer bytes.Buffer
+		reader := &lazyReader{build: func() io.Reader {
+			values := url.Values{"state": {stateFromWriter(t, &writer)}, "error": {"user_cancelled"}}
+			return strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n")
+		}}
+
+		_, err := auth.NewFlow("https://mystack.grafana.net", auth.Options{Manual: true, Writer: &writer, Reader: reader}).Run(t.Context())
+		require.ErrorIs(t, err, auth.ErrBrowserCancelled)
+		assert.Equal(t, "callback", capture.CurrentLoginStage())
+	})
 }
 
 func TestFlowRun_ManualErrorsDoNotEchoPastedURL(t *testing.T) {

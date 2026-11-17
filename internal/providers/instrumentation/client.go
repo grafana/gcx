@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 // Connect endpoint paths for the instrumentation, discovery, and pipeline services.
@@ -57,7 +58,8 @@ type BackendURLs struct {
 
 // BackendURLsFromStack resolves datasource write endpoints from the Grafana
 // Cloud stack info returned by GCOM. The URLs include the required push path
-// suffixes. The Tempo URL is converted to gRPC host:port format.
+// suffixes. The Tempo URL is converted to gRPC host:port format. The Pyroscope
+// URL stays bare because pyroscope.write appends its own push path.
 func BackendURLsFromStack(stack cloud.StackInfo) BackendURLs {
 	return BackendURLs{
 		MimirURL:          appendPath(stack.HMInstancePromURL, "/api/prom/push"),
@@ -66,7 +68,7 @@ func BackendURLsFromStack(stack cloud.StackInfo) BackendURLs {
 		LokiUsername:      strconv.Itoa(stack.HLInstanceID),
 		TempoURL:          toGRPCHostPort(stack.HTInstanceURL),
 		TempoUsername:     strconv.Itoa(stack.HTInstanceID),
-		PyroscopeURL:      appendPath(stack.HPInstanceURL, "/ingest"),
+		PyroscopeURL:      appendPath(stack.HPInstanceURL, ""),
 		PyroscopeUsername: strconv.Itoa(stack.HPInstanceID),
 		OTLPURL:           otlpGatewayURL(stack),
 		OTLPUsername:      strconv.Itoa(stack.ID),
@@ -320,9 +322,10 @@ func (c *Client) GetAppInstrumentation(ctx context.Context, clusterName string) 
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GetAppInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathGetAppInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathGetAppInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -387,9 +390,10 @@ func (c *Client) SetAppInstrumentation(ctx context.Context, clusterName string, 
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SetAppInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathSetAppInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathSetAppInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 	return nil
@@ -400,7 +404,7 @@ func (c *Client) SetAppInstrumentation(ctx context.Context, clusterName string, 
 // Note: wire-fixture tests confirm the response mapper
 // correctly preserves SELECTION_EXCLUDED. If the live stack returns "" after
 // SetK8SInstrumentation(SELECTION_EXCLUDED), the bug is server-side.
-// See docs/adrs/instrumentation/002-cli-redesign.md § "E — Selection enum hygiene".
+// See docs/rfcs/019-cli-redesign.md § "E — Selection enum hygiene".
 func (c *Client) GetK8SInstrumentation(ctx context.Context, clusterName string) (*GetK8SInstrumentationResponse, error) {
 	resp, err := c.fleet.DoRequest(ctx, pathGetK8SInstrumentation, getK8SRequest{ClusterName: clusterName})
 	if err != nil {
@@ -410,9 +414,10 @@ func (c *Client) GetK8SInstrumentation(ctx context.Context, clusterName string) 
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GetK8SInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathGetK8SInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathGetK8SInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -459,9 +464,10 @@ func (c *Client) SetK8SInstrumentation(ctx context.Context, clusterName string, 
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SetK8SInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathSetK8SInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathSetK8SInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 	return nil
@@ -479,9 +485,10 @@ func (c *Client) SetupK8sDiscovery(ctx context.Context, urls BackendURLs, promHe
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SetupK8sDiscovery: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathSetupK8sDiscovery,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathSetupK8sDiscovery,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 	return nil
@@ -499,9 +506,10 @@ func (c *Client) RunK8sDiscovery(ctx context.Context, promHeaders PromHeaders) (
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("RunK8sDiscovery: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathRunK8sDiscovery,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathRunK8sDiscovery,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -538,10 +546,17 @@ func (c *Client) RunK8sMonitoring(ctx context.Context, promHeaders PromHeaders) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("RunK8sMonitoring: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathRunK8sMonitoring,
-			Body:   fleet.ReadErrorBody(resp),
+		body := fleet.ReadErrorBody(resp)
+		var requiredAction string
+		if providers.IsPluginRouteDenied(resp.StatusCode, []byte(body)) {
+			requiredAction = fleet.CollectorAppAdminAction
+		}
+		return nil, fmt.Errorf("check Kubernetes monitoring: %w", &fleet.HTTPError{
+			Status:         resp.StatusCode,
+			RequiredAction: requiredAction,
+			ContentType:    resp.Header.Get("Content-Type"),
+			Path:           pathRunK8sMonitoring,
+			Body:           body,
 		})
 	}
 
@@ -588,9 +603,10 @@ func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ListPipelines: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathListPipelines,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathListPipelines,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 

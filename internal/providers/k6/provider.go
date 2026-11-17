@@ -94,7 +94,7 @@ func (p *K6Provider) TypedRegistrations() []adapter.Registration {
 			Factory:     newSubResourceFactory(loader, rd),
 			Descriptor:  desc,
 			GVK:         desc.GroupVersionKind(),
-			Schema:      rd.schema,
+			Schema:      adapter.StaticSchema(rd.schema),
 			Example:     rd.example,
 			URLTemplate: rd.urlTemplate,
 		})

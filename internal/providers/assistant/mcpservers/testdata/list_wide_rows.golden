@@ -1,0 +1,3 @@
+ID        NAME            ENABLED  URL                               SCOPE   APPLICATIONS
+server-1  Shared tools    true     https://mcp.example.com/mcp       tenant  assistant, investigations
+server-2  Personal tools  false    https://personal.example.com/mcp  user    

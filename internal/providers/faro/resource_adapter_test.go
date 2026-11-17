@@ -1,6 +1,8 @@
 package faro_test
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
@@ -125,11 +128,12 @@ func TestResourceAdapter_List(t *testing.T) {
 
 func TestResourceAdapter_Get(t *testing.T) {
 	tests := []struct {
-		name     string
-		id       string
-		handler  http.HandlerFunc
-		wantName string
-		wantErr  bool
+		name         string
+		id           string
+		handler      http.HandlerFunc
+		wantName     string
+		wantErr      bool
+		wantNotFound bool
 	}{
 		{
 			name: "returns resource with correct name",
@@ -141,13 +145,24 @@ func TestResourceAdapter_Get(t *testing.T) {
 			wantName: "my-web-app-42",
 		},
 		{
+			// A slug-id refers to an app only when the slug is the app's own.
+			name: "slug of another app is not found",
+			id:   "checkout-42",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{"id": 42, "name": "my-web-app"})
+			},
+			wantErr:      true,
+			wantNotFound: true,
+		},
+		{
 			name: "propagates not found error",
 			id:   "missing-999",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte("not found"))
 			},
-			wantErr: true,
+			wantErr:      true,
+			wantNotFound: true,
 		},
 	}
 
@@ -161,6 +176,7 @@ func TestResourceAdapter_Get(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.Equal(t, tt.wantNotFound, apierrors.IsNotFound(err))
 				return
 			}
 
@@ -172,17 +188,169 @@ func TestResourceAdapter_Get(t *testing.T) {
 	}
 }
 
-func TestResourceAdapter_Delete(t *testing.T) {
+// TestResourceAdapter_PushCreatesMissingApp follows the resources push path
+// for a manifest with no ID: Get must report NotFound, then Create must send
+// the classification and labels.
+func TestResourceAdapter_PushCreatesMissingApp(t *testing.T) {
+	const appPath = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app"
+	var createBody map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc(appPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &createBody)
+		}
+		created := map[string]any{"id": 7, "name": "my-mobile-app", "appType": "mobile", "runtime": "android-native"}
+		if r.Method == http.MethodPost {
+			writeJSON(w, created)
+			return
+		}
+		writeJSON(w, []map[string]any{created})
+	})
+	// The Faro API has no route for a non-numeric ID.
+	mux.HandleFunc(appPath+"/", http.NotFound)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	a := newTestAdapter(t, server, "stack-123")
+
+	_, err := a.Get(t.Context(), "my-mobile-app", metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err), "push creates only on NotFound, got %v", err)
+
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": faro.APIVersion,
+		"kind":       faro.Kind,
+		"metadata":   map[string]any{"name": "my-mobile-app"},
+		"spec": map[string]any{
+			"name":           "my-mobile-app",
+			"appType":        "mobile",
+			"runtime":        "android-native",
+			"extraLogLabels": map[string]any{"is_mobile": "true"},
+		},
+	}}
+	_, err = a.Create(t.Context(), obj, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, "mobile", createBody["appType"])
+	assert.Equal(t, "android-native", createBody["runtime"])
+	assert.Equal(t,
+		[]any{map[string]any{"label": "is_mobile", "value": "true"}},
+		createBody["extraLogLabels"])
+}
+
+// TestResourceAdapter_PushRefusesAnotherAppsName follows the resources push path
+// for a copied manifest: metadata.name still names app 42, but spec.name names
+// a new app. Push must not write the copy over app 42.
+func TestResourceAdapter_PushRefusesAnotherAppsName(t *testing.T) {
+	put := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Contains(t, r.URL.Path, "/42")
-		w.WriteHeader(http.StatusNoContent)
+		if r.Method == http.MethodPut {
+			put = true
+		}
+		writeJSON(w, map[string]any{"id": 42, "name": "checkout"})
 	}))
 	defer server.Close()
 
 	a := newTestAdapter(t, server, "stack-123")
-	err := a.Delete(t.Context(), "my-web-app-42", metav1.DeleteOptions{})
+	_, err := a.Get(t.Context(), "checkout-42", metav1.GetOptions{})
 	require.NoError(t, err)
+
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": faro.APIVersion,
+		"kind":       faro.Kind,
+		"metadata":   map[string]any{"name": "checkout-42"},
+		"spec": map[string]any{
+			"name":        "checkout-staging",
+			"corsOrigins": []any{map[string]any{"url": "https://staging.example.com"}},
+		},
+	}}
+	_, err = a.Update(t.Context(), obj, metav1.UpdateOptions{})
+	require.ErrorContains(t, err, `is named "checkout", not "checkout-staging"`)
+	assert.False(t, put, "push must not overwrite app 42")
+}
+
+// TestResourceAdapter_PushKeepsOmittedLists checks the resources push path: a
+// manifest without corsOrigins keeps the stored origins, and an explicit empty
+// list clears them.
+func TestResourceAdapter_PushKeepsOmittedLists(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     map[string]any
+		wantCORS any
+	}{
+		{
+			name:     "omitted",
+			spec:     map[string]any{"name": "web"},
+			wantCORS: []any{map[string]any{"url": "https://a.example.com"}},
+		},
+		{
+			name: "explicit empty",
+			spec: map[string]any{"name": "web", "corsOrigins": []any{}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var putBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPut {
+					body, _ := io.ReadAll(r.Body)
+					_ = json.Unmarshal(body, &putBody)
+					_, _ = w.Write(body)
+					return
+				}
+				writeJSON(w, map[string]any{"id": 42, "name": "web", "corsOrigins": []any{map[string]any{"url": "https://a.example.com"}}})
+			}))
+			defer server.Close()
+
+			a := newTestAdapter(t, server, "stack-123")
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": faro.APIVersion,
+				"kind":       faro.Kind,
+				"metadata":   map[string]any{"name": "web-42"},
+				"spec":       tt.spec,
+			}}
+			_, err := a.Update(t.Context(), obj, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCORS, putBody["corsOrigins"])
+		})
+	}
+}
+
+func TestResourceAdapter_Delete(t *testing.T) {
+	tests := []struct {
+		name         string
+		resource     string
+		wantDeleted  bool
+		wantNotFound bool
+	}{
+		{name: "deletes the app the slug-id names", resource: "my-web-app-42", wantDeleted: true},
+		{name: "deletes by bare ID", resource: "42", wantDeleted: true},
+		{name: "refuses a slug-id with another app's slug", resource: "checkout-42", wantNotFound: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deleted := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Contains(t, r.URL.Path, "/42")
+				if r.Method == http.MethodDelete {
+					deleted = true
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				writeJSON(w, map[string]any{"id": 42, "name": "my-web-app"})
+			}))
+			defer server.Close()
+
+			a := newTestAdapter(t, server, "stack-123")
+			err := a.Delete(t.Context(), tt.resource, metav1.DeleteOptions{})
+			assert.Equal(t, tt.wantDeleted, deleted)
+			if tt.wantNotFound {
+				require.ErrorIs(t, err, adapter.ErrNotFound)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
@@ -221,9 +389,11 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 			"otlpIngestEndpointURL": "https://collect.example.com/otlp",
 			"corsOrigins":           []map[string]any{{"url": "https://example.com"}},
 			"extraLogLabels":        []map[string]string{{"label": "team", "value": "frontend"}},
-			"settings": map[string]any{
-				"geolocationEnabled": true,
-				"geolocationLevel":   "country",
+			"settings": map[string]string{
+				"geolocation.enabled":          "1",
+				"geolocation.level":            "1",
+				"geolocation.country_denylist": "DE,FR",
+				"combineLabData":               "1",
 			},
 		})
 	}))
@@ -245,6 +415,11 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, "https://collect.example.com/otlp", spec["otlpIngestEndpointURL"])
 	// A "key" tag would decode the label name as "" and leave this map empty-keyed.
 	assert.Equal(t, map[string]any{"team": "frontend"}, spec["extraLogLabels"])
+	assert.Equal(t, map[string]any{
+		"geolocationEnabled":         true,
+		"geolocationLevel":           "country",
+		"geolocationCountryDenylist": []any{"DE", "FR"},
+	}, spec["settings"])
 
 	// Verify metadata.
 	assert.Equal(t, "my-web-app-42", obj.GetName())

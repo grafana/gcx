@@ -31,7 +31,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // SettingsSchema returns a JSON Schema for the Settings resource type.
 func SettingsSchema() json.RawMessage {
-	return adapter.SchemaFromType[PluginSettings](StaticDescriptor())
+	return adapter.SchemaFromType[PluginSettings](StaticDescriptor())()
 }
 
 // SettingsExample returns an example Settings manifest as JSON.

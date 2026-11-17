@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/elasticsearch"
 	"github.com/spf13/cobra"
@@ -35,6 +36,7 @@ type queryOpts struct {
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.elasticsearch is configured)")
 	flags.StringVar(&opts.Mode, "mode", modeDocuments, fmt.Sprintf("Search mode: %q (raw documents) or %q (newest-first, plugin-internal fields omitted)", modeDocuments, modeLogs))

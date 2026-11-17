@@ -1,0 +1,2 @@
+NAME     COLLECTION  INTERVAL  SERVICE GRAPHS  SPAN METRICS
+default  disabled    60s       enabled         enabled

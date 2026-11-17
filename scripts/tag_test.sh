@@ -29,6 +29,8 @@ make_repo() {
 	git -C "$dir" init -q
 	git -C "$dir" config user.email "test@test.com"
 	git -C "$dir" config user.name "Test"
+	git -C "$dir" config commit.gpgsign false
+	git -C "$dir" config tag.gpgsign false
 	echo "# repo" >"$dir/README.md"
 	git -C "$dir" add .
 	git -C "$dir" commit -q -m "chore: initial commit"
@@ -78,6 +80,17 @@ EOF
 esac
 SVUSCRIPT
 	chmod +x "$dir/svu"
+	cat >"$dir/mise" <<'MISESCRIPT'
+#!/bin/sh
+set -eu
+[ "$1" = run ]
+[ "$2" = docs:refresh ]
+[ "$3" = -- ]
+mkdir -p docs/sources
+printf 'CLI reference %s\n' "$4" >docs/sources/cli-reference.md
+printf 'Configuration reference %s\n' "$4" >docs/sources/configuration.md
+MISESCRIPT
+	chmod +x "$dir/mise"
 	echo "$dir"
 }
 
@@ -403,6 +416,46 @@ test_plugin_version_no_files() {
 	rm -rf "$dir" "$mock"
 }
 
+test_release_commits_docs() {
+	local dir mock remote out
+	dir=$(make_repo)
+	add_tag "$dir" "v0.5.5"
+	add_commit "$dir" "feat: new command"
+	mock=$(mock_tools)
+	remote=$(mktemp -d)
+	git init --bare -q "$remote"
+	git -C "$dir" remote add origin "$remote"
+
+	out=$(cd "$dir" && PATH="$mock:$PATH" bash "$SCRIPT" patch 2>&1)
+	if [[ $(git -C "$remote" show release/v0.5.6:docs/sources/cli-reference.md) == "CLI reference v0.5.6" ]] &&
+		[[ $(git -C "$remote" show release/v0.5.6:docs/sources/configuration.md) == "Configuration reference v0.5.6" ]] &&
+		git -C "$remote" show release/v0.5.6:CHANGELOG.md | grep -q '^## v0.5.6'; then
+		pass "release PR commits and pushes docs with the upcoming changelog version"
+	else
+		fail "release docs missing or labelled with the wrong version (got: $out)"
+	fi
+	rm -rf "$dir" "$mock" "$remote"
+}
+
+test_docs_failure_stops_release() {
+	local dir mock before rc=0
+	dir=$(make_repo)
+	add_tag "$dir" "v0.5.5"
+	add_commit "$dir" "feat: new command"
+	mock=$(mock_tools)
+	printf '#!/bin/sh\nexit 1\n' >"$mock/mise"
+	before=$(git -C "$dir" rev-parse HEAD)
+
+	(cd "$dir" && PATH="$mock:$PATH" bash "$SCRIPT" patch >/dev/null 2>&1) || rc=$?
+	if [[ $rc -ne 0 && $(git -C "$dir" rev-parse HEAD) == "$before" ]] &&
+		! git -C "$dir" show-ref --verify --quiet refs/heads/release/v0.5.6; then
+		pass "docs generation failure stops before committing the release"
+	else
+		fail "docs generation failure did not stop the release"
+	fi
+	rm -rf "$dir" "$mock"
+}
+
 # ── run all ───────────────────────────────────────────────────────────────────
 
 echo "Running tag.sh tests..."
@@ -423,6 +476,8 @@ test_release_notes_written
 test_backfill_gap
 test_plugin_version_bumped
 test_plugin_version_no_files
+test_release_commits_docs
+test_docs_failure_stops_release
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

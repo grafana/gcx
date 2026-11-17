@@ -50,6 +50,7 @@ func TestGuardedLoginLoadRejectsNonTargetPlaintextWithoutKeychainWrites(t *testi
 	userDir := filepath.Join(home, ".config")
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")

@@ -129,6 +129,7 @@ func TestResolveCollectorFallbacks(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
+			writeContractJSON(t, w, map[string]string{"code": "not_found", "message": "collector not found"})
 		case pathListCollectors:
 			writeContractJSON(t, w, map[string]any{
 				"collectors": []map[string]any{{"id": stringID, "name": "renamed"}},

@@ -83,7 +83,7 @@ func (p *FaroProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewAdapterFactory(loader),
 			Descriptor:  staticDescriptor,
 			GVK:         staticDescriptor.GroupVersionKind(),
-			Schema:      FaroAppSchema(),
+			Schema:      FaroAppSchema,
 			Example:     FaroAppExample(),
 			URLTemplate: "/a/grafana-faro-app/apps/{name}",
 		},

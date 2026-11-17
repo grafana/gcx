@@ -434,3 +434,29 @@ func TestFieldSelectCodec_SliceOfUnstructured(t *testing.T) {
 	assert.Equal(t, "a", got[0]["name"])
 	assert.NotContains(t, got[0], "kind")
 }
+
+func TestEncode_JSONFields_PreservesNumbers(t *testing.T) {
+	type result struct {
+		Value    int64             `json:"value"`
+		Fraction float64           `json:"fraction"`
+		Rows     []json.RawMessage `json:"rows"`
+	}
+	value := result{Value: 9223372036854775807, Fraction: 1.25, Rows: []json.RawMessage{json.RawMessage(`[9007199254740993,null,true]`)}}
+	for _, tt := range []struct {
+		name  string
+		input any
+	}{
+		{"object", value},
+		{"slice", []result{value}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := optsWithJSONFields(t, []string{"value", "fraction", "rows"})
+			var out bytes.Buffer
+			require.NoError(t, opts.Encode(&out, tt.input))
+			assert.Contains(t, out.String(), "9223372036854775807")
+			assert.Contains(t, out.String(), "9007199254740993")
+			assert.Contains(t, out.String(), "1.25")
+			assert.NotContains(t, out.String(), `"9223372036854775807"`, "numbers must not become strings")
+		})
+	}
+}

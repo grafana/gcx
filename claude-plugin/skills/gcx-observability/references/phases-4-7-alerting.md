@@ -37,7 +37,7 @@ For each journey `J`, launch an agent that:
   Do not hand-author AlertRule manifests: there is no
   `gcx resources list-examples AlertRule` template, and gcx's alert provider is
   read-only for rules, so `gcx resources push` cannot create them.
-- Creates the SLO: `gcx slo definitions push slo-J.yaml --dry-run` then `gcx slo definitions push slo-J.yaml`. List SLOs to confirm.
+- Creates the SLO: `gcx resources push slos -p slo-J.yaml --dry-run` then `gcx resources push slos -p slo-J.yaml`. List SLOs to confirm.
 - Confirms the generated burn-rate rules appeared: `gcx alert rules list`.
 
 Launch all journey agents simultaneously. Wait for all to complete.
@@ -60,6 +60,22 @@ gcx alert notification-policies set -f notification-policy.yaml --force
 
 # Verify
 gcx alert notification-policies get
+```
+
+To route these alerts through a separate named routing tree instead of editing
+the default tree (Grafana 13.1+, or 12.4-13.0 with `alertingMultiplePolicies`),
+manage native `RoutingTree` manifests. Other trees are left unchanged:
+
+```bash
+gcx alert routing-trees list
+gcx alert routing-trees create -f slo-routing-tree.yaml
+
+# Update: fetch first so the manifest carries metadata.resourceVersion.
+gcx alert routing-trees get slo-routing -o yaml > slo-routing-tree.yaml
+gcx alert routing-trees update slo-routing -f slo-routing-tree.yaml
+
+# Deleting the default tree (user-defined) resets it instead of removing it.
+gcx alert routing-trees delete slo-routing --force
 ```
 
 **Step 3 - parallel with Step 2 (independent):**

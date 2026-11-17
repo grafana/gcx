@@ -63,23 +63,9 @@ func TestStackTableCodec_Encode_InvalidType(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid data type")
 }
 
-func TestRegionTableCodec_Encode(t *testing.T) {
-	out, err := stacks.ExportEncodeRegionTable([]cloud.Region{
-		{Slug: "us", Name: "US Central", Description: "United States", Provider: "gcp"},
-		{Slug: "eu", Name: "Belgium", Description: "Europe", Provider: "gcp"},
-	})
-
-	require.NoError(t, err)
-	assert.Contains(t, out, "SLUG")
-	assert.Contains(t, out, "PROVIDER")
-	assert.Contains(t, out, "us")
-	assert.Contains(t, out, "eu")
-	assert.Contains(t, out, "gcp")
-}
-
-func TestRegionTableCodec_Encode_InvalidType(t *testing.T) {
+func TestRegionTable_Encode_InvalidType(t *testing.T) {
 	var buf bytes.Buffer
-	err := stacks.ExportRegionTableCodec().Encode(&buf, "not regions")
+	err := stacks.ExportRegionTable().Encode(&buf, "not regions")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
 }

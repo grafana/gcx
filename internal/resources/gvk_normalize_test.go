@@ -52,6 +52,10 @@ func TestNormalizeGVK(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, resources.NormalizeGVK(tt.in))
+			desc := resources.Descriptor{GroupVersion: canonical.GroupVersion(), Kind: canonical.Kind}
+			assert.Equal(t, tt.want == canonical, desc.Matches(tt.in))
+			other := resources.Descriptor{GroupVersion: tt.in.GroupVersion(), Kind: tt.in.Kind}
+			assert.Equal(t, tt.want == canonical, other.Matches(canonical))
 		})
 	}
 }

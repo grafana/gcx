@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -231,7 +232,7 @@ func TestAppend(t *testing.T) {
 
 	// Verify file permissions.
 	info, _ := os.Stat(filepath.Join(dir, "agent-invocation-errors.jsonl"))
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Errorf("file mode=%o, want 0600", info.Mode().Perm())
 	}
 }

@@ -427,6 +427,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		QPS:   50,
 		Burst: 100,
 	}
+	if writer := warningWriterFromCtx(ctx); writer != nil {
+		rcfg.WarningHandlerWithContext = newAPIWarningHandler(writer)
+	}
 
 	if selectedGrafana.TLS != nil {
 		resolvedTLS := *selectedGrafana.TLS
@@ -496,13 +499,17 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+		rt = httputils.WireTransport(rt)
+		// Innermost layer: dump the bytes that reach the wire, after every
+		// outer layer added its headers. The OAuth bearer token comes from
+		// prevWrap below, so a dump placed further out would not show it.
+		if payloadLogging {
+			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
+		}
 		if prevWrap != nil {
 			rt = prevWrap(rt)
 		}
 		rt = &httputils.LoggingRoundTripper{Base: rt}
-		if payloadLogging {
-			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
-		}
 		rt = &retry.Transport{Base: rt}
 		// Outermost layer: stamp the caller-id header so every datasource query
 		// (unified query API and legacy proxy alike) is attributable upstream,

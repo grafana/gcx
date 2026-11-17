@@ -1,7 +1,7 @@
 // Package services provides the "gcx instrumentation services" command tree
 // for managing workload-level observed state and per-workload overrides.
 //
-// The command tree implements ADR-018 action-verb design:
+// The command tree implements RFC 019 action-verb design:
 //
 //	gcx instrumentation services
 //	├── list     — fleet-wide RunK8sDiscovery with client-side filters

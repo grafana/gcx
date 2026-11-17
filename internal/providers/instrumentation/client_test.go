@@ -221,6 +221,17 @@ func TestClient_SetAppInstrumentation_EmptyOTLPURLFailsFast(t *testing.T) {
 	assert.Contains(t, err.Error(), "OTLP gateway URL")
 }
 
+func TestBackendURLsFromStack_Pyroscope(t *testing.T) {
+	got := instrumentation.BackendURLsFromStack(cloud.StackInfo{
+		HPInstanceID:  123456,
+		HPInstanceURL: "https://profiles-prod-008.grafana.net/",
+	})
+	assert.Equal(t, "https://profiles-prod-008.grafana.net", got.PyroscopeURL)
+	assert.Equal(t, "123456", got.PyroscopeUsername)
+
+	assert.Empty(t, instrumentation.BackendURLsFromStack(cloud.StackInfo{}).PyroscopeURL)
+}
+
 func TestBackendURLsFromStack_OTLP(t *testing.T) {
 	got := instrumentation.BackendURLsFromStack(cloud.StackInfo{
 		ID:                1075384,
@@ -355,7 +366,7 @@ func TestClient_SetK8SInstrumentation(t *testing.T) {
 // correctly preserves SELECTION_EXCLUDED when the server returns it.
 // This is the symmetric case for SELECTION_INCLUDED tested in TestClient_GetK8SInstrumentation.
 // Theme E (2026-04-30): if the live stack returns "" after clusters remove, the bug
-// is server-side — not in this mapper. See docs/adrs/instrumentation/002-cli-redesign.md § "E — Selection enum hygiene".
+// is server-side — not in this mapper. See docs/rfcs/019-cli-redesign.md § "E — Selection enum hygiene".
 func TestGetK8SInstrumentation_SelectionRoundTrip(t *testing.T) {
 	wireResp := `{"cluster":{"name":"test-cluster","selection":"SELECTION_EXCLUDED","costmetrics":false,"energymetrics":false,"clusterevents":false,"nodelogs":false}}`
 	handler, _ := captureHandler(t, http.StatusOK, wireResp)
@@ -445,6 +456,10 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				var httpErr *fleet.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, "application/json", httpErr.ContentType)
+				assert.Equal(t, tt.respBody, httpErr.Body)
 				return
 			}
 			require.NoError(t, err)
@@ -605,6 +620,7 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 		respStatus     int
 		respBody       string
 		wantErr        bool
+		wantAction     string
 		wantCluster    string
 		wantClusterLen int
 	}{
@@ -626,6 +642,19 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 			respBody:   `{"error":"server error"}`,
 			wantErr:    true,
 		},
+		{
+			name:       "backend forbidden has no known missing action",
+			respStatus: http.StatusForbidden,
+			respBody:   `{"message":"backend access denied"}`,
+			wantErr:    true,
+		},
+		{
+			name:       "plugin route forbidden requires admin",
+			respStatus: http.StatusForbidden,
+			respBody:   `{"message":"plugin proxy route access denied"}`,
+			wantErr:    true,
+			wantAction: fleet.CollectorAppAdminAction,
+		},
 	}
 
 	for _, tt := range tests {
@@ -642,6 +671,9 @@ func TestClient_RunK8sMonitoring(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				var httpErr *fleet.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, tt.wantAction, httpErr.RequiredAction)
 				return
 			}
 			require.NoError(t, err)

@@ -17,8 +17,11 @@ import (
 type RegistrationMeta struct {
 	Descriptor  resources.Descriptor
 	StripFields []string
-	Example     json.RawMessage
-	URLTemplate string
+
+	// PullStripFields lists spec keys removed only from saved pull manifests.
+	PullStripFields []string
+	Example         json.RawMessage
+	URLTemplate     string
 }
 
 // NewRegistrationMeta builds a RegistrationMeta whose Descriptor is assembled
@@ -117,10 +120,11 @@ func BuildRegistration[T ResourceNamer, C any](
 
 			return crud.AsAdapter(), nil
 		},
-		Descriptor:  desc,
-		GVK:         desc.GroupVersionKind(),
-		Schema:      SchemaFromType[T](desc),
-		Example:     meta.Example,
-		URLTemplate: meta.URLTemplate,
+		Descriptor:      desc,
+		GVK:             desc.GroupVersionKind(),
+		Schema:          SchemaFromType[T](desc),
+		Example:         meta.Example,
+		URLTemplate:     meta.URLTemplate,
+		PullStripFields: meta.PullStripFields,
 	}
 }

@@ -766,7 +766,7 @@ func TestClient_ListRules(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, "/aggregations/rules", r.URL.Path)
-				w.Header().Set("Etag", `"abc123"`)
+				w.Header().Set("ETag", `"abc123"`)
 				writeJSON(w, []map[string]any{
 					{"metric": "http_requests_total", "drop_labels": []string{"pod"}, "aggregations": []string{"sum"}},
 					{"metric": "up"},
@@ -779,7 +779,7 @@ func TestClient_ListRules(t *testing.T) {
 			name: "passes segment query param",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "my-segment", r.URL.Query().Get("segment"))
-				w.Header().Set("Etag", `"seg"`)
+				w.Header().Set("ETag", `"seg"`)
 				writeJSON(w, []any{})
 			},
 			wantLen:  0,
@@ -789,7 +789,7 @@ func TestClient_ListRules(t *testing.T) {
 			name: "returns empty list with ETag",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				w.Header().Set("Etag", `"empty"`)
+				w.Header().Set("ETag", `"empty"`)
 				writeJSON(w, []any{})
 			},
 			wantLen:  0,
@@ -912,7 +912,7 @@ func TestClient_CreateRule(t *testing.T) {
 				assert.NoError(t, json.NewDecoder(r.Body).Decode(&rule))
 				assert.Equal(t, "http_requests_total", rule.Metric)
 
-				w.Header().Set("Etag", `"new1"`)
+				w.Header().Set("ETag", `"new1"`)
 				w.WriteHeader(http.StatusCreated)
 			},
 		},
@@ -958,7 +958,7 @@ func TestClient_UpdateRule(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPut, r.Method)
 				assert.Equal(t, `"old"`, r.Header.Get("If-Match"))
-				w.Header().Set("Etag", `"new"`)
+				w.Header().Set("ETag", `"new"`)
 				w.WriteHeader(http.StatusOK)
 			},
 		},

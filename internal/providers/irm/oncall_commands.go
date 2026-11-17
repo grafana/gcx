@@ -36,6 +36,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	// codec; the switch below registers the matching table/wide codecs per
 	// resource type.
 	switch resource {
+	case "personal-notification-rules":
+		cmdio.RegisterTable(&o.IO, personalNotificationRuleTable())
 	case "integrations":
 		cmdio.RegisterTable(&o.IO, integrationTable())
 	case "escalation-chains":
@@ -133,6 +135,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := lo.IO.Validate(); err != nil {
 				return err
@@ -452,12 +455,28 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Short:   "Manage OnCall schedules.",
 		Aliases: []string{"schedule"},
 	}
+	listCmd := newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.", "id",
+		func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
+			return c.GetSchedule(ctx, name)
+		})
+	listCmd.Long = `List OnCall schedules and their current assignees.
+
+JSON output includes current assignees in spec.on_call_now, with usernames
+available directly without a separate users lookup.
+Use --jq to filter the returned schedules by name and select only the fields you need.
+For coverage over a date range or handover times, use schedules list-final-shifts
+with the schedule ID from metadata.name; on_call_now describes only the current moment.`
+	listCmd.Example = `  # List schedules and current assignees
+  gcx irm oncall schedules list
+
+  # Show only schedule names and current usernames
+  gcx irm oncall schedules list --jq '[.[] | {name: .spec.name, on_call_now: [.spec.on_call_now[]? | .username]}]'
+
+  # Find Payments schedules in a known context (name match, case-insensitive)
+  gcx --context prod irm oncall schedules list --jq '[.[] | select(.spec.name | test("payments"; "i")) | {id: .metadata.name, name: .spec.name, on_call_now: [.spec.on_call_now[]? | .username]}]'`
 	cmd.AddCommand(
-		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.", "id",
-			func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
-			func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
-				return c.GetSchedule(ctx, name)
-			}),
+		listCmd,
 		newGetSubcommand(loader, "Get a schedule by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 				return c.GetSchedule(ctx, name)
@@ -676,7 +695,7 @@ func specStr(obj unstructured.Unstructured, key string) string {
 		return ""
 	}
 	v, ok := spec[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	return fmt.Sprint(v)
@@ -873,13 +892,13 @@ func webhookTable() cmdio.Table[unstructured.Unstructured] {
 // summary, severity, state, runbookURL, subject, timestamps, links,
 // alertsCount, raw) defined on oncalltypes.AlertGroupStatus.
 // The table codec below mirrors the locked SRE-persona column shape for
-// `irm oncall alert-groups list` (see ADR §6).
+// `irm oncall alert-groups list` (see RFC 020 §6).
 
 // SubjectLabelPriority is the column-rendering priority for AlertGroup
 // subject labels: keys present in this list are picked first (in order);
 // remaining keys fall back to alphabetical order.
 //
-//nolint:gochecknoglobals // stable shape, configured per ADR §6.
+//nolint:gochecknoglobals // stable shape, configured per RFC 020 §6.
 var SubjectLabelPriority = []string{
 	"service",
 	"job",
@@ -895,7 +914,7 @@ var SubjectLabelPriority = []string{
 // DimensionsLabelPriority is the column-rendering priority for per-Alert
 // dimensions labels (`pod` is the dominant single-row discriminator).
 //
-//nolint:gochecknoglobals // stable shape, configured per ADR §6.
+//nolint:gochecknoglobals // stable shape, configured per RFC 020 §6.
 var DimensionsLabelPriority = []string{
 	"pod",
 	"instance",
@@ -1113,12 +1132,12 @@ func (c *alertGroupTableCodec) Encode(w io.Writer, v any) error {
 		fixedColsWidth int
 	)
 	if c.Wide {
-		// Wide layout (ADR §6): ID, TITLE, TEAM, SEVERITY, STATE, RULE, SUBJECT, ALERTS, AGE
+		// Wide layout (RFC 020 §6): ID, TITLE, TEAM, SEVERITY, STATE, RULE, SUBJECT, ALERTS, AGE
 		t = style.NewTable("ID", "TITLE", "TEAM", "SEVERITY", "STATE", "RULE", "SUBJECT", "ALERTS", "AGE")
 		colWidths = []int{16, 0, 0, 10, 14, 0, 0, 8, 12}
 		t.MultilineCells(true) // SUBJECT cell embeds newlines in wide mode.
 	} else {
-		// Default layout (ADR §6): ID, TITLE, SEVERITY, STATE, TEAM, SUBJECT, AGE
+		// Default layout (RFC 020 §6): ID, TITLE, SEVERITY, STATE, TEAM, SUBJECT, AGE
 		t = style.NewTable("ID", "TITLE", "SEVERITY", "STATE", "TEAM", "SUBJECT", "AGE")
 		colWidths = []int{16, 0, 10, 14, 0, 0, 12}
 	}
@@ -1303,7 +1322,7 @@ func slackChannelTable() cmdio.Table[unstructured.Unstructured] {
 // --- Alert codec (typed: accepts []alertEnvelope) ---
 //
 // Emitted by `irm oncall alert-groups list-alerts <id>`. Locked column set
-// (ADR §6 + brief): default = ID, STATE, DIMENSIONS, COUNT.
+// (RFC 020 §6 + brief): default = ID, STATE, DIMENSIONS, COUNT.
 // Wide adds RULE before DIMENSIONS. DIMENSIONS is the per-alert label diff
 // vs the parent group's commonLabels; under default collapse mode rows
 // represent unique label sets and COUNT is the count of stored alerts that

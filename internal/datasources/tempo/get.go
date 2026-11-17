@@ -143,6 +143,11 @@ func GetCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 TRACE_ID is the hex-encoded trace identifier to retrieve.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+
+Pass --since or --from/--to (e.g. the search's time range) to make the lookup
+much faster. Omit them when the time range is unknown; a range that misses the
+trace returns not found.
+
 Use --share-link to print a Grafana Explore URL for the trace, or --open to
 open it in your browser after retrieval succeeds. Share links require an
 explicit time range via --since or --from/--to.
@@ -250,7 +255,7 @@ with a hint to read it directly or re-run narrower (e.g. with --filter or
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> --llm -o json; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",
+		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> --llm -o json; add --from/--to (e.g. the search's time range) to make the lookup much faster, and omit them when the time range is unknown; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",
 	}
 
 	opts.setup(cmd.Flags())

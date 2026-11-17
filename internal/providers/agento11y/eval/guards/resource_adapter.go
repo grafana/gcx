@@ -18,7 +18,7 @@ import (
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
-			Group:   "sigil.ext.grafana.app",
+			Group:   "agento11y.ext.grafana.app",
 			Version: "v1alpha1",
 		},
 		Kind:     "HookRule",
@@ -29,7 +29,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // HookRuleSchema returns a JSON Schema for the HookRule resource type.
 func HookRuleSchema() json.RawMessage {
-	return adapter.SchemaFromType[eval.HookRuleDefinition](StaticDescriptor())
+	return adapter.SchemaFromType[eval.HookRuleDefinition](StaticDescriptor())()
 }
 
 func hookRuleStripFields() []string {

@@ -18,6 +18,10 @@ import (
 // arrive, or paste the redirect URL. gcx accepts whichever completes first, so
 // neither choice needs a restart.
 //
+// In a local session the same reader serves a smaller purpose: a reopen
+// watcher (see startReopenWatcher) reports each line the user enters as a
+// request to open the login page again, and parses nothing.
+//
 // The watcher reads a separately opened /dev/tty, never os.Stdin. Go keeps the
 // standard streams out of its poller, so a blocking read on os.Stdin cannot be
 // cancelled; a stale reader would then steal keystrokes from the prompts that
@@ -33,6 +37,9 @@ type pasteWatcher struct {
 	// done closes when the reader goroutine has ended. Close waits on it, so
 	// the terminal has exactly one reader again by the time Close returns.
 	done chan struct{}
+	// reopen marks a local reopen watcher: every line is a request to open
+	// the login page again, never a redirect URL.
+	reopen bool
 }
 
 // startPasteWatcher prints the remote-session instructions and starts reading
@@ -49,14 +56,47 @@ func startPasteWatcher(w io.Writer, port int) *pasteWatcher {
 		return nil
 	}
 
-	watcher := &pasteWatcher{
+	watcher := newTerminalWatcher(tty, w, false)
+	watcher.printInstructions(port)
+
+	go watcher.run()
+
+	return watcher
+}
+
+// newTerminalWatcher builds the watcher that both startPasteWatcher and
+// startReopenWatcher run, so the two share one channel and teardown setup.
+func newTerminalWatcher(tty *os.File, w io.Writer, reopen bool) *pasteWatcher {
+	return &pasteWatcher{
 		tty:    tty,
 		writer: w,
 		values: make(chan pastedInput, 1),
 		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
+		reopen: reopen,
 	}
-	watcher.printInstructions(port)
+}
+
+// startReopenWatcher starts reading the local terminal while gcx waits for the
+// browser. Each line the user enters, Enter alone included, is reported as a
+// request to open the login page again. The caller prints the instructions.
+// It returns nil when it does not apply: a remote session, where the paste
+// watcher owns the terminal and Enter is part of the SSH escape sequence;
+// agent mode; or no terminal that Go's poller accepts, which includes Windows.
+func startReopenWatcher(w io.Writer) *pasteWatcher {
+	if terminal.IsRemoteSession() || agent.IsAgentMode() {
+		return nil
+	}
+
+	tty, ok := openPasteTerminal()
+	if !ok {
+		return nil
+	}
+	// Discard keys pressed before the watcher started, such as a second Enter
+	// at the chooser, so they do not open the page again straight away.
+	_ = flushTerminalInput(tty)
+
+	watcher := newTerminalWatcher(tty, w, true)
 
 	go watcher.run()
 
@@ -77,23 +117,46 @@ func startPasteWatcher(w io.Writer, port int) *pasteWatcher {
 // Close can no longer stop it. That is also why there is no term.IsTerminal
 // check here: /dev/tty is the controlling terminal by definition, and the open
 // fails when the process has none.
+//
+// macOS opens /dev/tty but its kqueue poller rejects it, so there the watcher
+// falls back to the terminal's own device (for example /dev/ttys003), which
+// the poller accepts.
 var openPasteTerminal = func() (*os.File, bool) { //nolint:gochecknoglobals // test seam
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
+		// No controlling terminal: no watcher, on every platform.
 		return nil, false
 	}
-	// A read deadline is only supported on a file the poller accepted, so this
-	// reports pollability. A non-zero deadline is required: it is cleared
-	// immediately afterwards.
-	if err := tty.SetReadDeadline(time.Now().Add(time.Hour)); err != nil {
-		_ = tty.Close()
+	if pollable(tty) {
+		return tty, true
+	}
+	_ = tty.Close()
+	// The process has a controlling terminal, but the poller rejected
+	// /dev/tty (macOS). Its own device is the same terminal.
+	path, ok := terminalDevicePath()
+	if !ok {
 		return nil, false
 	}
-	if err := tty.SetReadDeadline(time.Time{}); err != nil {
+	tty, err = os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, false
+	}
+	if !pollable(tty) {
 		_ = tty.Close()
 		return nil, false
 	}
 	return tty, true
+}
+
+// pollable reports whether Go's poller accepted the file, which is what makes
+// Close able to unblock a pending read. A read deadline is only supported on a
+// file the poller accepted. A non-zero deadline is required: it is cleared
+// immediately afterwards.
+func pollable(tty *os.File) bool {
+	if err := tty.SetReadDeadline(time.Now().Add(time.Hour)); err != nil {
+		return false
+	}
+	return tty.SetReadDeadline(time.Time{}) == nil
 }
 
 // pastedInput is one line that the user pasted: the parsed query parameters, or
@@ -109,6 +172,9 @@ type pastedInput struct {
 	// the terminal reported an error. No further line arrives. The caller says
 	// so and keeps waiting for the callback server.
 	Closed bool
+	// Reopen reports that the user asked a local reopen watcher to open the
+	// login page again.
+	Reopen bool
 }
 
 // Input reports each pasted line. A nil watcher returns a nil channel, which
@@ -177,11 +243,18 @@ func (p *pasteWatcher) run() {
 		}
 		if err != nil {
 			// The user pressed Ctrl-D, or the terminal reported an error. Say
-			// so and stop. A silent stop left the prompt on screen with no
-			// reader behind it, and a retry would spin on a terminal that
-			// reports the same error forever.
+			// so and stop. A silent stop left the prompt (or the Enter
+			// shortcut) on screen with no reader behind it, and a retry would
+			// spin on a terminal that reports the same error forever.
 			p.deliver(pastedInput{Closed: true})
 			return
+		}
+
+		if p.reopen {
+			if !p.deliver(pastedInput{Reopen: true}) {
+				return
+			}
+			continue
 		}
 
 		// Step 1 of the instructions asks the user to press Enter before the

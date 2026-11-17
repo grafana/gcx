@@ -15,7 +15,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -94,8 +93,7 @@ type recommendationsListOpts struct {
 }
 
 func (o *recommendationsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &recommendationTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &recommendationTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, RecommendationTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -129,44 +127,19 @@ func (h *tracesHelper) recommendationsListCommand() *cobra.Command {
 	return cmd
 }
 
-type recommendationTableCodec struct {
-	Wide bool
-}
-
-func (c *recommendationTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func RecommendationTable() cmdio.Table[Recommendation] {
+	return cmdio.Table[Recommendation]{
+		Columns: []cmdio.Column[Recommendation]{
+			{Header: "ID", Content: func(r Recommendation) string { return r.ID }},
+			{Header: "MESSAGE", Content: func(r Recommendation) string { return r.Message }},
+			{Header: "TAGS", Content: func(r Recommendation) string { return strings.Join(r.Tags, ",") }},
+			{Header: "APPLIED", Content: func(r Recommendation) string { return strconv.FormatBool(r.Applied) }},
+			{Header: "DISMISSED", Content: func(r Recommendation) string { return strconv.FormatBool(r.Dismissed) }},
+			{Header: "STALE", Content: func(r Recommendation) string { return strconv.FormatBool(r.Stale) }},
+			{Header: "CREATED AT", Content: func(r Recommendation) string { return r.CreatedAt }},
+			{Header: "ACTIONS", Visible: cmdio.WideOnly, Content: func(r Recommendation) string { return strconv.Itoa(len(r.Actions)) }},
+		},
 	}
-	return "table"
-}
-
-func (c *recommendationTableCodec) Encode(w io.Writer, v any) error {
-	recs, ok := v.([]Recommendation)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Recommendation")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "MESSAGE", "TAGS", "APPLIED", "DISMISSED", "STALE", "CREATED AT", "ACTIONS")
-	} else {
-		t = style.NewTable("ID", "MESSAGE", "TAGS", "APPLIED", "DISMISSED", "STALE", "CREATED AT")
-	}
-
-	for _, r := range recs {
-		tags := strings.Join(r.Tags, ",")
-		if c.Wide {
-			t.Row(r.ID, r.Message, tags, strconv.FormatBool(r.Applied), strconv.FormatBool(r.Dismissed), strconv.FormatBool(r.Stale), r.CreatedAt, strconv.Itoa(len(r.Actions)))
-		} else {
-			t.Row(r.ID, r.Message, tags, strconv.FormatBool(r.Applied), strconv.FormatBool(r.Dismissed), strconv.FormatBool(r.Stale), r.CreatedAt)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *recommendationTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -352,8 +325,7 @@ type policiesListOpts struct {
 }
 
 func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &policyTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &policyTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, PolicyTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of policies to return (0 for no limit)")
@@ -393,48 +365,17 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 	return cmd
 }
 
-// NewPolicyTableCodec creates a table codec for policies. Exported for testing.
-func NewPolicyTableCodec(wide bool) *policyTableCodec {
-	return &policyTableCodec{Wide: wide}
-}
-
-type policyTableCodec struct {
-	Wide bool
-}
-
-func (c *policyTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func PolicyTable() cmdio.Table[Policy] {
+	return cmdio.Table[Policy]{
+		Columns: []cmdio.Column[Policy]{
+			{Header: "ID", Content: func(r Policy) string { return r.ID }},
+			{Header: "NAME", Content: func(r Policy) string { return r.Name }},
+			{Header: "TYPE", Content: func(r Policy) string { return r.Type }},
+			{Header: "EXPIRES AT", Content: func(r Policy) string { return r.ExpiresAt }},
+			{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r Policy) string { return r.VersionCreatedBy }},
+			{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r Policy) string { return r.VersionCreatedAt }},
+		},
 	}
-	return "table"
-}
-
-func (c *policyTableCodec) Encode(w io.Writer, v any) error {
-	policies, ok := v.([]Policy)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Policy")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "TYPE", "EXPIRES AT", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("ID", "NAME", "TYPE", "EXPIRES AT")
-	}
-
-	for _, p := range policies {
-		if c.Wide {
-			t.Row(p.ID, p.Name, p.Type, p.ExpiresAt, p.VersionCreatedBy, p.VersionCreatedAt)
-		} else {
-			t.Row(p.ID, p.Name, p.Type, p.ExpiresAt)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *policyTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
@@ -106,14 +107,21 @@ func (c *ProxyClient) Delete(ctx context.Context, datasourceUID, smPath string) 
 }
 
 func (c *ProxyClient) do(ctx context.Context, method, datasourceUID, smPath string, body []byte) (*Response, error) {
-	url := c.restConfig.Host + c.buildProxyPath(datasourceUID, smPath)
+	return send(ctx, c.httpClient, method, c.restConfig.Host+c.buildProxyPath(datasourceUID, smPath), body)
+}
 
+// send performs one request to a Grafana URL with the caller's credential
+// (carried by httpClient) and returns the status and body, including non-2xx.
+// It is the single transport for every route into the SM datasource, so they
+// agree on client identity, Content-Type and the response size limit; callers
+// differ only in how they build the URL.
+func send(ctx context.Context, httpClient *http.Client, method, target string, body []byte) (*Response, error) {
 	var reqBody io.Reader
 	if body != nil {
 		reqBody = bytes.NewReader(body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, target, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -122,7 +130,7 @@ func (c *ProxyClient) do(ctx context.Context, method, datasourceUID, smPath stri
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -141,5 +149,5 @@ func (c *ProxyClient) do(ctx context.Context, method, datasourceUID, smPath stri
 
 func (c *ProxyClient) buildProxyPath(datasourceUID, smPath string) string {
 	return fmt.Sprintf("/api/datasources/proxy/uid/%s/%s/%s",
-		datasourceUID, smRoute, strings.TrimPrefix(smPath, "/"))
+		url.PathEscape(datasourceUID), smRoute, strings.TrimPrefix(smPath, "/"))
 }

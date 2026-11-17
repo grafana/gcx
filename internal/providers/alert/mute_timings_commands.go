@@ -131,14 +131,16 @@ func newMuteTimingsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 }
 
 type muteTimingsMutateOpts struct {
-	IO   cmdio.Options
-	File string
+	IO             cmdio.Options
+	File           string
+	AllowUIUpdates bool
 }
 
 func (o *muteTimingsMutateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the mute timing definition (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.AllowUIUpdates, "allow-ui-updates", true, "Keep the mute timing editable in the Grafana UI (false disables UI edits)")
 }
 
 func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -146,6 +148,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new mute timing.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -163,7 +166,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			created, err := client.CreateMuteTiming(ctx, mt)
+			created, err := client.CreateMuteTiming(ctx, mt, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}
@@ -197,7 +200,7 @@ func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			updated, err := client.UpdateMuteTiming(ctx, args[0], mt)
+			updated, err := client.UpdateMuteTiming(ctx, args[0], mt, opts.AllowUIUpdates)
 			if err != nil {
 				return err
 			}

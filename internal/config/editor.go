@@ -46,7 +46,7 @@ func updateValue(input reflect.Value, path []string, value string, unset bool) e
 		for fieldIndex := range actualInput.NumField() {
 			field := actualInput.Field(fieldIndex)
 			fieldType := actualInput.Type().Field(fieldIndex)
-			yamlName := strings.Split(fieldType.Tag.Get("yaml"), ",")[0]
+			yamlName, _, _ := strings.Cut(fieldType.Tag.Get("yaml"), ",")
 
 			if yamlName != step {
 				continue

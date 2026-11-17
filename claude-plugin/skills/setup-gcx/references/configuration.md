@@ -336,9 +336,12 @@ gcx config set stacks.<name>.grafana.token glsa_xxxx
 
 **Basic authentication:**
 ```bash
-gcx config set stacks.<name>.grafana.user admin
-gcx config set stacks.<name>.grafana.password admin
+gcx login <context> --basic-auth --user admin
 ```
+
+The password is prompted without echoing; for automation, supply
+`GRAFANA_PASSWORD` and add `--yes`. This sets `auth-method: basic` and verifies
+the credentials before saving them.
 
 For browser OAuth, run `gcx login <context> --oauth`; gcx stores the access and
 refresh credentials plus proxy endpoint on the context's stack entry. For mTLS,

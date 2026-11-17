@@ -129,6 +129,16 @@ func TestClient_DeleteNotification(t *testing.T) {
 
 // --- Command tests ---
 
+func notificationCommandOutput(t *testing.T, server *httptest.Server, args ...string) string {
+	t.Helper()
+	var stdout bytes.Buffer
+	cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+	cmd.SetArgs(args)
+	cmd.SetOut(&stdout)
+	require.NoError(t, cmd.Execute())
+	return stdout.String()
+}
+
 func TestNotifications_List_Table(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.True(t, strings.HasSuffix(r.URL.Path, "/config/alerts"), "unexpected path %q", r.URL.Path)
@@ -247,6 +257,143 @@ func TestNotifications_Upsert_Batch(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.Equal(t, []string{"first", "second"}, upserted)
 	assert.Contains(t, stdout.String(), "2 notification config(s) upserted")
+}
+
+func TestNotifications_Upsert_RoundTripsReadOutputShapes(t *testing.T) {
+	configs := []kg.AlertConfig{
+		{Name: "first", MatchLabels: map[string]string{"job": "api"}, For: "5m"},
+		{Name: "second", Silenced: true},
+	}
+
+	tests := []struct {
+		name        string
+		input       func(t *testing.T, server *httptest.Server) string
+		wantConfigs []kg.AlertConfig
+	}{
+		{
+			name: "bare single config from get",
+			input: func(t *testing.T, server *httptest.Server) string {
+				t.Helper()
+				return notificationCommandOutput(t, server, "get", "first", "-o", "yaml")
+			},
+			wantConfigs: configs[:1],
+		},
+		{
+			name: "bare config list from list",
+			input: func(t *testing.T, server *httptest.Server) string {
+				t.Helper()
+				return notificationCommandOutput(t, server, "list", "-o", "yaml")
+			},
+			wantConfigs: configs,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var upserted []kg.AlertConfig
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodGet:
+					w.Header().Set("Content-Type", "application/json")
+					assert.NoError(t, json.NewEncoder(w).Encode(kg.AlertConfigs{AlertConfigs: configs}))
+				case http.MethodPost:
+					var got kg.AlertConfig
+					if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got)) {
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					upserted = append(upserted, got)
+					w.WriteHeader(http.StatusOK)
+				default:
+					t.Errorf("unexpected method %s", r.Method)
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			}))
+			defer server.Close()
+
+			input := tt.input(t, server)
+			cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+			cmd.SetArgs([]string{"upsert", "-f", "-"})
+			cmd.SetIn(bytes.NewBufferString(input))
+			require.NoError(t, cmd.Execute())
+			assert.Equal(t, tt.wantConfigs, upserted)
+		})
+	}
+}
+
+func TestNotifications_Upsert_RejectsUnknownFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "wrapped config", input: "alertConfigs:\n  - name: first\n    matchlabels:\n      job: api\n"},
+		{name: "bare single config", input: "name: first\nmatchlabels:\n  job: api\n"},
+		{name: "bare config list", input: "- name: first\n  matchlabels:\n    job: api\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Error("server must not be hit when the input has an unknown field")
+			}))
+			defer server.Close()
+
+			cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetArgs([]string{"upsert", "-f", "-"})
+			cmd.SetIn(bytes.NewBufferString(tt.input))
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "failed to parse notifications file")
+			assert.Contains(t, err.Error(), "field matchlabels not found")
+		})
+	}
+}
+
+func TestNotifications_Upsert_MultipleDocuments(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantErr     string
+		wantUpserts []string
+	}{
+		{name: "second document is rejected", input: "name: a\n---\nname: b\n", wantErr: "multiple YAML documents are not supported"},
+		{name: "second list document is rejected", input: "- name: a\n---\n- name: b\n", wantErr: "multiple YAML documents are not supported"},
+		{name: "trailing separator is allowed", input: "name: a\n---\n", wantUpserts: []string{"a"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var upserted []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var got kg.AlertConfig
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got)) {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				upserted = append(upserted, got.Name)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetArgs([]string{"upsert", "-f", "-"})
+			cmd.SetIn(bytes.NewBufferString(tt.input))
+			cmd.SetOut(&bytes.Buffer{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Empty(t, upserted, "nothing may be sent when a later document would be dropped")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantUpserts, upserted)
+		})
+	}
 }
 
 func TestNotifications_Upsert_EmptyFile(t *testing.T) {

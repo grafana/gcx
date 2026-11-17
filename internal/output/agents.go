@@ -73,7 +73,7 @@ func (c *agentsCodec) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	if buf.Len() <= SpillThreshold() {
+	if threshold := SpillThreshold(); threshold == 0 || buf.Len() <= threshold || isRegularFile(dst) {
 		_, err := io.Copy(dst, &buf)
 		return err
 	}
@@ -88,6 +88,9 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	threshold := SpillThreshold()
+	if isRegularFile(dst) {
+		threshold = 0
+	}
 	var f *os.File
 	success := false
 	defer func() {
@@ -108,7 +111,7 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 			return err
 		}
 		count++
-		if f == nil && buf.Len() > threshold {
+		if f == nil && threshold > 0 && buf.Len() > threshold {
 			f, err = os.CreateTemp("", SpillStreamFilePattern)
 			if err != nil {
 				return fmt.Errorf("create spill file: %w", err)
@@ -188,13 +191,35 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 	return nil
 }
 
+// isRegularFile reports whether w writes to a regular file on disk, which is
+// what a shell redirect such as `gcx ... > out.json` produces. A terminal, a
+// pipe and /dev/null are not regular files, so a harness capturing stdout —
+// as os/exec does for any non-*os.File writer — reads false here.
+//
+// The agents codec spills oversized payloads to protect an agent's context
+// window, but a caller who named a destination file has already said where the
+// bytes belong, and a receipt pointing at a different temp file is never what
+// they asked for. Any stat error reports false, keeping the protective
+// behavior as the default.
+func isRegularFile(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
+}
+
 // SpillThreshold is the encoded-payload size in bytes above which the agents
-// codec spills to a file. Exported so commands that can shrink a response
-// server-side (e.g. gcx traces get --prune) can budget against the same
-// number the codec uses.
+// codec spills to a file, or 0 when GCX_AGENT_SPILL_BYTES=0 disables
+// spilling (e.g. when gcx is embedded and its caller cannot read the spill
+// file). Exported so tests outside this package can assert the resolved value.
 func SpillThreshold() int {
 	if v := os.Getenv(agentsSpillEnv); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			return n
 		}
 	}

@@ -80,6 +80,10 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		TargetKind: internalconfig.CapturedTargetKind(),
 	}
 
+	if event.Agent == "" && event.IsAgent {
+		event.Agent = "generic"
+	}
+
 	// The provider is the top-level command, the first segment of the path.
 	if fields := strings.Fields(info.Command); len(fields) > 0 {
 		event.Provider = fields[0]
@@ -144,6 +148,13 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	// invocation, not the failure, and is as interesting for a partial failure
 	// or a canceled run as for any other outcome.
 	event.GrafanaAuthMethod = telemetry.GrafanaAuthMethodLabel(capture.CurrentGrafanaAuthMethod())
+
+	// Signup reports how far its login pipeline got. gcx login runs the same
+	// probes but does not report them. Like the auth method, the stage is as
+	// interesting for a canceled run as for a failed one.
+	if info.Command == "signup" {
+		event.SignupStage = telemetry.SignupStageLabel(capture.CurrentLoginStage())
+	}
 
 	return event
 }

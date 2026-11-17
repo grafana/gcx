@@ -219,3 +219,21 @@ func TestLoadCLIOptions_InvalidBoolErrors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "GCX_AUTO_APPROVE")
 }
+
+func TestGrafanaTokenEnvironmentPreservesLegacyMTLS(t *testing.T) {
+	t.Setenv("GRAFANA_TOKEN", "runtime-token")
+	ctx := config.Context{Name: "prod", Grafana: &config.GrafanaConfig{
+		Server: "https://grafana.invalid", StackID: 12345,
+		TLS: &config.TLS{CertData: []byte("client-cert"), KeyData: []byte("client-key")},
+	}}
+	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	got, err := ctx.ToRESTConfig(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "runtime-token", got.BearerToken)
+	assert.Equal(t, []byte("client-cert"), got.CertData)
+	assert.Equal(t, []byte("client-key"), got.KeyData)
+	selectedTLS, err := ctx.EffectiveGrafanaTLS()
+	require.NoError(t, err)
+	assert.Equal(t, []byte("client-cert"), selectedTLS.CertData)
+	assert.Equal(t, []byte("client-key"), selectedTLS.KeyData)
+}
