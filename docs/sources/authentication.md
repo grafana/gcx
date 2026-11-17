@@ -58,7 +58,7 @@ To sign in with OAuth, your Grafana user needs the gcx User role. Refer to [Requ
 
 Grafana Cloud platform APIs use a separate credential stored in a named Cloud entry in addition to the Grafana instance auth.
 
-For automation, log in with a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/), which has the widest command compatibility. A CAP supports many Cloud management operations, but cannot enumerate user organisation memberships:
+For automation, log in with a [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/), which has the widest command compatibility. A CAP supports many Cloud management operations, but cannot enumerate user organisation memberships:
 
 ```bash
 gcx login my-stack --server https://my-stack.grafana.net --token glsa_xxx --cloud-token glc_xxx --yes
