@@ -24,10 +24,11 @@ Follow it to the deploy config for each environment to find the value.
 
 | Kind | Read (`READS_FROM`) | Write (`WRITES_TO`) |
 |---|---|---|
-| S3, GCS, Azure Blob | get, list, head, download | put, upload, delete, copy into |
-| SQS, Pub/Sub subscription, Service Bus | receive, pull, subscribe | send, publish |
-| SNS, Pub/Sub topic, Event Hubs | (subscribers do not read the topic) | publish, send |
-| DynamoDB, Firestore, Bigtable | get, query, scan | put, update, delete, batch write |
+| S3 bucket, GCS bucket | get, list, head, download | put, upload, delete, copy into |
+| SQS queue | receive | send |
+| SNS topic, Pub/Sub topic | (a subscriber reads its own queue or subscription, not the topic) | publish |
+| Pub/Sub subscription | pull, streaming pull | (none: publishers write to the topic) |
+| DynamoDB table | get, query, scan | put, update, delete, batch write |
 | Kafka topic | consumer | producer |
 
 A service that does both gets two links. If the code or the policy does not show
@@ -46,6 +47,7 @@ this form, so write them the same way.
 | DynamoDB table | `arn:aws:dynamodb:<region>:<account>:table/<table>` | `dynamodb-table` | `aws` |
 | GCS bucket | `gs://<bucket>` | `gcs-bucket` | `gcp` |
 | Pub/Sub topic | `projects/<project>/topics/<topic>` | `pubsub-topic` | `gcp` |
+| Pub/Sub subscription | `projects/<project>/subscriptions/<subscription>` | `pubsub-subscription` | `gcp` |
 | Kafka topic | `kafka://<cluster>/<topic>` | `kafka-topic` | `kafka` |
 | Azure resource | the Azure resource ID | for example `azure-blob-container` | `azure` |
 

@@ -47,8 +47,9 @@ gcx kg status
 - `kgWriteApiEnabled: false` means this stack cannot write yet: the Knowledge
   Graph write API is not enabled for it. Stop. You can still prepare the plan
   (Steps 2 to 6) so the user can apply it later.
-- No `kgWriteApiEnabled` field means the server is too old to report it. Treat
-  it as "unknown": prepare the plan and ask the user before you try to write.
+- No `kgWriteApiEnabled` field means the server is older than this check and
+  may not have the write API. Do not write: prepare the plan only, as for
+  `false`, and say why.
 - If `status` is not `complete` or `enabled` is `false`, the Knowledge Graph
   itself is not ready. Stop and say so.
 
@@ -129,10 +130,16 @@ gcx kg graph query "MATCH (s:Service) WHERE s.name IN ['checkout', 'cart'] RETUR
 
 ## Step 6: Prepare the plan
 
-Write three files in a working folder outside the scanned repositories:
-`repositories.yaml` (the `Repository` entities), `resources.yaml` (the
-`CloudResource` entities) and `links.yaml` (the relationships). The exact
-format is in [Write files](references/write-files.md).
+Write four files in a working folder outside the scanned repositories:
+
+- `repositories.yaml`: the `Repository` entities
+- `resources.yaml`: the `CloudResource` entities
+- `repository-links.yaml`: the `BUILT_FROM` and `DEPLOYED_FROM` links
+- `resource-links.yaml`: the `READS_FROM` and `WRITES_TO` links
+
+Keep repository and resource links in separate files, so a stack without the
+resource types can still take the repository links. The exact format is in
+[Write files](references/write-files.md).
 
 - Set `ttlSeconds` on every object. The default is 7 days (`604800`). A link
   or resource that a later run does not write again then expires once the code
@@ -151,19 +158,22 @@ resource does not exist yet.
 
 ```bash
 gcx kg entities upsert -f repositories.yaml
+gcx kg relationships upsert -f repository-links.yaml
 gcx kg entities upsert -f resources.yaml
-gcx kg relationships upsert -f links.yaml
+gcx kg relationships upsert -f resource-links.yaml
 ```
 
-Each file entry is written separately, so one failure does not undo the others.
-Upserts are idempotent, so running the same files again is safe.
+gcx writes a file's entries in order and stops at the first one that fails. The
+entries before it stay written, and the ones after it are not written. Fix or
+remove the failing entry and run the same file again: upserts are idempotent,
+so entries that were already written are only written again.
 
 | Answer | Meaning | What to do |
 |---|---|---|
 | 403 | The write API is not enabled for this stack | Stop. Keep the files for later. |
 | 422 that names the domain or `Repository` | The `sourcecode` schema is not installed on this stack | Stop and say so. |
-| 422 that names `CloudResource`, `READS_FROM` or `WRITES_TO` | The stack has an older `sourcecode` schema without resources | Skip `resources.yaml` and the resource links. Write the rest and say so. |
-| 422 or 404 about an endpoint | No Service with that name and scope | Check the match from Step 5 and fix that entry. |
+| 422 that names `CloudResource`, `READS_FROM` or `WRITES_TO` | The stack has an older `sourcecode` schema without resources | Do not write `resources.yaml` or `resource-links.yaml`. Keep them for later, and say so. |
+| 422 or 404 about an endpoint | No Service with that name and scope | Check the match from Step 5, fix or remove that entry, and run the file again. |
 | 409 | Graph writes are paused, or the graph does not exist yet | Try again later. |
 
 ## Step 8: Check the result

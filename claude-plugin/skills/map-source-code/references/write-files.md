@@ -76,13 +76,18 @@ One entry per resource the services use, in the `sourcecode` domain. A
 
 Quote an account id, as above, so YAML reads it as a string.
 
-## links.yaml
+## Link files
 
-One entry per link. The link itself is in the `sourcecode` domain.
+One entry per link. The link itself is in the `sourcecode` domain. Put
+repository links and resource links in separate files: a stack with an older
+`sourcecode` schema rejects the resource links, and gcx stops a file at its
+first failing entry.
 
 - **`from`** is the telemetry Service. Use `domain: metrics` and copy the
   Service's scope exactly as Step 5 found it.
 - **`to`** is the repository or the `CloudResource`, by its name.
+
+### repository-links.yaml
 
 ```yaml
 - domain: sourcecode
@@ -119,6 +124,11 @@ One entry per link. The link itself is in the `sourcecode` domain.
     path: environments/prod/checkout.yaml
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
+```
+
+### resource-links.yaml
+
+```yaml
 - domain: sourcecode
   type: WRITES_TO
   from:
