@@ -356,14 +356,20 @@ mode requires it, and so does input from stdin.`,
 // ---------------------------------------------------------------------------
 
 type alertmanagerImportGetOpts struct {
-	IO cmdio.Options
+	IO         cmdio.Options
+	tableCodec *alertmanagerImportTableCodec
+	wideCodec  *alertmanagerImportTableCodec
 }
 
 func (o *alertmanagerImportGetOpts) setup(flags *pflag.FlagSet) {
-	// The document has the shape of a Mimir user configuration, but it is not
-	// a source for a new import: Grafana masks the secrets and removes the
-	// global section (GetSanitizedAlertmanagerConfigYAML).
-	o.IO.DefaultFormat("yaml")
+	// JSON and YAML keep the Mimir user configuration shape. The table codecs
+	// render the same sanitized data for inspection: Grafana masks secrets and
+	// removes the global section (GetSanitizedAlertmanagerConfigYAML).
+	o.tableCodec = &alertmanagerImportTableCodec{}
+	o.wideCodec = &alertmanagerImportTableCodec{wide: true}
+	o.IO.RegisterCustomCodec("table", o.tableCodec)
+	o.IO.RegisterCustomCodec("wide", o.wideCodec)
+	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
@@ -379,16 +385,20 @@ func newAlertmanagerImportGetCommand(loader GrafanaConfigLoader) *cobra.Command 
 		Long: experimentalPreamble + `
 
 Get the staged Alertmanager configuration that has the identifier (default
-"imported"). The output has the shape of a Mimir user configuration:
-alertmanager_config and template_files.
+"imported"). The default table summarizes its routes, receivers, time intervals,
+inhibition rules and templates. Use -o yaml or -o json to inspect the sanitized
+Mimir user configuration fields: alertmanager_config and template_files.
 
 The output is for inspection only. Do not use it as the input of upsert:
 Grafana replaces each secret with <secret> and removes the global section of
 the Alertmanager configuration, so an import of the output would lose them.`,
-		Example: `  # Get the staged configuration with the default identifier
+		Example: `  # Summarize the staged configuration with the default identifier
   gcx alert alertmanager-imports get
 
-  # Get the staged configuration mimir-prod as JSON
+  # Inspect the sanitized configuration mimir-prod as YAML
+  gcx alert alertmanager-imports get mimir-prod -o yaml
+
+  # Get the sanitized configuration as JSON
   gcx alert alertmanager-imports get mimir-prod -o json`,
 		Args:        cobra.MaximumNArgs(1),
 		Annotations: experimentalAnnotations(),
@@ -403,6 +413,8 @@ the Alertmanager configuration, so an import of the output would lose them.`,
 			if err := validateAlertmanagerImportIdentifier(cmd, identifier); err != nil {
 				return err
 			}
+			opts.tableCodec.identifier = identifier
+			opts.wideCodec.identifier = identifier
 			ctx := cmd.Context()
 			restCfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {

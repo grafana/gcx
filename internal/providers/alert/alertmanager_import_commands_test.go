@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/alert"
+	"github.com/grafana/gcx/internal/terminal"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -340,17 +342,32 @@ func TestAlertmanagerImportGet(t *testing.T) {
 		TemplateFiles:      map[string]string{"a.tmpl": "a"},
 	}
 
-	t.Run("human default is a YAML document with the user config fields", func(t *testing.T) {
+	t.Run("explicit YAML keeps the user config fields", func(t *testing.T) {
 		setAgentMode(t, false)
 
 		var got recordedRequest
 		loader := serveConvertAPI(t, &got, http.StatusOK, response)
-		stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader), []string{"alertmanager-imports", "get"}, "")
+		stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+			[]string{"alertmanager-imports", "get", "-o", "yaml"}, "")
 
 		require.NoError(t, err)
 		assert.Equal(t, "imported", got.header.Get(identifierHeader), "the identifier defaults to imported")
 		var decoded alert.AlertmanagerUserConfig
 		require.NoError(t, yaml.UnmarshalStrict([]byte(stdout), &decoded))
+		assert.Equal(t, want, decoded)
+	})
+
+	t.Run("explicit JSON keeps the user config fields", func(t *testing.T) {
+		setAgentMode(t, false)
+
+		var got recordedRequest
+		loader := serveConvertAPI(t, &got, http.StatusOK, response)
+		stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+			[]string{"alertmanager-imports", "get", "-o", "json"}, "")
+
+		require.NoError(t, err)
+		var decoded alert.AlertmanagerUserConfig
+		require.NoError(t, json.Unmarshal([]byte(stdout), &decoded))
 		assert.Equal(t, want, decoded)
 	})
 
@@ -370,6 +387,321 @@ func TestAlertmanagerImportGet(t *testing.T) {
 			"template_files":      map[string]any{"a.tmpl": "a"},
 		}, doc)
 	})
+}
+
+func TestAlertmanagerImportGetTableGolden(t *testing.T) {
+	const config = `route:
+  receiver: default-email
+  group_by: [alertname, cluster]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: pagerduty-payments
+      matchers:
+        - env="prod"
+      match:
+        team: payments
+      mute_time_intervals: [weekends]
+    - receiver: slack-alerts
+      matchers:
+        - severity=~"warning|info"
+      group_by: [alertname]
+      continue: true
+      routes:
+        - receiver: "null"
+          matchers:
+            - env="staging"
+          routes:
+            - receiver: default-email
+              match_re:
+                instance: ".+"
+    - receiver: "null"
+      match:
+        alertname: Watchdog
+      active_time_intervals: [business-hours]
+receivers:
+  - name: default-email
+    email_configs:
+      - to: alerts@example.com
+  - name: pagerduty-payments
+    pagerduty_configs:
+      - routing_key: <secret>
+  - name: slack-alerts
+    slack_configs:
+      - api_url: <secret>
+      - api_url: <secret>
+  - name: "null"
+mute_time_intervals:
+  - name: weekends
+    time_intervals:
+      - weekdays: [saturday, sunday]
+time_intervals:
+  - name: business-hours
+    time_intervals:
+      - weekdays: [monday:friday]
+        times:
+          - start_time: "09:00"
+            end_time: "17:00"
+        location: Europe/Berlin
+inhibit_rules:
+  - source_matchers:
+      - region="eu"
+    source_match:
+      severity: critical
+    source_match_re:
+      service: api|web
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, cluster]
+`
+	templates := map[string]string{
+		"email.tmpl": `{{ define "email.subject" }}subject{{ end }}
+{{- define "email.body" -}}body{{ end }}
+{{ define "email.with.a.very.long.descriptive.name" }}long{{ end }}` + strings.Repeat("x", 1050),
+		"slack.tmpl": `{{ define "slack.title" }}title{{ end }}` + strings.Repeat("x", 272),
+	}
+
+	tests := []struct {
+		name      string
+		config    string
+		templates map[string]string
+		args      []string
+	}{
+		{name: "alertmanager_import_get_table", config: config, templates: templates},
+		{
+			name:      "alertmanager_import_get_table_wide",
+			config:    config,
+			templates: templates,
+			args:      []string{"-o", "wide"},
+		},
+		{
+			name: "alertmanager_import_get_table_empty_sections",
+			config: `route:
+  receiver: default-email
+receivers:
+  - name: default-email
+    email_configs:
+      - to: alerts@example.com
+`,
+			templates: map[string]string{},
+		},
+		{
+			name:      "alertmanager_import_get_table_invalid",
+			config:    "route: [",
+			templates: map[string]string{"fallback.tmpl": `{{ define "fallback" }}value{{ end }}`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setAgentMode(t, false)
+			terminal.ResetForTesting()
+			t.Cleanup(terminal.ResetForTesting)
+
+			body, err := json.Marshal(alert.AlertmanagerUserConfig{
+				AlertmanagerConfig: tt.config,
+				TemplateFiles:      tt.templates,
+			})
+			require.NoError(t, err)
+
+			var got recordedRequest
+			loader := serveConvertAPI(t, &got, http.StatusOK, string(body))
+			args := append([]string{"alertmanager-imports", "get", "mimir-prod"}, tt.args...)
+			stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader), args, "")
+
+			require.NoError(t, err)
+			assert.Empty(t, stderr)
+			assert.Equal(t, "mimir-prod", got.header.Get(identifierHeader))
+			testutils.Golden(t, tt.name, stdout)
+		})
+	}
+}
+
+func TestAlertmanagerImportGetTableHonorsNoTruncate(t *testing.T) {
+	setAgentMode(t, false)
+	terminal.ResetForTesting()
+	terminal.SetNoTruncate(true)
+	t.Cleanup(terminal.ResetForTesting)
+
+	const (
+		defineName  = "template.with.a.name.longer.than.the.default.table.cell.width"
+		longMatcher = `label="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv"`
+	)
+	body, err := json.Marshal(alert.AlertmanagerUserConfig{
+		AlertmanagerConfig: `route:
+  receiver: default
+  routes:
+    - receiver: child
+      matchers:
+        - ` + longMatcher + "\n",
+		TemplateFiles: map[string]string{
+			"long.tmpl": `{{ define "` + defineName + `" }}value{{ end }}`,
+		},
+	})
+	require.NoError(t, err)
+
+	var got recordedRequest
+	loader := serveConvertAPI(t, &got, http.StatusOK, string(body))
+	stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+		[]string{"alertmanager-imports", "get"}, "")
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout, defineName)
+	assert.Contains(t, stdout, "└─ "+longMatcher)
+	assert.NotContains(t, stdout, "template.with.a.name.longer.than.the.de...")
+}
+
+func TestAlertmanagerImportGetTableTruncatesOnlyMatcherTextAfterPrefix(t *testing.T) {
+	setAgentMode(t, false)
+	terminal.ResetForTesting()
+	t.Cleanup(terminal.ResetForTesting)
+
+	const longMatcher = `label="abcdefghijklmnopqrstuvwxyzéééééééééééééééééééé"`
+	body, err := json.Marshal(alert.AlertmanagerUserConfig{
+		AlertmanagerConfig: `route:
+  receiver: default
+  routes:
+    - receiver: child
+      routes:
+        - receiver: grandchild
+          matchers:
+            - ` + longMatcher + `
+    - receiver: unmatched
+`,
+		TemplateFiles: map[string]string{},
+	})
+	require.NoError(t, err)
+
+	var got recordedRequest
+	loader := serveConvertAPI(t, &got, http.StatusOK, string(body))
+	stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+		[]string{"alertmanager-imports", "get"}, "")
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "├─ -")
+	assert.Contains(t, stdout, "│  └─ "+string([]rune(longMatcher)[:37])+"...")
+	assert.NotContains(t, stdout, "│  └─ "+longMatcher)
+	assert.NotContains(t, stdout, "ROUTE")
+}
+
+func TestAlertmanagerImportGetTableHandlesSparseConfiguration(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		want   []string
+	}{
+		{name: "absent route", config: `{}`, want: []string{"Routes (0):"}},
+		{
+			name: "empty receivers",
+			config: `route:
+  receiver: default
+receivers: []
+`,
+			want: []string{"Receivers (0):"},
+		},
+		{
+			name: "object integration config",
+			config: `route:
+  receiver: object
+receivers:
+  - name: object
+    email_configs: {}
+`,
+			want: []string{"object  none"},
+		},
+		{
+			name: "null integration config",
+			config: `route:
+  receiver: null-config
+receivers:
+  - name: null-config
+    email_configs: null
+`,
+			want: []string{"null-config  none"},
+		},
+		{
+			name: "group by all labels",
+			config: `route:
+  receiver: default
+  routes:
+    - receiver: child
+      group_by: ['...']
+`,
+			want: []string{"child", "..."},
+		},
+		{
+			name: "empty child group by inherits",
+			config: `route:
+  receiver: default
+  group_by: [alertname]
+  routes:
+    - receiver: child
+      group_by: []
+`,
+			want: []string{"child", "(inherited)"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setAgentMode(t, false)
+			terminal.ResetForTesting()
+			t.Cleanup(terminal.ResetForTesting)
+
+			body, err := json.Marshal(alert.AlertmanagerUserConfig{
+				AlertmanagerConfig: tt.config,
+				TemplateFiles:      map[string]string{},
+			})
+			require.NoError(t, err)
+
+			var got recordedRequest
+			loader := serveConvertAPI(t, &got, http.StatusOK, string(body))
+			stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+				[]string{"alertmanager-imports", "get"}, "")
+
+			require.NoError(t, err)
+			assert.Empty(t, stderr)
+			for _, want := range tt.want {
+				assert.Contains(t, stdout, want)
+			}
+		})
+	}
+}
+
+func TestAlertmanagerImportGetTableKeepsDuplicateIntervalsAndSortsIntegrations(t *testing.T) {
+	setAgentMode(t, false)
+	terminal.ResetForTesting()
+	t.Cleanup(terminal.ResetForTesting)
+
+	body, err := json.Marshal(alert.AlertmanagerUserConfig{
+		AlertmanagerConfig: `route:
+  receiver: mixed
+receivers:
+  - name: mixed
+    webhook_configs:
+      - url: https://example.com
+    email_configs:
+      - to: alerts@example.com
+mute_time_intervals:
+  - name: duplicate
+    time_intervals: []
+time_intervals:
+  - name: duplicate
+    time_intervals: []
+`,
+		TemplateFiles: map[string]string{},
+	})
+	require.NoError(t, err)
+
+	var got recordedRequest
+	loader := serveConvertAPI(t, &got, http.StatusOK, string(body))
+	stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+		[]string{"alertmanager-imports", "get"}, "")
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "mixed  email, webhook")
+	assert.Equal(t, 2, strings.Count(stdout, "duplicate  0"))
 }
 
 func TestAlertmanagerImportCommands_RejectEmptyIdentifier(t *testing.T) {
