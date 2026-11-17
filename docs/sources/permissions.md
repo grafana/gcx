@@ -19,6 +19,10 @@ What you can do with `gcx` depends on how you sign in and which Grafana products
 - [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-access-policy-scopes): Scopes for the separate Grafana Cloud credential used by `gcx cloud` and direct Grafana Cloud API calls.
 - [Fix an authorization error](#fix-an-authorization-error): How to inspect your effective actions and troubleshoot exit code `3` errors.
 
+{{< admonition type="note" >}}
+These permissions apply to the current release of `gcx` and can change as Grafana products and APIs evolve. For the latest requirements, refer to the documentation linked in each product section.
+{{< /admonition >}}
+
 ## User and service account authentication
 
 For commands that interact with your Grafana instance or Grafana Cloud stack, `gcx` uses the permissions of the Grafana identity you signed in with:
@@ -78,6 +82,45 @@ To learn more about roles and permissions for dashboards, folders, and data sour
 
 To learn more about roles and permissions for Grafana Alerting, refer to [Configure RBAC](https://grafana.com/docs/grafana/latest/alerting/set-up/configure-rbac/).
 
+### Agent Observability
+
+`gcx agento11y` commands use the Agent Observability plugin (`grafana-agento11y-app`) on your stack through your Grafana sign-in.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| View agents, model cards, generations, evaluation results, and experiments (`gcx agento11y agents`, `model-cards`, `generations`, `experiments`) | `grafana-agento11y-app.data:read` (Agent Observability Data Reader role or higher) |
+| View conversations (`gcx agento11y conversations list`, `get`, `search`, `list-annotations`) | `grafana-agento11y-app.conversations:read` (Agent Observability Reader role or higher) |
+| Annotate conversations (`gcx agento11y conversations annotate`) | `grafana-agento11y-app.feedback:write` (Agent Observability Feedback Writer role or higher) |
+| Manage evaluators, evaluation rules, templates, experiments, test suites, collections, and saved conversations | `grafana-agento11y-app.eval:write` (Agent Observability Admin role) |
+| Create, update, or delete guards (`gcx agento11y guards`) | `grafana-agento11y-app.guards:write` (Agent Observability Admin role) |
+| Create or delete model rates (`gcx agento11y model-rates create`, `delete`) | `grafana-agento11y-app.pricing:write` (Agent Observability Admin role) |
+
+All Agent Observability roles also require `plugins.app:access` scoped to `plugins:id:grafana-agento11y-app` (included in the built-in roles).
+
+To learn more about roles and permissions for Agent Observability, refer to [Security and access controls](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/privacy-and-access/security/).
+
+### Application Observability
+
+`gcx appo11y` commands query your stack's telemetry data sources and use the Application Observability plugin (`grafana-app-observability-app`) through your Grafana sign-in.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Inspect services, operations, labels, and service maps (`gcx appo11y services`, `operations`) | `plugins:grafana-app-observability-app:viewer` (Viewer or Editor basic role), plus `datasources:query` on your metrics, logs, and traces data sources |
+| Read or update metrics generator overrides and plugin settings (`gcx appo11y overrides`, `settings`) | `plugins:grafana-app-observability-app:admin` (Admin basic role), plus the Plugins > Plugin Writer role to persist settings changes |
+
+To learn more about roles and permissions for Application Observability, refer to [Application Observability role-based access control](https://grafana.com/docs/grafana-cloud/observe-and-act/monitor-applications/application-observability/manual/rbac/).
+
+### Database Observability
+
+`gcx dbo11y` commands query your Prometheus data source and check the Database Observability activation status on your stack through your Grafana sign-in.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| List and inspect monitored database instances (`gcx dbo11y instances list`, `get`) | `plugins:grafana-dbo11y-app:reader` (Viewer basic role or higher), plus `datasources:query` on your Prometheus data source |
+| Administer Database Observability plugin settings | `plugins:grafana-dbo11y-app:admin` (Admin basic role) |
+
+To learn more about roles and permissions for Database Observability, refer to [Grafana Cloud app plugin role definitions](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-control/plugin-role-definitions/).
+
 ### Fleet Management
 
 `gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud access policy scope. You need these Collector app permissions:
@@ -87,9 +130,20 @@ To learn more about roles and permissions for Grafana Alerting, refer to [Config
 | Access the Collector app's named read routes | `grafana-collector-app:read` (`plugins:grafana-collector-app:collector-app-reader`, `plugins:grafana-collector-app:collector-app-pipelines-viewer`, or Viewer basic role) |
 | Access the Collector app's wildcard routes (required by some read-only commands) | `grafana-collector-app:admin` (`plugins:grafana-collector-app:collector-app-admin` or Admin basic role) |
 | Look up stack details through the Collector app | Viewer basic role |
-| Check Kubernetes monitoring (`gcx instrumentation clusters list`) | `grafana-collector-app:read` and `grafana-collector-app:admin` |
 
 To learn more about roles and permissions for Fleet Management, refer to [Role-based access control for Fleet Management](https://grafana.com/docs/grafana-cloud/send-data/fleet-management/set-up/role-based-access-control/).
+
+### Instrumentation
+
+`gcx instrumentation` commands manage Grafana Instrumentation Hub through the Collector app (`grafana-collector-app`) on your stack, except `check`, `explain`, and `list-explanations`, which inspect local configuration and documentation.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Look up stack details and run named Collector read routes | `grafana-collector-app:read` (`plugins:grafana-collector-app:collector-app-reader`, `plugins:grafana-collector-app:collector-app-pipelines-viewer`, or Viewer basic role) |
+| Inspect and configure clusters, cluster apps, services, and status (`gcx instrumentation status`, `clusters`, `services`, `setup`) | `grafana-collector-app:read` and `grafana-collector-app:admin` (`plugins:grafana-collector-app:collector-app-admin` or Admin basic role) |
+| Run the Helm command generated by `gcx instrumentation setup` | Grafana Cloud access policy token with `set:alloy-data-write` and `metrics:read` |
+
+Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-access-policy-scopes) for details on the Helm token scopes, and [Role-based access control for Fleet Management](https://grafana.com/docs/grafana-cloud/send-data/fleet-management/set-up/role-based-access-control/) for Collector app permissions.
 
 ### Grafana Assistant
 
@@ -155,6 +209,29 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../guides/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
+
+### Knowledge Graph
+
+`gcx kg` commands use the Knowledge Graph plugin (`grafana-asserts-app`) on your stack through your Grafana sign-in.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Access Knowledge Graph | `plugins:grafana-asserts-app:knowledge-graph-access` |
+| Query the graph, inspect entities and insights, and read rules (`gcx kg graph`, `entities list`, `insights`, `stats`, `diagnose`, `quality`, `meta`) | `plugins:grafana-asserts-app:knowledge-graph-reader` (Viewer basic role or higher) |
+| Create, update, or delete rules, thresholds, suppressions, notifications, custom entities, and relationships | `plugins:grafana-asserts-app:knowledge-graph-writer` (Editor or Admin basic role) |
+
+To learn more about roles and permissions for Knowledge Graph, refer to [Grafana Cloud app plugin role definitions](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-control/plugin-role-definitions/).
+
+### Machine Learning
+
+`gcx ml` commands use the Machine Learning plugin (`grafana-ml-app`) on your stack through your Grafana sign-in.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| View forecast jobs, holidays, outlier detectors, and their alerts (`list`, `get`) | `plugins:grafana-ml-app:ml-viewer` (Viewer basic role or higher) |
+| Create, update, or delete forecast jobs, holidays, outlier detectors, and their alerts | `plugins:grafana-ml-app:ml-editor` (Editor or Admin basic role) |
+
+To learn more about roles and permissions for Machine Learning, refer to [Configure RBAC permissions](https://grafana.com/docs/grafana-cloud/ai-tools/machine-learning/additional-configuration/rbac/).
 
 ### Synthetic Monitoring
 
