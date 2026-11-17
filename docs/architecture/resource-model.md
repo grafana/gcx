@@ -282,7 +282,7 @@ For partially exposed groups, `partiallyExposedGroups` retains the group's `APIG
 
 ### Cluster-scoped resources
 
-Discovery keeps cluster-scoped kinds (`Namespaced: false` in the API resource list). `RegistryIndex.Update()` sets `Descriptor.ClusterScoped` for them. The zero value means namespaced, so descriptors that providers register statically stay namespaced. `Descriptor.Scope()` returns `Namespaced` or `Cluster`, and `list-types` shows it in wide, JSON and YAML output.
+Discovery keeps cluster-scoped kinds (`Namespaced: false` in the API resource list). `RegistryIndex.Update()` sets `Descriptor.ClusterScoped` for them. The zero value means namespaced, so descriptors that providers register statically stay namespaced. `Descriptor.Scope()` returns `Namespaced` or `Cluster`, and `list-types` shows it in wide, JSON and YAML output. The JSON and YAML output of `list-types` keeps every cluster-scoped kind, also when no OpenAPI schema resolves for it. It still drops namespaced kinds without a schema.
 
 gcx reads cluster-scoped kinds with `get` only:
 

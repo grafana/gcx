@@ -242,7 +242,8 @@ gcx resources list-types -o wide
 
 The `SCOPE` column shows `Namespaced` or `Cluster`.
 The JSON and YAML outputs show the same value in the `scope` field.
-When `gcx` fetches schemas, which it does by default, the JSON and YAML outputs leave out each type that has no OpenAPI schema.
+The JSON and YAML outputs list every cluster-scoped type. If a cluster-scoped type has no OpenAPI schema, its entry has no `schema` field.
+When `gcx` fetches schemas, which it does by default, the JSON and YAML outputs leave out each namespaced type that has no OpenAPI schema.
 To list every type, add `--no-schema`.
 
 You can read cluster-scoped types with `gcx resources get` only:

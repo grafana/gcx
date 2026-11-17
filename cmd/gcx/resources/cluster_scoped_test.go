@@ -99,7 +99,7 @@ func newClusterScopedFixture(t *testing.T) *clusterScopedFixture {
 				"apis/" + clusterTestGV: map[string]any{"serverRelativeURL": "/openapi/v3/apis/" + clusterTestGV},
 			}}
 		case "/openapi/v3/apis/" + clusterTestGV:
-			result = openAPIDocument("KgSchema", "SystemKgSchema")
+			result = openAPIDocument("KgSchema")
 		case "/apis/" + clusterTestGV + "/systemkgschemas":
 			f.recordGet(r.URL.Path)
 			result = &unstructured.UnstructuredList{Object: map[string]any{"apiVersion": clusterTestGV, "kind": "SystemKgSchemaList"}, Items: []unstructured.Unstructured{systemSchema}}
@@ -175,7 +175,8 @@ func TestClusterScoped_ListTypesShowsScope(t *testing.T) {
 	assert.Regexp(t, `kgschemas\s+kgschema\s+KgSchema\s+Namespaced`, stdout.String())
 
 	// The default path fetches schemas, which can drop entries, so check it
-	// as well as --no-schema.
+	// as well as --no-schema. The server serves no schema for SystemKgSchema,
+	// and the cluster-scoped entry must still be listed, without a schema.
 	for _, args := range [][]string{{"-o", "json"}, {"-o", "json", "--no-schema"}} {
 		cmd = listTypesCmd(f.config)
 		stdout = runClusterScopedCmd(t, cmd, args...)
@@ -188,7 +189,7 @@ func TestClusterScoped_ListTypesShowsScope(t *testing.T) {
 			require.True(t, ok)
 			scopes[plural] = entry["scope"]
 			_, hasSchema := entry["schema"]
-			assert.Equal(t, len(args) == 2, hasSchema, "schema for %s with %v", plural, args)
+			assert.Equal(t, len(args) == 2 && plural == "kgschemas", hasSchema, "schema for %s with %v", plural, args)
 		}
 		assert.Equal(t, map[string]any{"kgschemas": "Namespaced", "systemkgschemas": "Cluster"}, scopes, args)
 	}
