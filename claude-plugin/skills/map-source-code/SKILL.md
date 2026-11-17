@@ -75,10 +75,9 @@ git -C <dir> remote get-url origin
 git -C <dir> symbolic-ref --short refs/remotes/origin/HEAD
 ```
 
-A remote URL can hold a user name and a token, for example
-`https://user:token@github.com/contoso/shop.git`. Remove everything before the
-`@` in the host part before you show, store or use the URL, and never repeat
-the original URL, in chat or in any file.
+A remote URL can hold a user name and a token between the scheme and the host,
+ending with `@`. Remove that part before you show, store or use the URL, and
+never repeat the original URL, in chat or in any file.
 
 Turn the remote URL into the canonical repository name and the `Repository`
 properties as described in

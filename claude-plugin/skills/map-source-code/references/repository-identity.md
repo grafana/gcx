@@ -27,7 +27,7 @@ repositories on different web ports.
 | `https://bitbucket.org/contoso/shop.git` | `bitbucket.org/contoso/shop` |
 | `https://dev.azure.com/contoso/payments/_git/api` | `dev.azure.com/contoso/payments/_git/api` |
 | `git@ssh.dev.azure.com:v3/contoso/payments/api` | `dev.azure.com/contoso/payments/_git/api` |
-| `https://user:token@host/...` | drop the user and token; never write credentials |
+| Any form with a user name or token before the host, ending with `@` | drop them; never write credentials |
 
 If a checkout has no `origin`, or the remote is a local path, skip it and say
 why.
