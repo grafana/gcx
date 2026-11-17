@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -38,8 +39,11 @@ one by one.`
 // Alertmanager configuration.
 const alertmanagerImportKind = "alertmanager-import"
 
+var alertmanagerImportIdentifierInvalidCharacters = regexp.MustCompile(`[^a-z0-9]+`)
+
 // alertmanagerImportIdentifierMaxLength matches ualert.UIDMaxLength as used by
 // parseConfigIdentifierHeader in Grafana's pkg/services/ngalert/api/api_convert_prometheus.go.
+// It is also the managed route name limit that identifiers derived from a datasource name follow.
 const alertmanagerImportIdentifierMaxLength = 40
 
 // Mutation actions of the import commands.
@@ -207,14 +211,15 @@ func joinNames(names []string) string {
 // ---------------------------------------------------------------------------
 
 type alertmanagerImportUpsertOpts struct {
-	IO           cmdio.Options
-	File         string
-	Templates    []string
-	Identifier   string
-	DryRun       bool
-	Promote      bool
-	ForceReplace bool
-	Force        bool
+	IO             cmdio.Options
+	File           string
+	FromDatasource string
+	Templates      []string
+	Identifier     string
+	DryRun         bool
+	Promote        bool
+	ForceReplace   bool
+	Force          bool
 }
 
 func (o *alertmanagerImportUpsertOpts) setup(flags *pflag.FlagSet) {
@@ -223,6 +228,8 @@ func (o *alertmanagerImportUpsertOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "",
 		"File containing the Alertmanager configuration or the Mimir/Cortex user configuration (YAML/JSON, use - for stdin)")
+	flags.StringVar(&o.FromDatasource, "from-datasource", "",
+		"Import the configuration from the Mimir or Cortex Alertmanager datasource with this UID")
 	flags.StringArrayVar(&o.Templates, "template", nil,
 		"Template file to import; the template name is the file name (repeatable; directories are not accepted)")
 	flags.BoolVar(&o.DryRun, "dry-run", false,
@@ -237,8 +244,20 @@ func (o *alertmanagerImportUpsertOpts) Validate(cmd *cobra.Command) error {
 	if o.DryRun && o.Promote {
 		return gcxerrors.NewCommandUsageError(cmd, "--dry-run and --promote are mutually exclusive", nil)
 	}
-	if o.File == "" {
-		return gcxerrors.NewCommandUsageError(cmd, "--filename / -f is required (use - to read from stdin)", nil)
+	fromDatasourceSet := cmd.Flags().Changed("from-datasource")
+	filenameSet := cmd.Flags().Changed("filename")
+	if fromDatasourceSet && filenameSet {
+		return gcxerrors.NewCommandUsageError(cmd, "--from-datasource and --filename / -f are mutually exclusive", nil)
+	}
+	if fromDatasourceSet && cmd.Flags().Changed("template") {
+		return gcxerrors.NewCommandUsageError(cmd, "--from-datasource and --template are mutually exclusive", nil)
+	}
+	if (!filenameSet && !fromDatasourceSet) || (filenameSet && o.File == "") {
+		return gcxerrors.NewCommandUsageError(cmd,
+			"--filename / -f or --from-datasource is required (use - to read from stdin)", nil)
+	}
+	if fromDatasourceSet && o.FromDatasource == "" {
+		return gcxerrors.NewCommandUsageError(cmd, "--from-datasource UID must not be empty", nil)
 	}
 	if err := validateAlertmanagerImportIdentifier(cmd, o.Identifier); err != nil {
 		return err
@@ -257,10 +276,54 @@ func (o *alertmanagerImportUpsertOpts) action() string {
 	}
 }
 
+// alertmanagerImportIdentifierFromDatasourceName copies Grafana's
+// syncIdentifierFromName rule for external Alertmanager sync identifiers.
+func alertmanagerImportIdentifierFromDatasourceName(name string) string {
+	identifier := strings.ToLower(name)
+	identifier = alertmanagerImportIdentifierInvalidCharacters.ReplaceAllString(identifier, "-")
+	identifier = strings.Trim(identifier, "-")
+	if len(identifier) > alertmanagerImportIdentifierMaxLength {
+		identifier = strings.TrimRight(identifier[:alertmanagerImportIdentifierMaxLength], "-")
+	}
+	if identifier == "" {
+		return defaultAlertmanagerImportIdentifier
+	}
+	return identifier
+}
+
+func (o *alertmanagerImportUpsertOpts) readUserConfig(
+	cmd *cobra.Command,
+	loader GrafanaConfigLoader,
+	explicitIdentifier bool,
+) (*AlertmanagerUserConfig, *Client, error) {
+	if o.FromDatasource == "" {
+		cfg, err := readAlertmanagerUserConfig(o.File, cmd.InOrStdin(), o.Templates)
+		return &cfg, nil, err
+	}
+
+	ctx := cmd.Context()
+	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	client, err := NewClient(restCfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	userConfig, datasourceName, err := client.AlertmanagerConfigFromDatasource(ctx, o.FromDatasource)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !explicitIdentifier {
+		o.Identifier = alertmanagerImportIdentifierFromDatasourceName(datasourceName)
+	}
+	return userConfig, client, nil
+}
+
 func newAlertmanagerImportUpsertCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &alertmanagerImportUpsertOpts{}
 	cmd := &cobra.Command{
-		Use:   "upsert [IDENTIFIER]",
+		Use:   "upsert [IDENTIFIER] (-f FILE | --from-datasource UID)",
 		Short: "[experimental] Stage or replace an imported Alertmanager configuration.",
 		Long: experimentalPreamble + `
 
@@ -269,7 +332,7 @@ under the identifier (default "imported"). The identifier is also the name of
 the imported routing tree. If a staged configuration has the same identifier,
 Grafana replaces it.
 
-The input is one of these formats:
+The input comes from -f/--filename or --from-datasource. A file can contain:
   - A Mimir or Cortex user configuration, with alertmanager_config (the
     Alertmanager configuration as a string) and optional template_files. This
     is the response of the Mimir Alertmanager API GET /api/v1/alerts.
@@ -277,6 +340,11 @@ The input is one of these formats:
     file content unchanged.
 
 The configuration input from a file or stdin must not exceed 10 MiB.
+
+--from-datasource reads the stored configuration and templates from a Mimir or
+Cortex Alertmanager datasource. If IDENTIFIER is omitted, gcx derives it from
+the datasource name. --from-datasource cannot be used with -f/--filename or
+--template.
 
 Use --template to add a template file. Repeat the flag to add more files. Each
 template is named after its file. A template name must occur only one time.
@@ -296,6 +364,12 @@ You cannot undo a promotion. The --promote flag asks for confirmation. Use
 with --promote.`,
 		Example: `  # Validate a plain Alertmanager configuration without saving it
   gcx alert alertmanager-imports upsert -f alertmanager.yaml --template templates/email.tmpl --dry-run
+
+  # Stage the configuration from an Alertmanager datasource; derive the identifier from its name
+  gcx alert alertmanager-imports upsert --from-datasource mimir-alertmanager
+
+  # Stage the datasource configuration under an explicit identifier
+  gcx alert alertmanager-imports upsert mimir-prod --from-datasource mimir-alertmanager
 
   # Stage the configuration under the identifier mimir-prod with two templates
   gcx alert alertmanager-imports upsert mimir-prod -f alertmanager.yaml \
@@ -317,13 +391,16 @@ with --promote.`,
 		Annotations: experimentalAnnotations(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Identifier = defaultAlertmanagerImportIdentifier
-			if len(args) == 1 {
+			explicitIdentifier := len(args) == 1
+			if explicitIdentifier {
 				opts.Identifier = args[0]
 			}
 			if err := opts.Validate(cmd); err != nil {
 				return err
 			}
-			userConfig, err := readAlertmanagerUserConfig(opts.File, cmd.InOrStdin(), opts.Templates)
+
+			ctx := cmd.Context()
+			userConfig, client, err := opts.readUserConfig(cmd, loader, explicitIdentifier)
 			if err != nil {
 				return err
 			}
@@ -338,16 +415,17 @@ with --promote.`,
 					return cancelledAlertmanagerImport("upsert --promote", opts.Identifier)
 				}
 			}
-			ctx := cmd.Context()
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
+			if client == nil {
+				restCfg, err := loader.LoadGrafanaConfig(ctx)
+				if err != nil {
+					return err
+				}
+				client, err = NewClient(restCfg)
+				if err != nil {
+					return err
+				}
 			}
-			client, err := NewClient(restCfg)
-			if err != nil {
-				return err
-			}
-			merge, err := client.ImportAlertmanagerConfig(ctx, userConfig, AlertmanagerImportOptions{
+			merge, err := client.ImportAlertmanagerConfig(ctx, *userConfig, AlertmanagerImportOptions{
 				Identifier:   opts.Identifier,
 				DryRun:       opts.DryRun,
 				Promote:      opts.Promote,
