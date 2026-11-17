@@ -77,6 +77,6 @@ Use the signal commands to query your data sources directly from the command lin
 | **Traces** | [`gcx traces`](../../cli-reference/#gcx-traces) | |
 | **Profiles** | [`gcx profiles`](../../cli-reference/#gcx-profiles) | [Compare profiles](../compare-profiles/) |
 
-To continue in Grafana, add `--share-link` or `--open` to a query command to print or open the query in Explore. Add `--drilldown-link` or `--open-drilldown` to use the matching Drilldown app instead. If Drilldown can't show the query, `gcx` uses the Explore link.
+To continue in Grafana, add `--share-link` or `--open` to a query command to print or open the query in Explore. On the `query` commands and `gcx profiles diff`, add `--drilldown-link` or `--open-drilldown` to use the matching Drilldown app instead; the `metrics` commands have no Drilldown equivalent. If Drilldown can't show the query, `gcx` uses the Explore link.
 
 To investigate an empty dashboard or missing application telemetry, refer to [Diagnose missing telemetry](../diagnose-missing-telemetry/).
