@@ -5,6 +5,9 @@ reference is `domain/Type/name` with exactly three parts, so a repository name
 that contains `/` does not fit. In a file, the domain, type and name are
 separate fields.
 
+Put every string value that comes from a repository in double quotes, so a
+name with `:` or `#` stays one YAML string.
+
 Every object needs `ttlSeconds`. Without it, gcx writes the object with no
 expiry. Use `604800` (7 days) unless the user asks for another value.
 
@@ -16,29 +19,29 @@ scope.
 ```yaml
 - domain: sourcecode
   type: Repository
-  name: github.com/contoso/shop
+  name: "github.com/contoso/shop"
   properties:
     provider: github
     vcs: git
-    host: github.com
-    url: https://github.com/contoso/shop
+    host: "github.com"
+    url: "https://github.com/contoso/shop"
     hosting: cloud
-    owner: contoso
-    fullName: contoso/shop
-    defaultBranch: main
+    owner: "contoso"
+    fullName: "contoso/shop"
+    defaultBranch: "main"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 - domain: sourcecode
   type: Repository
-  name: github.com/contoso/deploy-config
+  name: "github.com/contoso/deploy-config"
   properties:
     provider: github
     vcs: git
-    host: github.com
-    url: https://github.com/contoso/deploy-config
+    host: "github.com"
+    url: "https://github.com/contoso/deploy-config"
     hosting: cloud
-    owner: contoso
-    fullName: contoso/deploy-config
+    owner: "contoso"
+    fullName: "contoso/deploy-config"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 ```
@@ -52,24 +55,24 @@ One entry per resource the services use, in the `sourcecode` domain. A
 ```yaml
 - domain: sourcecode
   type: CloudResource
-  name: arn:aws:sqs:us-east-1:111122223333:orders
+  name: "arn:aws:sqs:us-east-1:111122223333:orders"
   properties:
     kind: sqs-queue
     provider: aws
-    resource_name: orders
-    arn: arn:aws:sqs:us-east-1:111122223333:orders
+    resource_name: "orders"
+    arn: "arn:aws:sqs:us-east-1:111122223333:orders"
     account_id: "111122223333"
-    region: us-east-1
+    region: "us-east-1"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 - domain: sourcecode
   type: CloudResource
-  name: arn:aws:s3:::contoso-invoices
+  name: "arn:aws:s3:::contoso-invoices"
   properties:
     kind: s3-bucket
     provider: aws
-    resource_name: contoso-invoices
-    arn: arn:aws:s3:::contoso-invoices
+    resource_name: "contoso-invoices"
+    arn: "arn:aws:s3:::contoso-invoices"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 ```
@@ -95,16 +98,16 @@ first failing entry.
   from:
     domain: metrics
     type: Service
-    name: checkout
+    name: "checkout"
     scope:
-      env: prod
-      namespace: shop
+      env: "prod"
+      namespace: "shop"
   to:
     domain: sourcecode
     type: Repository
-    name: github.com/contoso/shop
+    name: "github.com/contoso/shop"
   properties:
-    path: services/checkout
+    path: "services/checkout"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 - domain: sourcecode
@@ -112,16 +115,16 @@ first failing entry.
   from:
     domain: metrics
     type: Service
-    name: checkout
+    name: "checkout"
     scope:
-      env: prod
-      namespace: shop
+      env: "prod"
+      namespace: "shop"
   to:
     domain: sourcecode
     type: Repository
-    name: github.com/contoso/deploy-config
+    name: "github.com/contoso/deploy-config"
   properties:
-    path: environments/prod/checkout.yaml
+    path: "environments/prod/checkout.yaml"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 ```
@@ -134,16 +137,16 @@ first failing entry.
   from:
     domain: metrics
     type: Service
-    name: checkout
+    name: "checkout"
     scope:
-      env: prod
-      namespace: shop
+      env: "prod"
+      namespace: "shop"
   to:
     domain: sourcecode
     type: CloudResource
-    name: arn:aws:sqs:us-east-1:111122223333:orders
+    name: "arn:aws:sqs:us-east-1:111122223333:orders"
   properties:
-    path: services/checkout/internal/orders/publisher.go
+    path: "services/checkout/internal/orders/publisher.go"
     managed_by: gcx-map-source-code
   ttlSeconds: 604800
 ```
