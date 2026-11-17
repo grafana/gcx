@@ -14,7 +14,7 @@ weight: 25
 
 # Query logs on Grafana Cloud
 
-On Grafana Cloud, `gcx` estimates the cost of a Loki query, written in [LogQL](https://grafana.com/docs/loki/latest/query/), before it runs it. If the query is too expensive, `gcx` blocks it so you don't scan more log data than you need.
+On Grafana Cloud, `gcx` estimates the cost of a Loki query, written in [LogQL](https://grafana.com/docs/loki/latest/query/), before it runs it. If the query is too expensive and your stack enforces a budget, `gcx` blocks it so you don't scan more log data than you need.
 
 The check applies to these commands:
 
@@ -51,7 +51,7 @@ If your stack doesn't serve a policy, or `gcx` can't fetch it, `gcx` uses `shado
 
 ## Fix a blocked query
 
-When `gcx` blocks a query, the command fails with a `Query blocked` error and exit code `1`. The error shows the estimated scan, the budget, and how to narrow the query.
+When `gcx` blocks a query, the command fails with a `Query blocked` error and exit code `1`. The error shows the reasons, the estimated scan and budget if `gcx` measured the scan, and how to narrow the query.
 
 To fix a blocked query, try the following:
 
@@ -79,7 +79,8 @@ To learn more about writing efficient queries, refer to [Query best practices](h
 
 ## When the cost estimate fails
 
-If `gcx` can't estimate the cost, for example because Loki index statistics aren't available, the result depends on how you run `gcx`:
+If `gcx` can't estimate the cost, for example because Loki index statistics aren't available, the result depends on the mode and on how you run `gcx`:
 
-- **In a terminal:** `gcx` warns you and runs the query.
-- **In agent mode:** `gcx` blocks the query. Retry it, check the data source with `gcx datasources get <UID>`, or pass `--force`.
+- **`enforce` mode, in a terminal:** `gcx` warns you and runs the query.
+- **`enforce` mode, in agent mode:** `gcx` blocks the query. Retry it, check the data source with `gcx datasources get <UID>`, or pass `--force`.
+- **`shadow` mode:** `gcx` runs the query and logs that it couldn't check it.
