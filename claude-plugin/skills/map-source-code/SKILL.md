@@ -107,20 +107,40 @@ write, and the name and properties for each kind.
 ## Step 5: Match each service to a Knowledge Graph Service
 
 Find the Service and its exact scope. Scope is part of a Service's identity, so
-an edge needs the same `env`, `namespace` and `site` values as the Service:
+an edge needs the same name and the same `env`, `namespace` and `site` values as
+the Service.
+
+First find candidates. A `name=~` filter matches any name that contains the
+text, so use it only to discover names:
 
 ```bash
 gcx kg meta scopes
 gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=~<part-of-name>
 ```
 
-For several names at once, use Cypher. Keep `LIMIT` at 300 or lower:
+Then confirm each Service by its exact name and read its full scope. For one
+Service, filter on every scope key it has, including `site`:
+
+```bash
+gcx kg entities list --type Service --env <env> --namespace <namespace> --site <site> --property name=<exact-name>
+```
+
+For several names at once, use Cypher with exact names. Keep `LIMIT` at 300 or
+lower:
 
 ```bash
 gcx kg graph query "MATCH (s:Service) WHERE s.name IN ['checkout', 'cart'] RETURN s.name, s.env, s.namespace, s.site LIMIT 300"
 ```
 
-- **One match:** use it.
+Copy `env`, `namespace` and `site` from the result into the link. Leave out
+only a key the Service does not have.
+
+- **One exact match:** use it. A candidate that only contains the name, such as
+  `checkout-worker` for `checkout`, is not a match unless the code shows that
+  is the service's telemetry name.
+- **Same name in several sites or namespaces:** link only the one the deploy
+  config targets. If the config does not say, list the service as ambiguous
+  and do not link it.
 - **Several matches in different environments:** a `BUILT_FROM` link is the same
   for each, so add one link per Service. A `DEPLOYED_FROM` link goes only to
   the environment that config deploys to. A `READS_FROM` or `WRITES_TO` link
@@ -142,8 +162,10 @@ resource types can still take the repository links. The exact format is in
 [Write files](references/write-files.md).
 
 - Set `ttlSeconds` on every object. The default is 7 days (`604800`). A link
-  or resource that a later run does not write again then expires once the code
-  no longer supports it.
+  or resource that is not written again within that time expires. Each
+  repository's objects are renewed only by a run that scans that repository,
+  so see [Keeping links fresh](#keeping-links-fresh) before you set up
+  repeated runs.
 - Set `managed_by: gcx-map-source-code` on every entity and link. A team can
   then find and clean up its own writes.
 
@@ -201,3 +223,17 @@ Run the skill again after changes to the code or deployment config, or on a
 schedule, for example in CI after each merge. Each run writes the links and
 resources again, which renews their TTL. Links to code that moved or was
 deleted, and resources no code uses any more, are not written again and expire.
+
+Renewal works per repository. A run renews only what it wrote, so a run that
+scans repository A does not renew repository B's links, and B's links expire
+unless something scans B.
+
+- Run the skill in each repository's own CI, or in one job that scans every
+  repository it ever mapped.
+- Do not narrow a repeated run to fewer repositories than before, unless the
+  user wants the links of the left-out repositories to expire.
+- A one-off scan of a repository that no repeated run covers expires after the
+  TTL. Say so in the summary, or set a longer `ttlSeconds` if the user asks.
+
+A resource that several repositories use stays as long as any of their runs
+writes it.
