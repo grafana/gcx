@@ -61,6 +61,8 @@ Dashboards, folders, and data sources use Grafana basic roles, or custom role-ba
 
 On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope query access more tightly, for example `datasources:read` plus `datasources:query` on specific data sources.
 
+To learn more about roles and permissions for dashboards, folders, and data sources, refer to [Manage dashboard permissions](https://grafana.com/docs/grafana/latest/administration/user-management/manage-dashboard-permissions/) and [Data source management](https://grafana.com/docs/grafana/latest/administration/data-source-management/).
+
 ### Alerting
 
 `gcx alert` commands use the Grafana Alerting APIs and require these permissions:
@@ -74,6 +76,8 @@ On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope 
 | View contact points, mute timings, templates, and notification policies | `alert.provisioning:read` or `alert.notifications.provisioning:read` (or the per-resource `alert.notifications.*:read` actions) |
 | Create, update, or delete contact points, mute timings, templates, and notification policies | `alert.provisioning:write` or `alert.notifications.provisioning:write` |
 
+To learn more about roles and permissions for Grafana Alerting, refer to [Configure RBAC](https://grafana.com/docs/grafana/latest/alerting/set-up/configure-rbac/).
+
 ### Fleet Management
 
 `gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud access policy scope. You need these Collector app permissions:
@@ -84,6 +88,8 @@ On Grafana Cloud and Grafana Enterprise, you can use RBAC custom roles to scope 
 | Access the Collector app's wildcard routes (required by some read-only commands) | `grafana-collector-app:admin` (`plugins:grafana-collector-app:collector-app-admin` or Admin basic role) |
 | Look up stack details through the Collector app | Viewer basic role |
 | Check Kubernetes monitoring (`gcx instrumentation clusters list`) | `grafana-collector-app:read` and `grafana-collector-app:admin` |
+
+To learn more about roles and permissions for Fleet Management, refer to [Role-based access control for Fleet Management](https://grafana.com/docs/grafana-cloud/send-data/fleet-management/set-up/role-based-access-control/).
 
 ### Grafana Assistant
 
@@ -104,6 +110,8 @@ If a command such as `gcx assistant investigations list` fails, use the error me
 - **`insufficient permissions` or a named action (such as `grafana-assistant-app.investigations:read`):** Ask your administrator to assign you the Assistant Investigation User role.
 - **Commands that change resources or call Model Context Protocol (MCP) servers:** `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles.
 
+To learn more about roles and permissions for Grafana Assistant, refer to [Manage Assistant access with RBAC](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/).
+
 ### Frontend Observability
 
 `gcx frontend apps` commands use the Frontend Observability plugin (`grafana-kowalski-app`), except `apply-sourcemap`, which uploads directly to the Faro API using a Grafana Cloud credential.
@@ -116,6 +124,8 @@ If a command such as `gcx assistant investigations list` fails, use the error me
 | Upload source maps (`gcx frontend apps apply-sourcemap`) | Grafana Cloud credential (plus Grafana sign-in if resolving app names by display name) |
 
 An account with only `grafana-kowalski-app.apps:write` can create and update apps, but can't delete apps or source map bundles.
+
+To learn more about roles and permissions for Frontend Observability, refer to [Frontend Observability role-based access control](https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/rbac/).
 
 ### Grafana IRM
 
@@ -144,6 +154,8 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../guides/manage-oncall-notification-rules/) for the permissions those commands need.
 
+To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
+
 ### Synthetic Monitoring
 
 `gcx synthetic-monitoring` (aliased as `gcx sm`) commands go through the Synthetic Monitoring data source on your stack, using your Grafana sign-in. You need a Synthetic Monitoring plugin role:
@@ -158,6 +170,8 @@ For narrower access, use the granular roles, such as `plugins:grafana-synthetic-
 
 If `gcx` can't use the data source, it calls the Synthetic Monitoring API directly. That path needs a Grafana Cloud credential to create a Synthetic Monitoring token. Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-access-policy-scopes).
 
+To learn more about roles and permissions for Synthetic Monitoring, refer to [Manage users and teams for Synthetic Monitoring](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/user-and-team-management/).
+
 ### Grafana Cloud k6
 
 `gcx k6` permissions depend on whether you sign in with OAuth or a service account token. When you sign in with OAuth, commands go through the k6 plugin on your stack. When you sign in with a service account token, `gcx` exchanges the token with the k6 API directly and also uses a Grafana Cloud credential to look up your stack.
@@ -171,6 +185,8 @@ If `gcx` can't use the data source, it calls the Synthetic Monitoring API direct
 
 Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-access-policy-scopes) for configuring the `stacks:read` scope.
 
+To learn more about roles and permissions for Grafana Cloud k6, refer to [Configure RBAC](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/k6/projects-and-users/configure-rbac/).
+
 ### SLO
 
 `gcx slo` commands use the SLO plugin on your stack. SLO permissions follow folder permissions:
@@ -180,6 +196,8 @@ Refer to [Choose Grafana Cloud access policy scopes](#choose-grafana-cloud-acces
 | View SLOs in folders where you have folder read permission | `plugins:grafana-slo-app:slo-reader` |
 | Create, update, and delete SLOs in folders where you have folder edit permission | `plugins:grafana-slo-app:slo-writer` |
 | Everything the SLO Writer role can do, plus changing organization preferences | `plugins:grafana-slo-app:slo-admin` |
+
+To learn more about roles and permissions for SLO, refer to [Configure RBAC permissions](https://grafana.com/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/slo/set-up/rbac/).
 
 ## Choose Grafana Cloud access policy scopes
 
@@ -210,7 +228,7 @@ Fleet Management, IRM, and SLO commands, and direct telemetry queries such as `g
 
 If you're not sure which scopes you need, start with a narrow policy and add scopes as commands report missing-scope errors. You can change the policy's scopes without running `gcx login` again.
 
-Refer to [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for how to create the policy and token.
+To learn more about Grafana Cloud access policy scopes and how to create a policy and token, refer to [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/) and [Create access policies and tokens](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/).
 
 ## Fix an authorization error
 
