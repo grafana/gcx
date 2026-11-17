@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
@@ -304,7 +305,7 @@ func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, 
 	metrics := targetInfoMetrics()
 	responses := make([]*prometheus.QueryResponse, len(metrics))
 	eg, egCtx := errgroup.WithContext(ctx)
-	eg.SetLimit(10)
+	eg.SetLimit(shared.DefaultMaxConcurrency)
 	for i, metric := range metrics {
 		eg.Go(func() error {
 			expr, err := buildServicesQuery(metric, filters, nil)

@@ -12,13 +12,14 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/rest"
 )
 
 // maxConcurrentGroupFetches bounds the per-plugin-group fan-out in listAll,
 // matching the fan-out cap used elsewhere in the resources pipeline.
-const maxConcurrentGroupFetches = 10
+const maxConcurrentGroupFetches = shared.DefaultMaxConcurrency
 
 // errK8sNotServed signals that the app-platform datasource API did not serve a
 // request (the per-plugin group is absent, the discovery probe found no

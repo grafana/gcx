@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -262,7 +263,7 @@ func reconcileActions(ctx context.Context, c *Client, ruleID string, desired []e
 func attachActions(ctx context.Context, c *Client, specs []eval.RuleDefinition, stderr io.Writer) error {
 	errs := make([]error, len(specs))
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(10)
+	g.SetLimit(shared.DefaultMaxConcurrency)
 	for i := range specs {
 		g.Go(func() error {
 			actions, err := c.ListActions(gctx, specs[i].RuleID)

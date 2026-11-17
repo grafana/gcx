@@ -14,11 +14,12 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	kgquery "github.com/grafana/gcx/internal/query/kg"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 )
 
 // ruleFetchConcurrency caps parallel GetRule calls during ListRules fan-out.
-const ruleFetchConcurrency = 10
+const ruleFetchConcurrency = shared.DefaultMaxConcurrency
 
 const pluginResourcePath = kgquery.PluginResourcePath
 

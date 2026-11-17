@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"golang.org/x/sync/errgroup"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,7 +23,7 @@ import (
 // defaultMaxConcurrentListRequests bounds the per-resource-type fan-out in Pull
 // (one List/Get per filter) by default, matching the fan-out cap used elsewhere
 // in the resources pipeline. Override via WithMaxConcurrentListRequests.
-const defaultMaxConcurrentListRequests = 10
+const defaultMaxConcurrentListRequests = shared.DefaultMaxConcurrency
 
 // PullClient is a client that can pull resources from Grafana.
 type PullClient interface {

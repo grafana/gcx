@@ -15,6 +15,7 @@ import (
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -68,7 +69,7 @@ func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, ar
 			failures := make([]error, len(raw))
 			skipped := make([]bool, len(raw))
 			group, readCtx := errgroup.WithContext(ctx)
-			group.SetLimit(10)
+			group.SetLimit(shared.DefaultMaxConcurrency)
 			for i := range raw {
 				group.Go(func() error {
 					// Collection entries are summaries; detail and enrollment establish the

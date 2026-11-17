@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -32,7 +33,7 @@ type deleteOpts struct {
 
 func (opts *deleteOpts) setup(flags *pflag.FlagSet) {
 	bindOnErrorFlag(flags, &opts.OnError)
-	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
+	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", shared.DefaultMaxConcurrency, "Maximum number of concurrent operations")
 	flags.BoolVar(&opts.Force, "force", opts.Force, "Delete all resources of the specified resource types")
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the delete operation will be simulated")
 	flags.StringSliceVarP(&opts.Path, "path", "p", nil, "Path on disk containing the resources to delete")

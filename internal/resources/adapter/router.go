@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -149,7 +150,7 @@ func (r *ResourceClientRouter) GetMultiple(
 
 	res := make([]unstructured.Unstructured, len(names))
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(10)
+	g.SetLimit(shared.DefaultMaxConcurrency)
 	for i, name := range names {
 		g.Go(func() error {
 			obj, err := a.Get(ctx, name, opts)
