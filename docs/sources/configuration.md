@@ -25,7 +25,7 @@ You can configure `gcx` with a configuration file or using environment variables
 Run `gcx config path` to display the configuration files currently in use. `gcx` loads every existing source in this order, with later sources taking precedence:
 
 1. System: the platform system config directory (for example, `$XDG_CONFIG_DIRS/gcx/config.yaml`).
-2. User: `$HOME/.config/gcx/config.yaml`, falling back to the platform user config directory such as `$XDG_CONFIG_HOME/gcx/config.yaml`.
+2. User: `$HOME/.config/gcx/config.yaml`, falling back to the platform user config directory such as `$XDG_CONFIG_HOME/gcx/config.yaml`. On Windows, the user file is `%USERPROFILE%\.config\gcx\config.yaml`.
 3. Repository: `.gcx.yaml` in the current working directory.
 
 Named `stacks` and `cloud` entries are atomic across sources: a higher-priority entry replaces the same-named lower-priority entry completely. This keeps a credential
