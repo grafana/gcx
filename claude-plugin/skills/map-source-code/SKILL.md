@@ -257,10 +257,10 @@ Step 5, so a Service that was quiet in the last hour still shows up. Filter on
 you can tell same-named Services apart:
 
 ```bash
-gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, repo.name SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, repo.name SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, res.name SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, res.name SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, r.path SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, r.path SKIP 0 LIMIT 300" --since 7d
 ```
 
 300 is the default cap on `LIMIT`. If a query fails with
@@ -269,7 +269,10 @@ query again with `LIMIT` set to that cap, and use the cap in place of 300 below.
 
 A query returns at most `LIMIT` rows and says nothing about more. When a query
 returns 300 rows, run it again with `SKIP 300`, then `SKIP 600`, and so on,
-until a page has fewer than 300 rows. Compare the rows with the plan: every
+until a page has fewer than 300 rows. Keep the `ORDER BY` as shown. It sorts on
+every returned column, so two rows never tie, even for Services with the same
+name or a Service linked through several paths, and the pages neither repeat
+nor skip a row. Compare the rows with the plan: every
 written link should be there, with the same name, `env`, `namespace` and `site`
 as the Service in the plan.
 
