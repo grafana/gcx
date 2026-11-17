@@ -140,8 +140,14 @@ text, so use it only to discover names:
 
 ```bash
 gcx kg meta scopes --since 7d
-gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=~<part-of-name> --since 7d --limit 0
+gcx kg entities list --type Service --property name=~<part-of-name> --since 7d --limit 0
 ```
+
+Without `--env`, `--namespace` or `--site`, the search covers every scope.
+Use it this way for application code (`BUILT_FROM`): the code does not say
+where it runs, and the service may run in several environments. Add
+`--env` and `--namespace` only when the deploy config or the resource tells you
+the scope, to narrow a long list.
 
 `entities list` returns 50 rows unless you pass `--limit 0`, and the backend can
 still split the result into pages. gcx prints a hint in either case: "results
