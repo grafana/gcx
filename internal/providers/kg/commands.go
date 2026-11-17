@@ -3441,6 +3441,28 @@ func drillDownNote(signal, backend string) string {
 		backend + " label mapping to show"
 }
 
+// drillDownFlagError reports a time-range flag passed to kg meta logs,
+// traces or profiles with the reason it is not accepted; every other flag
+// error goes to the parent command's handler unchanged.
+func drillDownFlagError(signal string) func(*cobra.Command, error) error {
+	return func(cmd *cobra.Command, err error) error {
+		name, ok := strings.CutPrefix(err.Error(), "unknown flag: --")
+		if ok && (name == "from" || name == "to" || name == "since") {
+			path := cmd.CommandPath()
+			usage := gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf(
+				"unknown flag: --%s (%s takes no --from, --to or --since: it reads the "+
+					"%s drill-down configs as currently stored, not for a time range)",
+				name, path, signal), err)
+			usage.Suggestions = []string{fmt.Sprintf("Run '%s' without --from, --to or --since", path)}
+			return usage
+		}
+		if parent := cmd.Parent(); parent != nil {
+			return parent.FlagErrorFunc()(cmd, err)
+		}
+		return err
+	}
+}
+
 // drillDownSection describes one of kg meta logs, traces and profiles.
 type drillDownSection struct {
 	use, short string
@@ -3480,6 +3502,7 @@ func newDrillDownCmd(loader RESTConfigLoader, sec drillDownSection) *cobra.Comma
 		},
 	}
 	opts.setup(cmd.Flags())
+	cmd.SetFlagErrorFunc(drillDownFlagError(sec.signal))
 	return cmd
 }
 

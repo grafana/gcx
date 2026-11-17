@@ -1,5 +1,9 @@
 ## Unreleased
 
+- `gcx kg meta logs`, `traces` and `profiles` given `--from`, `--to` or
+  `--since` still fail with exit 2, and the error now says that these
+  commands take no time range because they read the drill-down configs as
+  currently stored.
 - `gcx kg meta logs`, `traces` and `profiles` no longer fail with
   "fetch ... configs: EOF" when the server answers with an empty body. They
   exit 0, print no configs, and add a `notes` entry for the section that says
