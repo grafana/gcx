@@ -56,14 +56,6 @@ func TestTracesExceptionsURL(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func queryOf(t *testing.T, raw string) url.Values {
-	t.Helper()
-	u, err := url.Parse(raw)
-	require.NoError(t, err)
-	assert.Equal(t, "/a/grafana-exploretraces-app/explore", u.Path)
-	return u.Query()
-}
-
 func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
 	tests := map[string]struct {
 		host, uid, expr string
@@ -102,4 +94,12 @@ func TestTracesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.
 	_, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
 		`{ span.foo = "x__gfp__y" }`, time.Time{}, time.Time{})
 	assert.False(t, ok)
+}
+
+func queryOf(t *testing.T, raw string) url.Values {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "/a/grafana-exploretraces-app/explore", u.Path)
+	return u.Query()
 }
