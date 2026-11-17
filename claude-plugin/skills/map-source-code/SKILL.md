@@ -27,9 +27,10 @@ Knowledge Graph already knows, and write the links. The result in the graph:
 - **Read the code, never change it.** Do not edit, build, commit or push in the
   scanned repositories, and do not run their scripts.
 - **Send only metadata.** What goes to the Knowledge Graph is repository URLs,
-  folder and file paths, service names, and resource ids (names, ARNs, queue
-  URLs). Never copy file contents, secrets, credentials, connection strings or
-  other configuration values into an entity or a link.
+  folder and file paths, service names, and resource ids (names and ARNs).
+  Resource ids often come from config values, and those may be written. Never
+  copy any other configuration value, file contents, secrets, credentials or
+  connection strings into an entity or a link.
 - **Link only from Services that exist.** Services come from telemetry. This
   skill does not create them, and the write API rejects writes to the telemetry
   domain.
@@ -72,7 +73,7 @@ schema is not installed on this stack yet. Stop and say so.
 Ask which local checkouts to scan if the user has not said. For each one:
 
 ```bash
-git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1#' -e 's#^[^/:@]+(:[^/@]*)?@##'
+git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#' -e 's#^[^/]*@##' -e 's#[?#].*$##'
 git -C '<dir>' symbolic-ref --short refs/remotes/origin/HEAD
 ```
 
@@ -82,9 +83,11 @@ another path to that checkout.
 
 A remote URL can hold a user name and a token between the scheme and the host,
 ending with `@`. An scp-style remote (`host:path`, with no scheme) can carry
-a user name, a token, or both at its start, ending with `@`. The `sed` removes
-that part in both forms before the URL is printed, including a plain `git@`, so it
-never reaches your output. Always read the remote this way, never with plain
+a user name, a token, or both at its start, ending with `@`. A token can itself
+contain `@`, and a URL can also carry a token in its query string (`?...`). The
+`sed` removes everything up to the last `@` before the host in both forms,
+including a plain `git@`, and drops any query string or `#` fragment, before
+the URL is printed, so none of it reaches your output. Always read the remote this way, never with plain
 `git remote -v` or `git config`, and never repeat a URL that still has that
 part, in chat or in any file.
 
