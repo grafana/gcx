@@ -71,7 +71,7 @@ schema is not installed on this stack yet. Stop and say so.
 Ask which local checkouts to scan if the user has not said. For each one:
 
 ```bash
-git -C '<dir>' remote get-url origin | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1#'
+git -C '<dir>' remote get-url origin | sed -E -e 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^@/]*@#\1#' -e 's#^[^/:@]+:[^/@]+@##'
 git -C '<dir>' symbolic-ref --short refs/remotes/origin/HEAD
 ```
 
@@ -80,7 +80,9 @@ one argument. A path that itself contains a single quote: ask the user for
 another path to that checkout.
 
 A remote URL can hold a user name and a token between the scheme and the host,
-ending with `@`. The `sed` removes that part before the URL is printed, so it
+ending with `@`. An scp-style remote (`host:path`, with no scheme) can carry
+the same part at its start. The `sed` removes it in both forms before the URL
+is printed, so it
 never reaches your output. Always read the remote this way, never with plain
 `git remote -v` or `git config`, and never repeat a URL that still has that
 part, in chat or in any file.
@@ -142,9 +144,11 @@ gcx kg entities list --type Service --env <env> --namespace <namespace> --proper
 ```
 
 `entities list` returns 50 rows unless you pass `--limit 0`, and the backend can
-still split the result into pages. If it prints a hint that results may be
-truncated, read the next `--page` too, or narrow the filter, before you decide
-that a Service is missing.
+still split the result into pages. gcx prints a hint in either case: "results
+may be truncated" for the row limit, and "more results available … use --page
+N" for a backend page. After either hint, read the next `--page`, and repeat
+until no hint appears, or narrow the filter. Only then decide that a Service is
+missing.
 
 Then confirm each Service by its exact name and read its full scope. For one
 Service, filter on every scope key it has, including `site`:
