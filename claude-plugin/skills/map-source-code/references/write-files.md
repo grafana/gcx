@@ -162,3 +162,9 @@ first failing entry.
   it only from the Service in that environment.
 - Scope keys must match the Service exactly. A Service without `site` has no
   `site` key in `scope`.
+- Write at most one link per link type, Service and target. A link is keyed on
+  its type and its two ends, not on `path`, so a second entry with another
+  `path` replaces the first. When several paths apply, pick one the same way on
+  every run, so repeated runs do not flip it: for `BUILT_FROM`, the deepest
+  folder that contains them all; for the other types, the first path in sorted
+  order. List the other paths in the summary.
