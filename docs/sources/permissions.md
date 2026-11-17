@@ -116,6 +116,19 @@ To learn more about roles and permissions for Agent Observability, refer to [Sec
 
 To learn more about roles and permissions for Grafana Alerting, refer to [Configure RBAC](https://grafana.com/docs/grafana/latest/alerting/set-up/configure-rbac/).
 
+### Annotations
+
+`gcx annotations` commands use the Grafana annotations API through your Grafana sign-in. Dashboard annotations also follow the permissions of their dashboard.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| List and view annotations and tags (`gcx annotations list`, `get`, `list-tags`) | `annotations:read` (Viewer basic role or higher) |
+| Create annotations (`gcx annotations create`) | `annotations:create` (Editor basic role or higher) |
+| Update annotations (`gcx annotations update`) | `annotations:write` (Editor basic role or higher) |
+| Delete annotations (`gcx annotations delete`) | `annotations:delete` (Editor basic role or higher) |
+
+To learn more about annotation actions and scopes, refer to [RBAC permissions, actions, and scopes](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/custom-role-actions-scopes/).
+
 ### Application Observability
 
 `gcx appo11y` commands query your stack's telemetry data sources and use the Application Observability plugin (`grafana-app-observability-app`) through your Grafana sign-in.
