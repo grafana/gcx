@@ -18,7 +18,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	drilldown := &dsquery.DrilldownLinkOpts{}
-	exceptions := &dsquery.DrilldownLinkOpts{AppName: "Traces Drilldown Exceptions"}
+	var drilldownView string
 	var limit int
 	var datasource string
 
@@ -35,8 +35,9 @@ open it in your browser after the query succeeds. Share links require an
 explicit time range via --since or --from/--to. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Traces Drilldown URL (only
 available for a flat, &&-joined spanset of scope.tag comparisons; anything
-else falls back to the Explore URL). Use --exceptions-link or
---open-exceptions for that same URL opened on the Exceptions tab.`,
+else falls back to the Explore URL). Add --drilldown-view exceptions to open
+the Exceptions tab instead of the trace list. The view requires
+--drilldown-link or --open-drilldown.`,
 		Example: `
   # Search traces using configured default datasource
   gcx datasources tempo query '{ span.http.status_code >= 500 }'
@@ -51,7 +52,7 @@ else falls back to the Explore URL). Use --exceptions-link or
   gcx datasources tempo query '{ span.http.status_code = 500 }' --drilldown-link
 
   # Print a Traces Drilldown Exceptions tab link
-  gcx datasources tempo query '{ resource.service.name = "checkout" }' --since 1h --exceptions-link
+  gcx datasources tempo query '{ resource.service.name = "checkout" }' --since 1h --drilldown-link --drilldown-view exceptions
 
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
@@ -67,6 +68,14 @@ else falls back to the Explore URL). Use --exceptions-link or
 			expr, err := shared.ResolveExpr(args, 0)
 			if err != nil {
 				return err
+			}
+			switch drilldownView {
+			case "", "traceList", "exceptions":
+			default:
+				return fmt.Errorf("invalid --drilldown-view %q: must be traceList or exceptions", drilldownView)
+			}
+			if drilldownView != "" && !drilldown.Enabled() {
+				return fmt.Errorf("--drilldown-view requires --drilldown-link or --open-drilldown")
 			}
 
 			ctx := cmd.Context()
@@ -107,13 +116,11 @@ else falls back to the Explore URL). Use --exceptions-link or
 			exploreURL := ""
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("search")
 			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("search", "Traces Drilldown")
-			exceptionsUnavailableMsg, exceptionsFailedOpenMsg := dsquery.DrilldownMessages("search", "Traces Drilldown Exceptions")
 			// Unbounded searches send no start/end, so no link can name the window they covered.
 			switch {
 			case !shared.IsRange():
 				unavailableMsg = "search succeeded, but Grafana Explore links require --since or --from/--to for Tempo trace searches"
 				drilldownUnavailableMsg = "search succeeded, but Traces Drilldown links require --since or --from/--to for Tempo trace searches"
-				exceptionsUnavailableMsg = "search succeeded, but Traces Drilldown Exceptions links require --since or --from/--to for Tempo trace searches"
 			case limit == 0:
 				unavailableMsg = "search succeeded, but Grafana Explore links do not support --limit 0 for Tempo trace searches"
 			default:
@@ -139,27 +146,14 @@ else falls back to the Explore URL). Use --exceptions-link or
 
 			var drilldownURL string
 			if drilldown.Enabled() && shared.IsRange() {
-				drilldownURL, _ = TracesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+				if drilldownView == "exceptions" {
+					drilldownURL, _ = TracesExceptionsURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+				} else {
+					drilldownURL, _ = TracesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+				}
 			}
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
 				*share, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
-				return err
-			}
-
-			var exceptionsURL string
-			if exceptions.Enabled() && shared.IsRange() {
-				exceptionsURL, _ = TracesExceptionsURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
-			}
-			// A failed trace-list link already printed or opened the Explore
-			// fallback. Mark those actions done so a failed Exceptions link
-			// does not repeat them.
-			exceptionsExplore := *share
-			if drilldown.Enabled() && drilldownURL == "" {
-				exceptionsExplore.ShareLink = exceptionsExplore.ShareLink || drilldown.ShareLink
-				exceptionsExplore.Open = exceptionsExplore.Open || drilldown.Open
-			}
-			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *exceptions, exceptionsURL, exceptionsUnavailableMsg, exceptionsFailedOpenMsg,
-				exceptionsExplore, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
 				return err
 			}
 
@@ -184,8 +178,7 @@ else falls back to the Explore URL). Use --exceptions-link or
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 	share.Setup(cmd.Flags(), "executed query")
 	drilldown.Setup(cmd.Flags(), "executed query", "Traces Drilldown")
-	cmd.Flags().BoolVar(&exceptions.ShareLink, "exceptions-link", false, "Print the Grafana Traces Drilldown Exceptions tab URL for the executed query to stderr")
-	cmd.Flags().BoolVar(&exceptions.Open, "open-exceptions", false, "Open the executed query in the Grafana Traces Drilldown Exceptions tab")
+	cmd.Flags().StringVar(&drilldownView, "drilldown-view", "", "Traces Drilldown tab for --drilldown-link and --open-drilldown: traceList (default) or exceptions")
 
 	return cmd
 }
