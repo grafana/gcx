@@ -39,6 +39,29 @@ func ruleStripFields() []string {
 	}
 }
 
+// RuleExample returns an example Rule manifest as JSON, suitable as a push template.
+func RuleExample() json.RawMessage {
+	desc := StaticDescriptor()
+	example := map[string]any{
+		"apiVersion": desc.GroupVersion.String(),
+		"kind":       desc.Kind,
+		"metadata": map[string]any{
+			"name": "sampled_apology_check",
+		},
+		"spec": map[string]any{
+			"enabled":       true,
+			"selector":      "all_assistant_generations",
+			"sample_rate":   0.1,
+			"evaluator_ids": []string{"contains_apology"},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("rules: failed to marshal example: %v", err))
+	}
+	return b
+}
+
 // NewTypedCRUD creates a TypedCRUD for Agent Observability evaluation rules.
 // The loader carries the command's --config selection; adapter factories pass
 // a zero-value loader and inherit the selection threaded through ctx by the

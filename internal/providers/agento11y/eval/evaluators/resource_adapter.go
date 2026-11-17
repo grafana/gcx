@@ -40,6 +40,34 @@ func evalStripFields() []string {
 	}
 }
 
+// EvaluatorExample returns an example Evaluator manifest as JSON, suitable as a push template.
+func EvaluatorExample() json.RawMessage {
+	desc := StaticDescriptor()
+	example := map[string]any{
+		"apiVersion": desc.GroupVersion.String(),
+		"kind":       desc.Kind,
+		"metadata": map[string]any{
+			"name": "contains_apology",
+		},
+		"spec": map[string]any{
+			"version":     "1",
+			"kind":        "regex",
+			"description": "Reply contains the word sorry (case-insensitive)",
+			"config": map[string]any{
+				"pattern": "(?i)sorry",
+			},
+			"output_keys": []map[string]any{
+				{"key": "contains_apology", "type": "bool", "pass_value": true},
+			},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("evaluators: failed to marshal example: %v", err))
+	}
+	return b
+}
+
 // NewTypedCRUD creates a TypedCRUD for Agent Observability evaluators.
 // The loader carries the command's --config selection; adapter factories pass
 // a zero-value loader and inherit the selection threaded through ctx by the
