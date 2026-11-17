@@ -18,6 +18,8 @@ type listDatabasesOpts struct {
 	Datasource string
 	Region     string
 	Catalog    string
+	Filter     string
+	Limit      int
 }
 
 func (opts *listDatabasesOpts) setup(flags *pflag.FlagSet) {
@@ -27,6 +29,8 @@ func (opts *listDatabasesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.athena is configured)")
 	flags.StringVar(&opts.Region, "region", "", "AWS region override")
 	flags.StringVar(&opts.Catalog, "catalog", "", "Data catalog to query")
+	flags.StringVar(&opts.Filter, "filter", "", "Only show databases whose name contains this text (case-insensitive)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "databases", athena.DiscoveryRowLimit)
 }
 
 func (opts *listDatabasesOpts) Validate() error {
@@ -40,9 +44,19 @@ func ListDatabasesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list-databases",
 		Short: "List databases in an Athena data catalog",
+		Long: `List the databases in an Athena data catalog.
+
+--filter keeps only databases whose name contains the given text, matched literally
+and case-insensitively. The Athena resource API has no name filter, so the
+filter and --limit are applied by gcx after the full list is fetched. By
+default every match is returned; with --limit N at most N are, and a warning
+on stderr says when more matched.`,
 		Example: `
   # List databases in the default catalog
   gcx datasources athena list-databases -d UID --catalog AwsDataCatalog
+
+  # Find databases by name, at most 20
+  gcx datasources athena list-databases -d UID --catalog AwsDataCatalog --filter prod --limit 20
 
   # With region override
   gcx datasources athena list-databases -d UID --catalog AwsDataCatalog --region us-east-1`,
@@ -87,13 +101,15 @@ func ListDatabasesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
 
+			databases = filterAndLimit(cmd.ErrOrStderr(), databases, opts.Filter, opts.Limit, "databases")
+
 			return opts.IO.Encode(cmd.OutOrStdout(), athena.StringList{Items: databases, Header: "DATABASE"})
 		},
 	}
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx datasources athena list-databases -d UID --catalog AwsDataCatalog -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources athena list-databases --filter SUBSTRING -d UID --catalog AwsDataCatalog -o json`,
 	}
 
 	opts.setup(cmd.Flags())

@@ -11,6 +11,11 @@ import (
 const (
 	DatasourceType   = "grafana-athena-datasource"
 	QueryFormatTable = 1
+	// DiscoveryRowLimit is the default --limit for the catalog, database,
+	// table and column discovery commands. Those commands had no cap before
+	// --limit existed, so the default is 0 (unbounded) to leave existing
+	// invocations unchanged.
+	DiscoveryRowLimit = 0
 )
 
 type QueryRequest struct {
@@ -28,6 +33,24 @@ type QueryRequest struct {
 type StringList struct {
 	Items  []string `json:"items"`
 	Header string   `json:"-"`
+}
+
+// FilterNames returns the names that contain filter as a literal,
+// case-insensitive substring, in their original order. An empty filter keeps
+// every name. The match is plain string comparison, so %, _, \\ and ' in the
+// filter match themselves; there is no pattern syntax to escape.
+func FilterNames(names []string, filter string) []string {
+	if filter == "" {
+		return names
+	}
+	needle := strings.ToLower(filter)
+	kept := make([]string, 0, len(names))
+	for _, n := range names {
+		if strings.Contains(strings.ToLower(n), needle) {
+			kept = append(kept, n)
+		}
+	}
+	return kept
 }
 
 var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+(\d+|ALL)\s+OFFSET\b)`)

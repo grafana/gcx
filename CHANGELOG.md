@@ -1,3 +1,13 @@
+## Unreleased
+
+- `gcx datasources athena list-catalogs`, `list-databases`, `list-tables`, and
+  `describe-table` now accept `--filter` and `--limit`. `--filter` keeps only
+  names that contain the text, matched literally and ignoring case. `--limit`
+  caps the number of rows. It defaults to 0, so a listing is still complete
+  unless you set it. When `--limit` drops matches, a warning on stderr names
+  `--filter` and `--limit 0`. Athena's resource API has no name filter, so gcx
+  applies both after it fetches the full list. (#1670)
+
 ## v1.8.0 (2026-11-17)
 
 ### Breaking changes

@@ -19,6 +19,8 @@ type describeTableOpts struct {
 	Region     string
 	Catalog    string
 	Database   string
+	Filter     string
+	Limit      int
 }
 
 func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
@@ -29,6 +31,8 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Region, "region", "", "AWS region override")
 	flags.StringVar(&opts.Catalog, "catalog", "", "Data catalog")
 	flags.StringVar(&opts.Database, "database", "", "Database name")
+	flags.StringVar(&opts.Filter, "filter", "", "Only show columns whose name contains this text (case-insensitive)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "columns", athena.DiscoveryRowLimit)
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -42,10 +46,19 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "describe-table TABLE",
 		Short: "List column names for an Athena table",
-		Long:  `List the column names of the specified table. Only names are returned, not types or other schema details.`,
+		Long: `List the column names of the specified table. Only names are returned, not types or other schema details.
+
+--filter keeps only columns whose name contains the given text, matched
+literally and case-insensitively. The Athena resource API has no name filter,
+so the filter and --limit are applied by gcx after the full list is fetched.
+By default every match is returned; with --limit N at most N are, and a
+warning on stderr says when more matched.`,
 		Example: `
   # List columns for a table
   gcx datasources athena describe-table my_table -d UID --database mydb
+
+  # Find columns by name in a wide table
+  gcx datasources athena describe-table my_table -d UID --database mydb --filter created
 
   # With catalog and region
   gcx datasources athena describe-table my_table -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
@@ -100,13 +113,15 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
 
+			columns = filterAndLimit(cmd.ErrOrStderr(), columns, opts.Filter, opts.Limit, "columns")
+
 			return opts.IO.Encode(cmd.OutOrStdout(), athena.StringList{Items: columns, Header: "COLUMN"})
 		},
 	}
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx datasources athena describe-table TABLE -d UID --catalog AwsDataCatalog --database mydb -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources athena describe-table TABLE --filter SUBSTRING -d UID --catalog AwsDataCatalog --database mydb -o json`,
 	}
 
 	opts.setup(cmd.Flags())
