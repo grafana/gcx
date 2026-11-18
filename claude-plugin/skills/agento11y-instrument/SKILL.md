@@ -223,7 +223,7 @@ the fetched llms.txt (locate it by its heading — do not trust line numbers, th
 | 6 | SYNC (non-stream) vs STREAM (stream) set correctly | streaming metrics (TTFT) corrupted | "Agent Observability architecture and ingest model", "Implementation rules" |
 | 6b | `operation_name` is a **recognized** value — `generateText` (SYNC default), `streamText` (STREAM default), `embeddings`, `execute_tool`, `framework_chain`, `framework_retriever`. Best: omit it and take the SDK default. Do **not** invent one like `"chat"` | the span reaches Tempo but the UI classifies `gen_ai.operation.name` as `unknown` → the conversation renders a synthetic generation node **with no attached span** → the trace does not show in the conversation and the "T" (trace) icon is absent, even though `trace_id`/`span_id` are set. Silent, like #1 | "Agent Observability architecture and ingest model", "Implementation rules" |
 | 7 | `parent_generation_ids` set on multi-agent / fan-in generations | no dependency DAG; upstream eval failures don't propagate | "Multi-agent dependency tracking" |
-| 8 | Workflow steps emitted for agentic pipelines with non-LLM nodes | execution graph invisible; node input/output state lost. Use the adapter if one exists, else `enqueue_workflow_step`; never both for one node (duplicates) | "Workflow step instrumentation (agentic pipelines)" |
+| 8 | Workflow steps emitted for agentic pipelines with non-LLM nodes | execution graph invisible; node input/output state lost. Use the adapter if one exists and turn on its workflow-step option: `capture_workflow_steps=True` (Python LangGraph/LangChain; on by default in Strands) or `captureWorkflowSteps: true` (JS LangGraph/LangChain). Without it the adapter sends generations only. Else use the manual API (`enqueue_workflow_step` / `enqueueWorkflowStep` / `EnqueueWorkflowStep`); never both for one node (duplicates) | "Workflow step instrumentation (agentic pipelines)" |
 | 9 | Env vars are `AGENTO11Y_*` (not legacy `SIGIL_*`); client built config-free when env present | drift; duplicated config | "Environment" |
 | 10 | Content-capture mode intentional (SDK default `no_tool_content`); no secrets in `tags`/`metadata`/`user_id` | PII/secrets leak into exports | "Content capture", "Tags, metadata, and user id" |
 | 11 | Client tags low-cardinality; end-user identity via `user_id`, not a tag | high-cardinality tags blow up metric labels | "Tags, metadata, and user id", "Implementation rules" |
@@ -274,6 +274,10 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
      or `gcx agento11y generations get <generation-id>` — check tokens, finish reason, cost, and (for
      a multi-agent pipeline) that `parent_generation_ids` reproduce the DAG. This proves generation
      ingest + `set_result` are wired. **It does NOT prove OTel is wired.**
+     For an agentic pipeline (#8), `gcx agento11y conversations get <conversation-id> --jq '.workflow_steps'`
+     should list one step per node, linked by `parent_step_ids`. Nodes that call a model have
+     `linked_generation_ids`; a routing or tool node may have none. Empty or missing means no steps
+     arrived.
 
    **Channel B — OTel spans/metrics** (the TracerProvider/MeterProvider → OTLP exporter →
    `/v1/traces`, `/v1/metrics`). Carries latency/token/cost **metrics**. This is checklist #1, the
