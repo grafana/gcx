@@ -232,8 +232,13 @@ State the classification explicitly, with the `file:line` evidence that led to i
   - **If the SDK also records generations in the same process, do not put `agento11y.record=true`
     on the resource.** A resource marker also selects the SDK's own spans. They carry the same
     generation IDs as the SDK's direct export, and duplicates are not merged, so a span copy with
-    less content can replace the SDK's record. Set the marker per span on the third-party model
-    spans only, for example with a span processor that filters by instrumentation scope.
+    less content can replace the SDK's record. Set the marker per span, only on model spans that
+    the SDK does not record, for example with a span processor. A filter by instrumentation scope
+    is not enough when an SDK-wrapped call goes through an auto-instrumented client: the inner
+    span has the same scope. Mark only the calls that need it, for example by setting a context
+    variable around those calls and reading it in the span processor.
+  - A process with both SDK calls and `otel` calls runs Step 3 for the SDK calls and Step 3b for
+    the `otel` calls.
   - If configuration or a small span processor cannot make the spans compatible (for example, a
     library that writes another vocabulary, such as flattened `gen_ai.prompt.N.*` attributes),
     propose switching the instrumentation library or using the SDK for those calls. Ask before you
@@ -244,10 +249,12 @@ State the classification explicitly, with the `file:line` evidence that led to i
 - **`broken`** — the SDK is present but wrong: metrics silently lost (no MeterProvider), export
   misconfigured, legacy `SIGIL_*` vars, stream/non-stream mode mismatch, `set_result`/`SetResult`
   never called, or `rec.err()`/`Err()` never checked. The same model call recorded by both the SDK
-  and opted-in OTel GenAI spans is also `broken` (duplicate generations, Step 3b O7). Keep one path
-  per call: to keep the SDK, remove the opt-in for those calls; to keep OTel, remove the SDK
-  wrapping for them, which changes app code, so confirm first. Then continue with Step 3 or
-  Step 3b. Fix first, then gap-check.
+  and opted-in OTel GenAI spans is also `broken` (duplicate generations, Step 3b O7). So is an SDK
+  call whose own spans a resource-level marker selects (see `otel` above). Keep one path per call.
+  By default, keep the SDK and remove the opt-in for those spans: that changes no app logic, and
+  the SDK keeps its features and metric labels. To keep OTel instead, remove the SDK wrapping,
+  which changes app code, so confirm first. Then continue with Step 3 or Step 3b. Fix first, then
+  gap-check.
 
 `none`, `partial`, and `broken` converge on the same checklist (Step 3); they differ only in how much
 is already done. `otel` uses Step 3b.
@@ -307,8 +314,10 @@ generations.
 
 Content-capture switches differ by library and version (O4). For example, Python instrumentations
 built on `opentelemetry-util-genai` write span content only when
-`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` is `SPAN_ONLY` or `SPAN_AND_EVENT`. In version
-1.2b0, the value `true` logs a warning and captures no content.
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` is `SPAN_ONLY` or `SPAN_AND_EVENT`. In
+`opentelemetry-util-genai` 1.2b0, the value `true` logs a warning and captures no content. If you
+cannot read the installed version (no lockfile, package not installed), say which results depend on
+it.
 
 For O5, take the id from the app's own conversation or session. If the instrumentation library has
 no hook for it, a span processor can set it when each span starts.
@@ -325,8 +334,8 @@ Emit the report using llms.txt's output contract (its "Output contract" section)
 first, and per opportunity — exact `file:line`, why it matters, a concrete diff proposal, a test
 plan, and any risk. Rank by severity: `.env` not taking effect (#0 — nothing lands at all) first,
 then missing OTel provider (metrics data loss), then broken export, then missing `agent_version`,
-then coverage gaps. For `otel`, rank item 0 and O1–O3 first (nothing lands without them), then O4
-and O5.
+then coverage gaps. For `otel`, rank item 0, O1–O3, and O7 first (nothing lands without the first
+ones, and O7 duplicates data), then O4 and O5.
 Every recommendation cites a `file:line`. Then stop and ask before applying anything.
 
 ## Step 5 — Apply, then verify (the loop)
