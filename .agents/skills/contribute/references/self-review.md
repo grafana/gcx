@@ -154,22 +154,21 @@ That judgment is exactly what authors get wrong.
 reads a page as the whole inventory — wrong but plausible instead of big but
 correct. So the partiality has to be disclosed somewhere the caller will see it.
 
-**Where, per output shape** — `docs/design/output.md` §15.2 settles this, and it
-is not "always in the payload":
+**Where, per output shape** — `docs/design/output.md` §15 settles this:
 
 | Output shape | Disclosure |
 |---|---|
-| Envelope (items + sibling keys) | `list_meta` in the payload, via the shared helpers |
+| New list command, or a list command whose structured output changes anyway | the `gcx.list` envelope (`type`, `schema_version`, `metadata`, `items`, §15.2): `metadata` is always present and carries truncation, limits, counts, filters and `next` |
+| Existing command-specific envelope with `list_meta` | keep `list_meta` (deprecated, §15.6) until that command's migration; do not add new producers |
 | **Bare array**, already released | **stderr hint only.** §15.2: bare arrays "cannot carry the signal; they get the stderr hint only and should migrate to an envelope when their consumers can absorb the shape change". So the envelope migration is sanctioned, but it is a breaking output change: treat it as an explicit compatibility migration — verify consumers can absorb it, and do not slip it into an unrelated feature PR. Otherwise keep the array, emit the stderr hint, and record the migration as a follow-up. (The frozen-surface rule is not the authority here — it covers command paths, aliases, flags and positional syntax. CONSTITUTION does lock payload shape in one narrower place: pre-contract envelopes named in § Dual-Purpose Design "retain their locked forms until their own versioned migrations") |
-| New command, your choice of shape | choose an envelope, so the signal has somewhere to live |
 
-**The shared mechanism** (for the envelope case): `internal/output/listmeta.go` —
+**The shared mechanism:** `internal/output/listmeta.go` —
 `BindListLimit` to bind the flag, the constructor matching your source shape
 (`TruncateCompleteList` for cheaply-complete sources, `PagedListMeta` or
-`TruncatePagedList` for paginated ones), `AttachListMeta` to finalize, and
-`EmitListTruncationHint` after the payload.
+`TruncatePagedList` for paginated ones), the envelope helper to finalize
+(it derives `next` from argv), and `EmitListTruncationHint` after the payload.
 
-**Its status, stated accurately:** `docs/design/output.md` §15 is marked **PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract, migrated so far only to the exemplar commands §15 names — read it there, since which commands have migrated changes as the contract rolls out. It is **not** a repo-wide requirement and **not** mandatory for every new list command. Note also that a client-side-capped source must not use the binder, because "0 means all" would be dishonest there — it discloses the cap via `ListMeta.Cap` and the cap-variant hint instead. Use the contract in `docs/design/output.md` when planning further migrations.
+**Its status, stated accurately:** `docs/design/output.md` §15 is **accepted** ([RFC 030](../../../../docs/rfcs/030-list-output-envelope.md)) and **required for new list commands**. Existing commands migrate in their own compatibility changes; §15.6 lists those still on `list_meta`. Query results and single objects are out of its scope. Note also that a client-side-capped source must not use the binder, because "0 means all" would be dishonest there — it discloses the cap via `metadata.limits.hardcap` and the cap-variant hint instead. Use the contract in `docs/design/output.md` when planning further migrations.
 
 Also check the zero-result path: a field your success schema declares as an
 array must not serialize as `null` when empty, in the machine formats your
