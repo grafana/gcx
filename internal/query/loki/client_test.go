@@ -296,6 +296,7 @@ func TestQueryRequestBody(t *testing.T) {
 			q := payload.Queries[0]
 
 			assert.Equal(t, tt.wantQueryType, q["queryType"])
+			assert.Equal(t, "gcx", q["supportingQueryType"])
 			assert.Equal(t, tt.wantFrom, payload.From)
 			assert.Equal(t, tt.wantTo, payload.To)
 			assert.InDelta(t, tt.wantInterval, q["intervalMs"], 0)

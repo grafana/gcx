@@ -24,6 +24,10 @@ You can work with resources in two ways:
 
 You can also [query your telemetry](#query-telemetry), such as metrics, logs, traces, and profiles, from the command line.
 
+{{< admonition type="note" >}}
+For the Grafana roles, RBAC actions, and Grafana Cloud access policy scopes each area requires, refer to [Roles and permissions](../../permissions/).
+{{< /admonition >}}
+
 ## Declarative resource workflows
 
 Use [`gcx resources`](../../cli-reference/#gcx-resources) to pull, push, inspect, edit, validate, and delete resources as JSON or YAML manifests. The same commands work for Grafana-native resources, such as `dashboards`, `folders`, `alertrules`, `routingtrees`, `templategroups`, and `timeintervals`, and for supported Grafana Cloud provider resources.
@@ -41,14 +45,15 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | Area | What you can manage | Command | Guides |
 | --- | --- | --- | --- |
 | **Dashboards** | Dashboards, their version history, and rendered snapshots | [`gcx dashboards`](../../cli-reference/#gcx-dashboards), [`gcx resources`](../../cli-reference/#gcx-resources) | [Dashboards as code](../dashboards-as-code/), [Lint resources](../lint-resources/) |
+| **Annotations** | Annotations on dashboards and panels, organization-wide annotations, and annotation tags | [`gcx annotations`](../../cli-reference/#gcx-annotations) | |
 | **Folders** | Folders | [`gcx resources`](../../cli-reference/#gcx-resources) | |
 | **Data sources** | Data source configurations and health checks | [`gcx datasources`](../../cli-reference/#gcx-datasources) | |
-| **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../../cli-reference/#gcx-alert), [`gcx resources`](../../cli-reference/#gcx-resources) | [Lint resources](../lint-resources/) |
+| **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../../cli-reference/#gcx-alert), [`gcx resources`](../../cli-reference/#gcx-resources) | [Lint resources](../lint-resources/), [Use gcx to manage alerting resources](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/alerting/set-up/provision-alerting-resources/gcx-provisioning/) |
 | **SLOs** | SLO definitions and reports | [`gcx slo`](../../cli-reference/#gcx-slo), [`gcx resources`](../../cli-reference/#gcx-resources) | |
 | **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../../cli-reference/#gcx-irm-incidents), [`gcx resources`](../../cli-reference/#gcx-resources) | [Incident descriptions](../manage-resources/#incident-descriptions) |
 | **IRM OnCall** | Schedules, escalation chains, integrations, and other OnCall configuration | [`gcx irm oncall`](../../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](../manage-oncall-notification-rules/) |
-| **Machine Learning** | Forecasts, holidays, outlier detectors, and their alerts | `gcx ml`, [`gcx resources`](../../cli-reference/#gcx-resources) | [Manage Machine Learning resources](../manage-machine-learning/) |
-| **Adaptive Telemetry** | Rules, policies, and recommendations for Adaptive Metrics, Logs, Traces, and Profiles | [`gcx metrics adaptive`](../../cli-reference/#gcx-metrics-adaptive), [`gcx logs adaptive`](../../cli-reference/#gcx-logs-adaptive), [`gcx traces adaptive`](../../cli-reference/#gcx-traces-adaptive), [`gcx profiles adaptive`](../../cli-reference/#gcx-profiles-adaptive) | |
+| **Machine Learning** | Forecasts, holidays, outlier detectors, and their alerts | [`gcx ml`](../../cli-reference/#gcx-ml), [`gcx resources`](../../cli-reference/#gcx-resources) | [Manage Machine Learning resources](../manage-machine-learning/) |
+| **Adaptive Telemetry** | Rules, policies, and recommendations for Adaptive Metrics, Logs, Traces, and Profiles, and log archiving (experimental) | [`gcx metrics adaptive`](../../cli-reference/#gcx-metrics-adaptive), [`gcx logs adaptive`](../../cli-reference/#gcx-logs-adaptive), [`gcx logs archive`](../../cli-reference/#gcx-logs-archive), [`gcx traces adaptive`](../../cli-reference/#gcx-traces-adaptive), [`gcx profiles adaptive`](../../cli-reference/#gcx-profiles-adaptive) | |
 | **Synthetic Monitoring** | Checks, probes, and saved queries | [`gcx synthetic-monitoring`](../../cli-reference/#gcx-synthetic-monitoring), [`gcx resources`](../../cli-reference/#gcx-resources) | |
 | **Performance Testing (k6)** | Projects, load tests, schedules, and test runs | [`gcx k6`](../../cli-reference/#gcx-k6) | |
 | **Fleet Management** | Collectors and configuration pipelines | [`gcx fleet`](../../cli-reference/#gcx-fleet) | |
@@ -57,7 +62,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Database Observability** | Monitored database instances | [`gcx dbo11y`](../../cli-reference/#gcx-dbo11y) | |
 | **Instrumentation** | Kubernetes clusters, cluster apps, and monitored services | [`gcx instrumentation`](../../cli-reference/#gcx-instrumentation) | |
 | **Grafana Assistant** | Conversations, investigations, MCP servers, Assistant Watchers, and change review checks | [`gcx assistant`](../../cli-reference/#gcx-assistant) | [Manage Assistant Watchers](../manage-assistant-watchers/), [Manage Assistant change review checks](../manage-change-review-checks/), [Check Assistant usage and limits](../assistant-usage/) |
-| **Agent Observability** | AI agents, conversations, evaluations, and prompt templates | [`gcx agento11y`](../../cli-reference/#gcx-agento11y) | |
+| **Agent Observability** | AI agents, conversations, evaluations, model cards, and prompt templates | [`gcx agento11y`](../../cli-reference/#gcx-agento11y) | |
 | **Knowledge Graph** | Entities, relationships, and the rules that shape them | [`gcx kg`](../../cli-reference/#gcx-kg) | |
 | **Grafana Cloud platform** | Organization memberships and Grafana Cloud stacks | [`gcx cloud`](../../cli-reference/#gcx-cloud) | |
 
@@ -71,5 +76,7 @@ Use the signal commands to query your data sources directly from the command lin
 | **Logs** | [`gcx logs`](../../cli-reference/#gcx-logs) | |
 | **Traces** | [`gcx traces`](../../cli-reference/#gcx-traces) | |
 | **Profiles** | [`gcx profiles`](../../cli-reference/#gcx-profiles) | [Compare profiles](../compare-profiles/) |
+
+To continue in Grafana, add `--share-link` or `--open` to a query command to print or open the query in Explore. On the `query` commands and `gcx profiles diff`, add `--drilldown-link` or `--open-drilldown` to use the matching Drilldown app instead; the `metrics` commands have no Drilldown equivalent. If Drilldown can't show the query, `gcx` uses the Explore link.
 
 To investigate an empty dashboard or missing application telemetry, refer to [Diagnose missing telemetry](../diagnose-missing-telemetry/).

@@ -1997,7 +1997,7 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "You're authenticated for the Grafana API (dashboards, datasources, queries, alerts, folders).")
 		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")
 		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
-		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
+		fmt.Fprintln(ew, "See: "+docs.HumanURL(docs.AccessPolicies))
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
 	// The probe only runs for an interactive human and only once per context, so

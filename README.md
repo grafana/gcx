@@ -511,7 +511,7 @@ gcx api /api/dashboards/calculate-diff -X POST -d @diff-request.json
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don’t exist, so we can make the product better.
 
-To find out more about `gcx` usage statistics, or for information on how to disable it, refer to the [Usage and statistics documentation](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
+To find out more about `gcx` usage statistics, or for information on how to disable it, refer to the [Usage and statistics documentation](https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/anonymous-usage-statistics/).
 
 ## Documentation
 
