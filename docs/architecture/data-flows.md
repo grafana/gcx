@@ -395,7 +395,9 @@ User invocation:
   │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
   │                                                                       │
   │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
-  │        Body: same structure with "type":"loki", "maxLines":limit     │
+  │        Body: same structure with "type":"loki" and "queryType":      │
+  │          "instant" or "range" (not "instant": true); log queries     │
+  │          also send "maxLines":limit                                  │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
@@ -450,17 +452,21 @@ Shared query CLI infrastructure lives in [internal/datasources/query](../../inte
 
 ### Instant vs Range Query
 
-Both Prometheus and Loki clients auto-detect the query mode from `QueryRequest.IsRange()`:
+Both Prometheus and Loki clients pick the query mode from `QueryRequest.IsRange()`. They mark the mode with different fields, because each Grafana datasource reads a different one. Grafana's Loki datasource ignores the legacy `instant` field, and a missing `queryType` means a range query.
 
 ```
 IsRange() == false (no --start/--end):
-  → "instant" mode: from="now-1m", to="now", query["instant"]=true
-  → Prometheus: ResultType="vector" (one value per series)
+  → from="now-1m", to="now"
+  → Prometheus: query["instant"]=true; ResultType="vector" (one value per series)
+  → Loki metric query: query["queryType"]="instant"; ResultType="vector"
+  → Loki log query: query["queryType"]="range" over the last minute,
+    because Loki rejects instant log queries
   → Graph output: RenderBarChart (horizontal bars)
 
 IsRange() == true (--start and --end provided):
   → "range" mode: from/to as Unix milliseconds
   → Prometheus: ResultType="matrix" ([]values per series)
+  → Loki: query["queryType"]="range"
   → Graph output: RenderLineChart (time series line chart)
 ```
 

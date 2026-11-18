@@ -269,6 +269,8 @@ github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a h
 github.com/grafana/grafana/pkg/apimachinery v0.0.0-20250903133002-4e28cba1c53a/go.mod h1:av5N0Naq+8VV9MLF7zAkihy/mVq5UbS2EvRSJukDHlY=
 github.com/grafana/mcp-doc-server v1.0.0 h1:59McgsHgNEa9Ifrh5VsXcJCz5pSQAbJNdDtF+6iK54I=
 github.com/grafana/mcp-doc-server v1.0.0/go.mod h1:ghhbVTtTKG11OjHFiztryyLWQIlNzPp1dx/IJ8/CZeg=
+github.com/grafana/mcp-grafana/lokiguard v0.1.0 h1:z60xEv8+zbR4vfaBDA9lWMJrFwLFBuj139M6WVfYKeE=
+github.com/grafana/mcp-grafana/lokiguard v0.1.0/go.mod h1:Tukxz12eeUBqR2Z/uBs27egshtHNjIgTHmroCUrYM1M=
 github.com/grafana/otel-checker v0.4.0 h1:yb1M9up+J08JmNpEa1DhFhyWisfedIFK+aAg/s6YS7g=
 github.com/grafana/otel-checker v0.4.0/go.mod h1:NRgm78Pcrn9Ba7h+s7sH2Sm2ahkBf7HWGB/FhweOz+c=
 github.com/grafana/promql-builder/go v0.0.6 h1:PEhzPoDSK+8mOT5pBgMQU3QzOUdlvaNnLQrSmUdPGWg=

@@ -49,6 +49,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx annotations list-tags": {Cost: "small", Hint: "-o json"},
 
 	// assistant
+	"gcx assistant usage get":                      {Cost: "large (many users need attention)", Hint: "Monthly Assistant limits. JSON groups metrics into yourUsage and, for admins, orgUsage. orgUsage.usersNeedingAttention includes only users at or above 80% of their cap. Use --jq \".orgUsage.usersNeedingAttention\" for the attention array. --top limits text rows only."},
 	"gcx assistant investigations cancel":          {Cost: "small"},
 	"gcx assistant investigations create":          {Cost: "small", Hint: "Starts a multi-agent Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user requests a Grafana Assistant investigation or continues an authorized Assistant workflow; handle an ordinary request to investigate or root-cause with direct signal queries. v1 stacks require --title and v2 stacks require --instruction; pass both to cover either. Example: --title=\"Checkout latency\" --instruction=\"Checkout latency spike after deploy\""},
 	"gcx assistant investigations get":             {Cost: "medium", Hint: "<id> -o json"},
@@ -640,6 +641,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
 	"gcx agento11y saved-conversations save":        {Cost: "small"},
 	"gcx agento11y saved-conversations delete":      {Cost: "small"},
+	"gcx agento11y saved-conversations create":      {Cost: "small", Hint: "-f fixture.json -o json"},
 	"gcx agento11y saved-conversations collections": {Cost: "small"},
 
 	"gcx agento11y collections list":                {Cost: "small"},
@@ -650,6 +652,16 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y collections list-conversations":  {Cost: "small"},
 	"gcx agento11y collections add-conversations":   {Cost: "small"},
 	"gcx agento11y collections remove-conversation": {Cost: "small"},
+
+	"gcx agento11y human-evaluators list": {Cost: "small", Hint: "-o json"},
+
+	"gcx agento11y review-queues list":        {Cost: "small"},
+	"gcx agento11y review-queues get":         {Cost: "medium", Hint: "<collection-id> [--conversation <conversation-id>] -o json"},
+	"gcx agento11y review-queues update":      {Cost: "small", Hint: "<collection-id> --rubric <human-evaluator-id> -o json"},
+	"gcx agento11y review-queues create":      {Cost: "small", Hint: "-f review-queue.yaml -o json"},
+	"gcx agento11y review-queues list-scores": {Cost: "medium", Hint: "<collection-id> --limit 100 -o json"},
+
+	"gcx agento11y reviews create": {Cost: "small", Hint: "-f review.yaml -o json"},
 
 	"gcx agento11y experiments list":               {Cost: "small"},
 	"gcx agento11y experiments get":                {Cost: "small"},

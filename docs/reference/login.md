@@ -75,7 +75,7 @@ it refuses a context that already has a stack or Grafana Cloud entry, a name
 that an existing stack entry uses, and `GRAFANA_SERVER`,
 `GRAFANA_PROXY_ENDPOINT` or `GRAFANA_TLS_*` in the environment. It asks no
 questions and saves no Grafana Cloud management credentials, not even
-`GRAFANA_CLOUD_TOKEN`. To manage Grafana Cloud products (SLOs, Synthetic
+`GRAFANA_CLOUD_TOKEN`. To manage Grafana Cloud products (stacks, Synthetic
 Monitoring, k6 and more), save a Cloud Access Policy token afterwards with
 `gcx cloud login --context <context> --cloud-token <token>`; see
 [Grafana Cloud product APIs](#grafana-cloud-product-apis).
@@ -297,10 +297,10 @@ that do not consistently honour the configured organisation.
 
 ### Grafana Cloud product APIs
 
-Commands under `gcx sm`, `gcx k6`, `gcx irm`, `gcx slo`, `gcx fleet`, and
-other Cloud product surfaces need a Grafana Cloud platform credential in
-addition to Grafana instance auth. A
-[Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/)
+`gcx cloud` commands (stack management), `gcx k6` with a service account
+token, and `gcx sm` when it falls back to the direct Synthetic Monitoring API
+need a Grafana Cloud platform credential in addition to Grafana instance auth. A
+[Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/)
 has the widest compatibility and is recommended for automation. Direct Cloud
 OAuth is available interactively but remains experimental, and some Cloud
 product clients do not yet accept it.
@@ -312,20 +312,21 @@ Create the token in either place:
 - **In your stack** (deep-link the `gcx login` prompt offers): `https://<your-stack>.grafana.net/a/grafana-auth-app` → Access Policies → Create access policy.
 - **From grafana.com**: **Administration → Cloud Access Policies → Create access policy** (`https://grafana.com/orgs/<your-org>/access-policies`).
 
-See [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
+See [Create access policies](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
 
 Scope the access policy to what you manage. `stacks:read` is the required baseline — it resolves your stack and gates login/token validation. Then add the scopes for the products you use:
 
 | Scope | Enables |
 |-------|---------|
 | `stacks:read` | **Required.** Stack discovery (resolves the stack slug for all Cloud commands; also covers `gcx k6` reads) |
-| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring and k6 (`gcx sm`, `gcx k6`) — these write verbs are needed to mint the Synthetic Monitoring token |
+| `metrics:write`, `logs:write`, `traces:write` | Synthetic Monitoring (`gcx sm`) — these write verbs are needed to mint the Synthetic Monitoring token |
 | `stacks:write` | Creating or updating stacks |
-| `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
+| `stacks:delete` | Deleting stacks (`gcx cloud stacks delete`) |
+| `set:alloy-data-write`, `metrics:read` | Instrumentation Hub setup (`gcx instrumentation setup`) — for the token you add to the Helm command it prints, not the `gcx` Cloud credential |
 
 `gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management reaches its API through the `grafana-collector-app` plugin proxy on your stack, so your Grafana login alone is enough. See [RFC 024](../rfcs/024-fleet-via-collector-app-proxy.md).
 
-The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6). IRM, SLO, and signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. For the Grafana roles and plugin permissions each product needs, see [Roles and permissions](../sources/permissions.md). When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
 The interactive `gcx login` prompt links to this guidance when it offers Cloud
 authentication choices.
@@ -529,7 +530,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 7. **GCOM 401 / Cloud Access Policy token rejected**
     - *Means:* the Cloud Access Policy token was rejected by GCOM or a Cloud product API.
-    - *Fix:* Verify the token at [grafana.com → Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/). Rotate if compromised. Provide the new token via `gcx login --context X --cloud-token glc_...`.
+    - *Fix:* Verify the token at [grafana.com → Access Policies](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/). Rotate if compromised. Provide the new token via `gcx login --context X --cloud-token glc_...`.
 
 8. **Health check or `/apis` connectivity failures**
     - *Means:* gcx could not reach the server during the validation pipeline — typically a wrong URL, DNS/proxy issue, or TLS mismatch.

@@ -63,7 +63,7 @@ You can find the up-to-date command reference guide in the [CLI command referenc
 
 ### Configure `gcx`
 
-Refer to [Configuration commands](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/configuration/#useful-commands) for an overview of useful commands to check your configuration.
+Refer to [Configuration commands](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/configuration/#useful-commands) for an overview of useful commands to check your configuration.
 
 ## Experimental commands
 
