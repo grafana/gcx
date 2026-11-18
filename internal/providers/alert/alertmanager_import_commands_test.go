@@ -121,6 +121,9 @@ func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T)
 		{name: "missing filename", args: []string{}, wantErr: "--filename / -f is required", wantExit: gcxerrors.ExitUsageError},
 		{name: "empty stdin", args: []string{"-f", "-"}, stdin: "\n", wantErr: "input is empty", wantExit: gcxerrors.ExitGeneralError},
 		{name: "empty identifier", args: []string{" ", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not be empty", wantExit: gcxerrors.ExitUsageError},
+		{name: "identifier with leading space", args: []string{" mimir-prod", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not have leading or trailing whitespace", wantExit: gcxerrors.ExitUsageError},
+		{name: "identifier with trailing space", args: []string{"mimir-prod ", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not have leading or trailing whitespace", wantExit: gcxerrors.ExitUsageError},
+		{name: "identifier with trailing tab", args: []string{"mimir-prod\t", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not have leading or trailing whitespace", wantExit: gcxerrors.ExitUsageError},
 		{name: "two identifiers", args: []string{"a", "b", "-f", "-"}, stdin: "route: {}", wantErr: "accepts at most 1 arg(s)"},
 	}
 

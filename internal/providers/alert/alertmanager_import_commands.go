@@ -591,8 +591,12 @@ identifier, the command also succeeds. The command asks for confirmation. Use
 }
 
 func validateAlertmanagerImportIdentifier(cmd *cobra.Command, identifier string) error {
-	if strings.TrimSpace(identifier) == "" {
+	trimmed := strings.TrimSpace(identifier)
+	if trimmed == "" {
 		return gcxerrors.NewCommandUsageError(cmd, "IDENTIFIER must not be empty", nil)
+	}
+	if identifier != trimmed {
+		return gcxerrors.NewCommandUsageError(cmd, "IDENTIFIER must not have leading or trailing whitespace", nil)
 	}
 	return nil
 }
