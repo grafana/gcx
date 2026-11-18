@@ -1,4 +1,6 @@
 ---
+aliases:
+  - ../guides/manage-machine-learning/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/manage-machine-learning/
 title: Manage Machine Learning resources
 labels:
   products:

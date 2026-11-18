@@ -483,7 +483,7 @@ for the runtimes and an example manifest, and
 
 ### Manage Assistant Watchers (experimental)
 
-Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/sources/guides/manage-assistant-watchers).
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/sources/resources/manage-assistant-watchers.md).
 
 Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
 
@@ -520,9 +520,9 @@ To find out more about `gcx` usage statistics, or for information on how to disa
 | [Installation](docs/sources/installation.md) | Install gcx on macOS, Linux, and Windows |
 | [Authentication](docs/sources/authentication.md) | Authenticate `gcx` |
 | [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
-| [Dashboards as Code](docs/sources/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
+| [Dashboards as Code](docs/sources/resources/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Managing Resources](docs/sources/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
-| [Linting Resources](docs/sources/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Linting Resources](docs/sources/resources/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 
