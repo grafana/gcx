@@ -79,8 +79,9 @@ metrics.setGlobalMeterProvider(mp);
 
 ## Instrumentation preference order
 
-First check whether the app already emits compatible OpenTelemetry GenAI spans. If it does, reuse
-them and do not add the SDK for those calls: follow SKILL.md Step 3b and the public guide
+First check whether the app already emits OpenTelemetry GenAI spans for its model calls (SKILL.md
+Step 2 defines the minimum). If it does, reuse them and do not add the SDK for those calls: follow
+SKILL.md Step 3b and the public guide
 [Instrument agents with OpenTelemetry](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/get-started/opentelemetry/).
 
 Otherwise, use the highest-level SDK option that exists for the app's language; do not assume symmetry.

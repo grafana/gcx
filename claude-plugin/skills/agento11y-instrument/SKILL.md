@@ -27,10 +27,10 @@ lives in agento11y's `llms.txt` "Path B". Fetch it rather than restating it here
 the flow and the decision logic. A minimal fallback lives in
 [references/instrumentation.md](references/instrumentation.md) for when the fetch is unavailable.
 
-Not every app needs the SDK. If the app already emits compatible OpenTelemetry (OTel) GenAI spans,
-reuse them: classify it as `otel` (Step 2) and run the OpenTelemetry checklist (Step 3b) instead of
-adding the SDK. The reference for that path is the llms.txt section "Choose OpenTelemetry or the
-Grafana SDK" and the public guide
+Not every app needs the SDK. If the app already emits OpenTelemetry (OTel) GenAI spans for its
+model calls (Step 2 defines the minimum), reuse them: classify it as `otel` (Step 2) and run the
+OpenTelemetry checklist (Step 3b) instead of adding the SDK. The reference for that path is the
+llms.txt section "Choose OpenTelemetry or the Grafana SDK" and the public guide
 [Instrument agents with OpenTelemetry](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/get-started/opentelemetry/).
 
 ## Rules
@@ -224,23 +224,29 @@ State the classification explicitly, with the `file:line` evidence that led to i
 - **`none` (greenfield)** — no SDK import and no OTel GenAI instrumentation. Full SDK setup from
   scratch.
 - **`otel`** — OTel GenAI instrumentation already covers the model calls (Step 1, item 5), and the
-  SDK does not record those calls. This applies even when the spans are not yet compatible, for
-  example without the opt-in, without content, or without a tracer provider; Step 3b finds those
-  gaps. Reuse the spans and do **not** add the SDK for them. Run the OpenTelemetry checklist
-  (Step 3b), not Step 3.
+  SDK does not record those calls. A call counts as covered when it produces its own span with
+  `gen_ai.operation.name` set to `chat`, `generate_content`, `text_completion`, or `invoke_agent`.
+  A few ad-hoc `gen_ai.*` attributes on other app spans do not count; those calls are `none`. A
+  covered call is `otel` even when its spans are not yet compatible, for example without the
+  opt-in, content, provider and model, or a tracer provider; Step 3b finds those gaps. Reuse the
+  spans and do **not** add the SDK for them. Run the OpenTelemetry checklist (Step 3b), not
+  Step 3.
   - If the developer also needs SDK-only APIs (hooks such as guards, conversation ratings, or
     experiments), add the SDK for those APIs only, and do not wrap the model calls that the spans
     already record.
   - If spans cover only some model calls, treat those calls as `otel` and the rest as `none`.
-  - **If the SDK also records generations in the same process, do not put `agento11y.record=true`
-    on the resource.** A resource marker also selects the SDK's own spans. They carry the same
-    generation IDs as the SDK's direct export, and ingest keeps whichever copy arrives first, so a
-    span copy with less content can be stored instead of the SDK's record. Set the marker per
-    span, only on model spans that the SDK does not record, for example with a span processor. A
-    filter by instrumentation scope is not enough when an SDK-wrapped call goes through an
-    auto-instrumented client: the inner span has the same scope. Mark only the calls that need it,
-    for example by setting a context variable around those calls and reading it in the span
-    processor.
+  - **If the SDK also records generations in the same process, a resource marker alone is
+    wrong.** It also selects the SDK's own spans. They carry the same generation IDs as the SDK's
+    direct export, and ingest keeps whichever copy arrives first, so a span copy with less content
+    can be stored instead of the SDK's record. A span-level marker wins over the resource marker:
+    keep the resource marker and set `agento11y.record=false` on the SDK's own spans in a span
+    processor, selected by the SDK's instrumentation scope. That needs no call-site change. It
+    does not cover an SDK-wrapped call that goes through an auto-instrumented client: the inner
+    span has the same scope as the `otel` spans. Exclude those inner spans call by call: for
+    example, set a context variable around each SDK-wrapped call, and let the span processor set
+    `false` on spans that start while it is set. Skip the `false`
+    step if the SDK exports generations with its experimental `otel` protocol: its spans then carry
+    a span-level `true` and are its only record.
   - A process with both SDK calls and `otel` calls runs Step 3 for the SDK calls and Step 3b for
     the `otel` calls.
   - If configuration or a small span processor cannot make the spans compatible (for example, a
@@ -257,12 +263,13 @@ State the classification explicitly, with the `file:line` evidence that led to i
   call whose own spans a resource-level marker selects (see `otel` above). Keep one path per call.
   By default, keep the SDK and stop the OTel copy; the SDK keeps its features and metric labels.
   If the marker is on the resource and no call is `otel`, remove the resource marker. If some
-  calls are `otel`, move the marker to the span processor described under `otel` above; removing
-  the resource marker alone would also stop those calls. If the marker is on the span, remove it
-  from the duplicated spans. Removing or moving the marker touches only the OTel setup; marking per
-  call can still need a line at each call site, as `otel` above describes. To keep OTel instead,
-  remove the SDK wrapping, which changes app code, so confirm first. Then continue with Step 3 or
-  Step 3b. Fix first, then gap-check.
+  calls are `otel`, keep the resource marker and exclude the SDK's spans with a span-level
+  `false`, as `otel` above describes; removing the resource marker would also stop the `otel`
+  calls. If the marker is on the span, remove it from the duplicated spans. These changes touch
+  only the OTel setup, except marking an SDK-wrapped call through an auto-instrumented client,
+  which can need a line at each call site. To keep OTel instead, remove the SDK wrapping, which
+  changes app code, so confirm first. Then continue with Step 3 or Step 3b. Fix first, then
+  gap-check.
 
 `none`, `partial`, and `broken` converge on the same checklist (Step 3); they differ only in how much
 is already done. `otel` uses Step 3b.
@@ -295,8 +302,9 @@ the fetched llms.txt (locate it by its heading — do not trust line numbers, th
 Walk each item against the code and the export config. Record PRESENT / MISSING / WRONG with
 `file:line`. The reference is the llms.txt section "Choose OpenTelemetry or the Grafana SDK" and the
 [public guide](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/get-started/opentelemetry/).
-Step 3 item 0 (the `.env` takes effect) applies here too, with only its `OTEL_*` probe: this path
-has no `AGENTO11Y_ENDPOINT`.
+Step 3 item 0 (the `.env` takes effect) applies here too. For the `otel` calls, only its `OTEL_*`
+probe matters: they do not use `AGENTO11Y_ENDPOINT`. In a mixed process (Step 2), Step 3 runs
+item 0 in full for the SDK calls.
 
 What a third-party instrumentation library writes depends on its installed version. Read the
 installed package source or changelog, or capture spans with an in-memory exporter. Do not decide
@@ -306,8 +314,8 @@ installed), say which results depend on it.
 | # | Check | Symptom when it fails |
 |---|-------|-----------------------|
 | O1 | A tracer provider with an OTLP exporter is initialized before the first model call, in the app code or by a zero-code agent (Step 1, item 5). The exporter points at the stack's OTLP endpoint, with a token that has `traces:write`. Export env vars alone do not instrument the app | nothing is exported |
-| O2 | `agento11y.record=true` is on the resource or on the GenAI spans. To set it on the resource, append `,agento11y.record=true` to an existing `OTEL_RESOURCE_ATTRIBUTES` value; do not replace the value. If the SDK also records generations in this process, use the span-level marker only (Step 2). A span-level `false` excludes that span. Confirm the marker is on the exported resource or span (for example, with an in-memory exporter): some resource constructors ignore `OTEL_RESOURCE_ATTRIBUTES` | spans reach the stack's traces, but no conversation appears |
-| O3 | Each inference span (`gen_ai.operation.name` is `chat`, `generate_content`, or `text_completion`) has `gen_ai.provider.name` and `gen_ai.request.model`. Older libraries write `gen_ai.system` instead of `gen_ai.provider.name`; ingest accepts it. Do not add a provider or model to `invoke_agent` spans whose child model spans already produce generations: the agent span would become a second generation with the same answer. If `invoke_agent` spans are the only GenAI spans, they need the same provider and model attributes: ingest skips an `invoke_agent` span that names neither | the span does not become a generation. Tool-call spans never create standalone generations; that is expected |
+| O2 | `agento11y.record=true` is on the resource or on the GenAI spans. To set it on the resource, append `,agento11y.record=true` to an existing `OTEL_RESOURCE_ATTRIBUTES` value; do not replace the value. A span-level `false` excludes that span, even under a resource marker. If the SDK also records generations in this process, follow Step 2: a resource marker then needs a span-level `false` on the SDK's own spans. Confirm the marker is on the exported resource or span (for example, with an in-memory exporter): some resource constructors ignore `OTEL_RESOURCE_ATTRIBUTES` | spans reach the stack's traces, but no conversation appears |
+| O3 | Each span that should become a generation has `gen_ai.provider.name` and `gen_ai.request.model`. Every inference span (`gen_ai.operation.name` is `chat`, `generate_content`, or `text_completion`) needs them. An `invoke_agent` span needs them only when no child model span produces a generation for that turn; otherwise do not add them, because the agent span would become a second generation with the same answer. Ingest skips an `invoke_agent` span that names neither. Older libraries write `gen_ai.system` instead of `gen_ai.provider.name`; ingest accepts it | the span does not become a generation. Tool-call spans never create standalone generations; that is expected |
 | O4 | Content capture is the developer's decision, as in Step 3 item 10: ask before you turn it on. If the developer wants it, it is on and writes `gen_ai.input.messages` and `gen_ai.output.messages` as span attributes in the GenAI message format. Check the values the installed library expects: Python instrumentations built on `opentelemetry-util-genai` write span content only with `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` and `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` set to `SPAN_ONLY` or `SPAN_AND_EVENT`. With that opt-in, the value `true` logs a warning and captures nothing; without it, `true` can send content as log events only. Sensitive content is removed before export | the conversation appears without messages. Content sent only as OTLP logs does not populate conversations |
 | O5 | `gen_ai.conversation.id` is reused across the calls of one conversation; take it from the app's own conversation or session (a span processor can set it when the library has no hook). `gen_ai.agent.name` is set on inference spans, and `gen_ai.agent.version` too when the app has a version (O8 requires it) | each trace becomes its own conversation; the agent is listed under the resource's `service.name` |
 | O6 | Collectors (Alloy, OTel Collector) keep the span and resource attributes, and sampling keeps the GenAI spans | generations are missing, or the attributes from O2–O5 are lost on the way |
@@ -382,10 +390,12 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
    `gen_ai.agent.name` (O5), the agent is listed under the resource's `service.name`, so look for
    it there too. If a generation lands without messages, check O4. Skip Channel B below: it checks
    the SDK's providers, spans, and metrics, and O1 already covers the tracer provider. Check
-   metrics only for O8: run the app with the metric exporter's debug log on, confirm
-   `POST …/v1/metrics → 2xx`, then open the agent's page. If the export succeeds but no
-   Performance tab appears after a few minutes, the metrics lack the O8 attributes, or their agent
-   name or version differs from those on the spans.
+   metrics only for O8. First read the attributes on the exported metrics, for example with a
+   console or in-memory metric exporter: without `gen_ai.agent.name` and `gen_ai.agent.version`
+   the tab cannot appear, so report that and stop. Otherwise run the app with the metric
+   exporter's debug log on, confirm `POST …/v1/metrics → 2xx`, then open the agent's page. If no
+   Performance tab appears after a few minutes, the metrics' agent name or version differs from
+   those on the spans.
 
    **Channel B — OTel spans/metrics, SDK path only** (the TracerProvider/MeterProvider → OTLP
    exporter → `/v1/traces`, `/v1/metrics`). Carries latency/token/cost **metrics**. This is
