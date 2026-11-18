@@ -3,6 +3,7 @@ package kg_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -739,5 +740,40 @@ func TestSuppressionsUpsert_RejectsBadInput(t *testing.T) {
 			assert.Contains(t, err.Error(), "failed to parse suppressions file")
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
+	}
+}
+
+func TestSuppressionsUpsert_RejectsEmptyName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{name: "bare single", input: "matchLabels:\n  job: api\n", wantErr: "suppression 0 has an empty name"},
+		{name: "list entry", input: "- name: a\n- matchLabels:\n    job: api\n", wantErr: "suppression 1 has an empty name"},
+	}
+	for _, tt := range tests {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s dry-run=%t", tt.name, dryRun), func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Errorf("no request may be sent, got %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+				defer server.Close()
+
+				args := []string{"upsert", "-f", "-"}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+				cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+				cmd.SilenceUsage = true
+				cmd.SilenceErrors = true
+				cmd.SetArgs(args)
+				cmd.SetIn(bytes.NewBufferString(tt.input))
+				err := cmd.Execute()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			})
+		}
 	}
 }
