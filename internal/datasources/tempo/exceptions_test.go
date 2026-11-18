@@ -70,7 +70,7 @@ func TestExceptionsCmd_GroupsSpanSample(t *testing.T) {
 	assert.Contains(t, stdout, "event.exception.type%7C%3D%7CTimeoutError")
 	assert.Contains(t, stdout, `"traces_sampled": 1`)
 	assert.Contains(t, stderr, "exception counts use the first 1 traces")
-	assert.Contains(t, stderr, "--limit 2")
+	assert.Regexp(t, `--limit['"\s]+2`, stderr)
 
 	tableOut, _, err := execTempoCmd(tempo.ExceptionsCmd(loader), []string{
 		"exceptions", `{ resource.service.name = "checkout" }`, "--since", "1h", "--limit", "1",
