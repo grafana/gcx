@@ -2,6 +2,7 @@
 aliases:
   - ../guides/manage-machine-learning/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/manage-machine-learning/
 title: Manage Machine Learning resources as code
+menu title: Manage Machine Learning as code
 labels:
   products:
     - cloud

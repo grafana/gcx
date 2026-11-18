@@ -1,7 +1,8 @@
 ---
 aliases:
   - ../guides/dashboards-as-code/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/dashboards-as-code/
-title: Dashboards as code
+title: Manage dashboards as code with gcx
+menuTitle: Manage dashboards as code
 labels:
   products:
     - cloud
