@@ -60,6 +60,7 @@ func TestSearch(t *testing.T) {
 				assert.Equal(t, "1700000000", r.URL.Query().Get("start"))
 				assert.Equal(t, "1700003600", r.URL.Query().Get("end"))
 				assert.Equal(t, "5", r.URL.Query().Get("limit"))
+				assert.Empty(t, r.URL.Query().Get("spss"))
 				writeJSON(t, w, tempo.SearchResponse{
 					Traces: []tempo.SearchTrace{
 						{TraceID: "abc123", RootServiceName: "svc", RootTraceName: "GET /", DurationMs: 42},

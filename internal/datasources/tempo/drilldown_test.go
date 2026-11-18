@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/datasources/query/scenesfiltertest"
 	"github.com/grafana/gcx/internal/datasources/tempo"
+	qtempo "github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +70,29 @@ func TestTracesDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing
 		decoded := scenesfiltertest.Decode(filters[0])
 		assert.Equal(t, scenesfiltertest.Filter{Key: "resource.service.name", Operator: "=~", Value: value}, decoded, value)
 	}
+}
+
+func TestExceptionRowFilters(t *testing.T) {
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"},
+		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
+	}, tempo.ExceptionRowFilters(`{ resource.service.name = "checkout" }`, "checkout", "TimeoutError"))
+
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "span", Tag: "http.status_code", Operator: "=", Value: "500"},
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"},
+		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
+	}, tempo.ExceptionRowFilters(`{ span.http.status_code = 500 }`, "checkout", "TimeoutError"))
+
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "api"},
+		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
+	}, tempo.ExceptionRowFilters(`{ status = error } | count()`, "api", "TimeoutError"))
+
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "api"},
+	}, tempo.ExceptionRowFilters("", "api", "Unknown"))
+	assert.Empty(t, tempo.ExceptionRowFilters("", "", "Unknown"))
 }
 
 func TestTracesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {

@@ -24,7 +24,9 @@ type TraceQLFilter struct {
 // link instead of risking an inaccurate one.
 func isTraceQLScope(scope string) bool {
 	switch scope {
-	case "span", "resource", "trace", "parent", "instrumentation":
+	case "span", "resource", "trace", "parent", "instrumentation", "event":
+		// event attributes use a dot (event.exception.type). Event intrinsics
+		// such as event:name use a colon and stay unsupported here.
 		return true
 	default:
 		return false

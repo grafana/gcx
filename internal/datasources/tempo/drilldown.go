@@ -2,6 +2,7 @@ package tempo
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -36,12 +37,72 @@ func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
 // back to the plain Explore link instead of showing an inaccurate Drilldown
 // link.
 func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
-	if host == "" || datasourceUID == "" || expr == "" {
+	filters, ok := drilldownFilters(host, datasourceUID, expr)
+	if !ok {
 		return "", false
 	}
+	return tracesDrilldownURL(host, datasourceUID, filters, start, end, "rate", "traceList")
+}
 
+// TracesExceptionsURL builds a Traces Drilldown link that opens the Exceptions
+// tab (var-metric=errors, actionView=exceptions). An empty expr opens the tab
+// with no var-filters, which is every service. A non-empty expr must be the
+// same flat spanset TracesDrilldownURL accepts; the tab adds status = error
+// itself, so that comparison does not belong in var-filters.
+func TracesExceptionsURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
+	if host == "" || datasourceUID == "" {
+		return "", false
+	}
+	var filters []tempo.TraceQLFilter
+	if strings.TrimSpace(expr) != "" {
+		parsed, ok := drilldownFilters(host, datasourceUID, expr)
+		if !ok {
+			return "", false
+		}
+		filters = parsed
+	}
+	return tracesDrilldownURL(host, datasourceUID, filters, start, end, "errors", "exceptions")
+}
+
+// ExceptionRowFilters are the Exceptions tab filters for one row: the caller's
+// flat comparisons, plus that row's service and exception type. A non-flat
+// caller filter is dropped. "Unknown" is the placeholder for a missing type.
+func ExceptionRowFilters(filter, service, typ string) []tempo.TraceQLFilter {
+	var filters []tempo.TraceQLFilter
+	if parsed, ok := tempo.ParseFlatSpansetFilters(filter); ok {
+		filters = append(filters, parsed...)
+	}
+	if service != "" && !hasExactFilter(filters, "resource", "service.name", service) {
+		filters = append(filters, tempo.TraceQLFilter{Scope: "resource", Tag: "service.name", Operator: "=", Value: service})
+	}
+	if typ != "" && typ != "Unknown" && !hasExactFilter(filters, "event", "exception.type", typ) {
+		filters = append(filters, tempo.TraceQLFilter{Scope: "event", Tag: "exception.type", Operator: "=", Value: typ})
+	}
+	return filters
+}
+
+func hasExactFilter(filters []tempo.TraceQLFilter, scope, tag, value string) bool {
+	for _, f := range filters {
+		if f.Scope == scope && f.Tag == tag && f.Operator == "=" && f.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func drilldownFilters(host, datasourceUID, expr string) ([]tempo.TraceQLFilter, bool) {
+	if host == "" || datasourceUID == "" || expr == "" {
+		return nil, false
+	}
 	filters, ok := tempo.ParseFlatSpansetFilters(expr)
 	if !ok || len(filters) == 0 {
+		return nil, false
+	}
+	return filters, true
+}
+
+func tracesDrilldownURL(host, datasourceUID string, filters []tempo.TraceQLFilter, start, end time.Time, metric, actionView string) (string, bool) {
+	if host == "" || datasourceUID == "" {
 		return "", false
 	}
 
@@ -57,8 +118,8 @@ func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) 
 		"from":              {strconv.FormatInt(start.UnixMilli(), 10)},
 		"to":                {strconv.FormatInt(end.UnixMilli(), 10)},
 		"var-primarySignal": {"true"},
-		"var-metric":        {"rate"},
-		"actionView":        {"traceList"},
+		"var-metric":        {metric},
+		"actionView":        {actionView},
 	}
 	for _, f := range filters {
 		encoded, ok := encodeTraceQLFilter(f)

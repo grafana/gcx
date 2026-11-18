@@ -63,6 +63,8 @@ func ErrorOnEmpty(data any) error {
 		empty = len(resp.Data.Result) == 0
 	case *tempo.SearchResponse:
 		empty = len(resp.Traces) == 0
+	case *tempo.ExceptionsResult:
+		empty = len(resp.Exceptions) == 0
 	case *tempo.MetricsResponse:
 		empty = len(resp.Series) == 0
 	case *pyroscope.QueryResponse:

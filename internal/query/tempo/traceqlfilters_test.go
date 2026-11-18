@@ -23,6 +23,11 @@ func TestParseFlatSpansetFilters_Valid(t *testing.T) {
 			want: []tempo.TraceQLFilter{{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"}},
 		},
 		{
+			name: "event attribute",
+			expr: `{ event.exception.type = "TimeoutError" }`,
+			want: []tempo.TraceQLFilter{{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"}},
+		},
+		{
 			name: "multiple ANDed comparisons",
 			expr: `{ span.http.status_code = 500 && resource.service.name = "checkout" }`,
 			want: []tempo.TraceQLFilter{
