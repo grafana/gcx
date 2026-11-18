@@ -414,9 +414,9 @@ Once generations land and metrics populate, instrumentation is done — that's t
 everything else. On the `otel` path, it is done when generations with the expected content land;
 metrics count only if the developer asked for Performance charts. Point the developer at the next
 step: `agento11y-test-starter` to build an **offline test suite** for the agent (useful before
-shipping *and* for regression-testing new versions once it's live), and `agento11y-prod-setup` to set up **online eval rules + guards** on
-real traffic once it's deployed. The split is offline test suite vs online rules/guards — not
-before-traffic vs after-traffic.
+shipping *and* for regression-testing new versions once it's live), and `agento11y-prod-setup` to
+set up **online eval rules + guards** on real traffic once it's deployed. The split is offline test
+suite vs online rules/guards — not before-traffic vs after-traffic.
 
 ## Note — keeping this skill in sync
 
