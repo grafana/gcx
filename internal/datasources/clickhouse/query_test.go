@@ -9,6 +9,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDescribeTableCmd_ValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "empty table name rejected before any config/datasource I/O",
+			args:    []string{""},
+			wantErr: "table name must not be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A zero-value loader has no context/config wired up, so any code
+			// path that reaches config loading or datasource resolution fails
+			// with an unrelated error. Asserting on the specific validation
+			// message proves validation ran first.
+			loader := &providers.ConfigLoader{}
+			cmd := clickhouse.DescribeTableCmd(loader)
+			cmd.SetArgs(tt.args)
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func TestQueryCmd_ValidationErrors(t *testing.T) {
 	tests := []struct {
 		name    string
