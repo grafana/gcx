@@ -132,10 +132,10 @@ func (q StatsQuery) encode(params url.Values) string {
 		params = url.Values{}
 	}
 	if !q.From.IsZero() {
-		params.Set("from", q.From.UTC().Format(time.RFC3339))
+		params.Set("from", q.From.UTC().Format(time.RFC3339Nano))
 	}
 	if !q.To.IsZero() {
-		params.Set("to", q.To.UTC().Format(time.RFC3339))
+		params.Set("to", q.To.UTC().Format(time.RFC3339Nano))
 	}
 	if q.Repository != "" {
 		params.Set("repository", q.Repository)

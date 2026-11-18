@@ -405,3 +405,68 @@ func TestGetTrimsCheckID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "id: security")
 }
+
+func TestUpdateRejectsEmptyFilename(t *testing.T) {
+	fake := &fakeChecks{checks: builtIns()}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+
+	_, err := run(t, newUpdateCommand(loaderFor(t, server)), "security", "-f", "", "--blocking")
+	var usage *gcxerrors.UsageError
+	require.ErrorAs(t, err, &usage)
+	assert.Contains(t, err.Error(), "--filename cannot be empty")
+	assert.Empty(t, fake.puts, "the flag alone must not be saved")
+}
+
+func TestListPullRequestsAttachesListMetaWhenTruncated(t *testing.T) {
+	tests := []struct {
+		name    string
+		count   int
+		wantCap int
+	}{
+		{name: "pull request cap", count: 100, wantCap: 100},
+		{name: "review cap", count: 3},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pulls := make([]client.PullRequest, tc.count)
+			for i := range pulls {
+				pulls[i] = client.PullRequest{Repository: "grafana/gcx", PullNumber: i + 1}
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				writeData(w, client.PullRequests{Truncated: true, PullRequests: pulls})
+			}))
+			t.Cleanup(server.Close)
+
+			out, err := run(t, newListPullRequestsCommand(loaderFor(t, server)), "security", "-o", "json")
+			require.NoError(t, err)
+			var got struct {
+				Truncated    bool                 `json:"truncated"`
+				PullRequests []client.PullRequest `json:"pullRequests"`
+				ListMeta     *struct {
+					Truncated bool `json:"truncated"`
+					Returned  int  `json:"returned"`
+					Cap       int  `json:"cap"`
+				} `json:"list_meta"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(out), &got))
+			require.NotNil(t, got.ListMeta)
+			assert.True(t, got.ListMeta.Truncated)
+			assert.Equal(t, tc.count, got.ListMeta.Returned)
+			assert.Equal(t, tc.wantCap, got.ListMeta.Cap)
+			assert.Len(t, got.PullRequests, tc.count, "the list keeps its own fields")
+		})
+	}
+}
+
+func TestListPullRequestsCompleteHasNoListMeta(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeData(w, client.PullRequests{PullRequests: []client.PullRequest{}})
+	}))
+	t.Cleanup(server.Close)
+
+	out, err := run(t, newListPullRequestsCommand(loaderFor(t, server)), "security", "-o", "json")
+	require.NoError(t, err)
+	assert.NotContains(t, out, "list_meta")
+	assert.Contains(t, out, `"pullRequests": []`)
+}

@@ -3,7 +3,9 @@ package changereview_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/assistant/changereview"
@@ -50,4 +52,21 @@ func TestListChecksClassifiesForbidden(t *testing.T) {
 			assert.Equal(t, "grafana-assistant-app.github:read", forbidden.RequiredPermission())
 		})
 	}
+}
+
+func TestStatsKeepsFractionalSeconds(t *testing.T) {
+	var query url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		_, _ = w.Write([]byte(`{"status":"success","data":{}}`))
+	}))
+	t.Cleanup(server.Close)
+	base, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+	require.NoError(t, err)
+
+	from := time.Date(2026, 11, 14, 12, 0, 0, 100_000_000, time.UTC)
+	_, err = changereview.NewClient(base).Stats(t.Context(), changereview.StatsQuery{From: from, To: from.Add(800 * time.Millisecond)})
+	require.NoError(t, err)
+	assert.Equal(t, "2026-11-14T12:00:00.1Z", query.Get("from"))
+	assert.Equal(t, "2026-11-14T12:00:00.9Z", query.Get("to"))
 }

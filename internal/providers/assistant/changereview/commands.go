@@ -257,8 +257,8 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 and repository overrides.
 
 The output is valid input for update -f, so get, edit, and update round-trip.`,
-		Example: `  gcx assistant change-review checks get security
-  gcx assistant change-review checks get security -o json
+		Example: `  gcx assistant change-review checks get deploy-hazards
+  gcx assistant change-review checks get deploy-hazards -o json
   gcx assistant change-review checks get my-check > check.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -330,6 +330,9 @@ func (f *editFlags) bind(flags *pflag.FlagSet) {
 // input merges the file and the set flags into one checkInput.
 func (f *editFlags) input(cmd *cobra.Command) (checkInput, error) {
 	var in checkInput
+	if cmd.Flags().Changed("filename") && strings.TrimSpace(f.File) == "" {
+		return in, usageError(cmd, "--filename cannot be empty; pass a YAML or JSON file, or - for stdin")
+	}
 	if f.File != "" {
 		if err := providers.ReadFileOrStdin(f.File, cmd.InOrStdin(), &in); err != nil {
 			return in, err
@@ -503,10 +506,15 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Update a built-in or custom change review check. Only the fields set by flags
 or present in the file change; the rest keep their values.
 
+The revision guard covers the moment of the save, not the time since a file
+was exported: a file from get carries every field, so saving it later
+overwrites any edit made in between. Keep files to the fields you mean to
+change, or use flags.
+
 Built-in checks keep their name and guidance: --instructions adds to that
 guidance, and --enabled, --blocking, and --path tune where and how they run.`,
-		Example: `  gcx assistant change-review checks update security --blocking
-  gcx assistant change-review checks update performance --enabled=false
+		Example: `  gcx assistant change-review checks update instrumentation --blocking
+  gcx assistant change-review checks update production-impact --enabled=false
   gcx assistant change-review checks update my-check --path 'api/**' --path 'pkg/**'
   gcx assistant change-review checks update my-check -f check.yaml`,
 		Args: cobra.ExactArgs(1),
@@ -579,8 +587,8 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 one off with update CHECK --enabled=false.
 
 The command prompts for confirmation by default. Use --force to bypass the
-prompt. GCX_AUTO_APPROVE also bypasses the prompt for non-interactive workflows,
-while agent mode still requires explicit --force for destructive operations.`,
+prompt. GCX_AUTO_APPROVE also bypasses the prompt for non-interactive workflows.
+In agent mode, deletion requires --force or an enabled GCX_AUTO_APPROVE.`,
 		Example: `  gcx assistant change-review checks delete migration-safety
   gcx assistant change-review checks delete migration-safety --force`,
 		Args: cobra.ExactArgs(1),
@@ -721,7 +729,7 @@ func (w *windowFlags) resolve(cmd *cobra.Command, now time.Time) (client.StatsQu
 
 func truncationHint(cmd *cobra.Command, truncated bool) {
 	if truncated {
-		cmdio.EmitHint(cmd.ErrOrStderr(), "more reviews were published than one response reads; it covers the latest. Narrow --since or --repository for complete counts", "")
+		cmdio.EmitHint(cmd.ErrOrStderr(), "partial result: the server reads at most 5000 reviews and lists at most 100 pull requests, covering the latest. Narrow --since or --repository for complete counts", "")
 	}
 }
 
@@ -879,7 +887,14 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // pullRequestList is the list-pull-requests payload; --json field selection
 // applies to its pull requests.
-type pullRequestList client.PullRequests
+type pullRequestList struct {
+	client.PullRequests
+
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
+// maxPullRequests is the most pull requests one response lists.
+const maxPullRequests = 100
 
 func (pullRequestList) ListItemsKey() string { return "pullRequests" }
 
@@ -891,7 +906,7 @@ type pullRequestsOpts struct {
 func (o *pullRequestsOpts) setup(flags *pflag.FlagSet) {
 	table := cmdio.TableAdapter[pullRequestList, client.PullRequest]{
 		Table: pullRequestsTable(),
-		Rows:  func(list pullRequestList) ([]client.PullRequest, error) { return list.PullRequests, nil },
+		Rows:  func(list pullRequestList) ([]client.PullRequest, error) { return list.PullRequests.PullRequests, nil },
 	}
 	for _, name := range []string{cmdio.FormatText, cmdio.FormatTable, cmdio.FormatWide} {
 		o.IO.RegisterCustomCodec(name, table.Codec(name))
@@ -914,9 +929,9 @@ with that check's counts on each.
 
 Counts only; finding text is never returned. Use stats for every check's
 totals.`,
-		Example: `  gcx assistant change-review checks list-pull-requests security
-  gcx assistant change-review checks list-pull-requests security --since 7d --repository grafana/gcx
-  gcx assistant change-review checks list-pull-requests security -o json`,
+		Example: `  gcx assistant change-review checks list-pull-requests deploy-hazards
+  gcx assistant change-review checks list-pull-requests deploy-hazards --since 7d --repository grafana/gcx
+  gcx assistant change-review checks list-pull-requests deploy-hazards -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := requireID(cmd, args[0])
@@ -941,7 +956,16 @@ totals.`,
 			if pulls.PullRequests == nil {
 				pulls.PullRequests = []client.PullRequest{}
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), pullRequestList(*pulls)); err != nil {
+			list := pullRequestList{PullRequests: *pulls}
+			if pulls.Truncated {
+				// The server caps the reviews it reads and the pull requests it
+				// lists; neither can be raised, only narrowed.
+				list.ListMeta = &cmdio.ListMeta{Truncated: true, Returned: len(pulls.PullRequests)}
+				if len(pulls.PullRequests) >= maxPullRequests {
+					list.ListMeta.Cap = maxPullRequests
+				}
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), list); err != nil {
 				return err
 			}
 			truncationHint(cmd, pulls.Truncated)
