@@ -17,9 +17,6 @@ func (r *SearchResponse) CSVRecords() ([]string, [][]string, error) {
 }
 
 func (r *ExceptionsResult) CSVRecords() ([]string, [][]string, error) {
-	if r == nil {
-		return []string{"service", "type", "occurrences", "last_seen", "message", "grouped_messages", "url"}, nil, nil
-	}
 	rows := make([][]any, 0, len(r.Exceptions))
 	for _, group := range r.Exceptions {
 		last := ""

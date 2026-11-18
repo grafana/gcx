@@ -73,26 +73,34 @@ func TestTracesDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing
 }
 
 func TestExceptionRowFilters(t *testing.T) {
+	got, ok := tempo.ExceptionRowFilters(`{ resource.service.name = "checkout" }`, "checkout", "TimeoutError")
+	require.True(t, ok)
 	assert.Equal(t, []qtempo.TraceQLFilter{
 		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"},
 		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
-	}, tempo.ExceptionRowFilters(`{ resource.service.name = "checkout" }`, "checkout", "TimeoutError"))
+	}, got)
 
+	got, ok = tempo.ExceptionRowFilters(`{ span.http.status_code = 500 }`, "checkout", "TimeoutError")
+	require.True(t, ok)
 	assert.Equal(t, []qtempo.TraceQLFilter{
 		{Scope: "span", Tag: "http.status_code", Operator: "=", Value: "500"},
 		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"},
 		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
-	}, tempo.ExceptionRowFilters(`{ span.http.status_code = 500 }`, "checkout", "TimeoutError"))
+	}, got)
 
+	_, ok = tempo.ExceptionRowFilters(`{ status = error } | count()`, "api", "TimeoutError")
+	assert.False(t, ok)
+	_, ok = tempo.ExceptionRowFilters(`{ span.http.status_code >= 500 }`, "api", "TimeoutError")
+	assert.False(t, ok)
+
+	got, ok = tempo.ExceptionRowFilters("", "api", "Unknown")
+	require.True(t, ok)
 	assert.Equal(t, []qtempo.TraceQLFilter{
 		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "api"},
-		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
-	}, tempo.ExceptionRowFilters(`{ status = error } | count()`, "api", "TimeoutError"))
-
-	assert.Equal(t, []qtempo.TraceQLFilter{
-		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "api"},
-	}, tempo.ExceptionRowFilters("", "api", "Unknown"))
-	assert.Empty(t, tempo.ExceptionRowFilters("", "", "Unknown"))
+	}, got)
+	got, ok = tempo.ExceptionRowFilters("", "", "Unknown")
+	require.True(t, ok)
+	assert.Empty(t, got)
 }
 
 func TestTracesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {

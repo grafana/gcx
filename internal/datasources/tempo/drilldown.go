@@ -65,11 +65,17 @@ func TracesExceptionsURL(host, datasourceUID, expr string, start, end time.Time)
 }
 
 // ExceptionRowFilters are the Exceptions tab filters for one row: the caller's
-// flat comparisons, plus that row's service and exception type. A non-flat
-// caller filter is dropped. "Unknown" is the placeholder for a missing type.
-func ExceptionRowFilters(filter, service, typ string) []tempo.TraceQLFilter {
+// flat comparisons, plus that row's service and exception type. ok is false
+// when a non-empty caller filter is not a flat spanset, so the row gets no
+// link rather than a wider one. An empty filter is every service. "Unknown"
+// is the placeholder for a missing type.
+func ExceptionRowFilters(filter, service, typ string) ([]tempo.TraceQLFilter, bool) {
 	var filters []tempo.TraceQLFilter
-	if parsed, ok := tempo.ParseFlatSpansetFilters(filter); ok {
+	if strings.TrimSpace(filter) != "" {
+		parsed, ok := tempo.ParseFlatSpansetFilters(filter)
+		if !ok {
+			return nil, false
+		}
 		filters = append(filters, parsed...)
 	}
 	if service != "" && !hasExactFilter(filters, "resource", "service.name", service) {
@@ -78,7 +84,7 @@ func ExceptionRowFilters(filter, service, typ string) []tempo.TraceQLFilter {
 	if typ != "" && typ != "Unknown" && !hasExactFilter(filters, "event", "exception.type", typ) {
 		filters = append(filters, tempo.TraceQLFilter{Scope: "event", Tag: "exception.type", Operator: "=", Value: typ})
 	}
-	return filters
+	return filters, true
 }
 
 func hasExactFilter(filters []tempo.TraceQLFilter, scope, tag, value string) bool {

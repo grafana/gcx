@@ -190,11 +190,10 @@ func TestSearchSpansSendsSPSS(t *testing.T) {
 	}))
 
 	resp, err := client.SearchSpans(context.Background(), "tempo-ds", tempo.SpanSearchRequest{
-		Query:           `{ status = error } | select(resource.service.name) with(most_recent=true)`,
-		Limit:           400,
-		SpansPerSpanSet: 10,
-		Start:           time.Unix(1700000000, 0),
-		End:             time.Unix(1700003600, 0),
+		Query: `{ status = error } | select(resource.service.name) with(most_recent=true)`,
+		Limit: 400,
+		Start: time.Unix(1700000000, 0),
+		End:   time.Unix(1700003600, 0),
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Traces)

@@ -43,7 +43,7 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 // FormatExceptionsTable formats grouped exception messages. An empty sample
 // says so; the machine formats still encode an empty exceptions array.
 func FormatExceptionsTable(w io.Writer, resp *ExceptionsResult) error {
-	if resp == nil || len(resp.Exceptions) == 0 {
+	if len(resp.Exceptions) == 0 {
 		_, err := fmt.Fprintln(w, "no exceptions found")
 		return err
 	}

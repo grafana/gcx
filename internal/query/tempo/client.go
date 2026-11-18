@@ -51,15 +51,11 @@ func (c *Client) Search(ctx context.Context, datasourceUID string, req SearchReq
 	return &result, nil
 }
 
-// SearchSpans runs a TraceQL span search. spss is spans per span set, the
-// same Tempo parameter the datasource plugin sends for tableType=spans.
-// Pass SpansPerSpanSet 0 to use ExceptionsSpansPerTrace.
+// SearchSpans runs a TraceQL span search with ExceptionsSpansPerTrace spans
+// per span set, the same Tempo parameter the datasource plugin sends for
+// tableType=spans.
 func (c *Client) SearchSpans(ctx context.Context, datasourceUID string, req SpanSearchRequest) (*SpanSearchResponse, error) {
-	spss := req.SpansPerSpanSet
-	if spss <= 0 {
-		spss = ExceptionsSpansPerTrace
-	}
-	respBody, err := c.doSearch(ctx, datasourceUID, req.Query, req.Start, req.End, req.Limit, spss, "span search")
+	respBody, err := c.doSearch(ctx, datasourceUID, req.Query, req.Start, req.End, req.Limit, ExceptionsSpansPerTrace, "span search")
 	if err != nil {
 		return nil, err
 	}

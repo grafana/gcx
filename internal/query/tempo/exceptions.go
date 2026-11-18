@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -28,13 +27,12 @@ const (
 )
 
 // SpanSearchRequest is a Tempo /api/search call that returns span attributes.
-// SpansPerSpanSet 0 selects ExceptionsSpansPerTrace.
+// SearchSpans always requests ExceptionsSpansPerTrace spans per span set.
 type SpanSearchRequest struct {
-	Query           string
-	Start           time.Time
-	End             time.Time
-	Limit           int
-	SpansPerSpanSet int
+	Query string
+	Start time.Time
+	End   time.Time
+	Limit int
 }
 
 // SpanSearchResponse is the Tempo search payload for a span projection.
@@ -70,25 +68,20 @@ type SpanAttribute struct {
 	Value json.RawMessage `json:"value"`
 }
 
-// jsonUintString accepts Tempo's uint64 fields as either a JSON string or a
-// number. Protojson emits strings; some fixtures emit numbers.
+// jsonUintString accepts Tempo's protojson uint64 fields, which are JSON strings.
 type jsonUintString string
 
 func (n *jsonUintString) UnmarshalJSON(b []byte) error {
 	b = bytes.TrimSpace(b)
-	if len(b) == 0 || string(b) == "null" {
+	if len(b) == 0 || string(b) == "null" || b[0] != '"' {
 		*n = ""
 		return nil
 	}
-	if b[0] == '"' {
-		var s string
-		if err := json.Unmarshal(b, &s); err != nil {
-			return err
-		}
-		*n = jsonUintString(s)
-		return nil
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
 	}
-	*n = jsonUintString(b)
+	*n = jsonUintString(s)
 	return nil
 }
 
@@ -122,8 +115,9 @@ type ExceptionGroup struct {
 }
 
 // ExceptionsResult is the grouped exception sample. list_meta is set only when
-// Tempo returned as many traces as --limit. Returned counts groups, not traces.
-// Continue raises --limit up to ExceptionsTraceLimit.
+// Tempo returned as many traces as --limit. Truncated means that trace sample
+// was capped, not that exception groups were withheld. Returned counts the
+// groups in the sample. Continue raises --limit up to ExceptionsTraceLimit.
 type ExceptionsResult struct {
 	Query         string           `json:"query"`
 	TraceLimit    int              `json:"trace_limit"`
@@ -212,51 +206,13 @@ func firstAttr(attrs map[string]string, keys ...string) string {
 }
 
 func attributeString(raw json.RawMessage) (string, bool) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 || string(raw) == "null" {
+	var obj struct {
+		StringValue string `json:"stringValue"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil || obj.StringValue == "" {
 		return "", false
 	}
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
-		return text, text != ""
-	}
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return "", false
-	}
-	if nested, ok := obj["Value"].(map[string]any); ok {
-		maps.Copy(obj, nested)
-	}
-	for _, key := range []string{
-		"stringValue", "string_value",
-		"intValue", "int_value", "doubleValue", "double_value",
-		"boolValue", "bool_value",
-	} {
-		value, ok := obj[key]
-		if !ok || value == nil {
-			continue
-		}
-		if s := scalarString(value); s != "" {
-			return s, true
-		}
-	}
-	return "", false
-}
-
-func scalarString(v any) string {
-	switch n := v.(type) {
-	case string:
-		return n
-	case bool:
-		return strconv.FormatBool(n)
-	case float64:
-		if n == math.Trunc(n) && !math.IsInf(n, 0) {
-			return strconv.FormatInt(int64(n), 10)
-		}
-		return strconv.FormatFloat(n, 'f', -1, 64)
-	default:
-		return ""
-	}
+	return obj.StringValue, true
 }
 
 type exceptionAcc struct {

@@ -34,7 +34,7 @@ type exceptionsOpts struct {
 func ExceptionsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &exceptionsOpts{}
 	share := &dsquery.ExploreLinkOpts{}
-	exceptions := &dsquery.DrilldownLinkOpts{AppName: "Traces Drilldown Exceptions"}
+	exceptions := &dsquery.DrilldownLinkOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "exceptions [TRACEQL]",
@@ -49,8 +49,8 @@ that row.
 
 Each row links to the Exceptions tab for that service and exception type.
 With no time flags, the window is the last hour. Use --share-link or --open
-for the span query in Explore, and --exceptions-link to print the Exceptions
-tab URL for this spanset.`,
+for the span query in Explore, and --drilldown-link or --open-drilldown for
+this spanset in the Exceptions tab. Those tab URLs do not carry --limit.`,
 		Example: `
   # Group error-span exceptions for one service over the last hour
   gcx datasources tempo exceptions '{ resource.service.name = "checkout" }' --since 1h
@@ -73,7 +73,7 @@ tab URL for this spanset.`,
 
 	opts.setup(cmd.Flags())
 	share.Setup(cmd.Flags(), "executed query")
-	cmd.Flags().BoolVar(&exceptions.ShareLink, "exceptions-link", false, "Print the Grafana Traces Drilldown Exceptions tab URL for this sample to stderr")
+	exceptions.Setup(cmd.Flags(), "exception sample", "Traces Drilldown Exceptions")
 
 	return cmd
 }
@@ -127,11 +127,10 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 	resp, err := client.SearchSpans(ctx, datasourceUID, tempo.SpanSearchRequest{
-		Query:           expr,
-		Start:           start,
-		End:             end,
-		Limit:           opts.Limit,
-		SpansPerSpanSet: tempo.ExceptionsSpansPerTrace,
+		Query: expr,
+		Start: start,
+		End:   end,
+		Limit: opts.Limit,
 	})
 	if err != nil {
 		return fmt.Errorf("span search failed: %w", err)
@@ -215,7 +214,11 @@ func (opts *exceptionsOpts) filter(flags *pflag.FlagSet, args []string) (string,
 
 func attachExceptionLinks(groups []tempo.ExceptionGroup, host, datasourceUID, filter string, start, end time.Time) {
 	for i := range groups {
-		url, ok := tracesDrilldownURL(host, datasourceUID, ExceptionRowFilters(filter, groups[i].Service, groups[i].Type), start, end, "errors", "exceptions")
+		filters, ok := ExceptionRowFilters(filter, groups[i].Service, groups[i].Type)
+		if !ok {
+			continue
+		}
+		url, ok := tracesDrilldownURL(host, datasourceUID, filters, start, end, "errors", "exceptions")
 		if !ok {
 			continue
 		}
