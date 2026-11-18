@@ -52,10 +52,13 @@ func FormatExceptionsTable(w io.Writer, resp *ExceptionsResult) error {
 	headers := []string{"SERVICE", "TYPE", "OCCURRENCES", "LAST_SEEN", "MESSAGE"}
 	widths := []int{18, 0, 13, 16, 0}
 	linkCol := -1
-	if exceptionsHaveLinks(resp) {
-		headers = append(headers, "LINK")
-		widths = append(widths, 6)
-		linkCol = len(headers) - 1
+	for _, group := range resp.Exceptions {
+		if group.URL != "" {
+			headers = append(headers, "LINK")
+			widths = append(widths, 6)
+			linkCol = len(headers) - 1
+			break
+		}
 	}
 	tbl := style.NewTable(headers...).ColumnWidths(widths)
 	for _, group := range resp.Exceptions {
@@ -79,18 +82,6 @@ func FormatExceptionsTable(w io.Writer, resp *ExceptionsResult) error {
 		}
 	}
 	return tbl.Render(w)
-}
-
-func exceptionsHaveLinks(resp *ExceptionsResult) bool {
-	if resp == nil {
-		return false
-	}
-	for _, group := range resp.Exceptions {
-		if group.URL != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // formatExceptionLastSeen renders the table cell. JSON and CSV keep RFC3339;

@@ -9,7 +9,6 @@ import (
 	"math"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -47,8 +46,6 @@ type SpanSearchResponse struct {
 
 // SpanSearchTrace is one trace in a span search, including its span sets.
 type SpanSearchTrace struct {
-	TraceID           string         `json:"traceID"`
-	RootServiceName   string         `json:"rootServiceName"`
 	StartTimeUnixNano jsonUintString `json:"startTimeUnixNano"`
 	SpanSet           *SpanSet       `json:"spanSet,omitempty"`
 	SpanSets          []SpanSet      `json:"spanSets,omitempty"`
@@ -63,7 +60,6 @@ type SpanSet struct {
 
 // SpanHit is one span in a search span set.
 type SpanHit struct {
-	SpanID            string          `json:"spanID"`
 	StartTimeUnixNano jsonUintString  `json:"startTimeUnixNano"`
 	Attributes        []SpanAttribute `json:"attributes,omitempty"`
 }
@@ -125,15 +121,9 @@ type ExceptionGroup struct {
 	URL string `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
-// ExceptionsResult is the grouped exception sample.
-//
-// list_meta is set only when Tempo returned as many traces as --limit, so
-// more matching traces may exist. Returned counts groups in this sample, not
-// traces. Continue raises the trace --limit (the bound that filled the
-// sample) and never past ExceptionsTraceLimit. traces_sampled and
-// spans_per_trace name those units. Absence of list_meta means every trace
-// Tempo returned for the query is in the sample; each trace still contributes
-// at most SpansPerTrace spans.
+// ExceptionsResult is the grouped exception sample. list_meta is set only when
+// Tempo returned as many traces as --limit. Returned counts groups, not traces.
+// Continue raises --limit up to ExceptionsTraceLimit.
 type ExceptionsResult struct {
 	Query         string           `json:"query"`
 	TraceLimit    int              `json:"trace_limit"`
@@ -181,9 +171,7 @@ func AggregateExceptions(resp *SpanSearchResponse, query string, traceLimit int)
 		return result
 	}
 	result.TracesSampled = len(resp.Traces)
-	spans := exceptionSpans(resp)
-	result.SpansSampled = len(spans)
-	result.Exceptions = groupExceptions(spans)
+	result.SpansSampled, result.Exceptions = groupExceptions(resp)
 	return result
 }
 
@@ -204,42 +192,6 @@ func ExceptionListMeta(groups, tracesSampled, limit int, argv []string) *cmdio.L
 	}
 	meta.Continue = cmdio.BuildListLimitCommand(argv, min(limit*2, ExceptionsTraceLimit))
 	return meta
-}
-
-type exceptionSpan struct {
-	Message string
-	Type    string
-	Service string
-	Time    time.Time
-}
-
-func exceptionSpans(resp *SpanSearchResponse) []exceptionSpan {
-	traces := append([]SpanSearchTrace(nil), resp.Traces...)
-	sort.SliceStable(traces, func(i, j int) bool {
-		return traces[i].StartTimeUnixNano.uint() > traces[j].StartTimeUnixNano.uint()
-	})
-
-	var spans []exceptionSpan
-	for _, tr := range traces {
-		sets := tr.SpanSets
-		if sets == nil && tr.SpanSet != nil {
-			sets = []SpanSet{*tr.SpanSet}
-		}
-		for _, set := range sets {
-			for _, span := range set.Spans {
-				attrs := map[string]string{}
-				applyAttrs(attrs, set.Attributes)
-				applyAttrs(attrs, span.Attributes)
-				spans = append(spans, exceptionSpan{
-					Message: firstAttr(attrs, "event.exception.message", "exception.message"),
-					Type:    firstAttr(attrs, "event.exception.type", "exception.type"),
-					Service: firstAttr(attrs, "resource.service.name", "service.name"),
-					Time:    span.StartTimeUnixNano.time(),
-				})
-			}
-		}
-	}
-	return spans
 }
 
 func applyAttrs(dst map[string]string, attrs []SpanAttribute) {
@@ -275,21 +227,17 @@ func attributeString(raw json.RawMessage) (string, bool) {
 	if nested, ok := obj["Value"].(map[string]any); ok {
 		maps.Copy(obj, nested)
 	}
-	for _, key := range []string{"stringValue", "string_value"} {
-		if s, ok := obj[key].(string); ok && s != "" {
+	for _, key := range []string{
+		"stringValue", "string_value",
+		"intValue", "int_value", "doubleValue", "double_value",
+		"boolValue", "bool_value",
+	} {
+		value, ok := obj[key]
+		if !ok || value == nil {
+			continue
+		}
+		if s := scalarString(value); s != "" {
 			return s, true
-		}
-	}
-	for _, key := range []string{"intValue", "int_value", "doubleValue", "double_value"} {
-		if value, ok := obj[key]; ok && value != nil {
-			if s := scalarString(value); s != "" {
-				return s, true
-			}
-		}
-	}
-	for _, key := range []string{"boolValue", "bool_value"} {
-		if b, ok := obj[key].(bool); ok {
-			return strconv.FormatBool(b), true
 		}
 	}
 	return "", false
@@ -299,6 +247,8 @@ func scalarString(v any) string {
 	switch n := v.(type) {
 	case string:
 		return n
+	case bool:
+		return strconv.FormatBool(n)
 	case float64:
 		if n == math.Trunc(n) && !math.IsInf(n, 0) {
 			return strconv.FormatInt(int64(n), 10)
@@ -319,69 +269,77 @@ type exceptionAcc struct {
 	seen    map[string]struct{}
 }
 
-func groupExceptions(spans []exceptionSpan) []ExceptionGroup {
+func groupExceptions(resp *SpanSearchResponse) (int, []ExceptionGroup) {
+	traces := slices.Clone(resp.Traces)
+	slices.SortStableFunc(traces, func(a, b SpanSearchTrace) int {
+		return cmp.Compare(b.StartTimeUnixNano.uint(), a.StartTimeUnixNano.uint())
+	})
+
+	var sampled int
 	order := []string{}
 	groups := map[string]*exceptionAcc{}
-	for _, span := range spans {
-		if span.Message == "" {
-			continue
+	for _, tr := range traces {
+		sets := tr.SpanSets
+		if sets == nil && tr.SpanSet != nil {
+			sets = []SpanSet{*tr.SpanSet}
 		}
-		raw := collapseSpace(span.Message)
-		normalized := normalizeExceptionMessage(span.Message)
-		if normalized == "" {
-			continue
-		}
-		key := exceptionGroupingKey(normalized, span.Type)
-		group := groups[key]
-		if group == nil {
-			group = &exceptionAcc{
-				message: normalized,
-				typ:     span.Type,
-				seen:    map[string]struct{}{},
+		for _, set := range sets {
+			for _, span := range set.Spans {
+				sampled++
+				attrs := map[string]string{}
+				applyAttrs(attrs, set.Attributes)
+				applyAttrs(attrs, span.Attributes)
+				message := firstAttr(attrs, "event.exception.message", "exception.message")
+				if message == "" {
+					continue
+				}
+				normalized := normalizeExceptionMessage(message)
+				if normalized == "" {
+					continue
+				}
+				raw := collapseSpace(message)
+				typ := firstAttr(attrs, "event.exception.type", "exception.type")
+				key := exceptionGroupingKey(normalized, typ)
+				group := groups[key]
+				if group == nil {
+					group = &exceptionAcc{message: normalized, typ: typ, seen: map[string]struct{}{}}
+					groups[key] = group
+					order = append(order, key)
+				}
+				group.count++
+				if service := firstAttr(attrs, "resource.service.name", "service.name"); group.service == "" && service != "" {
+					group.service = service
+				}
+				if _, ok := group.seen[raw]; raw != "" && !ok {
+					group.seen[raw] = struct{}{}
+					group.raw = append(group.raw, raw)
+				}
+				if when := span.StartTimeUnixNano.time(); !when.IsZero() && when.After(group.last) {
+					group.last = when
+				}
 			}
-			groups[key] = group
-			order = append(order, key)
-		}
-		group.count++
-		if group.service == "" && span.Service != "" {
-			group.service = span.Service
-		}
-		if raw != "" {
-			if _, ok := group.seen[raw]; !ok {
-				group.seen[raw] = struct{}{}
-				group.raw = append(group.raw, raw)
-			}
-		}
-		if !span.Time.IsZero() && span.Time.After(group.last) {
-			group.last = span.Time
 		}
 	}
 
 	slices.SortStableFunc(order, func(a, b string) int {
 		return cmp.Compare(groups[b].count, groups[a].count)
 	})
-
 	out := make([]ExceptionGroup, 0, len(order))
 	for _, key := range order {
 		group := groups[key]
-		raw := group.raw
-		if raw == nil {
-			raw = []string{}
-		}
-		typ := group.typ
-		if typ == "" {
-			typ = "Unknown"
+		if group.typ == "" {
+			group.typ = "Unknown"
 		}
 		out = append(out, ExceptionGroup{
 			Service:         group.service,
-			Type:            typ,
+			Type:            group.typ,
 			Message:         group.message,
 			Occurrences:     group.count,
 			LastSeen:        group.last,
-			GroupedMessages: raw,
+			GroupedMessages: group.raw,
 		})
 	}
-	return out
+	return sampled, out
 }
 
 var spaceRE = regexp.MustCompile(`\s+`)
@@ -407,14 +365,11 @@ func collapseSpace(message string) string {
 }
 
 func normalizeExceptionMessage(message string) string {
-	if message == "" {
-		return ""
-	}
 	normalized := collapseSpace(message)
 	for _, pattern := range exceptionPlaceholders {
 		normalized = pattern.re.ReplaceAllString(normalized, pattern.repl)
 	}
-	return strings.TrimSpace(normalized)
+	return normalized
 }
 
 func exceptionGroupingKey(normalized, typ string) string {

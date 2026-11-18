@@ -44,7 +44,6 @@ func TestAggregateExceptions(t *testing.T) {
 	resp := &tempo.SpanSearchResponse{
 		Traces: []tempo.SpanSearchTrace{
 			{
-				TraceID:           "older",
 				StartTimeUnixNano: "100",
 				SpanSets: []tempo.SpanSet{{
 					Spans: []tempo.SpanHit{{
@@ -58,7 +57,6 @@ func TestAggregateExceptions(t *testing.T) {
 				}},
 			},
 			{
-				TraceID:           "newer",
 				StartTimeUnixNano: "200",
 				SpanSets: []tempo.SpanSet{{
 					Spans: []tempo.SpanHit{
