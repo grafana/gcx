@@ -378,10 +378,10 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
    Performance charts (Step 3b).
 
    **Channel B — OTel spans/metrics, SDK path only** (the TracerProvider/MeterProvider → OTLP
-   exporter → `/v1/traces`, `/v1/metrics`). Carries latency/token/cost **metrics**. This is checklist #1, the
-   #1 silent failure — and **gcx cannot see it** (traces/metrics land in the stack's Tempo/Prometheus,
-   not the Agent Observability ingest API). So verify Channel B separately, by the strongest signal
-   available, in this order:
+   exporter → `/v1/traces`, `/v1/metrics`). Carries latency/token/cost **metrics**. This is
+   checklist #1, the #1 silent failure — and **gcx cannot see it** (traces/metrics land in the
+   stack's Tempo/Prometheus, not the Agent Observability ingest API). So verify Channel B
+   separately, by the strongest signal available, in this order:
    - **By construction (always do this):** confirm in the applied code that both a TracerProvider
      **and** a MeterProvider are created *before* the SDK client and shut down after it. This is
      static but reliable — a missing/late/no-op MeterProvider is exactly checklist #1.
@@ -412,9 +412,9 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
 
 Once generations land and metrics populate, instrumentation is done — that's the prerequisite for
 everything else. On the `otel` path, it is done when generations with the expected content land;
-metrics count only if the developer asked for Performance charts. Point the developer at the next step: `agento11y-test-starter` to build an
-**offline test suite** for the agent (useful before shipping *and* for regression-testing new
-versions once it's live), and `agento11y-prod-setup` to set up **online eval rules + guards** on
+metrics count only if the developer asked for Performance charts. Point the developer at the next
+step: `agento11y-test-starter` to build an **offline test suite** for the agent (useful before
+shipping *and* for regression-testing new versions once it's live), and `agento11y-prod-setup` to set up **online eval rules + guards** on
 real traffic once it's deployed. The split is offline test suite vs online rules/guards — not
 before-traffic vs after-traffic.
 
