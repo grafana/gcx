@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -81,6 +82,46 @@ func resolveChatID(ctx context.Context, client *Client, id string) (string, erro
 	return resp.ChatID, nil
 }
 
+// --- deprecated: pause, resume, mode ---
+
+// Newer investigations no longer support pausing, resuming or changing the
+// autonomy mode; the server answers those requests with 410 Gone. Older
+// investigations still support them, so the commands stay through v1.x.
+const deprecationNote = "Deprecated: newer investigations do not support this and the server rejects it with HTTP 410 Gone. " +
+	"To stop an investigation, use `gcx assistant investigations cancel <id>`. This command remains supported through v1.x."
+
+// warnDeprecated writes the deprecation notice to stderr after a successful
+// call; stdout stays the result. A 410 is explained by its error instead.
+func warnDeprecated(cmd *cobra.Command, action string) {
+	cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf(
+		"gcx assistant investigations %s is deprecated: newer investigations do not support %s. The command remains available through v1.x",
+		cmd.Name(), action))
+}
+
+// cancelSuggestion fits pause, whose goal is stopping the investigation.
+func cancelSuggestion(id string) string {
+	return "To stop the investigation, cancel it: gcx assistant investigations cancel " + id
+}
+
+// getSuggestion fits resume and mode, where cancelling would defeat the goal.
+func getSuggestion(id string) string {
+	return "Check the investigation's current state: gcx assistant investigations get " + id
+}
+
+// unsupportedOperationError replaces a 410 Gone with a friendly error. The
+// server's own message is dropped: it points at API endpoints, not gcx.
+func unsupportedOperationError(err error, id, action, suggestion string) error {
+	statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+	if !ok || statusErr.Status != http.StatusGone {
+		return err
+	}
+	return gcxerrors.DetailedError{
+		Summary:     "Unsupported operation",
+		Details:     fmt.Sprintf("Investigation %s does not support %s.", id, action),
+		Suggestions: []string{suggestion},
+	}
+}
+
 // --- pause ---
 
 type pauseOpts struct{ IO cmdio.Options }
@@ -94,8 +135,8 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pauseOpts{}
 	cmd := &cobra.Command{
 		Use:   "pause <id>",
-		Short: "Pause a running v2 investigation.",
-		Long:  "Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.",
+		Short: "Pause a running v2 investigation (Deprecated).",
+		Long:  "Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.\n\n" + deprecationNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -111,8 +152,9 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			msg, err := client.Pause(cmd.Context(), chatID)
 			if err != nil {
-				return err
+				return unsupportedOperationError(err, args[0], "pausing", cancelSuggestion(args[0]))
 			}
+			warnDeprecated(cmd, "pausing")
 			return opts.IO.Encode(cmd.OutOrStdout(), msg)
 		},
 	}
@@ -133,11 +175,11 @@ func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &resumeOpts{}
 	cmd := &cobra.Command{
 		Use:   "resume <id>",
-		Short: "Resume a paused v2 investigation.",
+		Short: "Resume a paused v2 investigation (Deprecated).",
 		Long: `Resume a paused v2 investigation, which restarts its Grafana Assistant
 agents. Use it when the user asks to resume the investigation.
 
-` + investigationBillingNote,
+` + investigationBillingNote + "\n\n" + deprecationNote,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -153,8 +195,9 @@ agents. Use it when the user asks to resume the investigation.
 			}
 			msg, err := client.Resume(cmd.Context(), chatID)
 			if err != nil {
-				return err
+				return unsupportedOperationError(err, args[0], "resuming", getSuggestion(args[0]))
 			}
+			warnDeprecated(cmd, "resuming")
 			return opts.IO.Encode(cmd.OutOrStdout(), msg)
 		},
 	}
@@ -188,8 +231,8 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &modeOpts{}
 	cmd := &cobra.Command{
 		Use:   "mode <id> <mode>",
-		Short: "Change autonomy mode of a v2 investigation.",
-		Long:  "Change the autonomy mode of a running v2 investigation. Valid modes: low, medium, high.",
+		Short: "Change autonomy mode of a v2 investigation (Deprecated).",
+		Long:  "Change the autonomy mode of a running v2 investigation. Valid modes: low, medium, high.\n\n" + deprecationNote,
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -212,8 +255,9 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			resp, err := client.SetMode(cmd.Context(), chatID, mode)
 			if err != nil {
-				return err
+				return unsupportedOperationError(err, args[0], "changing the autonomy mode", getSuggestion(args[0]))
 			}
+			warnDeprecated(cmd, "changing the autonomy mode")
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
