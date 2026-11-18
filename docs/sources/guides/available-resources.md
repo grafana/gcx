@@ -73,7 +73,7 @@ Use the signal commands to query your data sources directly from the command lin
 | Signal | Command | Guides |
 | --- | --- | --- |
 | **Metrics** | [`gcx metrics`](../../cli-reference/#gcx-metrics) | |
-| **Logs** | [`gcx logs`](../../cli-reference/#gcx-logs) | [Query logs on Grafana Cloud](../query-logs-grafana-cloud/) |
+| **Logs** | [`gcx logs`](../../cli-reference/#gcx-logs) | |
 | **Traces** | [`gcx traces`](../../cli-reference/#gcx-traces) | |
 | **Profiles** | [`gcx profiles`](../../cli-reference/#gcx-profiles) | [Compare profiles](../compare-profiles/) |
 
