@@ -3,10 +3,10 @@ name: agento11y-instrument
 description: >-
   Instruments a developer's own LLM app or repairs missing generations and empty
   Performance charts in Grafana Agent Observability, reusing OpenTelemetry GenAI
-  spans the app already emits. Applies confirmed changes
-  and verifies generation ingest, traces, and metrics. Excludes coding-agent
-  telemetry plugins. For offline tests use agento11y-test-starter; for eval rules
-  and guards use agento11y-prod-setup.
+  spans the app already emits. Applies confirmed changes and verifies generation
+  ingest, traces, and metrics. Excludes coding-agent telemetry plugins. For
+  offline tests use agento11y-test-starter; for eval rules and guards use
+  agento11y-prod-setup.
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write, WebFetch
 ---
 
@@ -37,7 +37,8 @@ Grafana SDK" and the public guide
 
 - **Reference, don't restate.** Fetch SDK detail from
   `https://raw.githubusercontent.com/grafana/agento11y/main/llms.txt` (Path B). Only inline decision
-  logic here. If the fetch fails, fall back to [references/instrumentation.md](references/instrumentation.md).
+  logic here; Step 3b is the exception (see the sync note at the end). If the fetch fails, fall back
+  to [references/instrumentation.md](references/instrumentation.md).
 - **Never invent an endpoint or a token.** Read them from the environment (`AGENTO11Y_ENDPOINT`,
   `AGENTO11Y_PROTOCOL`, `AGENTO11Y_AUTH_MODE`, `AGENTO11Y_AUTH_TENANT_ID`, `AGENTO11Y_AUTH_TOKEN`,
   `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`) or ask the developer. Never fabricate a
@@ -254,10 +255,13 @@ State the classification explicitly, with the `file:line` evidence that led to i
   never called, or `rec.err()`/`Err()` never checked. The same model call recorded by both the SDK
   and opted-in OTel GenAI spans is also `broken` (duplicate generations, Step 3b O7). So is an SDK
   call whose own spans a resource-level marker selects (see `otel` above). Keep one path per call.
-  By default, keep the SDK and remove the opt-in for those spans: that changes no app logic, and
-  the SDK keeps its features and metric labels. To keep OTel instead, remove the SDK wrapping,
-  which changes app code, so confirm first. Then continue with Step 3 or Step 3b. Fix first, then
-  gap-check.
+  By default, keep the SDK and stop the OTel copy; the SDK keeps its features and metric labels.
+  If the marker is on the resource and no call is `otel`, remove the resource marker. If some
+  calls are `otel`, move the marker to the span processor described under `otel` above; removing
+  the resource marker alone would also stop those calls. If the marker is on the span, remove it
+  from the duplicated spans. These changes touch only the OTel setup. To keep OTel instead, remove
+  the SDK wrapping, which changes app code, so confirm first. Then continue with Step 3 or Step 3b.
+  Fix first, then gap-check.
 
 `none`, `partial`, and `broken` converge on the same checklist (Step 3); they differ only in how much
 is already done. `otel` uses Step 3b.
@@ -303,10 +307,10 @@ installed), say which results depend on it.
 | O1 | A tracer provider with an OTLP exporter is initialized before the first model call, in the app code or by a zero-code agent (Step 1, item 5). The exporter points at the stack's OTLP endpoint, with a token that has `traces:write`. Export env vars alone do not instrument the app | nothing is exported |
 | O2 | `agento11y.record=true` is on the resource or on the GenAI spans. To set it on the resource, append `,agento11y.record=true` to an existing `OTEL_RESOURCE_ATTRIBUTES` value; do not replace the value. If the SDK also records generations in this process, use the span-level marker only (Step 2). A span-level `false` excludes that span. Confirm the marker is on the exported resource or span (for example, with an in-memory exporter): some resource constructors ignore `OTEL_RESOURCE_ATTRIBUTES` | spans reach the stack's traces, but no conversation appears |
 | O3 | Each inference span (`gen_ai.operation.name` is `chat`, `generate_content`, or `text_completion`) has `gen_ai.provider.name` and `gen_ai.request.model`. Older libraries write `gen_ai.system` instead of `gen_ai.provider.name`; ingest accepts it. Do not add a provider or model to `invoke_agent` spans whose child model spans already produce generations: the agent span would become a second generation with the same answer. If `invoke_agent` spans are the only GenAI spans, they need the same provider and model attributes: ingest skips an `invoke_agent` span that names neither | the span does not become a generation. Tool-call spans never create standalone generations; that is expected |
-| O4 | If the data policy allows content capture, it is on and writes `gen_ai.input.messages` and `gen_ai.output.messages` as span attributes in the GenAI message format. Check the values the installed library expects: Python instrumentations built on `opentelemetry-util-genai` write span content only with `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` and `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` set to `SPAN_ONLY` or `SPAN_AND_EVENT`. With that opt-in, the value `true` logs a warning and captures nothing; without it, `true` can send content as log events only. Sensitive content is removed before export | the conversation appears without messages. Content sent only as OTLP logs does not populate conversations |
+| O4 | Content capture is the developer's decision, as in Step 3 item 10: ask before you turn it on. If the developer wants it, it is on and writes `gen_ai.input.messages` and `gen_ai.output.messages` as span attributes in the GenAI message format. Check the values the installed library expects: Python instrumentations built on `opentelemetry-util-genai` write span content only with `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` and `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` set to `SPAN_ONLY` or `SPAN_AND_EVENT`. With that opt-in, the value `true` logs a warning and captures nothing; without it, `true` can send content as log events only. Sensitive content is removed before export | the conversation appears without messages. Content sent only as OTLP logs does not populate conversations |
 | O5 | `gen_ai.conversation.id` is reused across the calls of one conversation; take it from the app's own conversation or session (a span processor can set it when the library has no hook). `gen_ai.agent.name` is set on inference spans, and `gen_ai.agent.version` too when the app has a version (O8 requires it) | each trace becomes its own conversation; the agent is listed under the resource's `service.name` |
 | O6 | Collectors (Alloy, OTel Collector) keep the span and resource attributes, and sampling keeps the GenAI spans | generations are missing, or the attributes from O2–O5 are lost on the way |
-| O7 | The SDK does not also record these calls | duplicate generations |
+| O7 | Re-check that the SDK does not also record these calls, especially after adding the SDK for SDK-only APIs (Step 2). A call that both record is `broken` (Step 2) | duplicate generations |
 | O8 | Only if the developer wants Performance charts. The agent's Performance tab reads only the `gen_ai.client.token.usage` and `gen_ai.client.operation.duration` metrics, not spans. It keeps only metrics whose `gen_ai.agent.name` matches the agent and whose `gen_ai.agent.version` matches a version that the agent's generations declare (Prometheus labels `gen_ai_agent_name` and `gen_ai_agent_version`). So the inference spans need `gen_ai.agent.version` (O5), and the metrics need the same name and version. This also needs a meter provider with an OTLP metric exporter (in the app code or by a zero-code agent) and a token with `metrics:write`. The standard GenAI client metrics do not define the agent attributes, and libraries that emit the newer `gen_ai.client.inference.*` metrics feed nothing to this tab. Report what the installed library exports and do not promise Performance charts on this path. If the metrics lack the attributes, adding a meter provider does not make the tab appear | conversations appear, but the agent page has no Performance tab |
 
 On this path, `chat` is a valid `gen_ai.operation.name`. Step 3 item 6b applies only to the SDK's
