@@ -28,14 +28,23 @@ func ValidateIdentifier(name, field string) error {
 	return nil
 }
 
-var limitBailRe = regexp.MustCompile(`(?im)(\bLIMIT\s+\d+\s+BY\b|\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bFORMAT\b|\bSETTINGS\b|^\s*EXPLAIN\b|^\s*DESC(RIBE)?\b|^\s*SHOW\s+CREATE\b|^\s*EXISTS\b|^\s*CHECK\b)`)
+var (
+	// Metadata keywords only bypass the limit at the start of the statement.
+	// Matching at each line start would mistake ORDER BY ...\nDESC for DESC TABLE.
+	limitStatementBailRe = regexp.MustCompile(`(?i)\A\s*(EXPLAIN|DESC(RIBE)?|SHOW\s+CREATE|EXISTS|CHECK)\b`)
+	limitClauseBailRe    = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+BY\b|\bLIMIT\s+\d+\s+OFFSET\b|\bLIMIT\s+\d+\s*,|\bFORMAT\b|\bSETTINGS\b)`)
+)
+
+func limitBail(sql string) bool {
+	return limitStatementBailRe.MatchString(sql) || limitClauseBailRe.MatchString(sql)
+}
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds.
 // If limit is 0, enforcement is disabled (pass-through).
 // If the SQL contains LIMIT BY, FORMAT, SETTINGS, or a metadata statement
 // (EXPLAIN/DESCRIBE/SHOW CREATE/EXISTS/CHECK), it bails out (pass-through).
 func EnforceLimit(sql string, limit, maxLimit int) string {
-	out, _ := querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
+	out, _ := querysql.EnforceLimit(sql, limit, maxLimit, limitBail)
 	return out
 }
 
@@ -43,7 +52,7 @@ func EnforceLimit(sql string, limit, maxLimit int) string {
 // injects "LIMIT eff+1" so the caller can tell whether more rows matched than
 // the cap allows. See querysql.EnforceLimitSentinel for the contract.
 func EnforceLimitSentinel(sql string, limit, maxLimit int) (string, int, bool) {
-	return querysql.EnforceLimitSentinel(sql, limit, maxLimit, limitBailRe.MatchString)
+	return querysql.EnforceLimitSentinel(sql, limit, maxLimit, limitBail)
 }
 
 // QueryRequest represents a ClickHouse query request.
