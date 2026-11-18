@@ -920,6 +920,9 @@ case-sensitive and unknown fields are rejected.`,
 			total := len(suppressions.DisabledAlertConfigs)
 			result := cmdio.NewBatchMutation("upserted")
 			for i, s := range suppressions.DisabledAlertConfigs {
+				// managedBy is set by the backend; list prints it, so a piped
+				// round trip must not send it back.
+				s.ManagedBy = ""
 				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
 					failure := fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
 					if i == 0 {
@@ -1219,7 +1222,11 @@ func parseConfigShapes[T, W any](data []byte, singular, plural, wrapperKey strin
 		}
 		return []T{item}, nil
 	default:
-		return nil, fmt.Errorf("expected %s, a list of %s, or a wrapper with a %s key", singular, plural, wrapperKey)
+		article := "a"
+		if strings.ContainsRune("aeiou", rune(wrapperKey[0])) {
+			article = "an"
+		}
+		return nil, fmt.Errorf("expected %s, a list of %s, or %s %s wrapper", singular, plural, article, wrapperKey)
 	}
 }
 

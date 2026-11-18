@@ -635,23 +635,23 @@ func TestSuppressionsUpsert_Shapes(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  []string
+		want  []kg.Suppression
 	}{
-		{name: "wrapper", input: "disabledAlertConfigs:\n  - name: a\n  - name: b\n", want: []string{"a", "b"}},
-		{name: "bare list as printed by list", input: "- name: a\n- name: b\n", want: []string{"a", "b"}},
-		{name: "bare single suppression", input: "name: a\nmatchLabels:\n  job: api\n", want: []string{"a"}},
-		{name: "trailing separator is allowed", input: "- name: a\n---\n", want: []string{"a"}},
+		{name: "wrapper", input: "disabledAlertConfigs:\n  - name: a\n  - name: b\n", want: []kg.Suppression{{Name: "a"}, {Name: "b"}}},
+		{name: "bare list as printed by list", input: "- name: a\n- name: b\n", want: []kg.Suppression{{Name: "a"}, {Name: "b"}}},
+		{name: "bare single suppression", input: "name: a\nmatchLabels:\n  job: api\n", want: []kg.Suppression{{Name: "a", MatchLabels: map[string]string{"job": "api"}}}},
+		{name: "trailing separator is allowed", input: "- name: a\n---\n", want: []kg.Suppression{{Name: "a"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var upserted []string
+			var upserted []kg.Suppression
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var got kg.Suppression
 				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got)) {
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
-				upserted = append(upserted, got.Name)
+				upserted = append(upserted, got)
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer server.Close()
@@ -669,7 +669,7 @@ func TestSuppressionsUpsert_Shapes(t *testing.T) {
 func TestSuppressionsUpsert_RoundTripsListOutput(t *testing.T) {
 	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
 		{Name: "first", MatchLabels: map[string]string{"job": "api"}},
-		{Name: "second", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}},
+		{Name: "second", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}, ManagedBy: "terraform"},
 	}}
 	var upserted []kg.Suppression
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -703,7 +703,10 @@ func TestSuppressionsUpsert_RoundTripsListOutput(t *testing.T) {
 	cmd.SetIn(&listed)
 	cmd.SetOut(&bytes.Buffer{})
 	require.NoError(t, cmd.Execute())
-	assert.Equal(t, remote.DisabledAlertConfigs, upserted)
+	// managedBy is backend-owned: list prints it, but upsert must not send it back.
+	want := []kg.Suppression{remote.DisabledAlertConfigs[0], remote.DisabledAlertConfigs[1]}
+	want[1].ManagedBy = ""
+	assert.Equal(t, want, upserted)
 }
 
 func TestSuppressionsUpsert_RejectsBadInput(t *testing.T) {
@@ -716,7 +719,7 @@ func TestSuppressionsUpsert_RejectsBadInput(t *testing.T) {
 		{name: "mistyped key in bare list", input: "- name: a\n  matchlabels:\n    job: api\n", wantErr: "field matchlabels not found"},
 		{name: "mistyped key in bare suppression", input: "name: a\nmatchlabels:\n  job: api\n", wantErr: "field matchlabels not found"},
 		{name: "second document", input: "- name: a\n---\n- name: b\n", wantErr: "multiple YAML documents are not supported"},
-		{name: "scalar root", input: "just a string\n", wantErr: "expected a suppression, a list of suppressions, or a wrapper with a disabledAlertConfigs key"},
+		{name: "scalar root", input: "just a string\n", wantErr: "expected a suppression, a list of suppressions, or a disabledAlertConfigs wrapper"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
