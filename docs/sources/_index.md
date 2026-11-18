@@ -43,6 +43,10 @@ cards:
       description: Diagnose missing telemetry, compare profiles, and check Assistant usage.
       href: guides/
       height: 24
+    - title: Use gcx with AI agents
+      description: How `gcx` behaves when an AI coding agent runs it, and how to set up sign-in, destructive operations, and skills for agents.
+      href: use-gcx-with-agents/
+      height: 24
     - title: Usage statistics
       description: What `gcx` reports to Grafana Labs, and how to opt out.
       href: anonymous-usage-statistics/
