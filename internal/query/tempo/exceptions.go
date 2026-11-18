@@ -156,10 +156,10 @@ func BuildExceptionsQuery(filter string) (string, error) {
 	return "{ (" + inner + ") && status = error } | " + exceptionsProjection, nil
 }
 
-// AggregateExceptions groups span-search rows the way the Exceptions tab's
-// aggregateExceptions does. The representative message is normalized; grouped
-// messages keep the whitespace-collapsed originals. LastSeen is the latest
-// span time, not a relative label.
+// AggregateExceptions groups span-search rows. Message normalization matches
+// the Exceptions tab. The group key also includes the service, so a row's
+// count and its Drilldown link describe the same service. Grouped messages
+// keep the whitespace-collapsed originals. LastSeen is the latest span time.
 func AggregateExceptions(resp *SpanSearchResponse, query string, traceLimit int) *ExceptionsResult {
 	result := &ExceptionsResult{
 		Query:         query,
@@ -299,17 +299,15 @@ func groupExceptions(resp *SpanSearchResponse) (int, []ExceptionGroup) {
 				}
 				raw := collapseSpace(message)
 				typ := firstAttr(attrs, "event.exception.type", "exception.type")
-				key := exceptionGroupingKey(normalized, typ)
+				service := firstAttr(attrs, "resource.service.name", "service.name")
+				key := exceptionGroupingKey(normalized, typ, service)
 				group := groups[key]
 				if group == nil {
-					group = &exceptionAcc{message: normalized, typ: typ, seen: map[string]struct{}{}}
+					group = &exceptionAcc{message: normalized, typ: typ, service: service, seen: map[string]struct{}{}}
 					groups[key] = group
 					order = append(order, key)
 				}
 				group.count++
-				if service := firstAttr(attrs, "resource.service.name", "service.name"); group.service == "" && service != "" {
-					group.service = service
-				}
 				if _, ok := group.seen[raw]; raw != "" && !ok {
 					group.seen[raw] = struct{}{}
 					group.raw = append(group.raw, raw)
@@ -372,7 +370,7 @@ func normalizeExceptionMessage(message string) string {
 	return normalized
 }
 
-func exceptionGroupingKey(normalized, typ string) string {
+func exceptionGroupingKey(normalized, typ, service string) string {
 	trimmed := strings.TrimSpace(normalized)
 	runes := []rune(trimmed)
 	prefix := trimmed
@@ -381,5 +379,5 @@ func exceptionGroupingKey(normalized, typ string) string {
 		prefix = string(runes[:groupingEdgeLength])
 		suffix = string(runes[len(runes)-groupingEdgeLength:])
 	}
-	return typ + "|" + prefix + "|" + suffix + "|" + strconv.Itoa(len(runes))
+	return service + "|" + typ + "|" + prefix + "|" + suffix + "|" + strconv.Itoa(len(runes))
 }

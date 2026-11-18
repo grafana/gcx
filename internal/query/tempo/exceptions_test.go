@@ -137,6 +137,22 @@ func TestAggregateExceptionsGroupsLikeTheExceptionsTab(t *testing.T) {
 	assert.Equal(t, 1, byMessage["Completely different problem in another subsystem"].Occurrences)
 }
 
+func TestAggregateExceptionsSplitsTheSameMessageByService(t *testing.T) {
+	resp := &tempo.SpanSearchResponse{Traces: []tempo.SpanSearchTrace{{
+		SpanSets: []tempo.SpanSet{{Spans: []tempo.SpanHit{
+			spanMsgService("timeout for user 1", "TimeoutError", "checkout"),
+			spanMsgService("timeout for user 2", "TimeoutError", "payments"),
+		}}},
+	}}}
+
+	got := tempo.AggregateExceptions(resp, "q", 300)
+	require.Len(t, got.Exceptions, 2)
+	assert.Equal(t, "checkout", got.Exceptions[0].Service)
+	assert.Equal(t, 1, got.Exceptions[0].Occurrences)
+	assert.Equal(t, "payments", got.Exceptions[1].Service)
+	assert.Equal(t, 1, got.Exceptions[1].Occurrences)
+}
+
 func TestAggregateExceptionsEmptyJSONArray(t *testing.T) {
 	got := tempo.AggregateExceptions(&tempo.SpanSearchResponse{}, "q", 400)
 	data, err := json.Marshal(got)
@@ -190,6 +206,12 @@ func attr(key, value string) tempo.SpanAttribute {
 		panic(err)
 	}
 	return tempo.SpanAttribute{Key: key, Value: raw}
+}
+
+func spanMsgService(message, typ, service string) tempo.SpanHit {
+	hit := spanMsg(message, typ)
+	hit.Attributes = append(hit.Attributes, attr("resource.service.name", service))
+	return hit
 }
 
 func spanMsg(message, typ string) tempo.SpanHit {

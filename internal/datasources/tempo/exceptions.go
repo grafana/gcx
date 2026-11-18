@@ -44,7 +44,8 @@ func ExceptionsCmd(loader *providers.ConfigLoader) *cobra.Command {
 TRACEQL is an optional spanset such as '{ resource.service.name = "checkout" }'.
 Omit it to include every service. The command adds status = error, samples at
 most --limit traces (default 300, 10 spans each), and groups messages the way
-the Traces Drilldown Exceptions tab does. Counts are occurrences in that sample.
+the Exceptions tab does, with one row per service. Counts are occurrences of
+that row.
 
 Each row links to the Exceptions tab for that service and exception type.
 With no time flags, the window is the last hour. Use --share-link or --open
