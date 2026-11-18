@@ -219,6 +219,7 @@ can otherwise inject Grafana auth into the wrong request.
 independently of bundled content. `internal/skills` reconciles that release catalog
 with the selected local installation for list/install/update/uninstall; retired
 entries remain addressable without automatic deletion or replacement installation.
+Explicit user-authored imports have separate local storage and qualified identities; gcx manages complete export, revision-checked updates and removal, while the current coding agent discovers, reads and executes those workflows. Bundled lifecycle operations do not include them.
 See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
 
 ## Design rationale
