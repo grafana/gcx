@@ -521,7 +521,7 @@ To find out more about `gcx` usage statistics, or for information on how to disa
 | [Authentication](docs/sources/authentication.md) | Authenticate `gcx` |
 | [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
 | [Dashboards as Code](docs/sources/resources/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
-| [Managing Resources](docs/sources/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
+| [Managing Resources](docs/sources/resources/manage-resources.md) | Get, push, pull, delete, edit, validate |
 | [Linting Resources](docs/sources/resources/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |

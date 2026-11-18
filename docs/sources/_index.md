@@ -40,7 +40,7 @@ cards:
       href: resources/
       height: 24
     - title: User guides
-      description: Search, edit, migrate, and back up resources, diagnose missing telemetry, compare profiles, and check Assistant usage.
+      description: Diagnose missing telemetry, compare profiles, and check Assistant usage.
       href: guides/
       height: 24
     - title: Usage statistics

@@ -36,7 +36,7 @@ Use [`gcx resources`](../cli-reference/#gcx-resources) to pull, push, inspect, e
 
 To find out which resource types your instance serves, run [`gcx resources list-types`](../cli-reference/#gcx-resources-list-types). To view example manifests, run [`gcx resources list-examples`](../cli-reference/#gcx-resources-list-examples).
 
-For step-by-step workflows, refer to [Resource management workflows](../guides/manage-resources/).
+For step-by-step workflows, refer to [Resource management workflows](./manage-resources/).
 
 ## Product-specific commands
 
@@ -52,7 +52,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Data sources** | Data source configurations and health checks | [`gcx datasources`](../cli-reference/#gcx-datasources) | |
 | **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../cli-reference/#gcx-alert), [`gcx resources`](../cli-reference/#gcx-resources) | [Lint resources](./lint-resources/), [Use gcx to manage alerting resources](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/alerting/set-up/provision-alerting-resources/gcx-provisioning/) |
 | **SLOs** | SLO definitions and reports | [`gcx slo`](../cli-reference/#gcx-slo), [`gcx resources`](../cli-reference/#gcx-resources) | |
-| **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../cli-reference/#gcx-irm-incidents), [`gcx resources`](../cli-reference/#gcx-resources) | [Incident descriptions](../guides/manage-resources/#incident-descriptions) |
+| **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../cli-reference/#gcx-irm-incidents), [`gcx resources`](../cli-reference/#gcx-resources) | [Incident descriptions](./manage-resources/#incident-descriptions) |
 | **IRM OnCall** | Schedules, escalation chains, integrations, and other OnCall configuration | [`gcx irm oncall`](../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](./manage-oncall-notification-rules/) |
 | **Machine Learning** | Forecasts, holidays, outlier detectors, and their alerts | [`gcx ml`](../cli-reference/#gcx-ml), [`gcx resources`](../cli-reference/#gcx-resources) | [Manage Machine Learning resources](./manage-machine-learning/) |
 | **Adaptive Telemetry** | Rules, policies, and recommendations for Adaptive Metrics, Logs, Traces, and Profiles, and log archiving (experimental) | [`gcx metrics adaptive`](../cli-reference/#gcx-metrics-adaptive), [`gcx logs adaptive`](../cli-reference/#gcx-logs-adaptive), [`gcx logs archive`](../cli-reference/#gcx-logs-archive), [`gcx traces adaptive`](../cli-reference/#gcx-traces-adaptive), [`gcx profiles adaptive`](../cli-reference/#gcx-profiles-adaptive) | |
