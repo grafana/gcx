@@ -88,6 +88,14 @@ func checkCallbackBasics(q url.Values, expectedState string) (string, *callbackE
 
 	if errMsg := q.Get("error"); errMsg != "" {
 		errMsg = StripControlChars(errMsg)
+		// OIDC providers explain the cause in error_description, e.g. Entra
+		// ID's AADSTS50011 for an unregistered redirect URI.
+		if desc := StripControlChars(q.Get("error_description")); desc != "" {
+			if len(desc) > 300 {
+				desc = desc[:300] + "…"
+			}
+			errMsg += ": " + desc
+		}
 		return "", &callbackError{err: fmt.Errorf("authentication denied: %s", errMsg), page: errMsg}
 	}
 

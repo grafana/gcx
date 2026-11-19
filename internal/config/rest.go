@@ -35,6 +35,11 @@ type NamespacedRESTConfig struct {
 	// construction (Option C: call-site wiring).
 	oauthTransport *auth.RefreshTransport
 
+	// oauthProxy reports that requests are routed through the assistant
+	// backend proxy. OIDC logins share oauthTransport for refresh and
+	// persistence but talk to the Grafana server directly.
+	oauthProxy bool
+
 	// oauthCredentialBinding freezes the source/owner/field/destination tuple
 	// that authorized the OAuth transport. Persistence compares a freshly
 	// loaded stack against it before resolving or writing rotated credentials,
@@ -49,7 +54,7 @@ type NamespacedRESTConfig struct {
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
 func (n *NamespacedRESTConfig) IsOAuthProxy() bool {
-	return n.oauthTransport != nil
+	return n.oauthTransport != nil && n.oauthProxy
 }
 
 // FreshOAuthToken returns a usable access token through the configured OAuth
@@ -453,8 +458,10 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
 	var oauthCredentialBinding credentials.Binding
+	oauthProxy := false
 	switch authSelection.mode {
 	case grafanaAuthOAuth:
+		oauthProxy = true
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
 		// the assistant backend), so it is stored as a separate config field.
@@ -473,6 +480,31 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 			RefreshToken:     cfg.Grafana.OAuthRefreshToken,
 			ExpiresAt:        expiresAt,
 			RefreshExpiresAt: refreshExpiresAt,
+		}
+		bindingStack := cfg.StackEntry
+		if bindingStack == nil {
+			bindingStack = &StackConfig{Grafana: cfg.Grafana}
+		}
+		oauthCredentialBinding = stackOwner(cfg.stackName(), bindingStack).binding(credentials.FieldOAuthRefreshToken)
+		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+			oauthTransport.Base = rt
+			return oauthTransport
+		}
+	case grafanaAuthOIDC:
+		// The identity provider's ID token is the bearer for the Grafana
+		// server itself; Grafana validates it with [auth.jwt]. Refresh goes to
+		// the provider's token endpoint, not through the Grafana transport.
+		issuer := cfg.Grafana.OIDCIssuer
+		clientID := cfg.Grafana.OIDCClientID
+		scopes := strings.Fields(cfg.Grafana.OIDCScopes)
+		oauthTransport = &auth.RefreshTransport{
+			Token:            cfg.Grafana.OAuthToken,
+			RefreshToken:     cfg.Grafana.OAuthRefreshToken,
+			ExpiresAt:        parseRFC3339OrZero(cfg.Grafana.OAuthTokenExpiresAt),
+			RefreshExpiresAt: parseRFC3339OrZero(cfg.Grafana.OAuthRefreshExpiresAt),
+			Refresh: func(ctx context.Context, refreshToken string) (auth.RefreshResult, error) {
+				return auth.OIDCRefresh(ctx, issuer, clientID, scopes, refreshToken)
+			},
 		}
 		bindingStack := cfg.StackEntry
 		if bindingStack == nil {
@@ -522,6 +554,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		Namespace:              namespace,
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport:         oauthTransport,
+		oauthProxy:             oauthProxy,
 		oauthCredentialBinding: oauthCredentialBinding,
 		keychainPolicy:         cfg.keychainPolicy,
 	}, nil

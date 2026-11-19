@@ -72,6 +72,10 @@ type RefreshTransport struct {
 	OnRefresh        TokenRefresher
 	CheckPersistence TokenPersistenceChecker
 
+	// Refresh, if set, replaces the assistant proxy refresh endpoint, for
+	// example with an OIDC provider's token endpoint.
+	Refresh func(ctx context.Context, refreshToken string) (RefreshResult, error)
+
 	// Lock, if set, is called before a refresh to serialize concurrent gcx
 	// invocations that share a config file. Without it, two processes race to
 	// refresh the same rotating refresh token and one gets locked out.
@@ -310,7 +314,7 @@ func (t *RefreshTransport) refreshAndPersist(req *http.Request) error {
 	defer cancel()
 
 	// Network call happens outside the in-process mutex.
-	result, err := t.doProxyRefresh(refreshCtx, refreshToken)
+	result, err := t.refresh(refreshCtx, refreshToken)
 	if err != nil {
 		if errors.Is(err, ErrInvalidRefreshResponse) {
 			t.blockConsumedGeneration(err)
@@ -474,6 +478,13 @@ type proxyRefreshResponse struct {
 		RefreshToken     string `json:"refresh_token"`
 		RefreshExpiresAt string `json:"refresh_expires_at"`
 	} `json:"data"`
+}
+
+func (t *RefreshTransport) refresh(ctx context.Context, refreshToken string) (RefreshResult, error) {
+	if t.Refresh != nil {
+		return t.Refresh(ctx, refreshToken)
+	}
+	return t.doProxyRefresh(ctx, refreshToken)
 }
 
 func (t *RefreshTransport) doProxyRefresh(ctx context.Context, refreshToken string) (RefreshResult, error) {

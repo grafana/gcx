@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/grafana-openapi-client-go/client/signed_in_user"
+	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // grafanaClient is satisfied by any type that can return the Grafana version.
@@ -58,6 +59,9 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 
 	// Step 2: K8s API availability via discovery /apis
 	if err := v.discovery(ctx, restCfg); err != nil {
+		if opts.UseOIDC && k8sapierrors.IsUnauthorized(err) {
+			return "", &OIDCTokenRejectedError{Server: opts.Server, Issuer: opts.OIDCIssuer, Cause: err}
+		}
 		return "", &K8sDiscoveryError{Server: opts.Server, Cause: err}
 	}
 

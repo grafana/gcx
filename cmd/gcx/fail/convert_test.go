@@ -2202,3 +2202,21 @@ func TestErrorToDetailedError_TunneledPermissionDenial(t *testing.T) {
 		assert.Contains(t, got.Suggestions, "Review your Grafana credentials: gcx config view")
 	})
 }
+
+func TestConvertOIDCLoginErrors(t *testing.T) {
+	t.Parallel()
+
+	discovery := fail.ErrorToDetailedError(&login.OIDCDiscoveryError{Server: "https://grafana.example.com", Cause: auth.ErrGrafanaOIDCNotFound})
+	require.NotNil(t, discovery)
+	assert.Equal(t, gcxerrors.SummaryEndpointNotAvailable, discovery.Summary)
+	assert.Contains(t, strings.Join(discovery.Suggestions, "\n"), "--oidc-issuer")
+
+	rejected := fail.ErrorToDetailedError(fmt.Errorf("login: %w", &login.OIDCTokenRejectedError{
+		Server: "https://grafana.example.com", Issuer: "https://idp.example.com", Cause: errors.New("Unauthorized"),
+	}))
+	require.NotNil(t, rejected)
+	assert.Equal(t, gcxerrors.SummaryAuthenticationFailed, rejected.Summary)
+	assert.Contains(t, strings.Join(rejected.Suggestions, "\n"), "[auth.jwt]")
+	require.NotNil(t, rejected.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *rejected.ExitCode)
+}
