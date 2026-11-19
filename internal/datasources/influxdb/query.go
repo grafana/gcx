@@ -16,12 +16,14 @@ import (
 type queryOpts struct {
 	dsquery.SharedOpts
 
+	Share      dsquery.ExploreLinkOpts
 	Datasource string
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, false)
+	opts.Share.Setup(flags, "executed query")
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.influxdb is configured)")
 }
 
@@ -41,7 +43,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is the InfluxQL, Flux, or SQL expression to evaluate, passed as a positional
 argument or via --expr.
 The query language mode is auto-detected from the datasource configuration.
-Datasource is resolved from -d flag or datasources.influxdb in your context.`,
+Datasource is resolved from -d flag or datasources.influxdb in your context.
+
+Use --share-link to print the equivalent Grafana Explore URL, or --open to open
+it in your browser after the query succeeds.`,
 		Example: `
   # InfluxQL instant query
   gcx datasources influxdb query -d UID 'SELECT mean("value") FROM "cpu" WHERE time > now() - 1h'
@@ -110,7 +115,23 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				Expr:           expr,
+				From:           opts.From,
+				To:             opts.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			}, influxdb.Mode(modeStr))
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
