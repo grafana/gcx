@@ -30,6 +30,7 @@ var cloudOnlyPaths = []string{
 	"gcx assistant",            // Grafana Assistant — Grafana Cloud
 	"gcx kg",                   // Knowledge Graph / Asserts — Grafana Cloud
 	"gcx frontend",             // Frontend Observability — Grafana Cloud
+	"gcx error-tracking",       // Error Tracking — Grafana Cloud
 	"gcx appo11y",              // Application Observability — Grafana Cloud
 	"gcx agento11y",            // Agent Observability — Grafana Cloud
 	// Instrumentation Hub — Grafana Cloud service. Narrowed to specific
