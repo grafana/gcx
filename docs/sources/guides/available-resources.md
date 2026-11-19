@@ -58,6 +58,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Performance Testing (k6)** | Projects, load tests, schedules, and test runs | [`gcx k6`](../../cli-reference/#gcx-k6) | |
 | **Fleet Management** | Collectors and configuration pipelines | [`gcx fleet`](../../cli-reference/#gcx-fleet) | |
 | **Frontend Observability** | Frontend apps, source maps, and user sessions | [`gcx frontend`](../../cli-reference/#gcx-frontend) | |
+| **Error Tracking** | Projects, errors and their events, comments and assignees, heatmaps, and source maps (experimental) | `gcx error-tracking` | |
 | **Application Observability** | Monitored services and their settings | [`gcx appo11y`](../../cli-reference/#gcx-appo11y) | |
 | **Database Observability** | Monitored database instances | [`gcx dbo11y`](../../cli-reference/#gcx-dbo11y) | |
 | **Instrumentation** | Kubernetes clusters, cluster apps, and monitored services | [`gcx instrumentation`](../../cli-reference/#gcx-instrumentation) | |
