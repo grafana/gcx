@@ -3,8 +3,8 @@ name: agento11y-instrument
 description: >-
   Instruments a developer's own LLM app with the Agent Observability SDK, or
   repairs missing generations and empty Performance charts in Grafana Agent
-  Observability. Leaves model calls that already emit OpenTelemetry GenAI spans
-  to the OpenTelemetry guide. Applies confirmed changes
+  Observability. For model calls that already emit OpenTelemetry GenAI spans, it
+  follows the OpenTelemetry guide instead of adding the SDK. Applies confirmed changes
   and verifies generation ingest, traces, and metrics. Excludes coding-agent
   telemetry plugins. For offline tests use agento11y-test-starter; for eval rules
   and guards use agento11y-prod-setup.
@@ -29,10 +29,10 @@ the flow and the decision logic. A minimal fallback lives in
 [references/instrumentation.md](references/instrumentation.md) for when the fetch is unavailable.
 
 This skill sets up the SDK. If the app already emits OpenTelemetry (OTel) GenAI spans for its model
-calls, do not add the SDK for those calls (Step 2, `otel`). That path is documented in the public
+calls, do not add the SDK for those calls (Step 2, `otel`). For those calls, follow the public
 guide
 [Instrument agents with OpenTelemetry](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/get-started/opentelemetry/)
-and in the llms.txt section "Choose OpenTelemetry or the Grafana SDK".
+instead. The llms.txt section "Choose OpenTelemetry or the Grafana SDK" summarizes it.
 
 ## Rules
 
@@ -216,9 +216,9 @@ State the classification explicitly, with the `file:line` evidence that led to i
 - **`otel`** — OTel GenAI spans exist for the model calls (Step 1, item 5), and the SDK does not
   record those calls. Do not add the SDK for those calls: llms.txt reuses compatible spans before
   it adds the SDK, and once the spans carry the `agento11y.record` opt-in, an SDK record would be
-  a second copy of each call. This skill does not set up that path, even when the spans still need
-  the opt-in, content capture, or a tracer provider. Point the developer to the public guide
-  linked above for those calls. Continue with this skill only for:
+  a second copy of each call. For those calls, fetch the public guide linked above and apply what
+  it lists that is missing, such as the opt-in, content capture, or a tracer provider. The Step 3
+  checklist does not apply to them. Use the rest of this skill only for:
   - model calls that have no OTel GenAI spans (treat them as `none`), and
   - SDK-only features: guards and other hooks, conversation ratings, or experiments. Add the SDK
     for those features only, and do not wrap the model calls that the spans already record. Guard
@@ -242,7 +242,8 @@ State the classification explicitly, with the `file:line` evidence that led to i
 
 `none`, `partial`, and `broken` converge on the same checklist (Step 3); they differ only in how
 much is already done. `otel` calls do not use it. If every model call is `otel` and no SDK-only
-feature is needed, report the classification with its evidence and the guide link, and stop.
+feature is needed, skip Step 3. Report what the guide lists that is missing, with `file:line`
+evidence, ask before applying it (as in Step 4), and stop after applying it.
 
 ## Step 3 — Run the instrumentation gap checklist
 
