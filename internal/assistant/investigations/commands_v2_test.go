@@ -63,9 +63,9 @@ func deprecatedHandler(t *testing.T, method, opPath string, status int, body any
 // setAgentMode pins agent mode; detection otherwise reads the shell's env at init.
 func setAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
+	t.Cleanup(agent.ResetForTesting) // runs after Setenv restores the env
 	t.Setenv("GCX_AGENT_MODE", strconv.FormatBool(enabled))
 	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
 }
 
 func runCommand(t *testing.T, handler http.Handler, args []string) (string, string, error) {
@@ -95,6 +95,10 @@ func TestDeprecatedCommands_GoneIsFriendlyError(t *testing.T) {
 			assert.Equal(t, "Investigation inv-1 does not support "+tc.action+".", detailed.Details)
 			assert.Equal(t, []string{tc.suggestion}, detailed.Suggestions)
 			assert.NotContains(t, err.Error(), "/api/v2", "server's endpoint suggestion must not leak through")
+
+			statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+			require.True(t, ok, "410 status must stay in the chain for usage reporting")
+			assert.Equal(t, http.StatusGone, statusErr.Status)
 			assert.NotContains(t, stderr, "deprecated", "the error already explains a 410")
 		})
 	}
@@ -159,5 +163,17 @@ func TestDeprecatedCommands_SuccessUnchanged(t *testing.T) {
 					" is deprecated: newer investigations do not support "+tc.action+". The command remains available through v1.x")
 			})
 		}
+	}
+}
+
+func TestDeprecatedCommands_HelpOnlyPauseSuggestsCancel(t *testing.T) {
+	root := investigations.Commands(nil)
+	for _, tc := range deprecatedCommands {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, _, err := root.Find([]string{tc.name})
+			require.NoError(t, err)
+			assert.Contains(t, cmd.Long, "Deprecated:")
+			assert.Equal(t, tc.name == "pause", strings.Contains(cmd.Long, "investigations cancel"))
+		})
 	}
 }

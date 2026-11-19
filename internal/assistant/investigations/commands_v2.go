@@ -88,7 +88,7 @@ func resolveChatID(ctx context.Context, client *Client, id string) (string, erro
 // autonomy mode; the server answers those requests with 410 Gone. Older
 // investigations still support them, so the commands stay through v1.x.
 const deprecationNote = "Deprecated: newer investigations do not support this and the server rejects it with HTTP 410 Gone. " +
-	"To stop an investigation, use `gcx assistant investigations cancel <id>`. This command remains supported through v1.x."
+	"This command remains supported through v1.x."
 
 // warnDeprecated writes the deprecation notice to stderr after a successful
 // call; stdout stays the result. A 410 is explained by its error instead.
@@ -98,18 +98,9 @@ func warnDeprecated(cmd *cobra.Command, action string) {
 		cmd.Name(), action))
 }
 
-// cancelSuggestion fits pause, whose goal is stopping the investigation.
-func cancelSuggestion(id string) string {
-	return "To stop the investigation, cancel it: gcx assistant investigations cancel " + id
-}
-
-// getSuggestion fits resume and mode, where cancelling would defeat the goal.
-func getSuggestion(id string) string {
-	return "Check the investigation's current state: gcx assistant investigations get " + id
-}
-
 // unsupportedOperationError replaces a 410 Gone with a friendly error. The
-// server's own message is dropped: it points at API endpoints, not gcx.
+// server's own message is dropped (it points at API endpoints, not gcx), but
+// the status stays in the chain for usage reporting.
 func unsupportedOperationError(err error, id, action, suggestion string) error {
 	statusErr, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
 	if !ok || statusErr.Status != http.StatusGone {
@@ -119,6 +110,11 @@ func unsupportedOperationError(err error, id, action, suggestion string) error {
 		Summary:     "Unsupported operation",
 		Details:     fmt.Sprintf("Investigation %s does not support %s.", id, action),
 		Suggestions: []string{suggestion},
+		Parent: &gcxerrors.HTTPStatusError{
+			Status:  statusErr.Status,
+			Message: "HTTP 410 Gone",
+			TraceID: statusErr.TraceID,
+		},
 	}
 }
 
@@ -136,8 +132,9 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pause <id>",
 		Short: "Pause a running v2 investigation (Deprecated).",
-		Long:  "Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.\n\n" + deprecationNote,
-		Args:  cobra.ExactArgs(1),
+		Long: "Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.\n\n" + deprecationNote +
+			" To stop an investigation, use `gcx assistant investigations cancel <id>`.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -152,7 +149,7 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			msg, err := client.Pause(cmd.Context(), chatID)
 			if err != nil {
-				return unsupportedOperationError(err, args[0], "pausing", cancelSuggestion(args[0]))
+				return unsupportedOperationError(err, args[0], "pausing", "To stop the investigation, cancel it: gcx assistant investigations cancel "+args[0])
 			}
 			warnDeprecated(cmd, "pausing")
 			return opts.IO.Encode(cmd.OutOrStdout(), msg)
@@ -195,7 +192,8 @@ agents. Use it when the user asks to resume the investigation.
 			}
 			msg, err := client.Resume(cmd.Context(), chatID)
 			if err != nil {
-				return unsupportedOperationError(err, args[0], "resuming", getSuggestion(args[0]))
+				return unsupportedOperationError(err, args[0], "resuming",
+					"Check the investigation's current state: gcx assistant investigations get "+args[0])
 			}
 			warnDeprecated(cmd, "resuming")
 			return opts.IO.Encode(cmd.OutOrStdout(), msg)
@@ -255,7 +253,8 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			resp, err := client.SetMode(cmd.Context(), chatID, mode)
 			if err != nil {
-				return unsupportedOperationError(err, args[0], "changing the autonomy mode", getSuggestion(args[0]))
+				return unsupportedOperationError(err, args[0], "changing the autonomy mode",
+					"Check the investigation's current state: gcx assistant investigations get "+args[0])
 			}
 			warnDeprecated(cmd, "changing the autonomy mode")
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
