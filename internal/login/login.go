@@ -659,6 +659,26 @@ func NormalizeServerURL(raw string) string {
 	return raw
 }
 
+// LooksLikeToken reports whether a server value is a Grafana service account
+// token or a Grafana Cloud token, usually pasted into the wrong prompt. Such a
+// value must never be resolved or printed: it would leak in a DNS query and in
+// error output.
+func LooksLikeToken(server string) bool {
+	host := strings.ToLower(strings.TrimSpace(server))
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	return strings.HasPrefix(host, "glsa_") || strings.HasPrefix(host, "glc_")
+}
+
+// DisplayServer returns server for use in messages, hiding a token saved as a
+// server.
+func DisplayServer(server string) string {
+	if LooksLikeToken(server) {
+		return "<token hidden>"
+	}
+	return server
+}
+
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
 // When TLS settings are present, builds a TLS-aware HTTP client for the probe.
 //
