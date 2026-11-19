@@ -298,7 +298,7 @@ you can tell same-named Services apart:
 
 ```bash
 gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
-gcx kg graph query "MATCH (c:Component)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN c.name, repo.name, r.path ORDER BY c.name, repo.name, r.path SKIP 0 LIMIT 300"
+gcx kg graph query "MATCH (c:Component)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN c.name, repo.name, r.path ORDER BY c.name, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
 gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
 gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, r.path SKIP 0 LIMIT 300" --since 7d
 gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, r.path SKIP 0 LIMIT 300" --since 7d
