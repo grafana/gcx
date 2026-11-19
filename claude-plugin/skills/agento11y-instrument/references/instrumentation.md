@@ -79,7 +79,12 @@ metrics.setGlobalMeterProvider(mp);
 
 ## Instrumentation preference order
 
-Use the highest-level option that exists for the app's language; do not assume symmetry.
+If the app already emits OpenTelemetry GenAI spans for a model call, do not add the SDK for that
+call (SKILL.md Step 2, `otel`); follow the public guide
+[Instrument agents with OpenTelemetry](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/get-started/opentelemetry/)
+instead.
+
+Otherwise, use the highest-level option that exists for the app's language; do not assume symmetry.
 
 1. **Provider wrapper** — wrap the LLM client (OpenAI / Anthropic / Gemini). Least code, captures
    model/tokens/cost automatically. (`go-providers/*`, `python-providers/*`, JS subpath providers.)
