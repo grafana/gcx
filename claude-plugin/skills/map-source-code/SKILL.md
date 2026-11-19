@@ -287,7 +287,7 @@ so entries that were already written are only written again.
 | 403 that says the write API is not enabled | Writes were turned off after Step 1 | Stop. Keep the files for later. |
 | Any other 403 | The account gcx uses may not write to the Knowledge Graph | Stop. Keep the files, and tell the user to get write access from a stack admin. |
 | 422 that names the domain or `Repository` | The `sourcecode` schema is not installed on this stack | Stop and say so. |
-| 422 from `component-links.yaml` that names `Component`, `servicemodel` or `BUILT_FROM` | The stack does not allow `BUILT_FROM` from a Component | Write those services' `BUILT_FROM` links from their Services instead: add them to `repository-links.yaml` and run it. |
+| 422 from `component-links.yaml` that names `Component`, `servicemodel` or `BUILT_FROM` | The stack does not allow `BUILT_FROM` from a Component | Stop writing that file. The entries before the failing one stay written: keep them. For the failing entry and the ones after it, plan per-Service `BUILT_FROM` links instead, as in Step 5. This changes the approved plan, so show the new links and wait for approval again, then add them to `repository-links.yaml` and run it. A run with nobody to approve keeps them in the plan files and does not write them. |
 | 422 that names `CloudResource`, `READS_FROM` or `WRITES_TO` | The stack has an older `sourcecode` schema without resources | Do not write `resources.yaml` or `resource-links.yaml`. Keep them for later, and say so. |
 | 422 or 404 about an endpoint | No Service with that name and scope | Check the match from Step 5, fix or remove that entry, and run the file again. |
 | 409 | Graph writes are paused, or the graph does not exist yet | Try again later. |
