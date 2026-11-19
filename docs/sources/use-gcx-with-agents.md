@@ -17,7 +17,7 @@ weight: 9
 
 # Use `gcx` with AI agents
 
-People and AI coding agents use the same `gcx` commands. When `gcx` detects that an agent is running it, it switches to agent mode. Agent mode changes defaults, such as the output format and how confirmation prompts behave. It doesn't change which commands or flags are available.
+Both people and AI coding agents use the same `gcx` commands. However, when `gcx` detects that an agent is running it, it switches to agent mode, which has different defaults, such as the output format and how confirmation prompts behave. 
 
 ## Before you begin
 
@@ -28,6 +28,8 @@ People and AI coding agents use the same `gcx` commands. When `gcx` detects that
 
 `gcx` turns on agent mode automatically when it finds an environment variable set by a supported agent tool, such as Claude Code, Cursor, GitHub Copilot, Codex, or Gemini CLI.
 
+The main differeces between modes are the following:
+
 | | Without agent mode | In agent mode |
 | --- | --- | --- |
 | Default output | Readable tables | Compact JSON (spills to a temp file above 100 KiB) |
@@ -35,7 +37,7 @@ People and AI coding agents use the same `gcx` commands. When `gcx` detects that
 | Errors | A readable message on `stderr` | A JSON error document on `stdout` |
 | Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Allow destructive operations](#allow-destructive-operations). |
 
-Explicit flags override these defaults. For example, `-o text` prints a table in agent mode, and `-o json` prints JSON without agent mode. For manual overrides and output details, refer to [Customize detection, output, and error handling](#customize-detection-output-and-error-handling).
+You can override these defaults with explicit flags. For example, `-o text` prints a table in agent mode, and `-o json` prints JSON without agent mode. For manual overrides and output details, refer to [Customize detection, output, and error handling](#customize-detection-output-and-error-handling).
 
 ## Install agent skills
 
@@ -54,7 +56,7 @@ Explicit flags override these defaults. For example, `-o text` prints a table in
 # List the bundled skills and whether they're installed
 gcx agent skills list
 
-# Install all skills into ~/.agents/skills
+# Install all skills into ~/.agents/skills (use --dir for another .agents root)
 gcx agent skills install --all
 
 # Refresh installed skills after you upgrade gcx
@@ -66,11 +68,27 @@ gcx agent skills uninstall <SKILL>
 
 `gcx agent skills update` doesn't add skills that are new in the bundle. To add them, run `gcx agent skills install --all` again.
 
-To read a skill without installing it, run `gcx agent skills get <SKILL>`.
+### Discover skills and commands on demand
+
+If your tool doesn't use the Claude Code plugin or `~/.agents/skills` (for example in Cursor, GitHub Copilot, or a custom agent integration), you don't need to install any files. Your agent can read bundled skills on demand and discover commands progressively:
+
+```bash
+# Print a bundled skill without writing files to disk
+gcx agent skills get <SKILL>
+
+# Orient on top-level command groups in a compact text tree
+gcx help-tree --depth 1 -o text
+
+# Drill into one command group with inline arguments, flags, and agent hints
+gcx help-tree resources -o text
+
+# Output the full JSON catalog of commands, cost estimates, and resource types
+gcx commands
+```
 
 ## Sign in for agents
 
-An agent can do anything that its `gcx` credential allows. Use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
+An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
 
 **When a person is present**, use browser-based OAuth. `gcx` opens a browser and waits for you to approve the sign-in:
 
@@ -89,7 +107,7 @@ gcx login my-stack --server https://my-stack.grafana.net --token <SERVICE_ACCOUN
 
 ## Allow destructive operations
 
-Agent mode never approves a destructive operation by itself. Commands that would show a confirmation prompt to a person fail in agent mode unless you allow the operation in one of these ways:
+Agent mode never approves a destructive operation by itself. Commands that require a confirmation prompt to a person fail in agent mode unless you allow the operation in one of these ways:
 
 - Pass `--force` to that command.
 - Set `GCX_AUTO_APPROVE=true` in the agent's environment. `GCX_AUTO_APPROVE` accepts `1`, `t`, or `true`. Other values, such as `yes`, make the command fail.
@@ -108,7 +126,7 @@ If your tool isn't detected automatically, set `GCX_AGENT_NAME` to a supported l
 GCX_AGENT_NAME=crush gcx resources get dashboards
 ```
 
-Set the label only in the agent's environment, not in a shell that people also use. For the full list of detected tools and supported labels, refer to [Agent mode variables](https://github.com/grafana/gcx/blob/main/docs/design/environment-variables.md#agent-mode-variables).
+Set the label only in the agent's environment, not in a shell that people also use. Supported labels for `GCX_AGENT_NAME` (and the shared `AI_AGENT` variable) are `aider`, `amazon-q`, `amp`, `augment`, `claude-code`, `cline`, `codex`, `crush`, `cursor`, `devin`, `factory-droid`, `gemini-cli`, `github-copilot`, `goose`, `hermes`, `junie`, `kilo-code`, `kiro`, `openclaw`, `opencode`, `openhands`, `pi`, and `qwen-code`. Refer to [Environment variables](../cli-reference/#environment-variables) for variable details and precedence.
 
 To turn agent mode on or off regardless of detection:
 
@@ -146,12 +164,18 @@ When a result is larger than 100 KiB, `gcx` writes the full result to a temporar
   "bytes": 143200,
   "content_format": "json",
   "total_items": 312,
-  "preview_sample": [ ... ],
-  "message": "Response too large for stdout (143200 bytes). Full data written to ..."
+  "preview_sample": [
+    {
+      "metadata": {
+        "name": "prod-overview"
+      }
+    }
+  ],
+  "message": "Response too large for stdout (143200 bytes). Full data written to /tmp/gcx-results-3781234567.json"
 }
 ```
 
-`preview_sample` contains the first items of a list, never the complete result. Read the file at `spilled_to` for the full data.
+For list responses, `preview_sample` contains only the first 3 items (or sorted top-level keys for objects, and `null` for `jq` streams)—never the complete result. Read the file at `spilled_to` for the full data.
 
 To control this behavior:
 
@@ -168,6 +192,14 @@ In agent mode, a failed command writes one JSON error document to `stdout`, and 
 ```
 
 The `error` object can also include `details`, `suggestions`, and `docsLink`. When a batch operation partly succeeds, the document has the type `gcx.partial_result` and includes the successful `items` alongside the `error`.
+
+To record failed agent-mode calls locally for debugging, enable `diagnostics.agent-invocation-log` in your [configuration](../configuration/#configuration-reference):
+
+```bash
+gcx config set diagnostics.agent-invocation-log true
+```
+
+When enabled, `gcx` writes failed agent-mode invocations (up to 1,000 JSONL records) to `~/.local/state/gcx/agent-invocation-errors.jsonl` (`$XDG_STATE_HOME/gcx/agent-invocation-errors.jsonl`), or to `diagnostics.log-dir` if configured.
 
 ## Learn more
 

@@ -189,7 +189,7 @@ Refer to [Authentication](/docs/sources/authentication) for the available paths 
 
 If you're contributing a new Grafana domain capability to `gcx`, ask your coding agent to use [`contribute`](.agents/skills/contribute/SKILL.md) before choosing a command, provider, or data source path.
 
-### Install agent skills
+### Install agent skills
 
 `gcx` ships a portable agent skills bundle for setup, dashboard creation and GitOps, datasource exploration, alert investigation, structured debugging, SLO management, Synthetic Monitoring workflows, Knowledge Graph diagnosis, project scaffolding, resource generation and import, and end-to-end Observability rollout. 
 
@@ -523,6 +523,7 @@ To find out more about `gcx` usage statistics, or for information on how to disa
 | [Dashboards as Code](docs/sources/resources/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Managing Resources](docs/sources/resources/manage-resources.md) | Get, push, pull, delete, edit, validate |
 | [Linting Resources](docs/sources/resources/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Using gcx with AI Agents](docs/sources/use-gcx-with-agents.md) | Agent mode, skills, sign-in, and safety guards |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 
