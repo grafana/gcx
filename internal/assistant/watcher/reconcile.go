@@ -233,7 +233,10 @@ func reconcile(ctx context.Context, client *watchers.Client, desired Watcher, id
 		if err != nil {
 			return nil, err
 		}
-		unsupported := append(raw.UnsupportedConfiguration(), enrollment.UnsupportedConfiguration()...)
+		// Enabling keeps the stored schedule, so it must be representable too.
+		next := *enrollment
+		next.Enabled = enrollment.Enabled || desired.AutomaticRecalibration.Enabled
+		unsupported := append(raw.UnsupportedConfiguration(), next.UnsupportedConfiguration()...)
 		if len(unsupported) > 0 {
 			return nil, fmt.Errorf("Watcher has unrepresented configuration (%s); continue editing in Grafana", strings.Join(unsupported, ", "))
 		}

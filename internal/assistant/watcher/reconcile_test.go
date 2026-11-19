@@ -263,7 +263,7 @@ func TestReconcileRefusesBeforeSources(t *testing.T) {
 		enrollment watchers.Enrollment
 	}{
 		{"unknown webhook setting", `{"webhook":{"futureOption":"private"}}`, watchers.Enrollment{}},
-		{"custom schedule", `{}`, watchers.Enrollment{ScheduleCron: "0 1 * * *"}},
+		{"custom schedule", `{}`, watchers.Enrollment{Enabled: true, ScheduleCron: "0 1 * * *"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
