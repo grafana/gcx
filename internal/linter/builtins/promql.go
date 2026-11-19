@@ -50,10 +50,37 @@ var variableRegexp = regexp.MustCompile(
 
 // dashboardVariable is a deliberately incomplete representation of the Dashboard -> dashboardVariable type in grafana.
 // The properties which are extracted from JSON are only those used for linting purposes.
+//
+// v1 dashboards keep these fields at the top level of the variable. v2 dashboards
+// nest them under "spec", e.g. {"kind": "IntervalVariable", "spec": {"name": ...}}.
 type dashboardVariable struct {
 	Name    string              `json:"name"`
 	Current rawVariableOption   `json:"current"`
 	Options []rawVariableOption `json:"options"`
+	Spec    *struct {
+		Name    string              `json:"name"`
+		Current rawVariableOption   `json:"current"`
+		Options []rawVariableOption `json:"options"`
+	} `json:"spec"`
+}
+
+// normalize lifts the fields of a v2 variable's "spec" to the top level.
+func (v *dashboardVariable) normalize() {
+	if v.Spec == nil {
+		return
+	}
+
+	if v.Name == "" {
+		v.Name = v.Spec.Name
+	}
+
+	if v.Current == nil {
+		v.Current = v.Spec.Current
+	}
+
+	if len(v.Options) == 0 {
+		v.Options = v.Spec.Options
+	}
 }
 
 type variableOption struct {
@@ -125,6 +152,10 @@ func ValidatePromql() func(*rego.Rego) {
 			dashboardVars := make([]dashboardVariable, 0)
 			if err := json.Unmarshal([]byte(dashboardVarsTerm.String()), &dashboardVars); err != nil {
 				return nil, err
+			}
+
+			for i := range dashboardVars {
+				dashboardVars[i].normalize()
 			}
 
 			exprStr, err := expandVariables(string(expr), dashboardVars)
