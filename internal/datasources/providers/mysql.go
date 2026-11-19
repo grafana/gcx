@@ -24,5 +24,6 @@ func (p *mysqlDSProvider) ExtraCommands(loader *providers.ConfigLoader) []*cobra
 	return []*cobra.Command{
 		mysql.ListTablesCmd(loader),
 		mysql.DescribeTableCmd(loader),
+		mysql.DescribeConstraintsCmd(loader),
 	}
 }
