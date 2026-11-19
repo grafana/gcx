@@ -1155,7 +1155,7 @@ func grafanaDestinationChangeAuthError(previousServer, requestedServer string) e
 func tokenAsServerError() error {
 	return gcxerrors.DetailedError{
 		Summary: "Server URL looks like a Grafana token",
-		Details: "The server value starts with glsa_ or glc_, so it is a token rather than a URL. gcx did not contact it or print it.",
+		Details: "The server value starts with a Grafana token prefix, so it is a token rather than a URL. gcx did not contact it or print it.",
 		Suggestions: []string{
 			"Pass the Grafana URL with --server, for example --server https://my-stack.grafana.net",
 			"Pass the token with --token instead",
