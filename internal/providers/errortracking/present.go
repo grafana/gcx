@@ -35,10 +35,11 @@ func validIO(cmd *cobra.Command, io *cmdio.Options) error {
 const (
 	projectSlot = "gcx-slot-project"
 	errorSlot   = "gcx-slot-error"
+	dirSlot     = "gcx-slot-dir"
 )
 
 func et(args ...string) string {
-	slots := strings.NewReplacer("'"+projectSlot+"'", "<project>", projectSlot, "<project>", "'"+errorSlot+"'", "<error>", errorSlot, "<error>")
+	slots := strings.NewReplacer("'"+projectSlot+"'", "<project>", projectSlot, "<project>", "'"+errorSlot+"'", "<error>", errorSlot, "<error>", "'"+dirSlot+"'", "<dir>", dirSlot, "<dir>")
 	return slots.Replace(cmdio.ShellCommand(append([]string{"gcx", "error-tracking"}, args...)))
 }
 
