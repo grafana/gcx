@@ -129,6 +129,29 @@ first failing entry.
   ttlSeconds: 604800
 ```
 
+### component-links.yaml
+
+A `BUILT_FROM` link from the service catalog `Component`, in place of the
+per-Service `BUILT_FROM` links (see Step 5 of the skill). A Component has no
+scope, so `from` has no `scope`. Copy the Component name from the query result.
+
+```yaml
+- domain: sourcecode
+  type: BUILT_FROM
+  from:
+    domain: servicemodel
+    type: Component
+    name: "checkout"
+  to:
+    domain: sourcecode
+    type: Repository
+    name: "github.com/contoso/shop"
+  properties:
+    path: "services/checkout"
+    managed_by: gcx-map-source-code
+  ttlSeconds: 604800
+```
+
 ### resource-links.yaml
 
 ```yaml
@@ -155,8 +178,8 @@ first failing entry.
 - `DEPLOYED_FROM.path` is the file or folder that renders the service for that
   environment.
 - If the same service runs in several environments, write one `BUILT_FROM` link
-  per Service scope. Write `DEPLOYED_FROM` only for the environment each config
-  deploys to.
+  per Service scope, or one link from its Component. Write `DEPLOYED_FROM` only
+  for the environment each config deploys to.
 - `READS_FROM.path` and `WRITES_TO.path` are the file or folder where the code
   reads or writes the resource. A resource is usually per environment, so link
   it only from the Service in that environment.

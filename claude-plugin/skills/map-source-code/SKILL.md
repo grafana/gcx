@@ -14,7 +14,9 @@ resources those services use, match each service to a Service that the
 Knowledge Graph already knows, and write the links. The result in the graph:
 
 - one `Repository` entity per repository, in the `sourcecode` domain
-- `Service -[BUILT_FROM]-> Repository` for application code
+- `Service -[BUILT_FROM]-> Repository` for application code, or
+  `Component -[BUILT_FROM]-> Repository` when the Service belongs to a service
+  catalog `Component` and the stack allows that link (see Step 5)
 - `Service -[DEPLOYED_FROM]-> Repository` for deployment config (Helm,
   Kustomize, Tanka/jsonnet, Terraform, plain manifests)
 - one `CloudResource` entity per bucket, queue, topic, Pub/Sub subscription or
@@ -192,13 +194,47 @@ only a key the Service does not have.
 - **No match:** do not write a link. List the service as unmatched, with the
   names you tried. Do not write the resources that only it uses.
 
+### Link application code from the Component, when there is one
+
+On a stack with the service catalog (the `servicemodel` domain), a Service can
+belong to a `Component`, the catalog entry for the service. A Component has no
+scope, so one `BUILT_FROM` link from it covers every environment the service
+runs in. Use it in place of the per-Service `BUILT_FROM` links when both of
+these hold. Otherwise keep the per-Service links.
+
+1. The stack's schema allows `BUILT_FROM` from `Component` to `Repository`.
+   Read it from the schema nodes in the graph:
+
+   ```bash
+   gcx kg graph query "MATCH (a:EntityType {name: 'Component'})-[e:BUILT_FROM]->(b:EntityType {name: 'Repository'}) RETURN a.name, b.name, e._domain LIMIT 10"
+   ```
+
+   No rows means the stack does not allow it yet.
+
+2. The matched Services belong to a Component. The Knowledge Graph links a
+   Service to its Component with `DEPLOYMENT_OF`:
+
+   ```bash
+   gcx kg graph query "MATCH (s:Service)-[:DEPLOYMENT_OF]->(c:Component) WHERE s.name IN ['checkout', 'cart'] RETURN s.name, s.env, s.namespace, s.site, c.name ORDER BY s.name, s.env, s.namespace, s.site, c.name LIMIT 300" --since 7d
+   ```
+
+   Use the Component only when every Service you matched for that code
+   belongs to the same Component. If they point to different Components, or
+   only some of them have one, keep the per-Service links for that service and
+   say why in the summary.
+
+`DEPLOYED_FROM`, `READS_FROM` and `WRITES_TO` always start at the Service:
+deployment config and resources differ per environment.
+
 ## Step 6: Prepare the plan
 
-Write four files in a working folder outside the scanned repositories:
+Write these files in a working folder outside the scanned repositories:
 
 - `repositories.yaml`: the `Repository` entities
 - `resources.yaml`: the `CloudResource` entities
-- `repository-links.yaml`: the `BUILT_FROM` and `DEPLOYED_FROM` links
+- `component-links.yaml`: the `BUILT_FROM` links from Components
+- `repository-links.yaml`: the `BUILT_FROM` links from Services and the
+  `DEPLOYED_FROM` links
 - `resource-links.yaml`: the `READS_FROM` and `WRITES_TO` links
 
 Keep repository and resource links in separate files, so a stack without the
@@ -215,7 +251,8 @@ has at least one entry: gcx rejects an empty file. The exact format is in
   then find and clean up its own writes.
 
 Show the user a short summary: the repositories, the resources, each link
-(Service with scope, link type, repository or resource, path), the unmatched
+(Component, or Service with scope; link type; repository or resource; path),
+the unmatched
 services and the unresolved resources. Wait for approval.
 
 ## Step 7: Write
@@ -228,6 +265,7 @@ has no resource types, the repository links are then written before
 
 ```bash
 gcx kg entities upsert -f repositories.yaml
+gcx kg relationships upsert -f component-links.yaml
 gcx kg relationships upsert -f repository-links.yaml
 gcx kg entities upsert -f resources.yaml
 gcx kg relationships upsert -f resource-links.yaml
@@ -246,6 +284,7 @@ so entries that were already written are only written again.
 | 403 that says the write API is not enabled | Writes were turned off after Step 1 | Stop. Keep the files for later. |
 | Any other 403 | The account gcx uses may not write to the Knowledge Graph | Stop. Keep the files, and tell the user to get write access from a stack admin. |
 | 422 that names the domain or `Repository` | The `sourcecode` schema is not installed on this stack | Stop and say so. |
+| 422 from `component-links.yaml` that names `Component`, `servicemodel` or `BUILT_FROM` | The stack does not allow `BUILT_FROM` from a Component | Write those services' `BUILT_FROM` links from their Services instead: add them to `repository-links.yaml` and run it. |
 | 422 that names `CloudResource`, `READS_FROM` or `WRITES_TO` | The stack has an older `sourcecode` schema without resources | Do not write `resources.yaml` or `resource-links.yaml`. Keep them for later, and say so. |
 | 422 or 404 about an endpoint | No Service with that name and scope | Check the match from Step 5, fix or remove that entry, and run the file again. |
 | 409 | Graph writes are paused, or the graph does not exist yet | Try again later. |
@@ -259,6 +298,7 @@ you can tell same-named Services apart:
 
 ```bash
 gcx kg graph query "MATCH (s:Service)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
+gcx kg graph query "MATCH (c:Component)-[r:BUILT_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN c.name, repo.name, r.path ORDER BY c.name, repo.name, r.path SKIP 0 LIMIT 300"
 gcx kg graph query "MATCH (s:Service)-[r:DEPLOYED_FROM]->(repo:Repository) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, repo.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, repo.name, r.path SKIP 0 LIMIT 300" --since 7d
 gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, r.path SKIP 0 LIMIT 300" --since 7d
 gcx kg graph query "MATCH (s:Service)-[r:WRITES_TO]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' RETURN s.name, s.env, s.namespace, s.site, res.name, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, r.path SKIP 0 LIMIT 300" --since 7d
@@ -275,7 +315,8 @@ every returned column, so two rows never tie, even for Services with the same
 name or a Service linked through several paths, and the pages neither repeat
 nor skip a row. Compare the rows with the plan: every
 written link should be there, with the same name, `env`, `namespace` and `site`
-as the Service in the plan.
+as the Service in the plan, or the same name as the Component. Skip the
+Component query when you wrote no `component-links.yaml`.
 
 The links are in the `sourcecode` domain. Default views of a Service hide nodes
 from other domains, so a `Repository` or `CloudResource` may not appear next to
