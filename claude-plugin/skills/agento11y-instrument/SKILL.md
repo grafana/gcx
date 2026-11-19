@@ -93,6 +93,9 @@ and in the llms.txt section "Choose OpenTelemetry or the Grafana SDK".
 
 ## Step 0 — Credentials and endpoint
 
+If the app may already emit OTel GenAI spans for its model calls (Step 1, item 5), run Steps 1
+and 2 first. When every call is `otel` and no SDK-only feature is needed, skip this step.
+
 The app needs, in its environment before the SDK starts, **seven** vars — not five; the two mode
 vars are the ones most often forgotten, and their absence is a silent 401:
 
@@ -210,14 +213,17 @@ State the classification explicitly, with the `file:line` evidence that led to i
 
 - **`none` (greenfield)** — no SDK import and no OTel GenAI instrumentation for the model calls.
   Full setup from scratch.
-- **`otel`** — OTel GenAI spans already record the model calls (Step 1, item 5), and the SDK does
-  not. Do not add the SDK for those calls: each call would be recorded twice. This skill does not
-  set up that path, even when the spans still need the `agento11y.record` opt-in, content capture,
-  or a tracer provider. Point the developer to the public guide linked above for those calls.
-  Continue with this skill only for:
+- **`otel`** — OTel GenAI spans exist for the model calls (Step 1, item 5), and the SDK does not
+  record those calls. Do not add the SDK for those calls: llms.txt reuses compatible spans before
+  it adds the SDK, and once the spans carry the `agento11y.record` opt-in, an SDK record would be
+  a second copy of each call. This skill does not set up that path, even when the spans still need
+  the opt-in, content capture, or a tracer provider. Point the developer to the public guide
+  linked above for those calls. Continue with this skill only for:
   - model calls that have no OTel GenAI spans (treat them as `none`), and
   - SDK-only features: guards and other hooks, conversation ratings, or experiments. Add the SDK
-    for those features only, and do not wrap the model calls that the spans already record.
+    for those features only, and do not wrap the model calls that the spans already record. Guard
+    and rating calls create no spans, so a resource-level `agento11y.record=true` does not make
+    them `broken`.
 - **`partial`** — an SDK client is constructed and some generations are wrapped, but coverage is
   incomplete (no OTel providers, no `agent_version`, no workflow steps for an agentic pipeline, no
   parent links). Run the full checklist; recommend + apply only the gaps.
@@ -225,8 +231,8 @@ State the classification explicitly, with the `file:line` evidence that led to i
   misconfigured, legacy `SIGIL_*` vars, stream/non-stream mode mismatch, `set_result`/`SetResult`
   never called, or `rec.err()`/`Err()` never checked. Two mixed SDK and OTel cases are also
   `broken`: a model call recorded by both the SDK and opted-in OTel spans (for example, an SDK
-  wrapper around an auto-instrumented client), and an SDK call in a process with
-  `agento11y.record=true` on the resource. That resource marker also selects the SDK's own spans,
+  wrapper around an auto-instrumented client), and a model call that the SDK records, in a process
+  with `agento11y.record=true` on the resource. That resource marker also selects the SDK's spans,
   which carry the SDK's generation IDs, and ingest keeps the first copy that arrives, so a span
   copy can be stored instead of the SDK's record. Keep one record per call, by default the SDK's.
   Remove the resource marker if no call is `otel`. Otherwise set `agento11y.record=false` on the
@@ -235,7 +241,8 @@ State the classification explicitly, with the `file:line` evidence that led to i
   with a context variable set around that call. Fix first, then gap-check.
 
 `none`, `partial`, and `broken` converge on the same checklist (Step 3); they differ only in how
-much is already done. `otel` calls do not use it.
+much is already done. `otel` calls do not use it. If every model call is `otel` and no SDK-only
+feature is needed, report the classification with its evidence and the guide link, and stop.
 
 ## Step 3 — Run the instrumentation gap checklist
 
