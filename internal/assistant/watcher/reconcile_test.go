@@ -278,7 +278,7 @@ func TestReconcileRefusesBeforeSources(t *testing.T) {
 			require.NoError(t, err)
 			fixture.RawDetails = map[string]json.RawMessage{"id": detail}
 			client := clientForServer(t, fixture.ServeHTTP)
-			w := WatcherFromResponse(raw, false)
+			w := WatcherFromResponse(raw, tt.enrollment.Enabled)
 			w.Notifications.Webhook.URL = &SecretInput{FromFile: "/must-not-read"}
 			_, err = reconcile(t.Context(), client, w, raw.ID)
 			require.ErrorContains(t, err, "unrepresented")
