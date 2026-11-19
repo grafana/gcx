@@ -124,10 +124,6 @@ const (
 	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
 )
 
-// Validate checks opts and args for internal consistency before runLogin executes.
-// Returns an error if a positional CONTEXT_NAME argument is combined with the
-// --context flag (they're mutually exclusive to prevent silent confusion).
-// Also validates the output codec options (format name, --json flag shape).
 // serverLooksLikeTokenError reports a token passed as the server, never
 // echoing the value.
 func serverLooksLikeTokenError() error {
@@ -141,6 +137,10 @@ func serverLooksLikeTokenError() error {
 	}
 }
 
+// Validate checks opts and args for internal consistency before runLogin executes.
+// Returns an error if a positional CONTEXT_NAME argument is combined with the
+// --context flag (they're mutually exclusive to prevent silent confusion).
+// Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
 	if login.ServerLooksLikeToken(opts.Server) {
 		return serverLooksLikeTokenError()
