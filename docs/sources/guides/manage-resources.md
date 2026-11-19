@@ -37,6 +37,8 @@ The `gcx resources` command group includes the following commands:
 | `gcx resources validate` | Check local files against a Grafana instance without writing them | [Validate and preview changes](#validate-and-preview-changes) |
 | `gcx resources pull` | Save resources from Grafana to local files | [Migrate resources between environments](#migrate-resources-between-environments), [Back up and restore resources](#back-up-and-restore-resources) |
 | `gcx resources push` | Create or update resources in Grafana from local files | [Validate and preview changes](#validate-and-preview-changes), [Migrate resources between environments](#migrate-resources-between-environments) |
+| `gcx resources capture` | Record the observable state of selected resource types (experimental) | [Observe resource changes over time](#observe-resource-changes-over-time) |
+| `gcx resources diff` | Compare two captures of the same stack (experimental) | [Observe resource changes over time](#observe-resource-changes-over-time) |
 
 For every flag of each command, refer to the [CLI reference](../../cli-reference/#gcx-resources).
 
@@ -229,6 +231,69 @@ Follow this workflow to back up all Grafana resources from one instance and late
    ```shell
    gcx resources push --path ./backup-prod
    ```
+
+## Observe resource changes over time
+
+{{< admonition type="caution" >}}
+`gcx resources capture` and `gcx resources diff` are experimental. Their flags and output can change in a later release.
+{{< /admonition >}}
+
+Use `gcx resources capture` and `gcx resources diff` to find out what a workflow changed on one stack. For example, you can capture dashboards, create and configure a dashboard in the Grafana UI, capture again, and see the changes. You cannot use these commands to compare two stacks or to migrate resources.
+
+1. Use a context that can read every resource of the types you capture, and, for dashboards and folders, their permissions. An administrator context is the simplest choice. Grafana hides resources that the caller cannot read, without an error. `gcx` checks the caller's read permissions for each type and each view and records one that the caller can read only partly as incomplete. Use the same context for both captures: `gcx resources diff` rejects captures taken by different users or service accounts.
+1. Capture the state before the workflow:
+   ```shell
+   gcx resources capture dashboards folders -p ./before
+   ```
+1. Do the workflow.
+1. Capture the same types again:
+   ```shell
+   gcx resources capture dashboards folders -p ./after
+   ```
+1. Compare the captures:
+   ```shell
+   gcx resources diff ./before ./after          # summary and table
+   gcx resources diff ./before ./after -o json  # structured result
+   ```
+
+The supported resource types are dashboards, folders, and data sources. Without arguments, `gcx resources capture` captures all three. Other types are usage errors. `gcx` reads each data source individually, because the data source list omits some configuration, so a stack with many data sources takes longer to capture. The destination directory must not exist or must be empty. `gcx` writes the capture in a temporary directory and moves it into place only when it is complete.
+
+### Trash and permission views
+
+Beside the types you select, `gcx resources capture` records two views of dashboards and folders. Each view is a separate type in the capture, with its own coverage, and `gcx resources diff` compares it like any other type.
+
+| View | Recorded when you capture | Read with | What it makes visible |
+|------|---------------------------|-----------|-----------------------|
+| `trash.dashboards.dashboard.grafana.app` | dashboards | The `dashboards:read` permission on all dashboards | A dashboard that was created and deleted between two captures. A dashboard that took the name of a trashed dashboard, which removes the trash entry so that the old version can no longer be restored. |
+| `permissions.dashboards.dashboard.grafana.app` | dashboards | The `dashboards.permissions:read` permission on all dashboards | Narrowed or removed permission entries on a dashboard. A dashboard that was created without permission entries. |
+| `permissions.folders.folder.grafana.app` | folders | The `folders.permissions:read` permission on all folders | The same changes for folders. |
+
+In a diff, an added trash entry is a dashboard that was deleted. A deleted trash entry left the trash because it was restored, purged, or replaced by a new dashboard with the same name. A stack that does not serve a dashboard trash records the trash view as `unavailable`.
+
+Permission entries are what Grafana stores for a dashboard or folder. They are not the effective access of any user:
+
+- A dashboard in a folder can list no entries and still be readable through the permissions of the folder.
+- A dashboard at the root with no entries is readable only by administrators.
+- A change can take a short time to reach other users, so two captures with no change between them can differ.
+
+`gcx` records each entry as a principal, a permission, and whether the entry is inherited, and sorts the entries, because Grafana returns them in no fixed order. A permission view covers only the dashboards or folders in the capture. If that capture is incomplete, the view is incomplete too.
+
+### How to read the result
+
+- `gcx resources diff` reports each resource as added, modified, deleted, or indeterminate. For a modified resource, it lists each changed field as a JSON pointer, such as `/spec/panels/0/targets/0/expr`. Array order is significant.
+- If the stack does not serve a type, the capture records it with the status `unavailable`. If a type fails to read, is truncated, or the caller can read it only partly, the capture records it as `incomplete`. In both cases `gcx resources capture` exits with code 4 and still writes the capture. A resource that is absent from an incomplete capture is indeterminate. `gcx` does not report it as added or deleted.
+- If one data source fails its own read, the type is incomplete, but `gcx` keeps the other data sources. A data source that is deleted between the list and its read is absent from the capture.
+- The `complete` field in the result is `true` only when `gcx` compared every type on complete reads. `gcx resources diff` exits with code 0 whenever it produces a result, also when `complete` is `false`, so check the field, not the exit code.
+- `gcx` ignores fields that change on every save, such as timestamps, `resourceVersion`, the dashboard `version` counter, and `status`. It also ignores the folder path annotations that Grafana derives from the folder tree, so renaming or moving a folder changes only that folder in the result, not its subfolders. For the complete rules, refer to [`normalize.go`](https://github.com/grafana/gcx/blob/main/internal/resources/observation/normalize.go).
+- `gcx` does not compare captures from different stacks, captures taken by different users or service accounts, or captures with different normalization versions.
+
+### Limitations
+
+- A capture is an observation over a time interval, not an atomic snapshot. Changes made by other users or background processes during the workflow can appear in the result. For repeatable evaluations, use an isolated test stack.
+- Secret values are never captured. `gcx` records only the names of configured secrets, so it cannot detect a changed secret value.
+- A capture can contain sensitive configuration and query text. `gcx` makes the files readable by the owner only. Protect them as you protect other configuration exports.
+- Permission views record stored permission entries, not effective access. Refer to [Trash and permission views](#trash-and-permission-views).
+- A matching result is evidence about the observable state of resources. It does not prove that a workflow succeeded.
 
 ## Incident descriptions
 

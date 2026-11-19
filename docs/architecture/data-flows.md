@@ -309,6 +309,49 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ---
 
+## 4c. CAPTURE and DIFF (observation, experimental)
+
+`gcx resources capture` and `gcx resources diff` (`internal/resources/observation/`)
+observe resource changes over time on one stack. They reuse the PULL pipeline for
+reads but not its export processors or file writer, because observation has
+different requirements from backup and migration:
+
+```
+capture: ResolveSelections (supported types only, whole types, unresolved → unavailable)
+      |
+      v  ReadAccess: caller identity (/api/user) + permissions; a type whose read
+      |    action is not granted on a wildcard scope is incomplete (lists are
+      |    permission-filtered without an error)
+      v  one Puller.Pull per type (bounded errgroup) → per-type coverage
+      |    datasources: list, then one Get per item, also when the list is
+      |      incomplete (the legacy list omits fields; a summary is never kept).
+      |      A failed Get makes the type incomplete but keeps the other items;
+      |      a NotFound (deleted during the capture) is omitted.
+      |    complete only with no failures, no skips, and no truncation
+      |    views beside the selected types: the dashboard trash (list with the
+      |      grafana.app/get-trash label) and the stored permission entries of
+      |      each captured dashboard and folder (sorted, one read each). A view
+      |      is its own type in the manifest and has its own coverage.
+      v
+   Normalize (versioned rules; secure values → {"redacted": true})
+      |
+      v
+   Write: files + manifest.json (inventory with SHA-256) into a hidden temp dir,
+          manifest last, then rename into place (dest must be absent or empty)
+
+diff:  Load (verify manifest, inventory, digests, no extra files) ×2
+      |
+      v  Compare: same stack + same caller + same normalization version, else IncompatibleError
+           per type: compared | partial | indeterminate
+           added requires a complete before read; deleted requires a complete after read
+```
+
+The manifest, not the directory, defines a capture: a capture without
+`manifest.json`, or with files outside its inventory, is rejected. Bump
+`NormalizationVersion` whenever a normalization rule changes.
+
+---
+
 ## 5. QUERY Pipeline
 
 Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.

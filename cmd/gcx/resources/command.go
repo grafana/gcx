@@ -31,7 +31,9 @@ func Command() *cobra.Command {
 
 	configOpts.BindFlags(cmd.PersistentFlags())
 
+	cmd.AddCommand(captureCmd(configOpts))
 	cmd.AddCommand(deleteCmd(configOpts))
+	cmd.AddCommand(diffCmd())
 	cmd.AddCommand(editCmd(configOpts))
 	cmd.AddCommand(listExamplesCmd(configOpts))
 	cmd.AddCommand(getCmd(configOpts))

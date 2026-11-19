@@ -111,6 +111,8 @@
   "gcx profiles diff",
   "gcx profiles exemplars profile",
   "gcx profiles exemplars span",
+  "gcx resources capture",
+  "gcx resources diff",
   "gcx resources edit",
   "gcx resources validate",
   "gcx setup status",
