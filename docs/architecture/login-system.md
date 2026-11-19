@@ -270,8 +270,8 @@ backup, migrate a file, or mutate credentials.
 and marked current; the stack's `slug` is populated when resolved.
 `resolveGrafanaAuth` defaults `GrafanaConfig.OrgID` to 1 for fresh on-prem
 logins so the later
-`GrafanaConfig.validateNamespace` does not attempt `/bootdata` stack
-discovery against an OSS instance that cannot answer.
+`GrafanaConfig.validateNamespace` does not attempt stack discovery
+(whoami, then `/bootdata`) against an OSS instance that has no stack.
 
 **Re-auth path.** `mergeAuthIntoExisting` copies only the auth-bearing fields — `Server`, `AuthMethod`, `APIToken`, `OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` — onto the context's stack entry (creating it for legacy detached contexts), and routes incoming cloud auth through `EnsureCloudEntry` to a named cloud entry. User-set values such as `OrgID=42` and custom datasource defaults survive untouched. Provider-specific tokens survive only while their bound destination is unchanged; changing the server, proxy, TLS identity, or basic-auth username clears affected credentials such as the Synthetic Monitoring token.
 

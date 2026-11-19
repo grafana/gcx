@@ -48,7 +48,7 @@ func execLabelsCmd(t *testing.T, args ...string) (map[string]url.Values, string,
 
 	captured := map[string]url.Values{}
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}

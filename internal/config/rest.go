@@ -490,9 +490,6 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		rcfg.Password = cfg.Grafana.Password
 	}
 
-	// Namespace
-	namespace := resolveNamespace(ctx, selectedGrafana)
-
 	// Wrap transport with debug logging so `-vvv` shows every HTTP request.
 	// When --insecure-log-http-payload is set, also add full request/response body dumps.
 	// Outermost layer: retry for rate limiting (429) and transient errors.
@@ -516,6 +513,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		// and so it's visible to the logging transports above.
 		return &httputils.CallerIDTransport{Base: rt}
 	}
+
+	// Namespace
+	namespace := resolveNamespace(ctx, selectedGrafana, authSelection.mode)
 
 	return NamespacedRESTConfig{
 		Config:                 rcfg,
