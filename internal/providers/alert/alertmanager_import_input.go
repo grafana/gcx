@@ -88,7 +88,7 @@ func importInputName(file string) string {
 // configuration to send.
 func parseAlertmanagerUserConfig(data []byte) (AlertmanagerUserConfig, error) {
 	var doc map[string]json.RawMessage
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	if err := yaml.UnmarshalStrict(data, &doc); err != nil {
 		return AlertmanagerUserConfig{}, fmt.Errorf("failed to parse input: %w", err)
 	}
 	if doc == nil {

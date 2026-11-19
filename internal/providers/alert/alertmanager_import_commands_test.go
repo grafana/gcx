@@ -125,6 +125,41 @@ func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T)
 		{name: "identifier with trailing space", args: []string{"mimir-prod ", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not have leading or trailing whitespace", wantExit: gcxerrors.ExitUsageError},
 		{name: "identifier with trailing tab", args: []string{"mimir-prod\t", "-f", "-"}, stdin: "route: {}", wantErr: "IDENTIFIER must not have leading or trailing whitespace", wantExit: gcxerrors.ExitUsageError},
 		{name: "two identifiers", args: []string{"a", "b", "-f", "-"}, stdin: "route: {}", wantErr: "accepts at most 1 arg(s)"},
+		{
+			name:     "duplicate template name",
+			args:     []string{"-f", "-"},
+			stdin:    "alertmanager_config: 'route: {}'\ntemplate_files:\n  a.tmpl: first\n  a.tmpl: second\n",
+			wantErr:  `key "a.tmpl" already set in map`,
+			wantExit: gcxerrors.ExitGeneralError,
+		},
+		{
+			name:     "duplicate alertmanager_config",
+			args:     []string{"-f", "-"},
+			stdin:    "alertmanager_config: 'route: {}'\nalertmanager_config: 'receivers: []'\n",
+			wantErr:  `key "alertmanager_config" already set in map`,
+			wantExit: gcxerrors.ExitGeneralError,
+		},
+		{
+			name:     "duplicate key nested in a plain config",
+			args:     []string{"-f", "-"},
+			stdin:    "receivers:\n  - name: first\n    name: second\n",
+			wantErr:  `key "name" already set in map`,
+			wantExit: gcxerrors.ExitGeneralError,
+		},
+		{
+			name:     "duplicate key in JSON",
+			args:     []string{"-f", "-"},
+			stdin:    `{"route": {"receiver": "first", "receiver": "second"}}`,
+			wantErr:  `key "receiver" already set in map`,
+			wantExit: gcxerrors.ExitGeneralError,
+		},
+		{
+			name:     "YAML merge override",
+			args:     []string{"-f", "-"},
+			stdin:    "route:\n  receiver: default\n  routes:\n    - &base {receiver: first}\n    - <<: *base\n      receiver: second\n",
+			wantErr:  `key "receiver" already set in map`,
+			wantExit: gcxerrors.ExitGeneralError,
+		},
 	}
 
 	for _, tt := range tests {
@@ -707,26 +742,62 @@ time_intervals:
 	assert.Equal(t, 2, strings.Count(stdout, "duplicate  0"))
 }
 
-func TestAlertmanagerImportCommands_RejectEmptyIdentifier(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
+func TestAlertmanagerImportCommands_ValidateIdentifier(t *testing.T) {
+	setAgentMode(t, false)
+	commands := []struct {
+		name   string
+		flags  []string
+		method string
 	}{
-		{name: "get", args: []string{"alertmanager-imports", "get", ""}},
-		{name: "promote", args: []string{"alertmanager-imports", "promote", "", "--force"}},
-		{name: "delete", args: []string{"alertmanager-imports", "delete", "", "--force"}},
+		{name: "upsert", flags: []string{"-f", alertmanagerFile(t), "--promote"}, method: http.MethodPost},
+		{name: "get", flags: []string{"-o", "json"}, method: http.MethodGet},
+		{name: "promote", method: http.MethodPost},
+		{name: "delete", method: http.MethodDelete},
+	}
+	tests := []struct {
+		name       string
+		identifier string
+		wantErr    string
+	}{
+		{name: "empty", wantErr: "IDENTIFIER must not be empty"},
+		{name: "padded", identifier: " a.b ", wantErr: "IDENTIFIER must not have leading or trailing whitespace"},
+		{name: "uppercase", identifier: "Prod", wantErr: "lowercase RFC 1123 subdomain"},
+		{name: "slash", identifier: "bad/name", wantErr: "lowercase RFC 1123 subdomain"},
+		{name: "leading hyphen", identifier: "-lead", wantErr: "lowercase RFC 1123 subdomain"},
+		{name: "non-ASCII", identifier: "prød", wantErr: "lowercase RFC 1123 subdomain"},
+		{name: "too long", identifier: strings.Repeat("a", 41), wantErr: "IDENTIFIER must be at most 40 characters"},
+		{name: "maximum length", identifier: strings.Repeat("a", 40)},
+		{name: "dotted", identifier: "a.b"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			setAgentMode(t, false)
+	for _, cmd := range commands {
+		for _, tt := range tests {
+			t.Run(cmd.name+"/"+tt.name, func(t *testing.T) {
+				var got recordedRequest
+				loader := serveConvertAPI(t, &got, http.StatusOK, `{"alertmanager_config":"route: {}"}`)
+				// Put the identifier after -- so Cobra does not treat -lead as a flag.
+				args := append([]string{"alertmanager-imports", cmd.name}, cmd.flags...)
+				args = append(args, "--", tt.identifier)
+				stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader), args, "y\n")
 
-			stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(rejectAPICalls(t)), tt.args, "")
+				if tt.wantErr != "" {
+					require.ErrorContains(t, err, tt.wantErr)
+					assert.Equal(t, gcxerrors.ExitUsageError, exitCodeOf(err))
+					assert.Empty(t, got.method)
+					assert.Empty(t, stdout)
+					assert.Empty(t, stderr, "invalid identifiers must not prompt")
+					return
+				}
 
-			require.EqualError(t, err, "IDENTIFIER must not be empty")
-			assert.Equal(t, gcxerrors.ExitUsageError, exitCodeOf(err))
-			assert.Empty(t, stdout)
-		})
+				require.NoError(t, err)
+				assert.Equal(t, cmd.method, got.method)
+				if cmd.name == "promote" {
+					assert.Contains(t, got.path, "/"+tt.identifier+"/promote")
+				} else {
+					assert.Equal(t, tt.identifier, got.header.Get(identifierHeader))
+				}
+			})
+		}
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // The Alertmanager convert API is in public preview behind a feature toggle,
@@ -36,6 +37,10 @@ one by one.`
 // alertmanagerImportKind is the mutation target kind of an imported
 // Alertmanager configuration.
 const alertmanagerImportKind = "alertmanager-import"
+
+// alertmanagerImportIdentifierMaxLength matches ualert.UIDMaxLength as used by
+// parseConfigIdentifierHeader in Grafana's pkg/services/ngalert/api/api_convert_prometheus.go.
+const alertmanagerImportIdentifierMaxLength = 40
 
 // Mutation actions of the import commands.
 const (
@@ -597,6 +602,13 @@ func validateAlertmanagerImportIdentifier(cmd *cobra.Command, identifier string)
 	}
 	if identifier != trimmed {
 		return gcxerrors.NewCommandUsageError(cmd, "IDENTIFIER must not have leading or trailing whitespace", nil)
+	}
+	if errs := validation.IsDNS1123Subdomain(identifier); len(errs) > 0 {
+		return gcxerrors.NewCommandUsageError(cmd, "IDENTIFIER: "+strings.Join(errs, ", "), nil)
+	}
+	if len(identifier) > alertmanagerImportIdentifierMaxLength {
+		return gcxerrors.NewCommandUsageError(cmd,
+			fmt.Sprintf("IDENTIFIER must be at most %d characters", alertmanagerImportIdentifierMaxLength), nil)
 	}
 	return nil
 }

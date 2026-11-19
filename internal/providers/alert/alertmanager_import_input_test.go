@@ -61,8 +61,8 @@ func TestReadAlertmanagerUserConfig_Formats(t *testing.T) {
 			},
 		},
 		{
-			name:  "mimir user config in YAML is used as it is",
-			input: mimirUserConfig,
+			name:  "mimir user config in YAML accepts extra fields",
+			input: mimirUserConfig + "metadata: {source: mimir}\n",
 			want: alert.AlertmanagerUserConfig{
 				AlertmanagerConfig: "route:\n  receiver: webhook\nreceivers:\n  - name: webhook\n",
 				TemplateFiles:      map[string]string{"default.tmpl": `{{ define "custom" }}Custom message{{ end }}`},
@@ -102,6 +102,7 @@ func TestReadAlertmanagerUserConfig_InvalidInput(t *testing.T) {
 	}{
 		{name: "empty input", input: " \n\t\n", wantErr: "input is empty"},
 		{name: "list document", input: "- route: {}\n", wantErr: "failed to parse input"},
+		{name: "scalar document", input: "route\n", wantErr: "failed to parse input"},
 		{name: "null document", input: "null\n", wantErr: "input is not an object"},
 		{
 			name:    "alertmanager_config is an object",
