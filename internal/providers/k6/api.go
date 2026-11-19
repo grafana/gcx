@@ -35,6 +35,7 @@ type API interface { //nolint:interfacebloat
 
 	// Test runs
 	ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunStatus, error)
+	ListTestRunsWithLimit(ctx context.Context, loadTestID, limit int) ([]TestRunStatus, error)
 
 	// Env vars
 	ListEnvVars(ctx context.Context) ([]EnvVar, error)
