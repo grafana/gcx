@@ -166,6 +166,11 @@ func TestReadAlertmanagerUserConfig_InvalidInput(t *testing.T) {
 			wantErr: "alertmanager_config must be a non-empty string",
 		},
 		{
+			name:    "invalid explicit tag on a template name",
+			input:   "alertmanager_config: 'route: {}'\ntemplate_files: {!!int x: first, yes: second}\n",
+			wantErr: "cannot decode !!str `x` as a !!int",
+		},
+		{
 			name:    "template contents are a boolean",
 			input:   "alertmanager_config: 'route: {}'\ntemplate_files: {yes: on}\n",
 			wantErr: "template_files must map template file names to their contents: json: cannot unmarshal bool",

@@ -22,6 +22,9 @@ const (
 	userConfigTemplatesKey    = "template_files"
 )
 
+// alertmanagerImportFileLimit caps input at 10 MiB before parsing, as rule imports do.
+const alertmanagerImportFileLimit = 10 << 20
+
 // readAlertmanagerUserConfig reads the import input from file, or from stdin
 // when file is "-", and adds the template files at templatePaths.
 //
@@ -68,9 +71,12 @@ func readImportInput(file string, stdin io.Reader) ([]byte, error) {
 		reader = f
 	}
 
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(io.LimitReader(reader, alertmanagerImportFileLimit+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read input: %w", err)
+	}
+	if len(data) > alertmanagerImportFileLimit {
+		return nil, fmt.Errorf("%s: input exceeds the %d MiB limit", importInputName(file), alertmanagerImportFileLimit>>20)
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, errors.New("input is empty")
@@ -94,12 +100,10 @@ func parseAlertmanagerUserConfig(data []byte) (AlertmanagerUserConfig, error) {
 	if normalized := normalizeAlertmanagerTemplateNames(data); normalized != nil {
 		var normalizedDoc map[string]json.RawMessage
 		normalizedErr := yaml.UnmarshalStrict(normalized, &normalizedDoc)
-		switch {
-		case strictErr == nil:
+		// Validate template names as text even if the original decode cannot
+		// represent a name as a JSON key. Keep the original error if both fail.
+		if strictErr == nil || normalizedErr == nil {
 			doc, strictErr = normalizedDoc, normalizedErr
-		case normalizedErr == nil && yaml.Unmarshal(data, new(map[string]json.RawMessage)) == nil:
-			// Only name collisions may make the original strict pass fail.
-			doc, strictErr = normalizedDoc, nil
 		}
 	}
 	if strictErr != nil {
@@ -196,19 +200,8 @@ func normalizeAlertmanagerTemplateNames(data []byte) []byte {
 		if node.Kind != yamlv3.ScalarNode {
 			return nil // Keep legacy handling of complex names.
 		}
-		switch node.ShortTag() {
-		case "!!str":
-			if node.Style != 0 {
-				continue
-			}
-			switch strings.ToLower(node.Value) {
-			case "y", "yes", "n", "no", "on", "off":
-			default:
-				continue
-			}
-		case "!!bool", "!!int", "!!float", "!!timestamp":
-		default:
-			return nil // Keep legacy handling of null and other unsupported names.
+		if !alertmanagerTemplateNameNeedsQuoting(node) {
+			continue
 		}
 		// Do not change an anchor that is also used outside template names.
 		if at != name {
@@ -225,6 +218,26 @@ func normalizeAlertmanagerTemplateNames(data []byte) []byte {
 		return nil
 	}
 	return normalized
+}
+
+func alertmanagerTemplateNameNeedsQuoting(node *yamlv3.Node) bool {
+	switch node.ShortTag() {
+	case "!!str":
+		if node.Style == 0 {
+			switch strings.ToLower(node.Value) {
+			case "y", "yes", "n", "no", "on", "off":
+				return true
+			}
+		}
+	case "!!bool", "!!int", "!!float", "!!timestamp":
+		if node.Style&yamlv3.TaggedStyle == 0 {
+			return true
+		}
+		// Check explicit tags before replacing them with a string tag.
+		scalar, err := yamlv3.Marshal(node)
+		return err == nil && yaml.UnmarshalStrict(scalar, new(string)) == nil
+	}
+	return false // Leave unhandled tags to the strict decoder.
 }
 
 // addTemplateFiles adds the template files at paths to cfg. Each path must be

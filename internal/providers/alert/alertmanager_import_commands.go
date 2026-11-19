@@ -272,6 +272,8 @@ The input is one of these formats:
   - A plain Alertmanager configuration (route, receivers, ...). gcx sends the
     file content unchanged.
 
+The configuration input from a file or stdin must not exceed 10 MiB.
+
 Use --template to add a template file. Repeat the flag to add more files. Each
 template is named after its file. A template name must occur only one time.
 

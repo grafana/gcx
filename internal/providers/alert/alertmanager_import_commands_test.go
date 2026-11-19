@@ -116,8 +116,9 @@ func TestAlertmanagerImportUpsert_KeepsTemplateNames(t *testing.T) {
 	setAgentMode(t, false)
 
 	for _, tt := range []struct {
-		name  string
-		input string
+		name      string
+		input     string
+		templates string
 	}{
 		{
 			name: "YAML with extra wrapper keys",
@@ -126,11 +127,22 @@ metadata: {source: mimir}
 route: {receiver: ignored}
 template_files: {yes: first, on: second, 1.0: third, x.tmpl: fourth}
 `,
+			templates: `{"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}`,
 		},
 		{
-			name: "JSON",
-			input: `{"alertmanager_config": "route: {}", "template_files":
-{"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}}`,
+			name:      "JSON",
+			input:     `{"alertmanager_config": "route: {}", "template_files": {"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}}`,
+			templates: `{"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}`,
+		},
+		{
+			name:      "large numeric name",
+			input:     "alertmanager_config: 'route: {}'\ntemplate_files: {9223372036854775808: first}\n",
+			templates: `{"9223372036854775808": "first"}`,
+		},
+		{
+			name:      "unhandled tag on a sibling",
+			input:     "alertmanager_config: 'route: {}'\ntemplate_files: {!local x: first, yes: second}\n",
+			templates: `{"x": "first", "yes": "second"}`,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -140,8 +152,28 @@ template_files: {yes: first, on: second, 1.0: third, x.tmpl: fourth}
 				[]string{"alertmanager-imports", "upsert", "-f", "-"}, tt.input)
 
 			require.NoError(t, err)
-			assert.JSONEq(t, `{"alertmanager_config": "route: {}", "template_files":
-{"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}}`, string(got.body))
+			assert.JSONEq(t, `{"alertmanager_config": "route: {}", "template_files": `+tt.templates+`}`, string(got.body))
+		})
+	}
+}
+
+func TestAlertmanagerImportUpsert_RejectsOversizedInputBeforeAPICall(t *testing.T) {
+	setAgentMode(t, false)
+
+	// Invalid YAML, exactly one byte over 10 MiB. The size error must come first.
+	input := "[" + strings.Repeat(" ", 10<<20)
+	for _, source := range []string{"stdin", "file"} {
+		t.Run(source, func(t *testing.T) {
+			file, stdin := "-", input
+			if source == "file" {
+				file, stdin = writeFile(t, t.TempDir(), "oversized.yaml", input), ""
+			}
+			stdout, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(rejectAPICalls(t)),
+				[]string{"alertmanager-imports", "upsert", "-f", file}, stdin)
+
+			require.ErrorContains(t, err, "input exceeds the 10 MiB limit")
+			assert.Equal(t, gcxerrors.ExitGeneralError, exitCodeOf(err))
+			assert.Empty(t, stdout)
 		})
 	}
 }
