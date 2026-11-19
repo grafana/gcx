@@ -8,7 +8,8 @@ permissions:
   contents: read
 
 env:
-  GCX_VERSION: '0.1.9'
+  # Leave empty to install the latest gcx release, or set a version (e.g. '1.8.0') to pin it.
+  GCX_VERSION: ''
 
 jobs:
   deploy:
@@ -22,11 +23,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p "${HOME}/.local/bin/"
-          wget https://github.com/grafana/gcx/releases/download/v{{ `${{ env.GCX_VERSION }}` }}/gcx_Linux_x86_64.tar.gz
-          tar -xzf gcx_Linux_x86_64.tar.gz
+          # No tag means the latest release; GCX_VERSION (when set) pins one.
+          gh release download ${GCX_VERSION:+"v${GCX_VERSION#v}"} \
+            --repo grafana/gcx --pattern 'gcx_*_linux_amd64.tar.gz' --output gcx.tar.gz
+          tar -xzf gcx.tar.gz gcx
           mv gcx "${HOME}/.local/bin/gcx"
           chmod +x "${HOME}/.local/bin/gcx"
           echo "bin-path=${HOME}/.local/bin" >> "${GITHUB_OUTPUT}"
+        env:
+          GH_TOKEN: {{ `${{ github.token }}` }}
 
       - name: Setup go
         uses: actions/setup-go@v6
