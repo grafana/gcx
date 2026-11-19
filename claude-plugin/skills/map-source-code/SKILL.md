@@ -206,10 +206,13 @@ these hold. Otherwise keep the per-Service links.
    Read it from the schema nodes in the graph:
 
    ```bash
-   gcx kg graph query "MATCH (a:EntityType {name: 'Component'})-[e:BUILT_FROM]->(b:EntityType {name: 'Repository'}) RETURN a.name, b.name, e._domain LIMIT 10" --since 7d
+   gcx kg graph query "MATCH (a:EntityType {name: 'Component'})-[e:BUILT_FROM]->(b:EntityType {name: 'Repository'}) WHERE e._domain = 'sourcecode' RETURN a.name, b.name, e._domain LIMIT 10" --since 7d
    ```
 
-   No rows means the stack does not allow it yet.
+   `e._domain` is the domain that owns the relationship type. The filter
+   keeps only `sourcecode`'s `BUILT_FROM`, so a tenant schema with its own
+   `BUILT_FROM` or `Repository` does not count. No rows means the stack does
+   not allow it yet.
 
 2. The matched Services belong to a Component. The Knowledge Graph links a
    Service to its Component with `DEPLOYMENT_OF`:
