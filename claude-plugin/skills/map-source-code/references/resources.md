@@ -15,8 +15,8 @@ are not linked to telemetry yet.
 
 | Source | What it gives |
 |---|---|
-| Terraform, Pulumi, CloudFormation, Crossplane: `aws_s3_bucket`, `aws_sqs_queue`, `aws_sns_topic`, `aws_dynamodb_table`, `google_storage_bucket`, `google_pubsub_topic`, `google_pubsub_subscription`, `KafkaTopic` resources | The resource itself, with its name, account or project, and region |
-| IAM policies and roles attached to the service | The access (the actions) and the resource (the ARN) |
+| Terraform, Pulumi, CloudFormation, Crossplane: `aws_s3_bucket`, `aws_sqs_queue`, `aws_sns_topic`, `aws_dynamodb_table`, `google_storage_bucket`, `google_pubsub_topic`, `google_pubsub_subscription`, `azurerm_storage_container`, `azurerm_servicebus_queue`, `azurerm_servicebus_topic`, `azurerm_servicebus_subscription`, `KafkaTopic` resources | The resource itself, with its name, account or project, and region |
+| IAM policies and roles attached to the service, Azure role assignments | The access (the actions or role) and the resource (the ARN or Azure resource ID) |
 | SDK calls in the code | Whether the service reads or writes |
 | Environment variables and values in the deploy config | The real name for each environment |
 
@@ -27,10 +27,10 @@ Follow it to the deploy config for each environment to find the value.
 
 | Kind | Read (`READS_FROM`) | Write (`WRITES_TO`) |
 |---|---|---|
-| S3 bucket, GCS bucket | get, list, head, download | put, upload, delete, copy into |
-| SQS queue | receive | send |
-| SNS topic, Pub/Sub topic | (a subscriber reads its own queue or subscription, not the topic) | publish |
-| Pub/Sub subscription | pull, streaming pull | (none: publishers write to the topic) |
+| S3 bucket, GCS bucket, Azure blob container | get, list, head, download | put, upload, delete, copy into |
+| SQS queue, Azure Service Bus queue | receive | send |
+| SNS topic, Pub/Sub topic, Azure Service Bus topic | (a subscriber reads its own queue or subscription, not the topic) | publish |
+| Pub/Sub subscription, Azure Service Bus subscription | pull, streaming pull, receive | (none: publishers write to the topic) |
 | DynamoDB table | get, query, scan | put, update, delete, batch write |
 | Kafka topic | consumer | producer |
 
@@ -52,7 +52,17 @@ this form, so write them the same way.
 | Pub/Sub topic | `projects/<project>/topics/<topic>` | `pubsub-topic` | `gcp` |
 | Pub/Sub subscription | `projects/<project>/subscriptions/<subscription>` | `pubsub-subscription` | `gcp` |
 | Kafka topic | `kafka://<cluster>/<topic>` | `kafka-topic` | `kafka` |
-| Azure resource | the Azure resource ID | for example `azure-blob-container` | `azure` |
+| Azure blob container | `/subscriptions/<subscription>/resourceGroups/<group>/providers/Microsoft.Storage/storageAccounts/<account>/blobServices/default/containers/<container>` | `azure-blob-container` | `azure` |
+| Azure Service Bus queue | `/subscriptions/<subscription>/resourceGroups/<group>/providers/Microsoft.ServiceBus/namespaces/<namespace>/queues/<queue>` | `azure-servicebus-queue` | `azure` |
+| Azure Service Bus topic | `/subscriptions/<subscription>/resourceGroups/<group>/providers/Microsoft.ServiceBus/namespaces/<namespace>/topics/<topic>` | `azure-servicebus-topic` | `azure` |
+| Azure Service Bus subscription | the topic's ID followed by `/subscriptions/<subscription-name>` | `azure-servicebus-subscription` | `azure` |
+
+- An Azure resource ID needs the subscription and resource group. Code and
+  connection strings usually give only the storage account or namespace. Take
+  the rest from the infrastructure code or deploy config. If it is not there,
+  list the resource as unresolved. Never copy a connection string or key.
+- A Service Bus subscription counts as a queue, like a Pub/Sub subscription: a
+  service that receives from it reads the subscription, not its topic.
 
 - An SQS queue URL `https://sqs.<region>.amazonaws.com/<account>/<queue>` gives
   the region, account and queue name of the ARN.
