@@ -76,7 +76,7 @@ For the full list of commands and their flags, refer to the [CLI reference](../c
 
 ### Experimental commands
 
-Commands are stable within a major version, with the exception of those labelled `[experimental]` in their help text and carry a `stability` field of `experimental` in `gcx commands` output. 
+Commands are stable within a major version, except those labelled `[experimental]` in their help text, which also carry a `stability` field of `experimental` in `gcx commands` output.
 
 Commands are labelled experimental when they are not yet stable, or when they operate a Grafana Cloud feature that is not yet Generally Available. For more information, refer to [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/). **An experimental command may be removed, or its subcommands, flags, and responses may change, without following the normal semantic versioning conventions**.
 
