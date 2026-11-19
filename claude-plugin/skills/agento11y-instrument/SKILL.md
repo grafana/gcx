@@ -76,7 +76,8 @@ instead. The llms.txt section "Choose OpenTelemetry or the Grafana SDK" summariz
 - **Do not assume language symmetry.** Verify the provider wrapper / framework adapter actually
   exists for the app's language before recommending it (Python has the most adapters, JS fewer, Go
   only google-adk, Java/.NET core + providers + google-adk). If it doesn't exist, hand-instrument
-  with the core SDK. Prefer, in order: **provider wrapper → framework adapter → hand-instrumentation**.
+  with the core SDK. For calls without OTel GenAI spans (Step 2, `otel`), prefer, in order:
+  **provider wrapper → framework adapter → hand-instrumentation**.
 - **The loop is bounded.** At most ~3–4 instrument→verify iterations. If data still isn't landing,
   stop and report what's checked and what remains — don't loop forever.
 - **Field-name traps:** `cache_write_input_tokens`, NOT `cache_creation_input_tokens`. `agent_version`
@@ -94,7 +95,9 @@ instead. The llms.txt section "Choose OpenTelemetry or the Grafana SDK" summariz
 ## Step 0 — Credentials and endpoint
 
 If the app may already emit OTel GenAI spans for its model calls (Step 1, item 5), run Steps 1
-and 2 first. When every call is `otel` and no SDK-only feature is needed, skip this step.
+and 2 first. When every call is `otel` and no SDK-only feature is needed, skip the `AGENTO11Y_*`
+vars only. The `OTEL_*` vars, the OTLP tile in point 3, and the rule against pasting a token into
+the chat still apply.
 
 The app needs, in its environment before the SDK starts, **seven** vars — not five; the two mode
 vars are the ones most often forgotten, and their absence is a silent 401:
@@ -217,8 +220,9 @@ State the classification explicitly, with the `file:line` evidence that led to i
   record those calls. Do not add the SDK for those calls: llms.txt reuses compatible spans before
   it adds the SDK, and once the spans carry the `agento11y.record` opt-in, an SDK record would be
   a second copy of each call. For those calls, fetch the public guide linked above and apply what
-  it lists that is missing, such as the opt-in, content capture, or a tracer provider. The Step 3
-  checklist does not apply to them. Use the rest of this skill only for:
+  it lists that is missing, such as the opt-in, content capture, or a tracer provider. From the
+  Step 3 checklist, also check items 0 (the `.env` takes effect) and 2 (providers shut down on
+  exit); the other items are for SDK records. Use the rest of this skill only for:
   - model calls that have no OTel GenAI spans (treat them as `none`), and
   - SDK-only features: guards and other hooks, conversation ratings, or experiments. Add the SDK
     for those features only, and do not wrap the model calls that the spans already record. Guard
@@ -243,7 +247,7 @@ State the classification explicitly, with the `file:line` evidence that led to i
 `none`, `partial`, and `broken` converge on the same checklist (Step 3); they differ only in how
 much is already done. `otel` calls do not use it. If every model call is `otel` and no SDK-only
 feature is needed, skip Step 3. Report what the guide lists that is missing, with `file:line`
-evidence, ask before applying it (as in Step 4), and stop after applying it.
+evidence, and ask before applying it (as in Step 4). Then verify (Step 5) and hand off (Step 6).
 
 ## Step 3 — Run the instrumentation gap checklist
 
@@ -313,7 +317,8 @@ Only after the developer confirms a diff. Bounded to ~3–4 iterations.
      and only needed to narrow a busy tenant). Then `gcx agento11y conversations get <conversation-id>`
      or `gcx agento11y generations get <generation-id>` — check tokens, finish reason, cost, and (for
      a multi-agent pipeline) that `parent_generation_ids` reproduce the DAG. This proves generation
-     ingest + `set_result` are wired. **It does NOT prove OTel is wired.**
+     ingest + `set_result` are wired. **It does NOT prove OTel is wired.** For `otel` calls, ingest
+     turns the opted-in spans into generations, so the same commands verify them.
      For an agentic pipeline (#8), `gcx agento11y conversations get <conversation-id> --jq '.workflow_steps'`
      should list one step per node, linked by `parent_step_ids`. Nodes that call a model have
      `linked_generation_ids`; a routing or tool node may have none. Empty or missing means no steps
