@@ -28,7 +28,7 @@ Both people and AI coding agents use the same `gcx` commands. However, when `gcx
 
 `gcx` turns on agent mode automatically when it finds an environment variable set by a supported agent tool, such as Claude Code, Cursor, GitHub Copilot, Codex, or Gemini CLI.
 
-The main differeces between modes are the following:
+The main differences between modes are the following:
 
 | | Without agent mode | In agent mode |
 | --- | --- | --- |
