@@ -85,7 +85,9 @@ Use the highest-level option that exists for the app's language; do not assume s
    model/tokens/cost automatically. (`go-providers/*`, `python-providers/*`, JS subpath providers.)
 2. **Framework adapter** — if the app uses a supported framework (LangGraph, LangChain,
    OpenAI Agents, LlamaIndex, Google ADK, Strands, Vercel AI SDK, and more — Python has the most,
-   JS fewer, Go only google-adk). The adapter captures generations and workflow steps from callbacks.
+   JS fewer, Go only google-adk). The adapter captures generations from callbacks. The LangGraph
+   and LangChain adapters also capture workflow steps when their workflow-step option is on
+   (`capture_workflow_steps=True` / `captureWorkflowSteps: true`); Strands does it by default.
 3. **Hand-instrumentation** — the core SDK (`start_generation` / `StartGeneration` /
    `startGeneration`) around each model call, when no wrapper/adapter fits.
 
