@@ -9,7 +9,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
+	yamlv3 "gopkg.in/yaml.v3"
 	"sigs.k8s.io/yaml"
 )
 
@@ -88,13 +90,26 @@ func importInputName(file string) string {
 // configuration to send.
 func parseAlertmanagerUserConfig(data []byte) (AlertmanagerUserConfig, error) {
 	var doc map[string]json.RawMessage
-	if err := yaml.UnmarshalStrict(data, &doc); err != nil {
-		return AlertmanagerUserConfig{}, fmt.Errorf("failed to parse input: %w", err)
+	strictErr := yaml.UnmarshalStrict(data, &doc)
+	if normalized := normalizeAlertmanagerTemplateNames(data); normalized != nil {
+		var normalizedDoc map[string]json.RawMessage
+		normalizedErr := yaml.UnmarshalStrict(normalized, &normalizedDoc)
+		switch {
+		case strictErr == nil:
+			doc, strictErr = normalizedDoc, normalizedErr
+		case normalizedErr == nil && yaml.Unmarshal(data, new(map[string]json.RawMessage)) == nil:
+			// Only name collisions may make the original strict pass fail.
+			doc, strictErr = normalizedDoc, nil
+		}
+	}
+	if strictErr != nil {
+		return AlertmanagerUserConfig{}, fmt.Errorf("failed to parse input: %w", strictErr)
 	}
 	if doc == nil {
 		return AlertmanagerUserConfig{}, errors.New("input is not an object")
 	}
 
+	// Ignore extra wrapper keys to match Mimir's user-config decoder.
 	rawConfig, isUserConfig := doc[userConfigAlertmanagerKey]
 	rawTemplates, hasTemplates := doc[userConfigTemplatesKey]
 	if !isUserConfig && !hasTemplates {
@@ -114,6 +129,102 @@ func parseAlertmanagerUserConfig(data []byte) (AlertmanagerUserConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// normalizeAlertmanagerTemplateNames makes the strict decoder read template names as
+// strings, like Mimir. It does not change the interpretation of template values.
+func normalizeAlertmanagerTemplateNames(data []byte) []byte {
+	doc := new(yamlv3.Node)
+	if err := yamlv3.Unmarshal(data, doc); err != nil || len(doc.Content) == 0 {
+		return nil
+	}
+
+	type role uint8
+	const (
+		other role = 1 << iota
+		wrapper
+		templates
+		name
+	)
+	seen := make(map[*yamlv3.Node]role)
+	var visit func(*yamlv3.Node, role)
+	visit = func(node *yamlv3.Node, at role) {
+		if seen[node]&at != 0 {
+			return
+		}
+		seen[node] |= at
+		switch {
+		case node.Kind == yamlv3.AliasNode:
+			visit(node.Alias, at)
+		case node.Kind == yamlv3.MappingNode && (at == wrapper || at == templates):
+			for i := 0; i < len(node.Content); i += 2 {
+				key, value := node.Content[i], node.Content[i+1]
+				switch {
+				case key.ShortTag() == "!!merge" && key.Kind == yamlv3.ScalarNode:
+					visit(value, at)
+				case at == templates:
+					visit(key, name)
+					visit(value, other)
+				default:
+					visit(key, other)
+					if key.Kind == yamlv3.AliasNode {
+						key = key.Alias
+					}
+					if key.Kind == yamlv3.ScalarNode && key.ShortTag() == "!!str" && key.Value == userConfigTemplatesKey {
+						visit(value, templates)
+					} else {
+						visit(value, other)
+					}
+				}
+			}
+		default:
+			if node.Kind != yamlv3.SequenceNode || at == name {
+				at = other
+			}
+			for _, child := range node.Content {
+				visit(child, at)
+			}
+		}
+	}
+	visit(doc.Content[0], wrapper)
+
+	changed := false
+	for node, at := range seen {
+		if at&name == 0 || node.Kind == yamlv3.AliasNode {
+			continue
+		}
+		if node.Kind != yamlv3.ScalarNode {
+			return nil // Keep legacy handling of complex names.
+		}
+		switch node.ShortTag() {
+		case "!!str":
+			if node.Style != 0 {
+				continue
+			}
+			switch strings.ToLower(node.Value) {
+			case "y", "yes", "n", "no", "on", "off":
+			default:
+				continue
+			}
+		case "!!bool", "!!int", "!!float", "!!timestamp":
+		default:
+			return nil // Keep legacy handling of null and other unsupported names.
+		}
+		// Do not change an anchor that is also used outside template names.
+		if at != name {
+			return nil
+		}
+		node.Tag, node.Style = "!!str", yamlv3.DoubleQuotedStyle
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	normalized, err := yamlv3.Marshal(doc)
+	if err != nil {
+		return nil
+	}
+	return normalized
 }
 
 // addTemplateFiles adds the template files at paths to cfg. Each path must be

@@ -87,6 +87,47 @@ func TestReadAlertmanagerUserConfig_Formats(t *testing.T) {
 	}
 }
 
+func TestReadAlertmanagerUserConfig_TemplateNameCompatibility(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  map[string]string
+	}{
+		{
+			name: "template-only merges and repeated merge keys",
+			input: `template_files:
+  <<: {yes: first}
+  <<: [{on: second}, {1.0: third}]
+`,
+			want: map[string]string{"yes": "first", "on": "second", "1.0": "third"},
+		},
+		{
+			name: "shared alias keeps legacy key handling",
+			input: `metadata: &shared {yes: first}
+template_files: *shared
+`,
+			want: map[string]string{"true": "first"},
+		},
+		{
+			name:  "null template contents",
+			input: "template_files: {yes: first, x.tmpl: null}\n",
+			want:  map[string]string{"yes": "first", "x.tmpl": ""},
+		},
+		{
+			name:  "null template map",
+			input: "template_files: null\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := alert.ReadAlertmanagerUserConfig("-", strings.NewReader("alertmanager_config: 'route: {}'\n"+tt.input), nil)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got.TemplateFiles)
+		})
+	}
+}
+
 func TestReadAlertmanagerUserConfig_ReadsStdin(t *testing.T) {
 	got, err := alert.ReadAlertmanagerUserConfig("-", strings.NewReader(plainAlertmanagerConfig), nil)
 
@@ -113,6 +154,36 @@ func TestReadAlertmanagerUserConfig_InvalidInput(t *testing.T) {
 			name:    "template_files without alertmanager_config",
 			input:   "template_files:\n  a.tmpl: x\n",
 			wantErr: "alertmanager_config must be a non-empty string",
+		},
+		{
+			name:    "alertmanager_config is a number",
+			input:   "alertmanager_config: 10\ntemplate_files: {yes: first}\n",
+			wantErr: "alertmanager_config must be a non-empty string",
+		},
+		{
+			name:    "alertmanager_config is null",
+			input:   "alertmanager_config: null\ntemplate_files: {yes: first}\n",
+			wantErr: "alertmanager_config must be a non-empty string",
+		},
+		{
+			name:    "template contents are a boolean",
+			input:   "alertmanager_config: 'route: {}'\ntemplate_files: {yes: on}\n",
+			wantErr: "template_files must map template file names to their contents: json: cannot unmarshal bool",
+		},
+		{
+			name:    "template contents are a number",
+			input:   "alertmanager_config: 'route: {}'\ntemplate_files: {yes: 10}\n",
+			wantErr: "template_files must map template file names to their contents: json: cannot unmarshal number",
+		},
+		{
+			name:    "shared alias keeps legacy duplicate check",
+			input:   "alertmanager_config: 'route: {}'\nmetadata: &shared {yes: first, on: second}\ntemplate_files: *shared\n",
+			wantErr: "key true already set in map",
+		},
+		{
+			name:    "template merge override is rejected",
+			input:   "alertmanager_config: 'route: {}'\ntemplate_files: {<<: {yes: first}, yes: second}\n",
+			wantErr: "key true already set in map",
 		},
 		{
 			name:    "template_files is a list",

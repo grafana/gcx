@@ -2,6 +2,7 @@ package alert_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/alert"
@@ -110,6 +112,40 @@ func TestAlertmanagerImportUpsert_SendsInputAndTemplates(t *testing.T) {
 	}, body)
 }
 
+func TestAlertmanagerImportUpsert_KeepsTemplateNames(t *testing.T) {
+	setAgentMode(t, false)
+
+	for _, tt := range []struct {
+		name  string
+		input string
+	}{
+		{
+			name: "YAML with extra wrapper keys",
+			input: `alertmanager_config: 'route: {}'
+metadata: {source: mimir}
+route: {receiver: ignored}
+template_files: {yes: first, on: second, 1.0: third, x.tmpl: fourth}
+`,
+		},
+		{
+			name: "JSON",
+			input: `{"alertmanager_config": "route: {}", "template_files":
+{"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got recordedRequest
+			loader := serveConvertAPI(t, &got, http.StatusAccepted, mergeResponseWithRenames)
+			_, _, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+				[]string{"alertmanager-imports", "upsert", "-f", "-"}, tt.input)
+
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"alertmanager_config": "route: {}", "template_files":
+{"yes": "first", "on": "second", "1.0": "third", "x.tmpl": "fourth"}}`, string(got.body))
+		})
+	}
+}
+
 func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -130,6 +166,13 @@ func TestAlertmanagerImportUpsert_RejectsInvalidInputBeforeAPICall(t *testing.T)
 			args:     []string{"-f", "-"},
 			stdin:    "alertmanager_config: 'route: {}'\ntemplate_files:\n  a.tmpl: first\n  a.tmpl: second\n",
 			wantErr:  `key "a.tmpl" already set in map`,
+			wantExit: gcxerrors.ExitGeneralError,
+		},
+		{
+			name:     "duplicate template name with different quoting",
+			args:     []string{"-f", "-"},
+			stdin:    "alertmanager_config: 'route: {}'\ntemplate_files: {yes: first, 'yes': second}\n",
+			wantErr:  `key "yes" already set in map`,
 			wantExit: gcxerrors.ExitGeneralError,
 		},
 		{
@@ -742,6 +785,13 @@ time_intervals:
 	assert.Equal(t, 2, strings.Count(stdout, "duplicate  0"))
 }
 
+type unexpectedGrafanaConfigLoad struct{ t *testing.T }
+
+func (l unexpectedGrafanaConfigLoad) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
+	l.t.Fatal("invalid identifier must not load Grafana config")
+	return config.NamespacedRESTConfig{}, nil
+}
+
 func TestAlertmanagerImportCommands_ValidateIdentifier(t *testing.T) {
 	setAgentMode(t, false)
 	commands := []struct {
@@ -774,7 +824,10 @@ func TestAlertmanagerImportCommands_ValidateIdentifier(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(cmd.name+"/"+tt.name, func(t *testing.T) {
 				var got recordedRequest
-				loader := serveConvertAPI(t, &got, http.StatusOK, `{"alertmanager_config":"route: {}"}`)
+				var loader alert.GrafanaConfigLoader = unexpectedGrafanaConfigLoad{t: t}
+				if tt.wantErr == "" {
+					loader = serveConvertAPI(t, &got, http.StatusOK, `{"alertmanager_config":"route: {}"}`)
+				}
 				// Put the identifier after -- so Cobra does not treat -lead as a flag.
 				args := append([]string{"alertmanager-imports", cmd.name}, cmd.flags...)
 				args = append(args, "--", tt.identifier)
