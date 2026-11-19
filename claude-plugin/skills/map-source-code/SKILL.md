@@ -206,7 +206,7 @@ these hold. Otherwise keep the per-Service links.
    Read it from the schema nodes in the graph:
 
    ```bash
-   gcx kg graph query "MATCH (a:EntityType {name: 'Component'})-[e:BUILT_FROM]->(b:EntityType {name: 'Repository'}) RETURN a.name, b.name, e._domain LIMIT 10"
+   gcx kg graph query "MATCH (a:EntityType {name: 'Component'})-[e:BUILT_FROM]->(b:EntityType {name: 'Repository'}) RETURN a.name, b.name, e._domain LIMIT 10" --since 7d
    ```
 
    No rows means the stack does not allow it yet.
