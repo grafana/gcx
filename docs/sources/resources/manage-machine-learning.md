@@ -36,6 +36,8 @@ gcx ml jobs create -f job.json --dry-run
 
 `--dry-run` checks the input without a server mutation. The result reports that server validation is not available.
 
+> Creating or updating a forecast job, including with `gcx resources push`, can start model training.
+
 ## Export and push manifests
 
 Jobs, holidays, and outlier detectors use the standard resource pipeline. The provider removes server IDs and connection fields from each spec.
@@ -75,3 +77,6 @@ Alert files contain the Machine Learning alert object, including its `title`. Us
 gcx ml jobs get-alert <job-id> <alert-id> -o yaml > alert.yaml
 gcx ml jobs update-alert <job-id> <alert-id> -f alert.yaml
 ```
+
+Outlier alerts require a nonzero `window`, such as `5m`. Don't set `threshold` or `anomalyCondition` for an outlier alert.
+

@@ -171,14 +171,15 @@ When a result is larger than 100 KiB, `gcx` writes the full result to a temporar
       }
     }
   ],
-  "message": "Response too large for stdout (143200 bytes). Full data written to /tmp/gcx-results-3781234567.json"
+  "message": "Response too large for stdout (143200 bytes). Full data written to /tmp/gcx-results-3781234567.json. Read that file for complete results, or rerun with -o json to force inline output."
 }
 ```
 
-For list responses, `preview_sample` contains only the first 3 items (or sorted top-level keys for objects, and `null` for `jq` streams)—never the complete result. Read the file at `spilled_to` for the full data.
+For list responses, `preview_sample` contains only the first 3 items (or sorted top-level keys for objects)—never the complete result. Read the file at `spilled_to` for the full data. When `--jq` is combined with `-o agents`, oversized `jq` streams spill to `gcx-results-*.jsonl` with `content_format` set to `"jsonl"`, `total_values` instead of `total_items`, and `preview_sample` set to `null`.
 
 To control this behavior:
 
+- Pass `-o json` to write the full JSON to `stdout` without spilling.
 - Redirect `stdout` to a file, for example `gcx resources get dashboards > dashboards.json`, to write the full result to that file.
 - Set `GCX_AGENT_SPILL_BYTES` to change the threshold in bytes. Set it to `0` to turn off spilling.
 - Run `gcx agent prune` to remove spill files older than 30 minutes, for example at the end of an agent session.
