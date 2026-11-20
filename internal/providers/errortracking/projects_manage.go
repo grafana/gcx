@@ -289,7 +289,7 @@ func (o *projectsDeleteOpts) Validate(cmd *cobra.Command) error {
 	return validIO(cmd, &o.IO)
 }
 
-func clearDeletedDefault(cmd *cobra.Command, loader *providers.ConfigLoader, id int64, m *projectDeleteMutation) {
+func clearDeletedDefault(cmd *cobra.Command, loader *providers.ConfigLoader, id int64, name string, m *projectDeleteMutation) {
 	if _, fromEnv := os.LookupEnv(projectEnv); fromEnv {
 		cmdio.EmitWarn(cmd.ErrOrStderr(), projectEnv+" is set, so the saved default project was not checked; if it is this project, clear it: gcx error-tracking projects use --unset")
 		return
@@ -299,7 +299,8 @@ func clearDeletedDefault(cmd *cobra.Command, loader *providers.ConfigLoader, id 
 		cmdio.EmitWarn(cmd.ErrOrStderr(), "could not read the saved default project, so it was not checked; if it is this project, clear it: gcx error-tracking projects use --unset ("+err.Error()+")")
 		return
 	}
-	if v != strconv.FormatInt(id, 10) {
+	// The saved default may be the ID, the name or the name-ID, as --project accepts.
+	if v != strconv.FormatInt(id, 10) && !strings.EqualFold(v, name) && !strings.EqualFold(v, resourceName(name, id)) {
 		return
 	}
 	if err := loader.SaveProviderConfig(cmd.Context(), providerName, "project", ""); err != nil {
@@ -368,7 +369,7 @@ the result has no clearedDefault. ` + noDryRun,
 			m := projectDeleteMutation{mutationBase: c.mutation("deleted", "Project", id, true)}
 			m.Target.Name, m.Project = opts.Project.name, nil
 			m.text = "Deleted " + c.projectShown()
-			clearDeletedDefault(cmd, loader, id, &m)
+			clearDeletedDefault(cmd, loader, id, opts.Project.name, &m)
 			return emit(cmd, &opts.IO, m)
 		},
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small", agent.AnnotationLLMHint: "<project> --force -o json"},

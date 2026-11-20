@@ -155,6 +155,8 @@ func TestProjectsDelete(t *testing.T) {
 				require.NoError(t, err)
 				assert.NotContains(t, string(data), `"314"`)
 			}},
+		{name: "deleting the project saved as the default by name clears it", setup: withConfig("checkout api"), args: []string{"projects", "delete", "314", "--force", "-o", "json"},
+			calls: []string{"GET projects/314", "DELETE projects/314"}, has: []string{`"clearedDefault": true`}},
 		{name: "deleting another project leaves the saved default", setup: withConfig("2"), args: []string{"projects", "delete", "314", "--force", "-o", "json"},
 			calls: []string{"GET projects/314", "DELETE projects/314"}, hasNot: []string{"clearedDefault"},
 			check: func(t *testing.T, _ string, _ error, _ []etCall) {

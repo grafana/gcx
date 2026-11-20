@@ -56,6 +56,15 @@ func (o *ingestKeyOpts) grace(cmd *cobra.Command) error {
 	return nil
 }
 
+// previousKeyActive reports whether the previous ingest key still accepts events.
+func previousKeyActive(until *string) bool {
+	if until == nil {
+		return false
+	}
+	t, ok := parseTime(*until)
+	return !ok || t.After(time.Now())
+}
+
 func newIngestKeyCommand(loader *providers.ConfigLoader, rotate bool) *cobra.Command {
 	opts := &ingestKeyOpts{}
 	cmd := &cobra.Command{
@@ -97,7 +106,7 @@ declining exits 5. ` + noDryRun,
 					return err
 				}
 				c.knowProject(before.ID, before.Name)
-				if !rotate && before.PreviousIngestKeyUntil == nil {
+				if !rotate && !previousKeyActive(before.PreviousIngestKeyUntil) {
 					m := c.mutation("deleted", "IngestKey", 0, false)
 					m.text = capital(c.projectShown()) + " has no previous ingest key; nothing to stop"
 					return emit(cmd, &opts.IO, m)

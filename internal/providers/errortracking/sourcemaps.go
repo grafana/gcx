@@ -611,11 +611,9 @@ in list_meta.cap and on stderr.`,
 			items, meta := cmdio.TruncateCompleteList(maps, opts.Limit)
 			capped := len(out.SourceMaps) >= sourceMapsCap
 			cut := meta != nil
-			if capped {
+			if capped && !cut {
 				meta = cmdio.PagedListMeta(len(items), opts.Limit, true, sourceMapsCap)
-				if !cut {
-					meta.Cap = sourceMapsCap
-				}
+				meta.Cap = sourceMapsCap
 			}
 			if capped && !cut {
 				if _, err := writeList(cmd, c, &opts.IO, items, meta); err != nil {

@@ -853,7 +853,7 @@ and "(no fields)" ("" in JSON) counts events without custom fields.`,
 				return nil
 			}
 			if r.ListMeta != nil {
-				say(cmd.ErrOrStderr(), fmt.Sprintf("The API keeps only the %d custom field values with the most events; the others are not shown", maxHeatmapValues), "")
+				say(cmd.ErrOrStderr(), fmt.Sprintf("The API keeps only the %d custom field values with the most events; with that many, some may not be shown", maxHeatmapValues), "")
 			}
 			return nil
 		},

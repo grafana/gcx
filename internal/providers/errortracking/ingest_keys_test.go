@@ -18,7 +18,7 @@ func TestIngestKeys(t *testing.T) {
 
 	f := newFakeET(t)
 	const get, rotate, revoke = "GET projects/314", "POST projects/314/ingestKey/rotate", "POST projects/314/ingestKey/revokePrevious"
-	const withOld = `{"id":314,"name":"Checkout API","ingestKey":"k-old","dsn":"https://k-old@ingest.example.com/314","previousIngestKeyUntil":"2026-11-19T09:00:00Z","stats":{"dailyEvents":[]}}`
+	const withOld = `{"id":314,"name":"Checkout API","ingestKey":"k-old","dsn":"https://k-old@ingest.example.com/314","previousIngestKeyUntil":"2099-11-19T09:00:00Z","stats":{"dailyEvents":[]}}`
 	f.reply("GET projects", 200, twoProjects)
 	f.reply(get, 200, withOld)
 	f.reply(rotate, 200, `{"id":314,"name":"Checkout API","ingestKey":"k-new","dsn":"https://k-new@ingest.example.com/314","previousIngestKeyUntil":"2026-11-19T10:00:00Z","stats":{"dailyEvents":[]}}`)
@@ -53,6 +53,10 @@ func TestIngestKeys(t *testing.T) {
 				"target":{"kind":"IngestKey","namespace":"stacks-123"},"project":{"id":314,"name":"Checkout API"}}`},
 		{name: "no previous key as text", setup: noPrevious, args: []string{"projects", "ingest-keys", "delete-previous", "314", "--force"},
 			calls: []string{get}, has: []string{"Project Checkout API (ID 314) has no previous ingest key; nothing to stop"}},
+		{name: "an expired previous key is nothing to stop", setup: func(f *fakeET) {
+			f.reply(get, 200, `{"id":314,"name":"Checkout API","ingestKey":"k-new","previousIngestKeyUntil":"2020-01-01T00:00:00Z","stats":{"dailyEvents":[]}}`)
+		}, args: []string{"projects", "ingest-keys", "delete-previous", "314", "--force"},
+			calls: []string{get}, has: []string{"has no previous ingest key; nothing to stop"}},
 		{name: "a declined revoke changes nothing", stdin: "n\n", args: []string{"projects", "ingest-keys", "delete-previous", "314"},
 			calls: []string{get}, exit: gcxerrors.ExitCancelled, err: "delete cancelled"},
 		{name: "a grace in hours is sent as parsed", args: []string{"projects", "ingest-keys", "rotate", "314", "--grace", " 1h ", "--force", "-o", "json"},

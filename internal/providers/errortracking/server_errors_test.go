@@ -112,7 +112,7 @@ func serverErrorCases() []serverErrorCase {
 
 func TestServerErrors(t *testing.T) {
 	before := map[string]string{
-		"GET projects/314":                     `{"id":314,"name":"web","previousIngestKeyUntil":"2026-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
+		"GET projects/314":                     `{"id":314,"name":"web","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
 		"GET projects/314/errors/42":           `{"id":42,"status":"unresolved","history":[]}`,
 		"GET projects/314/users":               `{"users":[{"uid":"u1"},{"uid":"u2"}],"totalCount":2}`,
 		"GET projects/314/errors/42/assignees": `{"assignees":[{"userUid":"u1"}]}`,

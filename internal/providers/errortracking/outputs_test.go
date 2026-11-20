@@ -73,7 +73,7 @@ func outputFake(t *testing.T) *fakeET {
 	f := newFakeET(t)
 	for route, body := range map[string]string{
 		"GET projects":                               `{"projects":[{"id":314,"name":"Checkout API","ingestKey":"k314","dsn":"https://k314@ingest.example.com/314","createdAt":"2026-11-01T09:30:00Z","stats":{"unresolvedErrors":3,"eventsLast24h":40,"lastEventAt":"2026-11-17T08:15:42Z","dailyEvents":[]}}]}`,
-		"GET projects/314":                           `{"id":314,"name":"Checkout API","ingestKey":"k314","dsn":"https://k314@ingest.example.com/314","previousIngestKeyUntil":"2026-11-18T09:00:00Z","stats":{"unresolvedErrors":3,"eventsLast24h":40,"dailyEvents":[]}}`,
+		"GET projects/314":                           `{"id":314,"name":"Checkout API","ingestKey":"k314","dsn":"https://k314@ingest.example.com/314","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"unresolvedErrors":3,"eventsLast24h":40,"dailyEvents":[]}}`,
 		"GET projects/314/timeline":                  `{"bucket":"1h","buckets":[{"bucket":"2026-11-17T08:00:00Z","eventCount":4}]}`,
 		"GET /api/user":                              `{"uid":"u1","login":"alex","name":"Alex"}`,
 		"GET projects/314/errors":                    `{"errors":[{"id":42,"status":"unresolved","regressed":true,"exceptionType":"TypeError","message":"boom","culprit":"cart.js","transaction":"/checkout","eventCount":9,"firstSeen":"2026-11-10T10:00:00.000Z","lastSeen":"2026-11-17T08:15:42.000Z","lastRelease":"v1.2.3"}],"total":1}`,
