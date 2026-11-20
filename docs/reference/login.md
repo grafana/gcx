@@ -300,7 +300,7 @@ that do not consistently honour the configured organisation.
 `gcx cloud` commands (stack management), `gcx k6` with a service account
 token, and `gcx sm` when it falls back to the direct Synthetic Monitoring API
 need a Grafana Cloud platform credential in addition to Grafana instance auth. A
-[Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/)
+[Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/)
 has the widest compatibility and is recommended for automation. Direct Cloud
 OAuth is available interactively but remains experimental, and some Cloud
 product clients do not yet accept it.
@@ -312,7 +312,7 @@ Create the token in either place:
 - **In your stack** (deep-link the `gcx login` prompt offers): `https://<your-stack>.grafana.net/a/grafana-auth-app` → Access Policies → Create access policy.
 - **From grafana.com**: **Administration → Cloud Access Policies → Create access policy** (`https://grafana.com/orgs/<your-org>/access-policies`).
 
-See [Create access policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
+See [Create access policies](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/create-access-policies/) for the step-by-step flow.
 
 Scope the access policy to what you manage. `stacks:read` is the required baseline — it resolves your stack and gates login/token validation. Then add the scopes for the products you use:
 
@@ -530,7 +530,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 7. **GCOM 401 / Cloud Access Policy token rejected**
     - *Means:* the Cloud Access Policy token was rejected by GCOM or a Cloud product API.
-    - *Fix:* Verify the token at [grafana.com → Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/). Rotate if compromised. Provide the new token via `gcx login --context X --cloud-token glc_...`.
+    - *Fix:* Verify the token at [grafana.com → Access Policies](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/). Rotate if compromised. Provide the new token via `gcx login --context X --cloud-token glc_...`.
 
 8. **Health check or `/apis` connectivity failures**
     - *Means:* gcx could not reach the server during the validation pipeline — typically a wrong URL, DNS/proxy issue, or TLS mismatch.

@@ -58,9 +58,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations list-evidence":   {Cost: "medium", Hint: "<investigation-id> -o json; canonical panel citation index for the report (panelId -> tool + query)"},
 	"gcx assistant investigations list-messages":   {Cost: "large", Hint: "<id> [--role=user|assistant|tool] [--include-hidden] -o json; full v2 chat thread with tool calls and results"},
 	"gcx assistant investigations list-tool-calls": {Cost: "medium", Hint: "<id> [--name=<tool>] -o json; tool calls with results"},
-	"gcx assistant investigations mode":            {Cost: "small"},
-	"gcx assistant investigations pause":           {Cost: "small"},
-	"gcx assistant investigations resume":          {Cost: "small", Hint: "Restarts a paused v2 Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user asks to resume it. Example: <id>"},
+	"gcx assistant investigations mode":            {Cost: "small", Hint: "Deprecated: newer investigations reject it with HTTP 410 Gone. Example: <id> low|medium|high"},
+	"gcx assistant investigations pause":           {Cost: "small", Hint: "Deprecated: newer investigations reject it with HTTP 410 Gone; to stop an investigation use gcx assistant investigations cancel <id>"},
+	"gcx assistant investigations resume":          {Cost: "small", Hint: "Deprecated: newer investigations reject it with HTTP 410 Gone. Restarts a paused v2 Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user asks to resume it. Example: <id>"},
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
 	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
@@ -643,6 +643,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
 	"gcx agento11y saved-conversations save":        {Cost: "small"},
 	"gcx agento11y saved-conversations delete":      {Cost: "small"},
+	"gcx agento11y saved-conversations create":      {Cost: "small", Hint: "-f fixture.json -o json"},
 	"gcx agento11y saved-conversations collections": {Cost: "small"},
 
 	"gcx agento11y collections list":                {Cost: "small"},
@@ -653,6 +654,16 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y collections list-conversations":  {Cost: "small"},
 	"gcx agento11y collections add-conversations":   {Cost: "small"},
 	"gcx agento11y collections remove-conversation": {Cost: "small"},
+
+	"gcx agento11y human-evaluators list": {Cost: "small", Hint: "-o json"},
+
+	"gcx agento11y review-queues list":        {Cost: "small"},
+	"gcx agento11y review-queues get":         {Cost: "medium", Hint: "<collection-id> [--conversation <conversation-id>] -o json"},
+	"gcx agento11y review-queues update":      {Cost: "small", Hint: "<collection-id> --rubric <human-evaluator-id> -o json"},
+	"gcx agento11y review-queues create":      {Cost: "small", Hint: "-f review-queue.yaml -o json"},
+	"gcx agento11y review-queues list-scores": {Cost: "medium", Hint: "<collection-id> --limit 100 -o json"},
+
+	"gcx agento11y reviews create": {Cost: "small", Hint: "-f review.yaml -o json"},
 
 	"gcx agento11y experiments list":               {Cost: "small"},
 	"gcx agento11y experiments get":                {Cost: "small"},

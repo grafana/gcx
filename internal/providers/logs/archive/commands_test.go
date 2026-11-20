@@ -122,9 +122,10 @@ func (f *fakeArchiveAPI) handler(w http.ResponseWriter, r *http.Request) {
 	case "POST /archive-replay/api/v1/streams":
 		reply(http.StatusCreated, `{"result":`+streamFixture(paymentsID, prodID, "payments", `{service="payments"}`)+`}`)
 	case "PUT /archive-replay/api/v1/streams/" + paymentsID:
+		// The API ignores archive_destination_id: a stream keeps its destination.
 		var req map[string]string
 		_ = json.Unmarshal([]byte(f.body(key)), &req)
-		reply(http.StatusOK, `{"result":`+streamFixture(paymentsID, req["archive_destination_id"], req["name"], req["stream_selector"])+`}`)
+		reply(http.StatusOK, `{"result":`+streamFixture(paymentsID, prodID, req["name"], req["stream_selector"])+`}`)
 	case "DELETE /archive-replay/api/v1/streams/" + paymentsID:
 		w.WriteHeader(http.StatusNoContent)
 	default:
@@ -386,6 +387,22 @@ func TestDestinationsCreate_FailedBucketCheckExplainsTheFix(t *testing.T) {
 	assert.Empty(t, res.stdout)
 }
 
+func TestDestinationsCreate_LimitReachedIsNotACredentialFailure(t *testing.T) {
+	api := &fakeArchiveAPI{replies: map[string]fakeReply{
+		"POST /archive-replay/api/v1/archives": {http.StatusForbidden, `{"code":"archive_destination_limit_exceeded","message":"archive destination limit exceeded: limit of 40 reached for this tenant"}`},
+	}}
+	res := runArchiveCmd(t, newTestLoader(t, api), false, "",
+		"destinations", "create", "--name", "prod-archive", "--type", "s3", "--bucket", "acme-logs", "--region", "us-east-1")
+
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, res.err, &detailed)
+	assert.Equal(t, gcxerrors.SummaryAPIError, detailed.Summary)
+	assert.Nil(t, detailed.ExitCode)
+	assert.Equal(t, "Logs Archive limit reached (HTTP 403)\narchive destination limit exceeded: limit of 40 reached for this tenant", detailed.Details)
+	assert.Contains(t, detailed.Suggestions[0], "gcx logs archive destinations list")
+	assert.Empty(t, res.stdout)
+}
+
 func TestDestinationsCreate_DryRun(t *testing.T) {
 	args := []string{"destinations", "create", "--name", "prod-archive", "--type", "s3", "--bucket", "acme-logs", "--region", "us-east-1", "--dry-run", "-o", "json"}
 
@@ -628,24 +645,26 @@ func TestStreamsCreate(t *testing.T) {
 		assert.Contains(t, usage.Error(), "--name cannot be empty")
 		assert.Empty(t, api.archiveRequests())
 	})
+
+	t.Run("a full destination is not a credential failure", func(t *testing.T) {
+		api := &fakeArchiveAPI{replies: map[string]fakeReply{
+			"POST /archive-replay/api/v1/streams": {http.StatusForbidden, `{"code":"archive_selector_limit_exceeded","message":"archive selector limit exceeded: limit of 100 reached for this destination"}`},
+		}}
+		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
+			"streams", "create", "--destination", prodID, "--name", "payments", "--selector", `{service="payments"}`)
+
+		var detailed *gcxerrors.DetailedError
+		require.ErrorAs(t, res.err, &detailed)
+		assert.Equal(t, gcxerrors.SummaryAPIError, detailed.Summary)
+		assert.Nil(t, detailed.ExitCode)
+		assert.Contains(t, detailed.Details, "limit of 100 reached for this destination")
+		assert.Contains(t, detailed.Suggestions[0], "gcx logs archive streams list --destination")
+		assert.Empty(t, res.stdout)
+	})
 }
 
 func TestStreamsUpdate(t *testing.T) {
 	t.Run("changed flags are merged into the current stream", func(t *testing.T) {
-		api := &fakeArchiveAPI{}
-		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
-			"streams", "update", paymentsID, "--destination", euID, "-o", "json")
-		require.NoError(t, res.err, "stderr: %s", res.stderr)
-
-		assert.JSONEq(t,
-			`{"archive_destination_id":"`+euID+`","name":"payments","stream_selector":"{service=\"payments\"}"}`,
-			api.body("PUT /archive-replay/api/v1/streams/"+paymentsID))
-		doc, ok := decodeOneJSONValue(t, res.stdout).(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, "eu-archive", doc["archive_destination_name"])
-	})
-
-	t.Run("the destination name is looked up when it did not change", func(t *testing.T) {
 		api := &fakeArchiveAPI{}
 		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
 			"streams", "update", paymentsID, "--selector", `{service=~"payments|billing"}`, "-o", "json")
@@ -657,6 +676,15 @@ func TestStreamsUpdate(t *testing.T) {
 		doc, ok := decodeOneJSONValue(t, res.stdout).(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "prod-archive", doc["archive_destination_name"])
+	})
+
+	t.Run("the destination cannot change", func(t *testing.T) {
+		api := &fakeArchiveAPI{}
+		res := runArchiveCmd(t, newTestLoader(t, api), false, "",
+			"streams", "update", paymentsID, "--destination", euID)
+
+		require.ErrorContains(t, res.err, "unknown flag: --destination")
+		assert.Empty(t, api.archiveRequests())
 	})
 
 	t.Run("no flags is a usage error", func(t *testing.T) {

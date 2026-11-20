@@ -282,6 +282,9 @@ func (h *archiveHelper) streamsCreateCommand() *cobra.Command {
 				StreamSelector:       opts.Selector,
 			})
 			if err != nil {
+				if limitErr, ok := explainLimit(err); ok {
+					return limitErr
+				}
 				return err
 			}
 
@@ -296,14 +299,12 @@ func (h *archiveHelper) streamsCreateCommand() *cobra.Command {
 // streams update
 
 type streamsUpdateOpts struct {
-	IO          cmdio.Options
-	Destination string
-	Name        string
-	Selector    string
+	IO       cmdio.Options
+	Name     string
+	Selector string
 }
 
 func (o *streamsUpdateOpts) setup(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&o.Destination, "destination", "", "ID of the destination to move the stream to")
 	cmd.Flags().StringVar(&o.Name, "name", "", "New stream name")
 	cmd.Flags().StringVar(&o.Selector, "selector", "", "New log stream selector")
 	o.IO.DefaultFormat("yaml")
@@ -315,11 +316,11 @@ func (o *streamsUpdateOpts) Validate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	flags := cmd.Flags()
-	if !flags.Changed("destination") && !flags.Changed("name") && !flags.Changed("selector") {
-		return gcxerrors.NewCommandUsageError(cmd, "specify at least one of --destination, --name or --selector", nil)
+	if !flags.Changed("name") && !flags.Changed("selector") {
+		return gcxerrors.NewCommandUsageError(cmd, "specify --name, --selector or both", nil)
 	}
 	values := map[string]string{}
-	for name, value := range map[string]string{"destination": o.Destination, "name": o.Name, "selector": o.Selector} {
+	for name, value := range map[string]string{"name": o.Name, "selector": o.Selector} {
 		if flags.Changed(name) {
 			values[name] = value
 		}
@@ -335,13 +336,14 @@ func (h *archiveHelper) streamsUpdateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update ID",
 		Short: "Update an archive stream.",
-		Long: "Update an archive stream's name, selector or destination. Fields without a flag keep their current values.\n\n" +
-			"Moving a stream to another destination affects lines archived from then on; lines already archived stay where they are.",
+		Long: "Update an archive stream's name or selector. Fields without a flag keep their current values.\n\n" +
+			"A stream's destination cannot change. To archive the same lines to another destination, " +
+			"create a stream there with 'gcx logs archive streams create', then delete this one.",
 		Example: `  # Change a stream's selector
   gcx logs archive streams update 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f --selector '{service=~"payments|billing"}'
 
-  # Move a stream to another destination
-  gcx logs archive streams update 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f --destination 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f02`,
+  # Rename a stream
+  gcx logs archive streams update 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f --name payments-and-billing`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(cmd, args); err != nil {
@@ -365,15 +367,6 @@ func (h *archiveHelper) streamsUpdateCommand() *cobra.Command {
 				Name:                 existing.Name,
 				StreamSelector:       existing.StreamSelector,
 			}
-			destinationName := ""
-			if cmd.Flags().Changed("destination") {
-				destination, err := client.GetDestination(ctx, canonicalID(opts.Destination))
-				if err != nil {
-					return err
-				}
-				req.ArchiveDestinationID = destination.ID
-				destinationName = destination.Name
-			}
 			if cmd.Flags().Changed("name") {
 				req.Name = opts.Name
 			}
@@ -387,10 +380,9 @@ func (h *archiveHelper) streamsUpdateCommand() *cobra.Command {
 			}
 
 			// The update already succeeded; a failed lookup only leaves the name empty.
-			if destinationName == "" {
-				if destination, err := client.GetDestination(ctx, updated.ArchiveDestinationID); err == nil {
-					destinationName = destination.Name
-				}
+			destinationName := ""
+			if destination, err := client.GetDestination(ctx, updated.ArchiveDestinationID); err == nil {
+				destinationName = destination.Name
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Updated archive stream %q (id=%s)", updated.Name, updated.ID)
