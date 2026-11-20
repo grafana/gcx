@@ -52,6 +52,7 @@ func (p *AlertProvider) Commands() []*cobra.Command {
 	alertCmd.AddCommand(templateGroupsCommands(loader))
 	alertCmd.AddCommand(templatesCommands(loader))
 	alertCmd.AddCommand(notificationHistoryCommands(loader))
+	alertCmd.AddCommand(alertmanagerImportsCommands(loader))
 
 	return []*cobra.Command{alertCmd}
 }

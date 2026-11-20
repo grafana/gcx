@@ -1,6 +1,8 @@
 package alert
 
 import (
+	"io"
+
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/spf13/cobra"
 )
@@ -87,6 +89,16 @@ func RulerSubtypeForDatasourceType(dsType string) (string, error) {
 // RulerCommands exposes the ruler command tree to tests.
 func RulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return rulerCommands(loader)
+}
+
+// NewAlertmanagerImportsCommandsForTest wraps alertmanagerImportsCommands.
+func NewAlertmanagerImportsCommandsForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return alertmanagerImportsCommands(loader)
+}
+
+// ReadAlertmanagerUserConfig exposes the import input parser to tests.
+func ReadAlertmanagerUserConfig(file string, stdin io.Reader, templatePaths []string) (AlertmanagerUserConfig, error) {
+	return readAlertmanagerUserConfig(file, stdin, templatePaths)
 }
 
 // NewRoutingTreesCommandForTest wraps newRoutingTreesCommand so tests can

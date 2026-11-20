@@ -1,0 +1,33 @@
+Staged Alertmanager configuration "mimir-prod" (read-only until promoted; original names, before renames)
+
+Routes (6):
+MATCHERS                        RECEIVER            GROUP BY           CONTINUE  INTERVALS               GROUP_WAIT  GROUP_INTERVAL  REPEAT_INTERVAL
+(root)                          default-email       alertname,cluster  -         -                       30s         5m              4h
+├─ env="prod", team="payments"  pagerduty-payments  (inherited)        false     mute: weekends          -           -               -
+├─ severity=~"warning|info"     slack-alerts        alertname          true      -                       -           -               -
+│  └─ env="staging"             null                (inherited)        false     -                       -           -               -
+│     └─ instance=~".+"         default-email       (inherited)        false     -                       -           -               -
+└─ alertname="Watchdog"         null                (inherited)        false     active: business-hours  -           -               -
+
+Receivers (4):
+NAME                INTEGRATIONS
+default-email       email
+pagerduty-payments  pagerduty
+slack-alerts        slack×2
+null                none
+
+Time intervals (2):
+NAME            INTERVALS  SUMMARY
+weekends        1          saturday,sunday
+business-hours  1          monday:friday,09:00-17:00 (Europe/Berlin)
+
+Inhibition rules (1):
+#  SOURCE MATCHERS                                       TARGET MATCHERS     EQUAL
+1  region="eu", severity="critical", service=~"api|web"  severity="warning"  alertname,cluster
+
+Templates (2):
+NAME        DEFINES                                                             SIZE
+email.tmpl  email.subject, email.body, email.with.a.very.long.descriptive.name  1.2 KB
+slack.tmpl  slack.title                                                         312 B
+
+Secrets are masked and global settings are dropped: use -o yaml to inspect the configuration, not to import it again.

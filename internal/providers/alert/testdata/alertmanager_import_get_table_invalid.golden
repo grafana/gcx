@@ -1,0 +1,9 @@
+Staged Alertmanager configuration "mimir-prod" (read-only until promoted; original names, before renames)
+
+The configuration could not be parsed. Use -o yaml to inspect it.
+
+Templates (1):
+NAME           DEFINES   SIZE
+fallback.tmpl  fallback  37 B
+
+Secrets are masked and global settings are dropped: use -o yaml to inspect the configuration, not to import it again.

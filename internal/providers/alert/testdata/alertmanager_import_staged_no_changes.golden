@@ -1,0 +1,11 @@
+✔ Staged Alertmanager configuration "mimir-prod"
+
+Added resources:
+  Route:            none
+  Receivers:        none
+  Time intervals:   none
+  Templates:        none
+  Inhibition rules: none
+
+Renamed resources (old -> new):
+  none
