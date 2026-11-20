@@ -57,7 +57,13 @@ func emitUsageEvent(cmd *cobra.Command, start time.Time, exitCode int) {
 			fmt.Fprintln(os.Stderr, string(data))
 		}
 	case telemetry.ModeEnabled:
-		telemetry.Export(buildUsageEvent(info, start, exitCode))
+		// WithoutCancel: keep the invocation's values (--insecure-log-http-payload)
+		// but not its cancellation, which may already have fired.
+		ctx := context.Background()
+		if c := cmd.Context(); c != nil {
+			ctx = context.WithoutCancel(c)
+		}
+		telemetry.Export(ctx, buildUsageEvent(info, start, exitCode))
 	}
 }
 

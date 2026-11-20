@@ -31,9 +31,11 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 }
 
 // NewClientWithHTTPClient creates a datasource query API client using an existing HTTP client.
+//
+//nolint:contextcheck,nolintlint // contextcheck reads this at callers. The nil fallback has no caller context; callers pass a client built from rest.Config.
 func NewClientWithHTTPClient(cfg config.NamespacedRESTConfig, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = httputils.NewClient(httputils.ClientOpts{})
+		httpClient = httputils.NewClient(context.Background(), httputils.ClientOpts{})
 	}
 
 	return &Client{

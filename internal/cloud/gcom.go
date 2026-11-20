@@ -158,7 +158,7 @@ type GCOMClient struct {
 //
 // The client uses a 30-second timeout, except stack creation allows two minutes.
 // It will not follow HTTP redirects to a different domain than baseURL.
-func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
+func NewGCOMClient(ctx context.Context, baseURL, token string) (*GCOMClient, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	parsedBase, err := url.Parse(baseURL)
@@ -170,7 +170,7 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 		return nil, fmt.Errorf("gcom client: base URL must use HTTPS (got %q)", parsedBase.Scheme)
 	}
 
-	httpClient := httputils.NewClient(httputils.ClientOpts{
+	httpClient := httputils.NewClient(ctx, httputils.ClientOpts{
 		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host != parsedBase.Host {

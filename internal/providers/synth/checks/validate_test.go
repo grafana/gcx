@@ -208,7 +208,7 @@ func TestValidateHTTPTarget(t *testing.T) {
 				target = srv.URL
 			}
 
-			err := checks.ValidateHTTPTarget(tt.checkType, target, 5*time.Second)
+			err := checks.ValidateHTTPTarget(t.Context(), tt.checkType, target, 5*time.Second)
 			if tt.wantErr && err == nil {
 				t.Error("expected an error but got nil")
 			}

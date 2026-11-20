@@ -20,7 +20,7 @@ func (f timeoutProbeTransport) RoundTrip(req *http.Request) (*http.Response, err
 }
 
 func TestGCOMClient_OperationTimeouts(t *testing.T) {
-	client, err := cloud.NewGCOMClient("https://example.com", "test-token")
+	client, err := cloud.NewGCOMClient(t.Context(), "https://example.com", "test-token")
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		name          string
@@ -77,7 +77,7 @@ func TestGCOMClient_CreationTimeoutOutcome(t *testing.T) {
 		{"headers", false, true}, {"body", true, true}, {"read operation", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			client, err := cloud.NewGCOMClient("https://example.com", "test-token")
+			client, err := cloud.NewGCOMClient(t.Context(), "https://example.com", "test-token")
 			require.NoError(t, err)
 			calls := 0
 			cloud.HTTPClientForTest(client).Transport = timeoutProbeTransport(func(_ *http.Request) (*http.Response, error) {

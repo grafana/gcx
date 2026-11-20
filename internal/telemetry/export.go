@@ -28,30 +28,30 @@ const exportTimeout = time.Second
 // lost event is fine: the export is a single attempt with no retries, so an
 // unreachable endpoint costs one fast failure rather than the full
 // exportTimeout, which caps the whole exchange.
-func Export(event Event) {
+func Export(ctx context.Context, event Event) {
 	endpoint := defaultEndpoint
 	if override := os.Getenv(envEndpoint); override != "" {
 		endpoint = override
 	}
-	export(event, endpoint)
+	export(ctx, event, endpoint)
 }
 
-func export(event Event, endpoint string) {
+func export(ctx context.Context, event Event, endpoint string) {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// No retry: backoff would burn the whole exportTimeout budget on an
 	// unreachable endpoint, and this runs synchronously before exit on every
-	// telemetry-enabled invocation. No request logging either: the request
-	// has no command context, so its logger would not honour -v, and
-	// best-effort telemetry should stay silent.
-	client := httputils.NewClient(httputils.ClientOpts{
+	// telemetry-enabled invocation. No request logging either: best-effort
+	// telemetry should stay silent unless --insecure-log-http-payload asks
+	// for full dumps.
+	client := httputils.NewClient(ctx, httputils.ClientOpts{
 		Timeout:      exportTimeout,
 		DisableRetry: true,
 		Middlewares:  []httputils.Middleware{},
