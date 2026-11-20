@@ -26,6 +26,8 @@ func TestErrorOnEmpty(t *testing.T) {
 		{name: "loki metric result", value: &loki.MetricQueryResponse{Data: loki.MetricQueryData{Result: []loki.MetricQuerySample{{}}}}},
 		{name: "tempo empty", value: &tempo.SearchResponse{}, empty: true},
 		{name: "tempo result", value: &tempo.SearchResponse{Traces: []tempo.SearchTrace{{}}}},
+		{name: "tempo exceptions empty", value: &tempo.ExceptionsResult{}, empty: true},
+		{name: "tempo exceptions result", value: &tempo.ExceptionsResult{Exceptions: []tempo.ExceptionGroup{{Message: "boom"}}}},
 		{name: "tempo metrics empty", value: &tempo.MetricsResponse{}, empty: true},
 		{name: "tempo metrics result", value: &tempo.MetricsResponse{Series: []tempo.MetricsSeries{{}}}},
 		{name: "pyroscope empty", value: &pyroscope.QueryResponse{}, empty: true},

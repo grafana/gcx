@@ -3,6 +3,7 @@ package tempo
 import (
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/grafana/gcx/internal/query/dataframe"
 )
@@ -13,6 +14,18 @@ func (r *SearchResponse) CSVRecords() ([]string, [][]string, error) {
 		rows = append(rows, []any{t.TraceID, t.RootServiceName, t.RootTraceName, t.StartTimeUnixNano, t.DurationMs, t.ServiceStats})
 	}
 	return dataframe.CSVRows([]string{"trace_id", "root_service", "root_trace", "start_time_unix_nano", "duration_ms", "service_stats"}, rows)
+}
+
+func (r *ExceptionsResult) CSVRecords() ([]string, [][]string, error) {
+	rows := make([][]any, 0, len(r.Exceptions))
+	for _, group := range r.Exceptions {
+		last := ""
+		if !group.LastSeen.IsZero() {
+			last = group.LastSeen.UTC().Format(time.RFC3339)
+		}
+		rows = append(rows, []any{group.Service, group.Type, group.Occurrences, last, group.Message, group.GroupedMessages, group.URL})
+	}
+	return dataframe.CSVRows([]string{"service", "type", "occurrences", "last_seen", "message", "grouped_messages", "url"}, rows)
 }
 
 func (r BaselineResult) CSVRecords() ([]string, [][]string, error) {

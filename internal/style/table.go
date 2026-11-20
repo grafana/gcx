@@ -16,9 +16,10 @@ import (
 type TableBuilder struct {
 	headers       []string
 	rows          [][]string
-	colWidths     []int // per-column fixed widths (0 = auto); only applied in renderStyled
-	multilineCell bool  // when true, plain-renderer flattens \n in cells to ", "
-	compact       bool  // borderless, content-sized layout for dense summaries
+	links         [][]string // parallel to rows; empty entry means no hyperlink
+	colWidths     []int      // per-column fixed widths (0 = auto); only applied in renderStyled
+	multilineCell bool       // when true, plain-renderer flattens \n in cells to ", "
+	compact       bool       // borderless, content-sized layout for dense summaries
 }
 
 // NewTable creates a new table with the given column headers.
@@ -58,7 +59,33 @@ func (tb *TableBuilder) MultilineCells(enabled bool) *TableBuilder {
 // Row appends a data row. The number of values should match the header count.
 func (tb *TableBuilder) Row(vals ...string) *TableBuilder {
 	tb.rows = append(tb.rows, vals)
+	tb.links = append(tb.links, nil)
 	return tb
+}
+
+// Link attaches a URL to one cell of the row most recently added with Row.
+// Styled output keeps the cell text and makes it a terminal hyperlink. Plain
+// output replaces the cell text with the URL so a pipe still carries the link.
+func (tb *TableBuilder) Link(col int, url string) *TableBuilder {
+	if url == "" || len(tb.rows) == 0 || col < 0 {
+		return tb
+	}
+	last := len(tb.rows) - 1
+	if col >= len(tb.rows[last]) {
+		return tb
+	}
+	if tb.links[last] == nil {
+		tb.links[last] = make([]string, len(tb.rows[last]))
+	}
+	tb.links[last][col] = url
+	return tb
+}
+
+func (tb *TableBuilder) linkAt(row, col int) string {
+	if row < 0 || row >= len(tb.links) || tb.links[row] == nil || col < 0 || col >= len(tb.links[row]) {
+		return ""
+	}
+	return tb.links[row][col]
 }
 
 // Render writes the table to w. When styling is enabled, it uses lipgloss/table
@@ -82,10 +109,13 @@ func (tb *TableBuilder) renderPlain(w io.Writer) error {
 		}
 		fmt.Fprintln(tw)
 	}
-	for _, row := range tb.rows {
+	for r, row := range tb.rows {
 		for i, v := range row {
 			if i > 0 {
 				fmt.Fprint(tw, "\t")
+			}
+			if link := tb.linkAt(r, i); link != "" {
+				v = link
 			}
 			// When the caller declared multi-line cells (see
 			// MultilineCells), flatten embedded newlines so a single row
@@ -102,6 +132,18 @@ func (tb *TableBuilder) renderPlain(w io.Writer) error {
 }
 
 func (tb *TableBuilder) renderStyled(w io.Writer) error {
+	rendered := tb.styledTable()
+	if tb.compact {
+		// Styling was resolved against stdout above. Preserve it when a compact
+		// overview composes this table through an intermediate strings.Builder.
+		_, err := fmt.Fprintln(w, rendered)
+		return err
+	}
+	_, err := lipgloss.Fprintln(w, rendered)
+	return err
+}
+
+func (tb *TableBuilder) styledTable() string {
 	width := terminalWidth()
 
 	headerStyle := lipgloss.NewStyle().
@@ -137,6 +179,9 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 			if col < len(tb.colWidths) && tb.colWidths[col] > 0 {
 				s = s.Width(tb.colWidths[col])
 			}
+			if link := tb.linkAt(row, col); link != "" {
+				s = s.Hyperlink(link).Foreground(ColorPrimary)
+			}
 			return s
 		})
 	if tb.compact {
@@ -152,14 +197,9 @@ func (tb *TableBuilder) renderStyled(w io.Writer) error {
 		}
 		t.BorderTop(false).BorderBottom(false).BorderLeft(false).BorderRight(false).
 			BorderColumn(false).BorderRow(false).Width(min(width, naturalWidth))
-		// Styling was resolved against stdout above. Preserve it when a compact
-		// overview composes this table through an intermediate strings.Builder.
-		_, err := fmt.Fprintln(w, t)
-		return err
 	}
 
-	_, err := lipgloss.Fprintln(w, t)
-	return err
+	return t.String()
 }
 
 func terminalWidth() int {

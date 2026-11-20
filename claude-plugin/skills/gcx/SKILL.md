@@ -59,7 +59,7 @@ right group:
 | Metric names, labels, metadata | `metrics` | `gcx metrics list-names -d <uid> --contains <term> -o json` |
 | LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
-| Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
+| Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` for trace IDs; `gcx traces exceptions` for grouped exception messages (see Tempo LLM-friendly output below) |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
@@ -213,7 +213,11 @@ gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
 
 Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
 `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
-a selected trace. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
+a selected trace. Use `gcx traces exceptions` when the question is which exception
+messages are firing; it groups messages from at most 300 traces (10 spans each) and does not list traces.
+Each group includes `url`, a Traces Drilldown Exceptions tab link for that
+service and exception type. In a terminal the table shows that link as a
+clickable `open` cell. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
 to make the lookup much faster. Omit them when the time range is unknown; a
 range that misses the trace returns not found.
 Omit `--llm` only when the user explicitly needs raw Tempo/OTLP JSON or the

@@ -139,6 +139,7 @@ func TestCSVIsExplicitlyRegistered(t *testing.T) {
 		"gcx datasources pyroscope query",
 		"gcx datasources query",
 		"gcx datasources tempo baseline",
+		"gcx datasources tempo exceptions",
 		"gcx datasources tempo metrics",
 		"gcx datasources tempo query",
 		"gcx logs metrics",
@@ -147,6 +148,7 @@ func TestCSVIsExplicitlyRegistered(t *testing.T) {
 		"gcx metrics query",
 		"gcx profiles query",
 		"gcx traces baseline",
+		"gcx traces exceptions",
 		"gcx traces metrics",
 		"gcx traces query",
 	}

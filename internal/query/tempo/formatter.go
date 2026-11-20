@@ -40,6 +40,59 @@ func FormatSearchTable(w io.Writer, resp *SearchResponse) error {
 	return tbl.Render(w)
 }
 
+// FormatExceptionsTable formats grouped exception messages. An empty sample
+// says so; the machine formats still encode an empty exceptions array.
+func FormatExceptionsTable(w io.Writer, resp *ExceptionsResult) error {
+	if len(resp.Exceptions) == 0 {
+		_, err := fmt.Fprintln(w, "no exceptions found")
+		return err
+	}
+	// Lock the short columns so a styled table gives the extra width to TYPE
+	// and MESSAGE. LINK is "open" when styled and the URL when piped.
+	headers := []string{"SERVICE", "TYPE", "OCCURRENCES", "LAST_SEEN", "MESSAGE"}
+	widths := []int{18, 0, 13, 16, 0}
+	linkCol := -1
+	for _, group := range resp.Exceptions {
+		if group.URL != "" {
+			headers = append(headers, "LINK")
+			widths = append(widths, 6)
+			linkCol = len(headers) - 1
+			break
+		}
+	}
+	tbl := style.NewTable(headers...).ColumnWidths(widths)
+	for _, group := range resp.Exceptions {
+		cells := []string{
+			group.Service,
+			group.Type,
+			strconv.Itoa(group.Occurrences),
+			formatExceptionLastSeen(group.LastSeen),
+			group.Message,
+		}
+		if linkCol >= 0 {
+			open := ""
+			if group.URL != "" {
+				open = "open"
+			}
+			cells = append(cells, open)
+		}
+		tbl.Row(cells...)
+		if linkCol >= 0 && group.URL != "" {
+			tbl.Link(linkCol, group.URL)
+		}
+	}
+	return tbl.Render(w)
+}
+
+// formatExceptionLastSeen renders the table cell. JSON and CSV keep RFC3339;
+// the table uses a shorter UTC stamp so the column stays on one line.
+func formatExceptionLastSeen(ts time.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return ts.UTC().Format("01-02 15:04:05")
+}
+
 // FormatBaselineTable formats baseline candidates as a table, with a header
 // giving the seed's span/service profile. SPANS, SVCS, and ERRORS provide raw
 // context rather than a similarity score; use 'gcx traces diff' to compare

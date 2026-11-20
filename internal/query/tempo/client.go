@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -37,6 +38,37 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Search searches for traces matching a TraceQL query.
 func (c *Client) Search(ctx context.Context, datasourceUID string, req SearchRequest) (*SearchResponse, error) {
+	respBody, err := c.doSearch(ctx, datasourceUID, req.Query, req.Start, req.End, req.Limit, 0, "search query")
+	if err != nil {
+		return nil, err
+	}
+
+	var result SearchResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// SearchSpans runs a TraceQL span search with ExceptionsSpansPerTrace spans
+// per span set, the same Tempo parameter the datasource plugin sends for
+// tableType=spans.
+func (c *Client) SearchSpans(ctx context.Context, datasourceUID string, req SpanSearchRequest) (*SpanSearchResponse, error) {
+	respBody, err := c.doSearch(ctx, datasourceUID, req.Query, req.Start, req.End, req.Limit, ExceptionsSpansPerTrace, "span search")
+	if err != nil {
+		return nil, err
+	}
+
+	var result SpanSearchResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *Client) doSearch(ctx context.Context, datasourceUID, query string, start, end time.Time, limit, spss int, operation string) ([]byte, error) {
 	apiPath := c.buildResourcePath(datasourceUID, "api/search")
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
@@ -45,17 +77,20 @@ func (c *Client) Search(ctx context.Context, datasourceUID string, req SearchReq
 	}
 
 	q := httpReq.URL.Query()
-	if req.Query != "" {
-		q.Set("q", req.Query)
+	if query != "" {
+		q.Set("q", query)
 	}
-	if !req.Start.IsZero() {
-		q.Set("start", strconv.FormatInt(req.Start.Unix(), 10))
+	if !start.IsZero() {
+		q.Set("start", strconv.FormatInt(start.Unix(), 10))
 	}
-	if !req.End.IsZero() {
-		q.Set("end", strconv.FormatInt(req.End.Unix(), 10))
+	if !end.IsZero() {
+		q.Set("end", strconv.FormatInt(end.Unix(), 10))
 	}
-	if req.Limit > 0 {
-		q.Set("limit", strconv.Itoa(req.Limit))
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	if spss > 0 {
+		q.Set("spss", strconv.Itoa(spss))
 	}
 	httpReq.URL.RawQuery = q.Encode()
 
@@ -71,15 +106,10 @@ func (c *Client) Search(ctx context.Context, datasourceUID string, req SearchReq
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("tempo", "search query", resp.StatusCode, respBody)
+		return nil, queryerror.FromBody("tempo", operation, resp.StatusCode, respBody)
 	}
 
-	var result SearchResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &result, nil
+	return respBody, nil
 }
 
 // GetTrace retrieves a trace by its ID.

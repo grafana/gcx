@@ -46,6 +46,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return pyroscope.FormatDiffTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *tempo.ExceptionsResult:
+		return tempo.FormatExceptionsTable(w, resp)
 	case *tempo.BaselineResult:
 		return tempo.FormatBaselineTable(w, resp)
 	case *tempo.MetricsResponse:
@@ -109,6 +111,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatPatternsTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
+	case *tempo.ExceptionsResult:
+		return tempo.FormatExceptionsTable(w, resp)
 	case *tempo.BaselineResult:
 		return tempo.FormatBaselineTable(w, resp)
 	case *infinity.QueryResponse:
@@ -181,6 +185,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for KQL table results; use -o table/json/yaml")
 	case *tempo.SearchResponse:
 		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
+	case *tempo.ExceptionsResult:
+		return errors.New("graph output is not supported for exception groups; use -o table/json/yaml")
 	case *infinity.QueryResponse:
 		return errors.New("graph output is not supported for Infinity queries; use -o table/json/yaml")
 	case *tempo.MetricsResponse:
