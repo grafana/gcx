@@ -63,7 +63,10 @@ func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) 
 	if bypass || err != nil {
 		return bypass, err
 	}
+	return Prompt(in, out, prompt)
+}
 
+func Prompt(in io.Reader, out io.Writer, prompt string) (bool, error) {
 	fmt.Fprintf(out, "%s [y/N] ", prompt)
 
 	answer, err := bufio.NewReader(in).ReadString('\n')
