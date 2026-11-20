@@ -216,7 +216,7 @@ func TestIntegrationActionStatusCodes(t *testing.T) {
 	}
 }
 
-func TestGetTeamWorkingHours(t *testing.T) {
+func TestGetTeamHours(t *testing.T) {
 	t.Parallel()
 
 	var gotMethod, gotPath string
@@ -225,12 +225,12 @@ func TestGetTeamWorkingHours(t *testing.T) {
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
-			"irm_working_hours": []any{map[string]any{"name": "Office hours"}},
-			"a_future_field":    "kept",
+			"team_hours":     []any{map[string]any{"name": "Office hours"}},
+			"a_future_field": "kept",
 		})
 	}))
 
-	got, err := client.GetTeamWorkingHours(context.Background(), "T1")
+	got, err := client.GetTeamHours(context.Background(), "T1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -245,7 +245,52 @@ func TestGetTeamWorkingHours(t *testing.T) {
 	}
 }
 
-func TestGetTeamWorkingHoursNotFound(t *testing.T) {
+// TestGetTeamHoursBackendShape decodes a response body in the shape that the
+// IRM backend serves today (grafana/irm#12591 renamed the keys to team_hours
+// and hours). The other fixtures are written with the same keys as the code,
+// so only a body copied from the backend can catch a rename on its side.
+func TestGetTeamHoursBackendShape(t *testing.T) {
+	t.Parallel()
+
+	const body = `{
+  "team_hours": [
+    {
+      "name": "Office hours",
+      "hours": {
+        "monday": [{"start": "09:00:00", "end": "12:00:00"}, {"start": "13:00:00", "end": "17:00:00"}],
+        "tuesday": [{"start": "09:00:00", "end": "17:00:00"}],
+        "wednesday": [],
+        "thursday": [],
+        "friday": [],
+        "saturday": [],
+        "sunday": []
+      }
+    }
+  ]
+}`
+
+	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+
+	got, err := client.GetTeamHours(context.Background(), "T1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	intervals, _ := got["team_hours"].([]any)
+	if len(intervals) != 1 {
+		t.Fatalf("expected one interval under team_hours, got: %v", got)
+	}
+	interval, _ := intervals[0].(map[string]any)
+	week, _ := interval["hours"].(map[string]any)
+	if ranges, _ := week["monday"].([]any); len(ranges) != 2 {
+		t.Errorf("expected two Monday ranges under hours, got: %v", interval)
+	}
+}
+
+func TestGetTeamHoursNotFound(t *testing.T) {
 	t.Parallel()
 
 	// The backend answers a missing team with a JSON detail body.
@@ -255,7 +300,7 @@ func TestGetTeamWorkingHoursNotFound(t *testing.T) {
 		w.Write([]byte(`{"detail":"Not found."}`)) //nolint:errcheck
 	}))
 
-	_, err := client.GetTeamWorkingHours(context.Background(), "missing")
+	_, err := client.GetTeamHours(context.Background(), "missing")
 	var detailed *gcxerrors.DetailedError
 	if !errors.As(err, &detailed) {
 		t.Fatalf("expected a DetailedError, got %T: %v", err, err)
@@ -271,7 +316,7 @@ func TestGetTeamWorkingHoursNotFound(t *testing.T) {
 	}
 }
 
-func TestGetTeamWorkingHoursUnsupportedBackend(t *testing.T) {
+func TestGetTeamHoursUnsupportedBackend(t *testing.T) {
 	t.Parallel()
 
 	// A backend that predates the endpoint answers with a bare HTML 404 page,
@@ -282,17 +327,17 @@ func TestGetTeamWorkingHoursUnsupportedBackend(t *testing.T) {
 		w.Write([]byte("<html><body>Not Found</body></html>")) //nolint:errcheck
 	}))
 
-	_, err := client.GetTeamWorkingHours(context.Background(), "T1")
+	_, err := client.GetTeamHours(context.Background(), "T1")
 	var detailed *gcxerrors.DetailedError
 	if !errors.As(err, &detailed) {
 		t.Fatalf("expected a DetailedError, got %T: %v", err, err)
 	}
-	if !strings.Contains(detailed.Summary, "does not support team working hours") {
+	if !strings.Contains(detailed.Summary, "does not support team hours") {
 		t.Errorf("unexpected summary %q", detailed.Summary)
 	}
 }
 
-func TestUpdateTeamWorkingHoursNotFound(t *testing.T) {
+func TestUpdateTeamHoursNotFound(t *testing.T) {
 	t.Parallel()
 
 	client := newTestOnCallClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -301,14 +346,14 @@ func TestUpdateTeamWorkingHoursNotFound(t *testing.T) {
 		w.Write([]byte(`{"detail":"Not found."}`)) //nolint:errcheck
 	}))
 
-	_, err := client.UpdateTeamWorkingHours(context.Background(), "missing", map[string]any{"irm_working_hours": nil})
+	_, err := client.UpdateTeamHours(context.Background(), "missing", map[string]any{"team_hours": nil})
 	var detailed *gcxerrors.DetailedError
 	if !errors.As(err, &detailed) || detailed.Summary != `Team "missing" not found` {
 		t.Errorf("expected a team-not-found error, got %v", err)
 	}
 }
 
-func TestUpdateTeamWorkingHours(t *testing.T) {
+func TestUpdateTeamHours(t *testing.T) {
 	t.Parallel()
 
 	var gotMethod, gotPath string
@@ -321,8 +366,8 @@ func TestUpdateTeamWorkingHours(t *testing.T) {
 		json.NewEncoder(w).Encode(gotBody) //nolint:errcheck
 	}))
 
-	sent := map[string]any{"irm_working_hours": nil}
-	if _, err := client.UpdateTeamWorkingHours(context.Background(), "T1", sent); err != nil {
+	sent := map[string]any{"team_hours": nil}
+	if _, err := client.UpdateTeamHours(context.Background(), "T1", sent); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if gotMethod != http.MethodPut {
@@ -331,7 +376,7 @@ func TestUpdateTeamWorkingHours(t *testing.T) {
 	if want := irm.BasePath + "/teams/T1/working_hours/"; gotPath != want {
 		t.Errorf("got path %q, want %q", gotPath, want)
 	}
-	if v, ok := gotBody["irm_working_hours"]; !ok || v != nil {
+	if v, ok := gotBody["team_hours"]; !ok || v != nil {
 		t.Errorf("expected an explicit null body, got %v", gotBody)
 	}
 }

@@ -11,17 +11,17 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 )
 
-// escalationStepPauseUntilTeamWorkingHours is the step value of "Pause
-// escalation until team's working hours". The step waits for the business
+// escalationStepPauseUntilTeamHours is the step value of "Pause
+// escalation until team hours". The step waits for the business
 // hours of the team that notify_to_team_members names.
-const escalationStepPauseUntilTeamWorkingHours = 27
+const escalationStepPauseUntilTeamHours = 27
 
 // validateEscalationPolicy checks a policy before it is sent. The backend
 // accepts a pause step without a team, and the step then fails every time an
 // alert group reaches it, so the missing team is caught here instead.
 func validateEscalationPolicy(p *EscalationPolicy) error {
 	step, ok := escalationStepValue(p.Step)
-	if !ok || step != escalationStepPauseUntilTeamWorkingHours {
+	if !ok || step != escalationStepPauseUntilTeamHours {
 		return nil
 	}
 
@@ -32,8 +32,8 @@ func validateEscalationPolicy(p *EscalationPolicy) error {
 	exitCode := gcxerrors.ExitUsageError
 	return &gcxerrors.DetailedError{
 		Summary: "Escalation policy needs a team",
-		Details: fmt.Sprintf("Step %d (pause escalation until team's working hours) waits for the business hours of a team,\n"+
-			"but notify_to_team_members is empty.", escalationStepPauseUntilTeamWorkingHours),
+		Details: fmt.Sprintf("Step %d (pause escalation until team hours) waits for the business hours of a team,\n"+
+			"but notify_to_team_members is empty.", escalationStepPauseUntilTeamHours),
 		ExitCode: &exitCode,
 		Suggestions: []string{
 			"Set notify_to_team_members to the ID of a team",
@@ -49,7 +49,7 @@ func validateEscalationPolicy(p *EscalationPolicy) error {
 // the policy goes to the backend, which decides.
 func checkEscalationPolicyTeam(ctx context.Context, c OnCallAPI, p *EscalationPolicy) error {
 	step, ok := escalationStepValue(p.Step)
-	if !ok || step != escalationStepPauseUntilTeamWorkingHours || teamID(p) == "" {
+	if !ok || step != escalationStepPauseUntilTeamHours || teamID(p) == "" {
 		return nil
 	}
 

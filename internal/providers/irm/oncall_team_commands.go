@@ -10,22 +10,22 @@ import (
 // appear as verbs on the teams noun, per the sub-resource rule in
 // CONSTITUTION.md.
 
-func newTeamGetWorkingHoursCmd(loader OnCallConfigLoader) *cobra.Command {
-	opts := &workingHoursGetOpts{}
+func newTeamGetHoursCmd(loader OnCallConfigLoader) *cobra.Command {
+	opts := &teamHoursGetOpts{}
 	cmd := &cobra.Command{
-		Use:   "get-working-hours <id>",
+		Use:   "get-team-hours <id>",
 		Short: "Get the business hours of a team.",
 		Long: `Get the business hours of a team.
 
 A team's business hours are a list of named intervals. Each interval holds up
 to three time ranges per weekday. A team is in business hours when the current
-time falls inside any of its intervals; the "pause escalation until team's
-working hours" escalation step waits for that moment.
+time falls inside any of its intervals; the "pause escalation until team
+hours" escalation step waits for that moment.
 
 By default the command prints a weekly grid with one row per interval. Use
--o yaml or -o json to emit the document {"irm_working_hours": [...]} (the list
+-o yaml or -o json to emit the document {"team_hours": [...]} (the list
 is null when the team has no business hours). Edit that document, then pass it
-back through update-working-hours.`,
+back through update-team-hours.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -37,28 +37,28 @@ back through update-working-hours.`,
 				return err
 			}
 
-			hours, err := client.GetTeamWorkingHours(cmd.Context(), args[0])
+			hours, err := client.GetTeamHours(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
 
-			return encodeWorkingHours(&opts.IO, cmd.OutOrStdout(), hours)
+			return encodeTeamHours(&opts.IO, cmd.OutOrStdout(), hours)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-func newTeamUpdateWorkingHoursCmd(loader OnCallConfigLoader) *cobra.Command {
-	opts := &workingHoursUpdateOpts{}
+func newTeamUpdateHoursCmd(loader OnCallConfigLoader) *cobra.Command {
+	opts := &teamHoursUpdateOpts{}
 	cmd := &cobra.Command{
-		Use:   "update-working-hours <id>",
+		Use:   "update-team-hours <id>",
 		Short: "Replace the business hours of a team.",
 		Long: `Replace the business hours of a team.
 
-The file holds the document that get-working-hours emits. The intervals in it
+The file holds the document that get-team-hours emits. The intervals in it
 become the team's entire set: an interval that the file omits is deleted. Pass
-{"irm_working_hours": null} to clear every business hour of the team.
+{"team_hours": null} to clear every business hour of the team.
 
 Times are wall-clock times (HH:MM:SS) in the team's timezone. A weekday with no
 ranges is a day off, but every interval needs a time range on at least one
@@ -66,9 +66,9 @@ weekday.
 
 Example file:
 
-  irm_working_hours:
+  team_hours:
     - name: Office hours
-      irm_working_hours:
+      hours:
         monday:    [{start: "09:00:00", end: "17:00:00"}]
         tuesday:   [{start: "09:00:00", end: "17:00:00"}]
         wednesday: [{start: "09:00:00", end: "17:00:00"}]
@@ -90,7 +90,7 @@ to emit the stored document instead.`,
 				return err
 			}
 
-			if err := validateTeamWorkingHours(hours); err != nil {
+			if err := validateTeamHours(hours); err != nil {
 				return err
 			}
 
@@ -99,12 +99,12 @@ to emit the stored document instead.`,
 				return err
 			}
 
-			stored, err := client.UpdateTeamWorkingHours(cmd.Context(), args[0], hours)
+			stored, err := client.UpdateTeamHours(cmd.Context(), args[0], hours)
 			if err != nil {
 				return err
 			}
 
-			return encodeWorkingHours(&opts.IO, cmd.OutOrStdout(), stored)
+			return encodeTeamHours(&opts.IO, cmd.OutOrStdout(), stored)
 		},
 	}
 	opts.setup(cmd.Flags())

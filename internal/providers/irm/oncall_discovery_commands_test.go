@@ -19,7 +19,7 @@ type fakeDiscoveryAPI struct {
 func (f *fakeDiscoveryAPI) ListEscalationStepOptions(context.Context) ([]EscalationStepOption, error) {
 	return []EscalationStepOption{
 		{Value: 19, DisplayName: "Declare incident"},
-		{Value: 27, CreateDisplayName: "Pause escalation until team's working hours", DisplayName: "Pause escalation until {{pause_team}} working hours"},
+		{Value: 27, CreateDisplayName: "Pause escalation until team hours", DisplayName: "Pause escalation until {{pause_team}} hours"},
 	}, nil
 }
 
@@ -74,9 +74,9 @@ func discoveryCases() []discoveryCase {
 			compound: "list-step-types",
 			noun:     "steps",
 			want:     "Declare incident",
-			// The pause-until-working-hours step: its numeric value is what a
+			// The pause-until-team-hours step: its numeric value is what a
 			// policy manifest puts in the step field.
-			also: []string{"27", "Pause escalation until team's working hours"},
+			also: []string{"27", "Pause escalation until team hours"},
 		},
 		{
 			name:     "route filter types",

@@ -806,7 +806,7 @@ func teamWorkingHoursPath(id string) string {
 	return teamsPath + url.PathEscape(id) + "/working_hours/"
 }
 
-// teamWorkingHoursNotFound turns a 404 from the working-hours endpoint into a
+// teamWorkingHoursNotFound turns a 404 from the team hours endpoint into a
 // helpful error. The backend answers a missing team with a JSON
 // {"detail": "Not found."} body, while a backend that predates the endpoint
 // answers with a bare HTML 404 page, so the two are told apart by the body.
@@ -825,7 +825,7 @@ func teamWorkingHoursNotFound(resp *http.Response, id string) error {
 	}
 
 	return &gcxerrors.DetailedError{
-		Summary: "This IRM backend does not support team working hours",
+		Summary: "This IRM backend does not support team hours",
 		Details: "The teams/<id>/working_hours/ endpoint does not exist on the stack.",
 		Suggestions: []string{
 			"Team working hours need a newer IRM version; upgrade the stack and try again",
@@ -833,16 +833,16 @@ func teamWorkingHoursNotFound(resp *http.Response, id string) error {
 	}
 }
 
-// GetTeamWorkingHours returns the business hours of a team.
+// GetTeamHours returns the business hours of a team.
 //
-// The document is {"irm_working_hours": [...]}: a list of named intervals,
+// The document is {"team_hours": [...]}: a list of named intervals,
 // each with up to three time ranges per weekday, or null when the team has
 // none. It is carried as a map rather than a Go struct so that a get followed
 // by an update never drops a field this build does not know about.
-func (c *OnCallClient) GetTeamWorkingHours(ctx context.Context, id string) (map[string]any, error) {
+func (c *OnCallClient) GetTeamHours(ctx context.Context, id string) (map[string]any, error) {
 	resp, err := c.DoRequest(ctx, http.MethodGet, teamWorkingHoursPath(id), nil)
 	if err != nil {
-		return nil, fmt.Errorf("irm: get team working hours: %w", err)
+		return nil, fmt.Errorf("irm: get team hours: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -855,23 +855,23 @@ func (c *OnCallClient) GetTeamWorkingHours(ctx context.Context, id string) (map[
 
 	var doc map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, fmt.Errorf("irm: decode team working hours: %w", err)
+		return nil, fmt.Errorf("irm: decode team hours: %w", err)
 	}
 	return doc, nil
 }
 
-// UpdateTeamWorkingHours replaces the business hours of a team and returns the
+// UpdateTeamHours replaces the business hours of a team and returns the
 // stored document. The given intervals become the team's entire set; send
-// {"irm_working_hours": null} to clear them.
-func (c *OnCallClient) UpdateTeamWorkingHours(ctx context.Context, id string, hours map[string]any) (map[string]any, error) {
+// {"team_hours": null} to clear them.
+func (c *OnCallClient) UpdateTeamHours(ctx context.Context, id string, hours map[string]any) (map[string]any, error) {
 	data, err := json.Marshal(hours)
 	if err != nil {
-		return nil, fmt.Errorf("irm: marshal team working hours: %w", err)
+		return nil, fmt.Errorf("irm: marshal team hours: %w", err)
 	}
 
 	resp, err := c.DoRequest(ctx, http.MethodPut, teamWorkingHoursPath(id), bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("irm: update team working hours: %w", err)
+		return nil, fmt.Errorf("irm: update team hours: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -884,7 +884,7 @@ func (c *OnCallClient) UpdateTeamWorkingHours(ctx context.Context, id string, ho
 
 	var doc map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, fmt.Errorf("irm: decode updated team working hours: %w", err)
+		return nil, fmt.Errorf("irm: decode updated team hours: %w", err)
 	}
 	return doc, nil
 }
