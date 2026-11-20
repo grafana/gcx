@@ -253,3 +253,8 @@ func NewCypherCommand(loader RESTConfigLoader) *cobra.Command { return newCypher
 func NewGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 	return newGraphQueryCommand(loader)
 }
+
+// NewDashboardsCommand exposes the dashboards command group for tests.
+func NewDashboardsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newDashboardsCommand(loader)
+}
