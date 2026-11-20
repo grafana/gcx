@@ -401,3 +401,34 @@ func TestGetCommand_UnknownIDHint(t *testing.T) {
 		})
 	}
 }
+
+// TestCancelCommand_NoPauseHint verifies cancel no longer points at pause,
+// which newer investigations do not support.
+func TestCancelCommand_NoPauseHint(t *testing.T) {
+	tests := []struct {
+		name       string
+		apiVersion string
+	}{
+		{name: "v2 stack", apiVersion: "v2"},
+		{name: "legacy stack", apiVersion: "v1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GCX_ASSISTANT_API_VERSION", tc.apiVersion)
+			setAgentMode(t, false)
+
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == v1InvestigationsPath+"/inv-1/cancel" {
+					writeJSON(w, map[string]any{"data": investigations.CancelResponse{Message: "cancelled"}})
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			})
+			stdout, stderr, err := runCommand(t, handler, []string{"cancel", "inv-1", "-o", "json"})
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"message":"cancelled"}`, stdout)
+			assert.NotContains(t, stderr, "pause")
+			assert.Empty(t, stderr)
+		})
+	}
+}
