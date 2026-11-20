@@ -90,7 +90,7 @@ func newWriteCommand(loader *providers.ConfigLoader, update bool) *cobra.Command
 		}
 		return emitMutation(cmd, &opts.IO, verb, saved.Spec, nil)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "small"
 	if !update {
 		cmd.Annotations[agent.AnnotationLLMHint] = "Saves the Watcher and requests calibration, which consumes Grafana Assistant tokens (" + docs.AssistantPricing + "). Use when the user asks to create a Watcher."
@@ -198,7 +198,7 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 		result.Changed = new(true)
 		return opts.IO.Encode(cmd.OutOrStdout(), result)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "small"
 	opts.setup(cmd.Flags())
 	return cmd
