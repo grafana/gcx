@@ -133,6 +133,14 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 	result.Summary = summaryCounts(summary)
 	result.SkippedReasons = summary.SkippedReasons()
 	result.DryRun = dryRun
+	for _, plan := range summary.Planned() {
+		result.Planned = append(result.Planned, cmdio.MutationSuccess{
+			Requested: cmdio.MutationTarget{Kind: plan.Kind, Name: plan.RequestedName},
+			Action:    plan.Action,
+			Target:    cmdio.MutationTarget{Kind: plan.Kind, Name: plan.Name},
+			Source:    plan.SourcePath,
+		})
+	}
 	applied := summary.Successes()
 	successes := make([]cmdio.MutationSuccess, 0, len(applied))
 	for _, success := range applied {
@@ -180,6 +188,14 @@ func (c *mutationSummaryCodec) Encode(w io.Writer, value any) error {
 	result, ok := value.(cmdio.BatchMutation)
 	if !ok {
 		return errors.New("invalid data type for mutation summary codec: expected BatchMutation")
+	}
+
+	for _, plan := range result.Planned {
+		name := plan.Target.Name
+		if name == "" {
+			name = plan.Requested.Name
+		}
+		fmt.Fprintf(w, "would %s %s/%s\n", strings.TrimSuffix(plan.Action, "d"), plan.Target.Kind, name)
 	}
 
 	skipped := result.Summary.Skipped
