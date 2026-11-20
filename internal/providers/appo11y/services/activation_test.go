@@ -43,7 +43,7 @@ func activationGatedServer(t *testing.T, activationStatus int) (*httptest.Server
 		switch r.URL.Path {
 		case activationEndpoint:
 			w.WriteHeader(activationStatus)
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		default:
 			mu.Lock()

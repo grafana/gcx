@@ -1045,7 +1045,7 @@ func TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens(t *testing.T) {
 					"refresh_expires_at": "2099-02-01T00:00:00Z",
 				},
 			})
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"user": map[string]any{"orgId": 1},
@@ -1136,7 +1136,7 @@ func TestLoadGrafanaConfig_PersistsRefreshToLocalOAuthLayer(t *testing.T) {
 					"refresh_expires_at": "2099-02-01T00:00:00Z",
 				},
 			})
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"user": map[string]any{"orgId": 1},
@@ -1236,7 +1236,7 @@ func TestLoadGrafanaConfig_PersistsRefreshToStackOwningLayer(t *testing.T) {
 					"refresh_expires_at": "2099-04-01T00:00:00Z",
 				},
 			})
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"user": map[string]any{"orgId": 1},

@@ -103,7 +103,7 @@ func newHealthServer(t *testing.T, store map[string]map[string]any, unhealthy ma
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
-		case path == "/apis" || path == "/bootdata":
+		case path == "/apis" || (path == "/bootdata" || path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 			http.NotFound(w, r)
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/health"):
 			uid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/datasources/uid/"), "/health")

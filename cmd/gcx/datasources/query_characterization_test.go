@@ -59,7 +59,7 @@ func (f *fakeGrafana) start() *httptest.Server {
 
 func (f *fakeGrafana) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/bootdata":
+	case r.Method == http.MethodGet && (r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 		http.NotFound(w, r)
 
 	case r.Method == http.MethodGet && r.URL.Path == "/api/datasources/uid/uid":

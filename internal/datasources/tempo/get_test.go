@@ -18,12 +18,12 @@ import (
 func TestGetCmd_DoesNotLookupDatasourceTypeWithoutShareFlags(t *testing.T) {
 	var traceCalls int
 	var metadataCalls int
-	var bootdataCalls int
+	var discoveryCalls int
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
-			bootdataCalls++
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
+			discoveryCalls++
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
 			traceCalls++
@@ -70,7 +70,8 @@ current-context: default
 	err := root.Execute()
 	require.NoError(t, err)
 	assert.Equal(t, 1, traceCalls)
-	assert.Equal(t, 1, bootdataCalls)
+	// One discovery attempt: whoami (404) then the /bootdata fallback (404).
+	assert.Equal(t, 2, discoveryCalls)
 	assert.Zero(t, metadataCalls)
 	assert.Contains(t, stdout.String(), `"traceID": "trace-123"`)
 	assert.Empty(t, stderr.String())
@@ -81,7 +82,7 @@ func TestGetCmd_OmittedPruneSendsFalseExplicitly(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
 			traceQuery = r.URL.RawQuery
@@ -134,7 +135,7 @@ func TestGetCmd_ForwardsV2FilterAndSpanPruningFlags(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
 			traceQuery = r.URL.RawQuery
@@ -203,7 +204,7 @@ func TestGetCmd_FilterAloneOmitsHierarchyParams(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
 			traceQuery = r.URL.RawQuery
@@ -257,7 +258,7 @@ func TestGetCmd_ForwardsExplicitZeroSpanPruningValues(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
 			traceQuery = r.URL.RawQuery

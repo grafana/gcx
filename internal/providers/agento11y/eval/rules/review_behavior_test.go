@@ -48,7 +48,7 @@ func runRules(t *testing.T, handler func(w http.ResponseWriter, method, path str
 	t.Helper()
 	fb := &fakeBackend{bodies: map[string]map[string]any{}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"user": map[string]any{"orgId": 1}}))
 			return
 		}
