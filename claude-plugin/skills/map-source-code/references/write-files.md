@@ -1,15 +1,16 @@
 # Write files
 
-Write through files (`-f`), not through the `--from` and `--to` flags. A flag
-reference is `domain/Type/name` with exactly three parts, so a repository name
-that contains `/` does not fit. In a file, the domain, type and name are
-separate fields.
+Write through files (`-f`), not through the `--from` and `--to` flags. In a
+file, the domain, type, name and scope are separate fields, and one command
+writes many entries. The delete commands take flags only: see
+[removals.yaml](#removalsyaml).
 
 Put every string value that comes from a repository in double quotes, so a
 name with `:` or `#` stays one YAML string.
 
-Every object needs `ttlSeconds`. Without it, gcx writes the object with no
-expiry. Use `604800` (7 days) unless the user asks for another value.
+Leave out `ttlSeconds`. gcx then writes the object with no expiry, and it
+stays until a later run removes it. Writing an object again without
+`ttlSeconds` also clears a TTL that an earlier write gave it.
 
 ## repositories.yaml
 
@@ -30,7 +31,6 @@ scope.
     fullName: "contoso/shop"
     defaultBranch: "main"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 - domain: sourcecode
   type: Repository
   name: "github.com/contoso/deploy-config"
@@ -43,7 +43,6 @@ scope.
     owner: "contoso"
     fullName: "contoso/deploy-config"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 ```
 
 ## resources.yaml
@@ -64,7 +63,6 @@ One entry per resource the services use, in the `sourcecode` domain. A
     account_id: "111122223333"
     region: "us-east-1"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 - domain: sourcecode
   type: CloudResource
   name: "arn:aws:s3:::contoso-invoices"
@@ -74,7 +72,6 @@ One entry per resource the services use, in the `sourcecode` domain. A
     resource_name: "contoso-invoices"
     arn: "arn:aws:s3:::contoso-invoices"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 ```
 
 Quote an account id, as above, so YAML reads it as a string.
@@ -109,7 +106,6 @@ first failing entry.
   properties:
     path: "services/checkout"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 - domain: sourcecode
   type: DEPLOYED_FROM
   from:
@@ -126,7 +122,6 @@ first failing entry.
   properties:
     path: "environments/prod/checkout.yaml"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 ```
 
 ### component-links.yaml
@@ -149,7 +144,6 @@ scope, so `from` has no `scope`. Copy the Component name from the query result.
   properties:
     path: "services/checkout"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 ```
 
 ### resource-links.yaml
@@ -171,7 +165,6 @@ scope, so `from` has no `scope`. Copy the Component name from the query result.
   properties:
     path: "services/checkout/internal/orders/publisher.go"
     managed_by: gcx-map-source-code
-  ttlSeconds: 604800
 ```
 
 - `BUILT_FROM.path` is the folder or build module of the service.
@@ -191,3 +184,38 @@ scope, so `from` has no `scope`. Copy the Component name from the query result.
   every run, so repeated runs do not flip it: for `BUILT_FROM`, the deepest
   folder that contains them all; for the other types, the first path in sorted
   order. List the other paths in the summary.
+
+## removals.yaml
+
+The stale links and resources from Step 6 of the skill, in the same format as
+the link and entity files, without `properties`. It is the record of what the
+run removes. The delete commands take flags, so run one command per entry:
+
+```yaml
+- domain: sourcecode
+  type: DEPLOYED_FROM
+  from:
+    domain: metrics
+    type: Service
+    name: "checkout"
+    scope:
+      env: "prod"
+      namespace: "shop"
+  to:
+    domain: sourcecode
+    type: Repository
+    name: "github.com/contoso/deploy-config"
+- domain: sourcecode
+  type: CloudResource
+  name: "arn:aws:sqs:us-east-1:111122223333:orders"
+```
+
+- A link entry becomes `gcx kg relationships delete --type <type> --from
+  '<domain>/<Type>/<name>' --from-scope '<key>=<value>,...' --to
+  '<domain>/<Type>/<name>' --force`. The name in a reference keeps every `/`
+  after the second one, so `sourcecode/Repository/github.com/contoso/shop`
+  names the repository `github.com/contoso/shop`.
+- A resource entry becomes `gcx kg entities delete --domain sourcecode --type
+  CloudResource --name '<name>' --force`.
+- Put the links before the resources: removing a resource also removes its
+  links.
