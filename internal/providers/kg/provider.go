@@ -81,6 +81,7 @@ and relationships are written with 'entities upsert|delete' and
 
 	kgCmd.AddCommand(
 		newStatusCommand(loader),
+		newSchemasCommand(loader),
 		// Configuration upload
 		newRulesCommand(loader),
 		newThresholdsCommand(loader),
