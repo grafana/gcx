@@ -150,6 +150,16 @@ To learn more about roles and permissions for Application Observability, refer t
 
 To learn more about roles and permissions for Database Observability, refer to [Grafana Cloud app plugin role definitions](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-control/plugin-role-definitions/).
 
+### Error Tracking
+
+`gcx error-tracking` commands call the Error Tracking API on your stack through your Grafana sign-in or token, except `sourcemaps upsert`, which uploads the source maps using a Grafana Cloud token. Other commands, including `errors list --reviewed`, also accept a service account token.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Review errors and change their assignees (`gcx error-tracking errors update --reviewed`, `errors assignees add`, `errors assignees delete`) | Signed-in Grafana user with the Editor or Admin basic role. `gcx` refuses a service account token before it sends the request. |
+| List assignees or filter by them (`gcx error-tracking errors assignees list`, `users list`, `errors list --assignee`, `--assigned` or `--mine`) | Signed-in Grafana user. `gcx` refuses a service account token before it sends the request. |
+| Upload source maps (`gcx error-tracking sourcemaps upsert`) | Grafana Cloud token with the `sourcemaps:write` scope, plus `stacks:read` to look up the stack and confirm its address, and your Grafana sign-in or token to read the project and its upload address. The upload host must share the Grafana server's registrable domain, which a custom domain normally does not. |
+
 ### Fleet Management
 
 `gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud access policy scope. You need these Collector app permissions:

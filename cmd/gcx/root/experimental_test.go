@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The marker and preamble are written as literal prose at each call site so
-// that help text stays greppable; these tests are what keep the wording, the
-// placement, and the agent.stability annotation in agreement.
+// The marker and preamble are written as literal prose at each call site, or
+// added to a whole subtree by agent.MarkExperimental; these tests are what keep
+// the wording, the placement, and the agent.stability annotation in agreement.
 // See docs/design/experimental-commands.md.
 const (
 	experimentalMarker   = "[experimental]"

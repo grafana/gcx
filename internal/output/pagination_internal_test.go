@@ -66,6 +66,17 @@ func TestShellJoinForOSSimpleCommands(t *testing.T) {
 	}
 }
 
+func TestShellJoinForOSDoublesTypographicQuotesForPowerShell(t *testing.T) {
+	for _, q := range []string{"'", "‘", "’", "‚", "‛"} {
+		t.Run(q, func(t *testing.T) {
+			want := "& 'gcx' 'web" + q + q + "; x'"
+			if got := shellJoinForOS([]string{"gcx", "web" + q + "; x"}, "windows"); got != want {
+				t.Fatalf("shellJoinForOS() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestShellJoinForOSQuotesWindowsExpansion(t *testing.T) {
 	for _, arg := range []string{"%USERPROFILE%", "@context"} {
 		t.Run(arg, func(t *testing.T) {

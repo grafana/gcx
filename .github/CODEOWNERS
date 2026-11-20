@@ -21,6 +21,7 @@
 /internal/providers/irm/ @grafana/grafana-gcx @grafana/grafana-irm-backend
 /internal/providers/k6/ @grafana/grafana-gcx @grafana/k6-backend
 /internal/providers/faro/ @grafana/grafana-gcx @grafana/frontend-o11y @grafana/mobile-o11y
+/internal/providers/errortracking/ @grafana/grafana-gcx @grafana/error-tracking
 /internal/providers/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend @grafana/fleet-management-frontend
 /internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend @grafana/fleet-management-frontend
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
