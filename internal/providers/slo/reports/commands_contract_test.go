@@ -438,6 +438,56 @@ func TestTimeline_EmptyReportsRemainArray(t *testing.T) {
 	assert.JSONEq(t, "[]", string(result["Reports"]))
 }
 
+func TestReportsEmptyContract(t *testing.T) {
+	timeRange := []string{"--from", "2026-09-16T09:00:00Z", "--to", "2026-09-16T10:00:00Z"}
+	tests := []struct {
+		name       string
+		agentMode  bool
+		args       []string
+		wantStdout string
+	}{
+		{name: "status default prints the empty table", args: []string{"status"}, wantStdout: "NAME  TIME_SPAN  SLOS  COMBINED_SLI  COMBINED_BUDGET  STATUS\n"},
+		{name: "status graph prints nothing", args: []string{"status", "-o", "graph"}, wantStdout: ""},
+		{name: "status agent mode emits an empty array", agentMode: true, args: []string{"status"}, wantStdout: "[]\n"},
+		{name: "timeline default graph prints nothing", args: append([]string{"timeline"}, timeRange...), wantStdout: ""},
+		{name: "timeline explicit graph prints nothing", args: append([]string{"timeline", "-o", "graph"}, timeRange...), wantStdout: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"reports":[],"slos":[]}`))
+			}))
+			defer srv.Close()
+
+			stdout, stderr, err := runReports(t, srv.URL, tc.agentMode, "", tc.args...)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.wantStdout, stdout)
+			if tc.agentMode {
+				var rec map[string]any
+				require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &rec), "stderr: %q", stderr)
+				assert.Equal(t, "hint", rec["class"])
+				assert.Equal(t, "no SLO reports found", rec["summary"])
+			} else {
+				assert.Equal(t, "hint: no SLO reports found\n", stderr)
+			}
+		})
+	}
+}
+
+func TestReportsTimelineInvalidRangeSkipsHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"reports":[],"slos":[]}`))
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := runReports(t, srv.URL, false, "", "timeline", "--from", "not-a-time")
+	require.ErrorContains(t, err, "invalid --from")
+	assert.Empty(t, stdout)
+	assert.NotContains(t, stderr, "no SLO reports found")
+}
+
 func TestReportsPushRejectsAnotherResourceKind(t *testing.T) {
 	st := &reportAPIState{}
 	srv := newReportServer(t, st)
