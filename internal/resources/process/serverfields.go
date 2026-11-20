@@ -44,20 +44,25 @@ func (m *ServerFieldsStripper) Process(r *resources.Resource) error {
 	labels := r.Labels()
 	delete(labels, utils.LabelKeyDeprecatedInternalID)
 
+	metadata := map[string]any{
+		"name":        r.Name(),
+		"annotations": annotations,
+		"labels":      labels,
+	}
+	// Preserve the original namespace for inspection.
+	// When pushing, the NamespaceOverrider processor will override
+	// this with the target context's namespace.
+	// Cluster-scoped objects have no namespace, so none is written.
+	if ns := r.Namespace(); ns != "" {
+		metadata["namespace"] = ns
+	}
+
 	return r.SetUnstructured(&unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": r.APIVersion(),
 			"kind":       r.Kind(),
-			"metadata": map[string]any{
-				"name": r.Name(),
-				// Preserve the original namespace for inspection.
-				// When pushing, the NamespaceOverrider processor will override
-				// this with the target context's namespace.
-				"namespace":   r.Namespace(),
-				"annotations": annotations,
-				"labels":      labels,
-			},
-			"spec": spec,
+			"metadata":   metadata,
+			"spec":       spec,
 		},
 	})
 }
