@@ -3,13 +3,17 @@ package cloud
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/credentials"
+	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -745,4 +749,22 @@ func TestCloudLoginOptsValidateRejectsManualWithToken(t *testing.T) {
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
+}
+
+// TestRunOAuthLoginLeavesBrowserCancelUnwrapped keeps a Cancel on the
+// grafana.com consent page mappable to "Operation cancelled" (exit 5): a
+// DetailedError around it would be returned as-is and exit 1.
+func TestRunOAuthLoginLeavesBrowserCancelUnwrapped(t *testing.T) {
+	previousFactory := newGCOMOAuthFlow
+	newGCOMOAuthFlow = func(auth.GCOMOptions) gcomOAuthFlow {
+		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
+			return nil, fmt.Errorf("OAuth flow failed: %w", auth.ErrBrowserCancelled)
+		})
+	}
+	t.Cleanup(func() { newGCOMOAuthFlow = previousFactory })
+
+	err := runOAuthLogin(t.Context(), &loginOpts{}, nil, "", config.CloudMutationSafety{}, config.LoginMutationGuard{}, strings.NewReader(""), io.Discard)
+	require.ErrorIs(t, err, auth.ErrBrowserCancelled)
+	var detailed *gcxerrors.DetailedError
+	assert.NotErrorAs(t, err, &detailed, "a cancel must not be wrapped in a DetailedError")
 }

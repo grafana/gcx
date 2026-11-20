@@ -283,6 +283,12 @@ func runOAuthLogin(
 
 	result, err := flow.Run(ctx)
 	if err != nil {
+		// A Cancel on the consent page is not a failure. Return it unwrapped so
+		// the error converter maps it to "Operation cancelled" (exit 5); a
+		// DetailedError here would be returned as-is and exit 1.
+		if errors.Is(err, auth.ErrBrowserCancelled) {
+			return err
+		}
 		return &gcxerrors.DetailedError{
 			Summary: "Authentication failed",
 			Parent:  err,
