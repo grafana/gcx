@@ -177,8 +177,12 @@ write, and the name and properties for each kind.
   telemetry entity such as `S3Bucket` instead.
 - A resource whose id does not resolve to fixed values (built at runtime, a
   wildcard, unknown account or region) is not written. List it as unresolved,
-  with the file where you saw it. If the user gives the missing value, such
-  as the account, the id resolves.
+  with the file where you saw it. Note its `kind` (see
+  [Resources](references/resources.md)) and the Services that use it, even
+  when the id does not resolve: Step 6 needs them. If the user gives the
+  missing value, such as the account, the id resolves. List each value the
+  user gives in the summary, so that it can go into the instructions of later
+  runs (see [Runs with nobody to approve](#runs-with-nobody-to-approve)).
 - The infrastructure code that creates a resource, such as a Terraform
   module, gets no link of its own: the schema has no link from a
   `CloudResource` to a `Repository`. Name that file in the summary.
@@ -357,7 +361,18 @@ query covers, and say so in the summary.
    `BUILT_FROM` or `DEPLOYED_FROM` link to, in the graph or in the plan,
    including a `BUILT_FROM` link from its Component. If the Service has code in
    a repository that this run did not scan, keep the link: that code can still
-   use the resource.
+   use the resource. Return `res.kind` too, for the next check:
+
+   ```bash
+   gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' AND s.name IN ['checkout', 'cart'] RETURN s.name, s.env, s.namespace, s.site, res.name, res.kind, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, res.kind, r.path SKIP 0 LIMIT 300" --since 7d
+   ```
+
+   Also keep the link when this run lists an unresolved resource for the same
+   Service that can be the same resource: its direction and its `kind` are
+   each the same as the link's, or unknown. An earlier run can have resolved
+   that resource with a value that this run does not have. List
+   each such link in the summary as kept, with the file of the unresolved
+   resource.
 
 4. A `CloudResource` that earlier runs wrote is stale when all of its links
    are stale. Removing a resource removes every link it has, so count all of
@@ -399,6 +414,7 @@ summary:
 - the repositories that earlier runs mapped and this run did not scan
 - the images that another repository builds (Step 3)
 - the unmatched services and the unresolved resources
+- the values that the user gave to resolve resource ids
 
 Wait for approval.
 
@@ -523,3 +539,9 @@ services and unresolved resources in its output instead of asking about them.
 It removes stale links and resources only when its instructions also say to
 remove them. Otherwise it lists them in its output. It never removes a
 `Repository`.
+
+The instructions can also give the values that resolve resource ids, such as
+the account ID for each environment. Use them as the user's values in Step 4.
+Put in the instructions the values that a person gave in an earlier run.
+Otherwise those resources stay unresolved, and the Step 6 check keeps their
+earlier links but does not update them.
