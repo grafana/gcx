@@ -39,6 +39,14 @@ type PullClient interface {
 	) (*unstructured.UnstructuredList, error)
 }
 
+// PullLister is an optional PullClient capability. It lists resources for a
+// pull, returning complete objects for types whose List returns summaries.
+type PullLister interface {
+	ListForPull(
+		ctx context.Context, desc resources.Descriptor, opts metav1.ListOptions,
+	) (*unstructured.UnstructuredList, error)
+}
+
 // PullRegistry is a registry of resources that can be pulled from Grafana.
 type PullRegistry interface {
 	PreferredResources() resources.Descriptors
@@ -253,7 +261,11 @@ func (p *Puller) pullFilter(ctx, invocationCtx context.Context, req PullRequest,
 
 	switch filt.Type {
 	case resources.FilterTypeAll:
-		res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
+		list := p.client.List
+		if lister, ok := p.client.(PullLister); ok {
+			list = lister.ListForPull
+		}
+		res, err := list(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
 		if partial, ok := errors.AsType[adapter.PartialReadError](err); ok {
 			if recordErr := recordPartialRead(ctx, summary, partial, req.StopOnError); recordErr != nil {
 				return nil, recordErr
