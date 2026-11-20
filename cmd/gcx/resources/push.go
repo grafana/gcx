@@ -68,7 +68,9 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "push [RESOURCE_SELECTOR]...",
 		Args:  cobra.ArbitraryArgs,
 		Short: "Push resources to Grafana",
-		Long:  "Push resources to Grafana using a specific format. See examples below for more details.",
+		Long: `Push resources to Grafana using a specific format. See examples below for more details.
+
+Push is an idempotent upsert: resources that do not exist on the server are created, and resources that already exist are updated. Running it repeatedly with the same input is safe, for example in CI/CD pipelines.`,
 		Example: `
 	# Everything:
 
