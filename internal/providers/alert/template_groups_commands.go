@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/native"
@@ -144,7 +144,7 @@ func (o *templateGroupsWriteOpts) setup(flags *pflag.FlagSet) {
 }
 func (o *templateGroupsWriteOpts) Validate(cmd *cobra.Command) error {
 	if strings.TrimSpace(o.Filename) == "" {
-		return fail.NewCommandUsageError(cmd, "--filename / -f is required", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--filename / -f is required", nil)
 	}
 	if err := validateNativeAlertVersionFlag(cmd, o.APIVersion); err != nil {
 		return err
@@ -216,7 +216,7 @@ local files.`, Args: cobra.ExactArgs(1),
 				return err
 			}
 			if strings.TrimSpace(obj.GetResourceVersion()) == "" {
-				return fail.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion; fetch the current group with gcx alert template-groups get first", nil)
+				return gcxerrors.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion; fetch the current group with gcx alert template-groups get first", nil)
 			}
 			access, err := binding.Load(cmd.Context(), native.LoadOptions{APIVersion: version})
 			if err != nil {
@@ -231,7 +231,7 @@ local files.`, Args: cobra.ExactArgs(1),
 				return resources.ReadOnlyNativeError(selected)
 			}
 			if obj.GetName() != "" && obj.GetName() != selected.GetName() {
-				return fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q must match the selected current group's API name %q; template kind cannot change", obj.GetName(), selected.GetName()), nil)
+				return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q must match the selected current group's API name %q; template kind cannot change", obj.GetName(), selected.GetName()), nil)
 			}
 			obj.SetName(selected.GetName())
 			updated, err := access.Client.Update(cmd.Context(), access.Descriptor, obj, metav1.UpdateOptions{})
@@ -313,7 +313,7 @@ func newTemplateGroupsDeleteCommand(binding native.Binding) *cobra.Command {
 }
 func validateTemplateKindFlag(cmd *cobra.Command, kind string) error {
 	if (cmd.Flags().Changed("kind") && kind == "") || (kind != "" && kind != "grafana" && kind != "mimir") {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--kind %q must be grafana or mimir", kind), nil)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--kind %q must be grafana or mimir", kind), nil)
 	}
 	return nil
 }
