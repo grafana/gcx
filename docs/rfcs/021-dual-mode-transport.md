@@ -91,11 +91,11 @@ The canonical surface stays `gcx synthetic-monitoring checks|probes …`. No new
   token is resolvable. Pure-OAuth contexts with no `cloud.token` still cannot
   mint one via `register/install`; for them, only the prod libsonnet diff (a
   separate `deployment_tools` change, out of scope here) closes the gap.
-- Synth is now the one provider that legitimately uses **both** `rest.HTTPClientFor`
+- Synth was the first provider to legitimately use **both** `rest.HTTPClientFor`
   (proxy, `cfg.Host`) and `httputils.NewDefaultClient` (direct, external domain).
   This is a documented carve-out to the CONSTITUTION "external APIs use httputils"
   invariant; both usages remain consistent with that rule's `cfg.Host`-vs-external
-  logic.
+  logic. Adaptive Metrics rules now follows the same split; see ARCHITECTURE.md.
 - `register/install` token acquisition stays on the direct/fallback path; it is
   not proxied (only `register/save` and `register/viewer-token` are).
 

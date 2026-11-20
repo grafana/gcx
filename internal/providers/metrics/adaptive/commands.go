@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 // mutationTextCodec is the human "text" codec for the adaptive mutation
@@ -64,6 +66,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 
 	h := &metricsHelper{loader: loader}
 	cmd.AddCommand(
+		h.metricsCommand(),
 		h.recommendationsCommand(),
 		h.rulesCommand(),
 		h.segmentsCommand(),
@@ -209,60 +212,61 @@ func (h *metricsHelper) recommendationsDiffCommand() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			for _, metric := range args {
+				if err := validateRuleRef(opts.Segment, metric, true); err != nil {
+					return err
+				}
+			}
 
 			ctx := cmd.Context()
-			signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "metrics")
+			backend, err := newRulesBackend(ctx, h.loader, opts.Segment)
 			if err != nil {
 				return err
 			}
-			client := NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
-
-			allRecs, err := client.ListRecommendations(ctx, opts.Segment, nil)
+			recs, err := fetchRecommendations(ctx, backend, args)
 			if err != nil {
 				return err
 			}
-			recsByMetric := make(map[string]MetricRecommendation, len(allRecs))
-			for _, r := range allRecs {
-				recsByMetric[r.Metric] = r
+
+			entries := make([]diffEntry, len(recs))
+			for i, rec := range recs {
+				entries[i] = diffEntry{
+					Metric:            rec.Metric,
+					Action:            rec.Action,
+					CurrentRule:       rec.Current,
+					CurrentSeries:     rec.CurrentSeries,
+					RecommendedSeries: rec.RecommendedSeries,
+				}
+				if rec.Action != actionRemove {
+					entries[i].RecommendedRule = rec.Recommended
+				}
 			}
-
-			var entries []diffEntry
-			for _, metric := range args {
-				rec, ok := recsByMetric[metric]
-				if !ok {
-					return fmt.Errorf("no recommendation found for %s. Use 'recommendations list' to see available recommendations", metric)
-				}
-
-				entry := diffEntry{
-					Metric:            metric,
-					Action:            rec.RecommendedAction,
-					CurrentSeries:     rec.CurrentSeriesCount,
-					RecommendedSeries: rec.RecommendedSeriesCount,
-				}
-
-				if rec.RecommendedAction != "add" {
-					rule, err := client.GetRule(ctx, metric, opts.Segment)
-					if err != nil && !errors.Is(err, ErrRuleNotFound) {
-						return fmt.Errorf("get rule for %s: %w", metric, err)
-					}
-					if err == nil {
-						entry.CurrentRule = &rule
-					}
-				}
-
-				recommended := rec.ToRule()
-				if rec.RecommendedAction != "remove" {
-					entry.RecommendedRule = &recommended
-				}
-
-				entries = append(entries, entry)
-			}
-
 			return opts.Encode(cmd.OutOrStdout(), entries)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// recommendationFetchConcurrency bounds the per-metric detail reads.
+const recommendationFetchConcurrency = 10
+
+// fetchRecommendations reads each metric's recommendation, in argument order.
+func fetchRecommendations(ctx context.Context, backend *rulesBackend, metrics []string) ([]metricRecommendation, error) {
+	recs := make([]metricRecommendation, len(metrics))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(recommendationFetchConcurrency)
+	for i, metric := range metrics {
+		g.Go(func() error {
+			rec, err := backend.Recommendation(gctx, metric)
+			recs[i] = rec
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return recs, nil
 }
 
 // recommendations apply
@@ -299,6 +303,9 @@ func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply [<metric>...|--all]",
 		Short: "Apply specific or all recommendations as rules.",
+		Long: fmt.Sprintf("Apply specific or all recommendations as rules.\n\n"+
+			"Listed metrics are applied together in one atomic write, at most %d per call. "+
+			"--all applies every recommendation of the segment on the server.", applyRecommendationsMaxMetrics),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -309,157 +316,62 @@ func (h *metricsHelper) recommendationsApplyCommand() *cobra.Command {
 			if opts.All && len(args) > 0 {
 				return errors.New("--all and metric names are mutually exclusive")
 			}
+			if err := validateApplyMetrics(opts.Segment, args); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
-			signalAuth, err := auth.ResolveSignalAuth(ctx, h.loader, "metrics")
+			backend, err := newRulesBackend(ctx, h.loader, opts.Segment)
 			if err != nil {
 				return err
 			}
-			client := NewClient(ctx, signalAuth.BaseURL, signalAuth.TenantID, signalAuth.APIToken, signalAuth.HTTPClient)
-
 			if opts.All {
-				return applyAllRecommendations(cmd, client, opts)
+				return applyAllRecommendations(cmd, backend, opts)
 			}
-			return applySelectiveRecommendations(cmd, client, opts, args)
+			return applySelectiveRecommendations(cmd, backend, opts, args)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommendationsApplyOpts) error {
+func validateApplyMetrics(segment string, metrics []string) error {
+	if len(metrics) > applyRecommendationsMaxMetrics {
+		return fmt.Errorf("too many metrics: %d given, at most %d can be applied at once; split them into several calls, or use --all", len(metrics), applyRecommendationsMaxMetrics)
+	}
+	seen := make(map[string]bool, len(metrics))
+	for _, metric := range metrics {
+		if err := validateRuleRef(segment, metric, true); err != nil {
+			return err
+		}
+		if seen[metric] {
+			return fmt.Errorf("metric %s is listed more than once", metric)
+		}
+		seen[metric] = true
+	}
+	return nil
+}
+
+func applyAllRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *recommendationsApplyOpts) error {
 	ctx := cmd.Context()
-
-	rules, rulesVersion, err := client.ListRecommendedRules(ctx, opts.Segment)
-	if err != nil {
-		return err
-	}
-
-	_, currentEtag, err := client.ListRules(ctx, opts.Segment)
-	if err != nil {
-		return fmt.Errorf("fetch current rules for ETag: %w", err)
-	}
-
-	recs, err := client.ListRecommendations(ctx, opts.Segment, nil)
-	if err != nil {
-		return fmt.Errorf("fetch recommendations for summary: %w", err)
-	}
-	counts := map[string]int{"add": 0, "update": 0, "remove": 0, "keep": 0}
-	for _, r := range recs {
-		counts[r.RecommendedAction]++
-	}
-
 	stderr := cmd.ErrOrStderr()
 
-	result := cmdio.NewBatchMutation("applied")
-	result.Summary = cmdio.MutationSummary{
-		Succeeded: counts["add"] + counts["update"] + counts["remove"],
-		Skipped:   counts["keep"],
-	}
-
-	if opts.DryRun {
-		cmdio.Info(stderr, "Dry run — would apply all recommendations (%d rules): %d add, %d update, %d remove, %d keep.",
-			len(rules), counts["add"], counts["update"], counts["remove"], counts["keep"])
-		result.DryRun = true
-		return opts.Encode(cmd.OutOrStdout(), result)
-	}
-
-	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
-		fmt.Sprintf("Apply all recommendations (%d rules)?", len(rules)))
-	if err != nil {
-		return err
-	}
-	if !proceed {
-		return nil
-	}
-
-	// Use rulesVersion if available, otherwise fall back to currentEtag.
-	etag := rulesVersion
-	if etag == "" {
-		etag = currentEtag
-	}
-
-	if err := client.SyncRules(ctx, rules, etag, opts.Segment); err != nil {
-		return err
-	}
-
-	cmdio.Success(stderr, "Applied all recommendations (%d rules): %d add, %d update, %d remove, %d keep.",
-		len(rules), counts["add"], counts["update"], counts["remove"], counts["keep"])
-	return opts.Encode(cmd.OutOrStdout(), result)
-}
-
-type applyItem struct {
-	rec    MetricRecommendation
-	action string
-}
-
-func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *recommendationsApplyOpts, metrics []string) error {
-	ctx := cmd.Context()
-
-	allRecs, err := client.ListRecommendations(ctx, opts.Segment, nil)
-	if err != nil {
-		return err
-	}
-	recsByMetric := make(map[string]MetricRecommendation, len(allRecs))
-	for _, r := range allRecs {
-		recsByMetric[r.Metric] = r
-	}
-
-	items := make([]applyItem, 0, len(metrics))
-	for _, m := range metrics {
-		rec, ok := recsByMetric[m]
-		if !ok {
-			return fmt.Errorf("no recommendation found for %s. Use 'recommendations list' to see available recommendations", m)
-		}
-		items = append(items, applyItem{rec: rec, action: rec.RecommendedAction})
-	}
-
-	// Validate add/update rules before any mutations.
-	var toValidate []MetricRule
-	for _, item := range items {
-		if item.action == "add" || item.action == "update" {
-			toValidate = append(toValidate, item.rec.ToRule())
-		}
-	}
-	if len(toValidate) > 0 {
-		errs, err := client.ValidateRules(ctx, toValidate, opts.Segment)
+	if opts.DryRun || !opts.Force {
+		counts, err := backend.RecommendationCounts(ctx)
 		if err != nil {
-			return fmt.Errorf("validate rules: %w", err)
+			return err
 		}
-		if len(errs) > 0 {
-			return formatValidationErrors(errs)
+		changes := counts[actionAdd] + counts[actionUpdate] + counts[actionRemove]
+		if opts.DryRun {
+			cmdio.Info(stderr, "Dry run — would apply all recommendations: %d add, %d update, %d remove.",
+				counts[actionAdd], counts[actionUpdate], counts[actionRemove])
+			result := cmdio.NewBatchMutation("applied")
+			result.Summary = cmdio.MutationSummary{Succeeded: changes}
+			result.DryRun = true
+			return opts.Encode(cmd.OutOrStdout(), result)
 		}
-	}
-
-	// Count non-keep actions.
-	actionCount := 0
-	for _, item := range items {
-		if item.action != "keep" {
-			actionCount++
-		}
-	}
-
-	stderr := cmd.ErrOrStderr()
-
-	if opts.DryRun {
-		for _, item := range items {
-			if item.action == "keep" {
-				fmt.Fprintf(stderr, "  %s: keep (no change)\n", item.rec.Metric)
-			} else {
-				fmt.Fprintf(stderr, "  %s: %s (%d → %d series)\n",
-					item.rec.Metric, item.action,
-					item.rec.CurrentSeriesCount, item.rec.RecommendedSeriesCount)
-			}
-		}
-		result := cmdio.NewBatchMutation("applied")
-		result.Summary = cmdio.MutationSummary{Succeeded: actionCount, Skipped: len(items) - actionCount}
-		result.DryRun = true
-		return opts.Encode(cmd.OutOrStdout(), result)
-	}
-
-	if actionCount > 0 {
 		proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
-			fmt.Sprintf("Apply %d recommendation(s)?", actionCount))
+			fmt.Sprintf("Apply all recommendations (%d change(s))?", changes))
 		if err != nil {
 			return err
 		}
@@ -468,101 +380,115 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		}
 	}
 
-	// Fetch global rules ETag — the API requires If-Match on all mutations.
-	_, rulesEtag, err := client.ListRules(ctx, opts.Segment)
-	if err != nil {
-		return fmt.Errorf("fetch rules ETag: %w", err)
+	resp, applyErr := backend.ApplyAllRecommendations(ctx)
+	var summary applySummary
+	if resp.Summary != nil {
+		summary = *resp.Summary
+	}
+	if applyErr != nil && summary.Upserted+summary.Deleted == 0 {
+		return applyErr
 	}
 
 	result := cmdio.NewBatchMutation("applied")
-	var failed []string
-	for _, item := range items {
-		if item.action == "keep" {
-			cmdio.Info(stderr, "Skipping %s: keep (no change).", item.rec.Metric)
-			result.Summary.Skipped++
-			continue
-		}
-		if err := applyOneItem(ctx, cmd, client, item, opts.Segment, &rulesEtag); err != nil {
-			failed = append(failed, item.rec.Metric)
-			result.Summary.Failed++
-			result.Failures = append(result.Failures, cmdio.MutationFailure{
-				Target: cmdio.MutationTarget{Kind: "recommendation", Name: item.rec.Metric, Namespace: opts.Segment},
-				Error:  err.Error(),
-			})
-			continue
-		}
-		result.Summary.Succeeded++
+	result.Summary.Succeeded = summary.Upserted + summary.Deleted
+	result.Summary.Skipped = summary.Unchanged
+
+	target := cmdio.MutationTarget{Kind: "recommendation", Namespace: opts.Segment}
+	for _, w := range resp.Warnings {
+		result.Summary.Failed += w.Skipped
+		result.Failures = append(result.Failures, cmdio.MutationFailure{
+			Target: target,
+			Error:  fmt.Sprintf("%s: %d recommendation(s) not applied", w.Code, w.Skipped),
+		})
 	}
 
-	if len(failed) > 0 {
-		// Keep the aggregate outcome visible to humans on the advisory
-		// stream; the structured document below carries it for machines.
-		cmdio.Error(stderr, "Failed to apply %d of %d recommendation(s): %s",
-			len(failed), len(items), strings.Join(failed, ", "))
+	if applyErr != nil {
+		// The server reports committed changes, but not how many metrics remain unprocessed.
+		result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: applyErr.Error()})
 	}
 
-	if result.Summary.Failed > 0 && result.Summary.Succeeded == 0 {
-		// Total failure: nothing was applied, so a success-shaped batch
-		// document would be misleading. Keep the classified single-error
-		// path — stdout must carry exactly one value (the reporter's
-		// error document).
-		return fmt.Errorf("failed to apply %d of %d recommendation(s): %s",
-			len(failed), len(items), strings.Join(failed, ", "))
+	if len(result.Failures) == 0 {
+		cmdio.Success(stderr, "Applied all recommendations: %d upserted, %d deleted, %d unchanged.",
+			summary.Upserted, summary.Deleted, summary.Unchanged)
+		return opts.Encode(cmd.OutOrStdout(), result)
 	}
 
+	for _, f := range result.Failures {
+		cmdio.Error(stderr, "Not all recommendations were applied: %s", f.Error)
+	}
 	if err := opts.Encode(cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
-
-	if len(failed) > 0 {
-		// Partial failure: the result document (with enumerated failures)
-		// is already on stdout — EmittedError carries exit 4 without a
-		// second error document.
-		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
-			gcxerrors.NewPartialFailureError("apply", len(items), len(failed)))
+	if applyErr != nil {
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, applyErr)
 	}
-	return nil
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure,
+		gcxerrors.NewPartialFailureError("apply", result.Summary.Succeeded+result.Summary.Failed+result.Summary.Skipped, result.Summary.Failed))
 }
 
-// applyOneItem applies one non-keep recommendation, printing the historical
-// per-item stderr prose. It returns the failure (nil on success) so the
-// caller can aggregate the mutation result document.
-func applyOneItem(ctx context.Context, cmd *cobra.Command, client *Client, item applyItem, segment string, rulesEtag *string) error {
+func applySelectiveRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *recommendationsApplyOpts, metrics []string) error {
+	ctx := cmd.Context()
 	stderr := cmd.ErrOrStderr()
-	switch item.action {
-	case "add":
-		newEtag, err := client.CreateRule(ctx, item.rec.ToRule(), *rulesEtag, segment)
-		if err != nil {
-			cmdio.Error(stderr, "Failed to create rule for %s: %v", item.rec.Metric, err)
-			return err
-		}
-		cmdio.Success(stderr, "Created rule for %s.", item.rec.Metric)
-		*rulesEtag = newEtag
 
-	case "update":
-		newEtag, err := client.UpdateRule(ctx, item.rec.ToRule(), *rulesEtag, segment)
-		if err != nil {
-			cmdio.Error(stderr, "Failed to update rule for %s: %v", item.rec.Metric, err)
+	if opts.DryRun || !opts.Force {
+		proceed, err := previewSelectiveRecommendations(cmd, backend, opts, metrics)
+		if err != nil || !proceed {
 			return err
 		}
-		cmdio.Success(stderr, "Updated rule for %s.", item.rec.Metric)
-		*rulesEtag = newEtag
-
-	case "remove":
-		if err := client.DeleteRule(ctx, item.rec.Metric, *rulesEtag, segment); err != nil {
-			cmdio.Error(stderr, "Failed to delete rule for %s: %v", item.rec.Metric, err)
-			return err
-		}
-		cmdio.Success(stderr, "Deleted rule for %s.", item.rec.Metric)
-		// Refetch ETag after delete since delete doesn't return one.
-		_, newEtag, err := client.ListRules(ctx, segment)
-		if err != nil {
-			cmdio.Error(stderr, "Failed to refresh ETag after delete: %v. Subsequent mutations may fail.", err)
-			return err
-		}
-		*rulesEtag = newEtag
 	}
-	return nil
+
+	results, err := backend.ApplyRecommendations(ctx, metrics)
+	if err != nil {
+		return err
+	}
+	result := cmdio.NewBatchMutation("applied")
+	for _, r := range results {
+		if r.Status == applyStatusApplied {
+			cmdio.Success(stderr, "Applied recommendation for %s.", r.Metric)
+			result.Summary.Succeeded++
+			continue
+		}
+		cmdio.Info(stderr, "Skipping %s: no change.", r.Metric)
+		result.Summary.Skipped++
+	}
+	return opts.Encode(cmd.OutOrStdout(), result)
+}
+
+// previewSelectiveRecommendations reads the listed recommendations to describe
+// the change. It reports whether the apply should go ahead: a dry run
+// finishes here, and otherwise the caller confirms.
+func previewSelectiveRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *recommendationsApplyOpts, metrics []string) (bool, error) {
+	stderr := cmd.ErrOrStderr()
+	recs, err := fetchRecommendations(cmd.Context(), backend, metrics)
+	if err != nil {
+		return false, err
+	}
+	changes := 0
+	for _, rec := range recs {
+		if rec.changesRules() {
+			changes++
+		}
+	}
+
+	if opts.DryRun {
+		for _, rec := range recs {
+			if rec.changesRules() {
+				fmt.Fprintf(stderr, "  %s: %s (%d → %d series)\n", rec.Metric, rec.Action, rec.CurrentSeries, rec.RecommendedSeries)
+			} else {
+				fmt.Fprintf(stderr, "  %s: %s (no change)\n", rec.Metric, rec.Action)
+			}
+		}
+		result := cmdio.NewBatchMutation("applied")
+		result.Summary = cmdio.MutationSummary{Succeeded: changes, Skipped: len(recs) - changes}
+		result.DryRun = true
+		return false, opts.Encode(cmd.OutOrStdout(), result)
+	}
+
+	if changes == 0 {
+		return true, nil
+	}
+	return providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+		fmt.Sprintf("Apply %d recommendation(s)?", changes))
 }
 
 // ---------------------------------------------------------------------------
@@ -590,7 +516,7 @@ type rulesListOpts struct {
 	cmdio.Options
 
 	Segment string
-	Limit   int64
+	Limit   int
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -598,8 +524,8 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.RegisterCustomCodec("table", &rulesTableCodec{wide: false})
 	o.RegisterCustomCodec("wide", &rulesTableCodec{wide: true})
 	o.BindFlags(flags)
+	o.BindListLimit(flags, &o.Limit, "rules", 50)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
 }
 
 func (h *metricsHelper) rulesListCommand() *cobra.Command {
@@ -618,7 +544,11 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			fetchLimit := int64(opts.Limit)
+			if fetchLimit > 0 {
+				fetchLimit++
+			}
+			typedObjs, err := crud.List(ctx, fetchLimit)
 			if err != nil {
 				return err
 			}
@@ -627,6 +557,8 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				rules[i] = typedObjs[i].Spec
 			}
 
+			rules, meta := cmdio.TruncatePagedList(rules, opts.Limit)
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), cmdio.AttachListMeta(meta, os.Args))
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
 
 			// Always encode, even when empty: agent mode and explicit
@@ -662,6 +594,10 @@ func (h *metricsHelper) rulesGetCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			if err := validateRuleRef(opts.Segment, args[0], true); err != nil {
 				return err
 			}
 
@@ -724,9 +660,7 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			ctx := cmd.Context()
-			crud, err := NewRuleTypedCRUD(ctx, h.loader, opts.Segment)
-			if err != nil {
+			if err := validateRuleRef(opts.Segment, opts.Metric, true); err != nil {
 				return err
 			}
 
@@ -739,6 +673,25 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 				Drop:                opts.Drop,
 				AggregationInterval: opts.AggregationInterval,
 				AggregationDelay:    opts.AggregationDelay,
+			}
+			if _, err := toRuleV2(rule); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			crud, err := NewRuleTypedCRUD(ctx, h.loader, opts.Segment)
+			if err != nil {
+				return err
+			}
+
+			// The v2 write is an unconditional upsert, so the fail-if-exists
+			// contract of create needs a read first. The read and write are not
+			// atomic; a concurrent create can still be replaced.
+			switch _, err := crud.Get(ctx, opts.Metric); {
+			case err == nil:
+				return fmt.Errorf("a rule for %s already exists; use 'rules update %s' to change it", opts.Metric, opts.Metric)
+			case !errors.Is(err, ErrRuleNotFound):
+				return err
 			}
 
 			created, err := crud.Create(ctx, &adapter.TypedObject[MetricRule]{Spec: rule})
@@ -802,6 +755,9 @@ func (h *metricsHelper) rulesUpdateCommand() *cobra.Command {
 				!flags.Changed("aggregations") && !flags.Changed("drop") &&
 				!flags.Changed("aggregation-interval") && !flags.Changed("aggregation-delay") {
 				return errors.New("specify at least one flag to update")
+			}
+			if err := validateRuleRef(opts.Segment, args[0], true); err != nil {
+				return err
 			}
 
 			ctx := cmd.Context()
@@ -887,6 +843,9 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 			}
 
 			metric := args[0]
+			if err := validateRuleRef(opts.Segment, metric, true); err != nil {
+				return err
+			}
 			stderr := cmd.ErrOrStderr()
 
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
@@ -904,6 +863,11 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 				return err
 			}
 
+			// The v2 delete also succeeds for a missing rule, so a read first
+			// keeps the command failing on a metric that has no rule.
+			if _, err := crud.Get(ctx, metric); err != nil {
+				return fmt.Errorf("delete rule %s: %w", metric, err)
+			}
 			if err := crud.Delete(ctx, metric); err != nil {
 				return err
 			}
@@ -951,13 +915,13 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if c.wide {
-		fmt.Fprintln(tw, "METRIC\tMATCH TYPE\tDROP LABELS\tKEEP LABELS\tAGGREGATIONS\tDROP\tINTERVAL\tDELAY\tMANAGED BY")
+		fmt.Fprintln(tw, "METRIC\tMATCH TYPE\tDROP LABELS\tKEEP LABELS\tAGGREGATIONS\tDROP\tINTERVAL\tDELAY")
 	} else {
 		fmt.Fprintln(tw, "METRIC\tMATCH TYPE\tDROP LABELS\tKEEP LABELS\tAGGREGATIONS")
 	}
 	for _, r := range rules {
 		if c.wide {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%v\t%s\t%s\n",
 				r.Metric,
 				defaultStr(r.MatchType),
 				strings.Join(r.DropLabels, ","),
@@ -966,7 +930,6 @@ func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
 				r.Drop,
 				r.AggregationInterval,
 				r.AggregationDelay,
-				r.ManagedBy,
 			)
 		} else {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
@@ -1007,16 +970,6 @@ func normalizeExemption(e *MetricExemption) {
 	if strings.HasPrefix(e.ExpiresAt, "0001-01-01") {
 		e.ExpiresAt = ""
 	}
-}
-
-func formatValidationErrors(errs []string) error {
-	var sb strings.Builder
-	sb.WriteString("Rule validation failed:")
-	for _, e := range errs {
-		sb.WriteString("\n  - ")
-		sb.WriteString(e)
-	}
-	return errors.New(sb.String())
 }
 
 // ---------------------------------------------------------------------------
