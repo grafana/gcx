@@ -226,9 +226,9 @@ func (o *alertmanagerImportUpsertOpts) setup(flags *pflag.FlagSet) {
 	flags.StringArrayVar(&o.Templates, "template", nil,
 		"Template file to import; the template name is the file name (repeatable; directories are not accepted)")
 	flags.BoolVar(&o.DryRun, "dry-run", false,
-		"Validate the configuration and report the changes without saving them (cannot be used with --promote)")
+		"Validate the configuration and report the changes without saving them. Cannot enable both --dry-run and --promote")
 	flags.BoolVar(&o.Promote, "promote", false,
-		"Merge the configuration permanently into the Grafana configuration instead of staging it (cannot be undone). Do not use with --dry-run")
+		"Merge the configuration permanently into the Grafana configuration instead of staging it (cannot be undone). Cannot enable both --dry-run and --promote")
 	flags.BoolVar(&o.ForceReplace, "force-replace", false, "Replace a staged configuration that has another identifier")
 	flags.BoolVar(&o.Force, "force", false, "Skip the confirmation prompt of --promote")
 }
