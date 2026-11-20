@@ -16,8 +16,10 @@ var (
 
 // parseEntityRefToken parses a compact "domain/Type/name" ref token. Scope is
 // supplied separately via --from-scope/--to-scope, so it is not part of the token.
+// A domain and a type never contain "/", so the name is everything after the
+// second "/" and may itself contain "/" (for example github.com/contoso/shop).
 func parseEntityRefToken(token string) (EntityRef, error) {
-	parts := strings.Split(token, "/")
+	parts := strings.SplitN(token, "/", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return EntityRef{}, fmt.Errorf("invalid ref %q: expected domain/Type/name (e.g. myapp/Service/checkout)", token)
 	}

@@ -14,7 +14,15 @@ func TestParseEntityRefToken(t *testing.T) {
 	assert.Equal(t, "myapp", ref.Domain)
 	assert.Equal(t, "Service", ref.Type)
 	assert.Equal(t, "checkout", ref.Name)
-	for _, bad := range []string{"", "a/b", "a//c", "/b/c", "a/b/"} {
+
+	// The name keeps every "/" after the second one.
+	ref, err = kg.ParseEntityRefToken("sourcecode/Repository/github.com/contoso/shop")
+	require.NoError(t, err)
+	assert.Equal(t, "sourcecode", ref.Domain)
+	assert.Equal(t, "Repository", ref.Type)
+	assert.Equal(t, "github.com/contoso/shop", ref.Name)
+
+	for _, bad := range []string{"", "a/b", "a//c", "/b/c", "a/b/", "a//c/d"} {
 		_, err := kg.ParseEntityRefToken(bad)
 		require.Error(t, err, "expected error for %q", bad)
 	}
