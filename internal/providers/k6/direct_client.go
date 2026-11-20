@@ -592,22 +592,13 @@ func (c *DirectClient) GetLoadTestByName(ctx context.Context, projectID int, nam
 
 // ListTestRuns retrieves all test runs for a load test.
 func (c *DirectClient) ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunStatus, error) {
-	path := fmt.Sprintf(loadTestsPath+"/%d/test_runs", loadTestID)
-	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list test runs: %w", err)
-	}
-	defer resp.Body.Close()
+	return c.ListTestRunsWithLimit(ctx, loadTestID, 0)
+}
 
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list test runs for %d: status %d: %s", loadTestID, resp.StatusCode, readErrorBody(resp))
-	}
-
-	result, err := decodeJSON[testRunsResponse](resp)
-	if err != nil {
-		return nil, err
-	}
-	return result.Value, nil
+// ListTestRunsWithLimit retrieves up to limit test runs for a load test,
+// following $skip/$top pages. Pass 0 for no limit (fetches all).
+func (c *DirectClient) ListTestRunsWithLimit(ctx context.Context, loadTestID, limit int) ([]TestRunStatus, error) {
+	return listTestRuns(ctx, c.doJSON, loadTestID, limit)
 }
 
 // ---------------------------------------------------------------------------

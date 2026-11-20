@@ -99,6 +99,7 @@ type envVarRequest struct {
 // testRunsResponse is the response from listing test runs.
 type testRunsResponse struct {
 	Value []TestRunStatus `json:"value"`
+	Count int             `json:"@count,omitempty"`
 }
 
 // Schedule represents a k6 schedule (v6 API).

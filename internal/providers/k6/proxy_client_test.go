@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -371,6 +372,74 @@ func TestProxyClient_ListTestRuns(t *testing.T) {
 	assert.Len(t, runs, 1)
 	assert.Equal(t, "finished", runs[0].Status)
 	assert.Equal(t, 1, runs[0].ResultStatus)
+}
+
+// testRunsPager serves total synthetic runs, honouring $skip and $top the way
+// the k6 v6 API does.
+func testRunsPager(t *testing.T, total int, requests *[]string) http.HandlerFunc {
+	t.Helper()
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		*requests = append(*requests, r.URL.RawQuery)
+
+		skip, top := 0, total
+		if v := r.URL.Query().Get("$skip"); v != "" {
+			skip, _ = strconv.Atoi(v)
+		}
+		if v := r.URL.Query().Get("$top"); v != "" {
+			top, _ = strconv.Atoi(v)
+		}
+
+		values := []map[string]any{}
+		for i := skip; i < total && len(values) < top; i++ {
+			values = append(values, map[string]any{"id": i + 1, "load_test_id": 6, "status": "finished"})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{"value": values})
+	}
+}
+
+func TestProxyClient_ListTestRuns_Paginates(t *testing.T) {
+	var requests []string
+	client := newAuthenticatedProxyClient(t, testRunsPager(t, 250, &requests))
+
+	runs, err := client.ListTestRuns(t.Context(), 6)
+	require.NoError(t, err)
+	require.Len(t, runs, 250)
+	assert.Equal(t, 1, runs[0].ID)
+	assert.Equal(t, 250, runs[249].ID)
+	assert.Len(t, requests, 3)
+}
+
+func TestProxyClient_ListTestRunsWithLimit(t *testing.T) {
+	var requests []string
+	client := newAuthenticatedProxyClient(t, testRunsPager(t, 250, &requests))
+
+	runs, err := client.ListTestRunsWithLimit(t.Context(), 6, 120)
+	require.NoError(t, err)
+	assert.Len(t, runs, 120)
+	require.Len(t, requests, 2)
+	assert.Contains(t, requests[1], "$top=20", "last page asks only for the remainder")
+}
+
+func TestProxyClient_ListTestRuns_ServerIgnoresSkip(t *testing.T) {
+	calls := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		values := make([]map[string]any, 100)
+		for i := range values {
+			values[i] = map[string]any{"id": i + 1, "load_test_id": 6}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(t, w, map[string]any{"value": values})
+	})
+
+	client := newAuthenticatedProxyClient(t, handler)
+	runs, err := client.ListTestRuns(t.Context(), 6)
+	require.NoError(t, err)
+	assert.Len(t, runs, 100)
+	assert.Equal(t, 2, calls)
 }
 
 func TestProxyClient_ListEnvVars(t *testing.T) {
