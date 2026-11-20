@@ -3,6 +3,7 @@ package kg_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -629,4 +630,150 @@ func TestRcaWorkbenchURL_EmptySinceUsesEpochMillis(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1000", u.Query().Get("start"))
 	assert.Equal(t, "2000", u.Query().Get("end"))
+}
+
+func TestSuppressionsUpsert_Shapes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []kg.Suppression
+	}{
+		{name: "wrapper", input: "disabledAlertConfigs:\n  - name: a\n  - name: b\n", want: []kg.Suppression{{Name: "a"}, {Name: "b"}}},
+		{name: "bare list as printed by list", input: "- name: a\n- name: b\n", want: []kg.Suppression{{Name: "a"}, {Name: "b"}}},
+		{name: "bare single suppression", input: "name: a\nmatchLabels:\n  job: api\n", want: []kg.Suppression{{Name: "a", MatchLabels: map[string]string{"job": "api"}}}},
+		{name: "trailing separator is allowed", input: "- name: a\n---\n", want: []kg.Suppression{{Name: "a"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var upserted []kg.Suppression
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var got kg.Suppression
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got)) {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				upserted = append(upserted, got)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+			cmd.SetArgs([]string{"upsert", "-f", "-"})
+			cmd.SetIn(bytes.NewBufferString(tt.input))
+			cmd.SetOut(&bytes.Buffer{})
+			require.NoError(t, cmd.Execute())
+			assert.Equal(t, tt.want, upserted)
+		})
+	}
+}
+
+func TestSuppressionsUpsert_RoundTripsListOutput(t *testing.T) {
+	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
+		{Name: "first", MatchLabels: map[string]string{"job": "api"}},
+		{Name: "second", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}, ManagedBy: "terraform"},
+	}}
+	var upserted []kg.Suppression
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(remote))
+		case http.MethodPost:
+			var got kg.Suppression
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			upserted = append(upserted, got)
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Errorf("unexpected method %s", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	var listed bytes.Buffer
+	listCmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	listCmd.SetArgs([]string{"list", "-o", "yaml"})
+	listCmd.SetOut(&listed)
+	require.NoError(t, listCmd.Execute())
+
+	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"upsert", "-f", "-"})
+	cmd.SetIn(&listed)
+	cmd.SetOut(&bytes.Buffer{})
+	require.NoError(t, cmd.Execute())
+	// managedBy is backend-owned: list prints it, but upsert must not send it back.
+	want := []kg.Suppression{remote.DisabledAlertConfigs[0], remote.DisabledAlertConfigs[1]}
+	want[1].ManagedBy = ""
+	assert.Equal(t, want, upserted)
+}
+
+func TestSuppressionsUpsert_RejectsBadInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{name: "mistyped key in wrapper", input: "disabledAlertConfigs:\n  - name: a\n    matchlabels:\n      job: api\n", wantErr: "field matchlabels not found"},
+		{name: "mistyped key in bare list", input: "- name: a\n  matchlabels:\n    job: api\n", wantErr: "field matchlabels not found"},
+		{name: "mistyped key in bare suppression", input: "name: a\nmatchlabels:\n  job: api\n", wantErr: "field matchlabels not found"},
+		{name: "second document", input: "- name: a\n---\n- name: b\n", wantErr: "multiple YAML documents are not supported"},
+		{name: "scalar root", input: "just a string\n", wantErr: "expected a suppression, a list of suppressions, or a disabledAlertConfigs wrapper"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Errorf("no request may be sent, got %s %s", r.Method, r.URL.Path)
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer server.Close()
+
+			cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetArgs([]string{"upsert", "-f", "-"})
+			cmd.SetIn(bytes.NewBufferString(tt.input))
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "failed to parse suppressions file")
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestSuppressionsUpsert_RejectsEmptyName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{name: "bare single", input: "matchLabels:\n  job: api\n", wantErr: "suppression 0 has an empty name"},
+		{name: "list entry", input: "- name: a\n- matchLabels:\n    job: api\n", wantErr: "suppression 1 has an empty name"},
+	}
+	for _, tt := range tests {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s dry-run=%t", tt.name, dryRun), func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Errorf("no request may be sent, got %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+				defer server.Close()
+
+				args := []string{"upsert", "-f", "-"}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+				cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+				cmd.SilenceUsage = true
+				cmd.SilenceErrors = true
+				cmd.SetArgs(args)
+				cmd.SetIn(bytes.NewBufferString(tt.input))
+				err := cmd.Execute()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			})
+		}
+	}
 }
