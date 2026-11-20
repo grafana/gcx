@@ -28,6 +28,9 @@ Knowledge Graph already knows, and write the links. The result in the graph:
 
 - **Read the code, never change it.** Do not edit, build, commit or push in the
   scanned repositories, and do not run their scripts.
+- **Ask before you read anything else.** CI logs, Terraform outputs, cloud
+  provider APIs and telemetry lookups that resolve resource ids need the
+  user's approval first, for each source. Never assume it. See Step 4.
 - **Send only metadata.** What goes to the Knowledge Graph is repository URLs,
   folder and file paths, service names, and resource ids (names and ARNs).
   Resource ids often come from config values, and those may be written. Never
@@ -173,8 +176,8 @@ it, writes it, or both.
 write, and the name and properties for each kind.
 
 - Write a `CloudResource` for every resource whose full id resolves, whether or
-  not telemetry knows it. Do not look it up first, and never link to a
-  telemetry entity such as `S3Bucket` instead.
+  not telemetry knows it. Do not look up a resource whose id resolves, and
+  never link to a telemetry entity such as `S3Bucket` instead.
 - A resource whose id does not resolve to fixed values (built at runtime, a
   wildcard, unknown account or region) is not written. List it as unresolved,
   with the file where you saw it. Note its `kind` (see
@@ -183,6 +186,13 @@ write, and the name and properties for each kind.
   missing value, such as the account, the id resolves. List each value the
   user gives in the summary, so that it can go into the instructions of later
   runs (see [Runs with nobody to approve](#runs-with-nobody-to-approve)).
+- For a resource that stays unresolved, other sources can have the id: the
+  Knowledge Graph's telemetry, Terraform outputs, CloudFormation stacks,
+  Azure resource groups, the cloud provider's API, or CI deployment logs.
+  Ask the user before you use each source, and keep only ids from its
+  output. This is best effort: if a source is not approved or does not give
+  exactly one match, the resource stays unresolved. Follow
+  [Resolve ids](references/resolve-ids.md).
 - The infrastructure code that creates a resource, such as a Terraform
   module, gets no link of its own: the schema has no link from a
   `CloudResource` to a `Repository`. Name that file in the summary.
@@ -421,7 +431,8 @@ summary:
 - the repositories that earlier runs mapped and this run did not scan
 - the images that another repository builds (Step 3)
 - the unmatched services and the unresolved resources
-- the values that the user gave to resolve resource ids
+- the values that resolved resource ids, and where each came from: the
+  user, or a source from [Resolve ids](references/resolve-ids.md)
 
 Wait for approval.
 
@@ -549,6 +560,9 @@ remove them. Otherwise it lists them in its output. It never removes a
 
 The instructions can also give the values that resolve resource ids, such as
 the account ID for each environment. Use them as the user's values in Step 4.
+The instructions can also name the sources from
+[Resolve ids](references/resolve-ids.md) that the run may use. The run uses no
+other source.
 Put in the instructions the values that a person gave in an earlier run.
 Otherwise those resources stay unresolved, and the Step 6 check keeps their
 earlier links but does not update them.

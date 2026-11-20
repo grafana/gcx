@@ -102,5 +102,9 @@ environment. List these as unresolved instead, with the file where you saw them:
 - an SQS, SNS, DynamoDB or RDS ARN without a known account or region
 - a reference whose direction is not clear
 
+Other sources can still have the id of such a resource, for example
+Terraform outputs or CI deployment logs. Use them only with the user's
+approval, as [Resolve ids](resolve-ids.md) describes.
+
 Resource ids are metadata and may be written. Never write credentials, access
 keys, signed URLs, connection strings, or the contents of objects or messages.
