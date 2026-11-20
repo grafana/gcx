@@ -45,6 +45,27 @@ func stripFields() []string {
 	}
 }
 
+// CollectionExample returns an example Collection manifest as JSON, suitable as a push template.
+func CollectionExample() json.RawMessage {
+	desc := StaticDescriptor()
+	example := map[string]any{
+		"apiVersion": desc.GroupVersion.String(),
+		"kind":       desc.Kind,
+		"metadata": map[string]any{
+			"name": "regression-suite",
+		},
+		"spec": map[string]any{
+			"name":        "Regression suite",
+			"description": "Conversations replayed nightly to catch regressions",
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("collections: failed to marshal example: %v", err))
+	}
+	return b
+}
+
 // NewTypedCRUD creates a TypedCRUD for Agent Observability collections.
 //
 // The collections API is *not* an upsert (unlike evaluators), so CreateFn and

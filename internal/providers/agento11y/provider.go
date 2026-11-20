@@ -189,6 +189,7 @@ func (p *Agento11yProvider) TypedRegistrations() []adapter.Registration {
 			GroupAliases: []string{"sigil.ext.grafana.app"},
 			GVK:          evalDesc.GroupVersionKind(),
 			Schema:       evaluators.EvaluatorSchema,
+			Example:      evaluators.EvaluatorExample(),
 			URLTemplate:  "/a/grafana-agento11y-app/evaluators/{name}",
 		},
 		{
@@ -197,6 +198,7 @@ func (p *Agento11yProvider) TypedRegistrations() []adapter.Registration {
 			GroupAliases: []string{"sigil.ext.grafana.app"},
 			GVK:          ruleDesc.GroupVersionKind(),
 			Schema:       rules.RuleSchema,
+			Example:      rules.RuleExample(),
 			URLTemplate:  "/a/grafana-agento11y-app/rules/{name}",
 		},
 		{
@@ -205,6 +207,7 @@ func (p *Agento11yProvider) TypedRegistrations() []adapter.Registration {
 			GroupAliases: []string{"sigil.ext.grafana.app"},
 			GVK:          guardDesc.GroupVersionKind(),
 			Schema:       guards.HookRuleSchema,
+			Example:      guards.HookRuleExample(),
 			URLTemplate:  "/a/grafana-agento11y-app/guards/{name}",
 		},
 		{
@@ -213,6 +216,7 @@ func (p *Agento11yProvider) TypedRegistrations() []adapter.Registration {
 			GroupAliases: []string{"sigil.ext.grafana.app"},
 			GVK:          collectionDesc.GroupVersionKind(),
 			Schema:       collections.CollectionSchema,
+			Example:      collections.CollectionExample(),
 			URLTemplate:  "/a/grafana-agento11y-app/collections/{name}",
 		},
 	}
