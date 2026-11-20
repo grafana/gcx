@@ -225,14 +225,18 @@ func (o *alertmanagerImportUpsertOpts) setup(flags *pflag.FlagSet) {
 		"File containing the Alertmanager configuration or the Mimir/Cortex user configuration (YAML/JSON, use - for stdin)")
 	flags.StringArrayVar(&o.Templates, "template", nil,
 		"Template file to import; the template name is the file name (repeatable; directories are not accepted)")
-	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate the configuration and report the changes without saving them")
+	flags.BoolVar(&o.DryRun, "dry-run", false,
+		"Validate the configuration and report the changes without saving them (cannot be used with --promote)")
 	flags.BoolVar(&o.Promote, "promote", false,
-		"Merge the configuration permanently into the Grafana configuration instead of staging it (cannot be undone)")
+		"Merge the configuration permanently into the Grafana configuration instead of staging it (cannot be undone). Do not use with --dry-run")
 	flags.BoolVar(&o.ForceReplace, "force-replace", false, "Replace a staged configuration that has another identifier")
 	flags.BoolVar(&o.Force, "force", false, "Skip the confirmation prompt of --promote")
 }
 
 func (o *alertmanagerImportUpsertOpts) Validate(cmd *cobra.Command) error {
+	if o.DryRun && o.Promote {
+		return gcxerrors.NewCommandUsageError(cmd, "--dry-run and --promote are mutually exclusive", nil)
+	}
 	if o.File == "" {
 		return gcxerrors.NewCommandUsageError(cmd, "--filename / -f is required (use - to read from stdin)", nil)
 	}
@@ -285,10 +289,11 @@ DIR/config.yaml.
 
 Grafana renames incoming receivers and time intervals whose names are already
 in use, and the result shows each rename. Use --dry-run to see the changes
-before you save. Use --promote to merge the configuration permanently into the
-Grafana configuration in one step. You cannot undo a promotion, so --promote
-without --dry-run asks for confirmation. Use --force to skip the prompt; agent
-mode requires it, and so does input from stdin.`,
+before you save. You cannot use --dry-run with --promote. Use --promote to merge
+the configuration permanently into the Grafana configuration in one step.
+You cannot undo a promotion. The --promote flag asks for confirmation. Use
+--force to skip the prompt. Agent mode and input from stdin require --force
+with --promote.`,
 		Example: `  # Validate a plain Alertmanager configuration without saving it
   gcx alert alertmanager-imports upsert -f alertmanager.yaml --template templates/email.tmpl --dry-run
 
@@ -322,7 +327,7 @@ mode requires it, and so does input from stdin.`,
 			if err != nil {
 				return err
 			}
-			if opts.Promote && !opts.DryRun {
+			if opts.Promote {
 				// The confirmation exchange is a diagnostic, not the result.
 				ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 					promotePrompt(opts.Identifier))

@@ -267,6 +267,7 @@ func TestAlertmanagerImportUpsert_AgentModeResult(t *testing.T) {
 		{name: "staged", status: http.StatusAccepted, wantAction: "staged", wantDryRun: nil},
 		{name: "dry run", flags: []string{"--dry-run"}, status: http.StatusOK, wantAction: "validated", wantDryRun: true},
 		{name: "promoted", flags: []string{"--promote", "--force"}, status: http.StatusAccepted, wantAction: "promoted", wantPromo: true},
+		{name: "promoted with dry run disabled", flags: []string{"--dry-run=false", "--promote", "--force"}, status: http.StatusAccepted, wantAction: "promoted", wantPromo: true},
 	}
 
 	for _, tt := range tests {
@@ -382,13 +383,36 @@ func TestAlertmanagerImportUpsert_PromoteAsksForConfirmation(t *testing.T) {
 			loader := serveConvertAPI(t, &got, http.StatusOK, mergeResponseWithRenames)
 			// No stdin and no --force: a prompt would read EOF and cancel.
 			stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
-				[]string{"alertmanager-imports", "upsert", "mimir-prod", "-f", alertmanagerFile(t), "--promote", "--dry-run"}, "")
+				[]string{"alertmanager-imports", "upsert", "mimir-prod", "-f", alertmanagerFile(t), "--dry-run"}, "")
 
 			require.NoError(t, err)
 			assert.Empty(t, stderr)
 			assert.NotEmpty(t, stdout)
-			assert.Equal(t, "true", got.header.Get(promoteHeader))
+			assert.Empty(t, got.header.Get(promoteHeader))
 			assert.Equal(t, "true", got.header.Get(dryRunHeader))
+		})
+	}
+}
+
+func TestAlertmanagerImportUpsert_RejectsDryRunWithPromote(t *testing.T) {
+	setAgentMode(t, false)
+	tests := []struct {
+		name string
+		file string
+	}{
+		{name: "file", file: alertmanagerFile(t)},
+		{name: "empty stdin", file: "-"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := unexpectedGrafanaConfigLoad{t: t}
+			stdout, stderr, err := runCmdSplit(t, alert.NewAlertmanagerImportsCommandsForTest(loader),
+				[]string{"alertmanager-imports", "upsert", "mimir-prod", "-f", tt.file, "--dry-run", "--promote"}, "")
+
+			require.ErrorContains(t, err, "--dry-run and --promote are mutually exclusive")
+			assert.Equal(t, gcxerrors.ExitUsageError, exitCodeOf(err))
+			assert.Empty(t, stdout)
+			assert.Empty(t, stderr, "conflicting flags must not prompt")
 		})
 	}
 }
@@ -820,7 +844,7 @@ time_intervals:
 type unexpectedGrafanaConfigLoad struct{ t *testing.T }
 
 func (l unexpectedGrafanaConfigLoad) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
-	l.t.Fatal("invalid identifier must not load Grafana config")
+	l.t.Fatal("invalid input must not load Grafana config")
 	return config.NamespacedRESTConfig{}, nil
 }
 
