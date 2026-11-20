@@ -162,3 +162,30 @@ func RenderSuccessPageWithLink(w http.ResponseWriter, link *url.URL) {
 func ListenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
 	return listenOnCallbackPort(ctx, bindAddress, fixedPort)
 }
+
+// CallbackOutcome exposes how a handler rejection is classified.
+type CallbackOutcome struct {
+	Err       error
+	Spent     bool
+	Retryable bool
+}
+
+// HandleCallbackOutcome runs the shared parameter handler and reports the
+// classification of its rejection.
+func HandleCallbackOutcome(ctx context.Context, q url.Values, expectedState, codeVerifier string, guard *ExchangeGuard) CallbackOutcome {
+	_, cerr := handleCallbackParams(ctx, q, expectedState, codeVerifier, guard)
+	if cerr == nil {
+		return CallbackOutcome{}
+	}
+	return CallbackOutcome{Err: cerr.err, Spent: cerr.spent, Retryable: cerr.retryable}
+}
+
+// HandleGCOMCallbackOutcome is the grafana.com flow's HandleCallbackOutcome.
+func HandleGCOMCallbackOutcome(ctx context.Context, gcomURL string, q url.Values, expectedState string, guard *ExchangeGuard) CallbackOutcome {
+	f := NewGCOMFlow(GCOMOptions{ClientID: "gcx", GCOMURL: gcomURL, Writer: io.Discard})
+	_, cerr := f.handleGCOMCallbackParams(ctx, q, expectedState, "verifier", "http://127.0.0.1/callback", guard)
+	if cerr == nil {
+		return CallbackOutcome{}
+	}
+	return CallbackOutcome{Err: cerr.err, Spent: cerr.spent, Retryable: cerr.retryable}
+}

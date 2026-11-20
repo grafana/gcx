@@ -43,10 +43,16 @@ func callbackBelongsToFlow(q url.Values, expectedState string) bool {
 // or untrusted. The callback server answers it and keeps waiting, as the paste
 // route re-prompts, so a malformed request cannot use up the one-shot handler
 // that the real callback needs.
+//
+// spent marks a rejection that came after this route claimed the exchange guard.
+// The authorization code is used up and the guard stays taken, so nothing can
+// finish the login: the paste route ends the wait with the error instead of
+// re-prompting.
 type callbackError struct {
 	err       error
 	page      string
 	retryable bool
+	spent     bool
 }
 
 // errExchangeClaimed reports that the other route already exchanged the
@@ -238,6 +244,9 @@ func awaitCallbackOrPaste[T any](
 				if errors.Is(cerr.err, ErrBrowserCancelled) {
 					return nil, cerr.err
 				}
+				if cerr.spent {
+					return nil, spentError(ctx, cerr)
+				}
 				if errors.Is(cerr.err, errExchangeClaimed) {
 					// The callback server won the race. Its result is already on
 					// its way, so say nothing and let the next round deliver it.
@@ -251,6 +260,16 @@ func awaitCallbackOrPaste[T any](
 			return nil, ctx.Err()
 		}
 	}
+}
+
+// spentError is the error that ends a login whose exchange failed. Ctrl-C
+// during the exchange fails it with the context's error: return that itself, so
+// the cancellation stays silent instead of printing a wrapped exchange failure.
+func spentError(ctx context.Context, cerr *callbackError) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return cerr.err
 }
 
 // handleCallbackParams validates the redirect query parameters, exchanges the
@@ -280,18 +299,19 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 
 	exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
 	if err != nil {
-		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed"}
+		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed", spent: true}
 	}
 
 	instanceEndpoint := q.Get("instanceEndpoint")
 	instanceEndpointURL, err := url.Parse(instanceEndpoint)
 	if err != nil {
-		return nil, &callbackError{err: fmt.Errorf("invalid endpoint url: %w", err), page: "Invalid instance endpoint passed"}
+		return nil, &callbackError{err: fmt.Errorf("invalid endpoint url: %w", err), page: "Invalid instance endpoint passed", spent: true}
 	}
 	if instanceEndpointURL.Scheme != "https" {
 		return nil, &callbackError{
-			err:  fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointURL.Scheme),
-			page: "Invalid instance endpoint: needs to be an HTTPS URL",
+			err:   fmt.Errorf("invalid endpoint scheme: expected 'https', got '%s'", instanceEndpointURL.Scheme),
+			page:  "Invalid instance endpoint: needs to be an HTTPS URL",
+			spent: true,
 		}
 	}
 
@@ -322,7 +342,7 @@ func (f *GCOMFlow) handleGCOMCallbackParams(ctx context.Context, q url.Values, e
 
 	result, err := f.exchangeGCOMToken(ctx, code, codeVerifier, redirectURI)
 	if err != nil {
-		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed"}
+		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed", spent: true}
 	}
 
 	return result, nil
