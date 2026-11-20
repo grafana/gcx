@@ -352,20 +352,27 @@ query covers, and say so in the summary.
    same two ends. A different `path` does not make a link stale: the upsert
    changes the path. When the plan has a Component link for some code, the
    per-Service `BUILT_FROM` links that earlier runs wrote for that code are
-   stale, and the other way around.
+   stale, and the other way around. Keep every link of a Service whose name
+   this run listed as ambiguous or unmatched in Step 5: the code still has
+   that service, and this run cannot tell which Service it is.
 
-3. A `READS_FROM` or `WRITES_TO` link does not name a repository. Read these
-   links with the Step 8 queries, with the names of the Services from the plan
-   and from item 1 added to `WHERE`. Such a link is stale when the plan does
-   not have it and this run scanned every repository that the Service has a
-   `BUILT_FROM` or `DEPLOYED_FROM` link to, in the graph or in the plan,
-   including a `BUILT_FROM` link from its Component. If the Service has code in
-   a repository that this run did not scan, keep the link: that code can still
-   use the resource. Return `res.kind` too, for the next check:
+3. A `READS_FROM` or `WRITES_TO` link does not name a repository. Check these
+   links per Service identity: the name with its exact `env`, `namespace` and
+   `site`. Take the identities from the plan and from item 1. Never take every
+   Service with a name: a Service with the same name in another scope is a
+   different Service. Filter on the full identity, with `IS NULL` for a key
+   that the Service does not have, and return `res.kind` for the last check:
 
    ```bash
-   gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' AND s.name IN ['checkout', 'cart'] RETURN s.name, s.env, s.namespace, s.site, res.name, res.kind, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, res.kind, r.path SKIP 0 LIMIT 300" --since 7d
+   gcx kg graph query "MATCH (s:Service)-[r:READS_FROM]->(res:CloudResource) WHERE r.managed_by = 'gcx-map-source-code' AND ((s.name = 'checkout' AND s.env = 'prod' AND s.namespace = 'shop' AND s.site IS NULL) OR (s.name = 'cart' AND s.env = 'prod' AND s.namespace = 'shop' AND s.site IS NULL)) RETURN s.name, s.env, s.namespace, s.site, res.name, res.kind, r.path ORDER BY s.name, s.env, s.namespace, s.site, res.name, res.kind, r.path SKIP 0 LIMIT 300" --since 7d
    ```
+
+   Run it again for `WRITES_TO`. Such a link is stale when the plan does not
+   have it and this run scanned every repository that the same Service
+   identity has a `BUILT_FROM` or `DEPLOYED_FROM` link to, in the graph or in
+   the plan, including a `BUILT_FROM` link from its Component. If the Service
+   has code in a repository that this run did not scan, keep the link: that
+   code can still use the resource.
 
    Also keep the link when this run lists an unresolved resource for the same
    Service that can be the same resource: its direction and its `kind` are
