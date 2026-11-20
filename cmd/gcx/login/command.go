@@ -124,11 +124,27 @@ const (
 	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
 )
 
+// serverLooksLikeTokenError reports a token passed as the server, never
+// echoing the value.
+func serverLooksLikeTokenError() error {
+	return gcxerrors.DetailedError{
+		Summary: "--server looks like a token",
+		Details: "The value starts with a Grafana token prefix (glsa_ or glc_), so it was not used as a server and no request was made. If it is a real token, revoke it: it may have been exposed in your shell history or terminal.",
+		Suggestions: []string{
+			"Pass the server URL: gcx login --server https://my-stack.grafana.net",
+			"Supply the token with --token or the GRAFANA_TOKEN environment variable",
+		},
+	}
+}
+
 // Validate checks opts and args for internal consistency before runLogin executes.
 // Returns an error if a positional CONTEXT_NAME argument is combined with the
 // --context flag (they're mutually exclusive to prevent silent confusion).
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
+	if login.ServerLooksLikeToken(opts.Server) {
+		return serverLooksLikeTokenError()
+	}
 	userProvided := opts.UserSet || opts.User != ""
 	opts.User = strings.TrimSpace(opts.User)
 	if userProvided && opts.User == "" {
@@ -450,8 +466,8 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			persistedSourceCtx.Grafana.Server != "" &&
 			flags.Server != persistedSourceCtx.Grafana.Server {
 			logging.FromContext(cmd.Context()).Warn("reusing existing TLS client certificate for a different server",
-				"previous_server", persistedSourceCtx.Grafana.Server,
-				"new_server", flags.Server,
+				"previous_server", login.RedactServer(persistedSourceCtx.Grafana.Server),
+				"new_server", login.RedactServer(flags.Server),
 			)
 		}
 	}
@@ -931,7 +947,7 @@ func runtimeOnlyDestinationEditorRecoveryError(
 	cause *login.RuntimeOnlyBearerDestinationError,
 ) error {
 	contextName, stackName, needsContextBinding := runtimeOnlyDestinationRecoveryNames(persisted, opts)
-	fields := []string{fmt.Sprintf("stack key %q: grafana.server=%q", stackName, opts.Server)}
+	fields := []string{fmt.Sprintf("stack key %q: grafana.server=%q", stackName, login.RedactServer(opts.Server))}
 	if _, ok := os.LookupEnv("GRAFANA_PROXY_ENDPOINT"); ok {
 		fields = append(fields, fmt.Sprintf("grafana.proxy-endpoint=%q", opts.RuntimeProxyEndpoint))
 	}
@@ -1115,7 +1131,7 @@ func preflightServerOverride(opts *login.Options, sourceCtx *config.Context, int
 		Field: "allow-override",
 		Question: fmt.Sprintf(
 			"Context %q already exists with server %s.\nOverride with %s?",
-			opts.ContextName, sourceCtx.Grafana.Server, requestedServer,
+			opts.ContextName, login.RedactServer(sourceCtx.Grafana.Server), login.RedactServer(requestedServer),
 		),
 		Choices: []string{"yes", "no"},
 	}
@@ -1140,7 +1156,7 @@ func grafanaDestinationChangeAuthError(previousServer, requestedServer string) e
 		Summary: "Stored Grafana token cannot be reused for a different destination",
 		Details: fmt.Sprintf(
 			"The selected context's token is bound to server %s and its persisted proxy/TLS identity, but this login targets server %s with a different destination binding. Validation would disclose the stored token outside its credential binding.",
-			previousServer, requestedServer,
+			login.RedactServer(previousServer), login.RedactServer(requestedServer),
 		),
 		Suggestions: []string{
 			"Supply a new credential explicitly with --token",
@@ -1258,6 +1274,9 @@ func askForInput(
 					Title("Grafana server URL").
 					Description(serverPromptDescription(opts)).
 					Validate(func(s string) error {
+						if login.ServerLooksLikeToken(s) {
+							return login.ErrServerLooksLikeToken
+						}
 						if (opts.GrafanaToken != "" || opts.UseBasicAuth) && strings.TrimSpace(s) == "" {
 							return errors.New("server URL is required")
 						}
@@ -1939,7 +1958,7 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 			name = cfg.CurrentContext
 		}
 		fmt.Fprintf(w, "Refreshing context %q (server: %s)\n\n",
-			name, sourceCtx.Grafana.Server)
+			name, login.RedactServer(sourceCtx.Grafana.Server))
 	case contextName != "":
 		// Creating a new named context.
 		fmt.Fprintf(w, "Creating new context %q\n", contextName)

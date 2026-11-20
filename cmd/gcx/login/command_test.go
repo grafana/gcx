@@ -2655,3 +2655,16 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
 }
+
+// A token pasted as --server must be refused without echoing it.
+func TestValidateRejectsTokenAsServer(t *testing.T) {
+	t.Parallel()
+
+	for _, server := range []string{"glsa_SECRETVALUE", "glc_SECRETVALUE", "https://glsa_SECRETVALUE"} {
+		err := (&loginOpts{Server: server, Token: "t"}).Validate(nil)
+		require.Error(t, err, server)
+		var de gcxerrors.DetailedError
+		require.ErrorAs(t, err, &de)
+		assert.NotContains(t, de.Summary+de.Details+strings.Join(de.Suggestions, " "), "SECRETVALUE")
+	}
+}
