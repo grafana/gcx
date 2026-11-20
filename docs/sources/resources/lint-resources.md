@@ -1,4 +1,6 @@
 ---
+aliases:
+  - ../guides/lint-resources/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/lint-resources/
 title: Lint resources
 labels:
   products:
@@ -11,7 +13,7 @@ keywords:
   - Grafana CLI
   - observability as code
   - telemetry
-weight: 4
+weight: 3
 ---
 
 # Lint resources with `gcx`

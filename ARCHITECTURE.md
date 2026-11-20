@@ -266,7 +266,7 @@ documents hold the mechanics.
   what the contents mean: a dashboard that names a datasource UID missing on the
   target pushes fine and breaks there. Mechanics:
   [data-flows.md](docs/architecture/data-flows.md); user workarounds:
-  [manage resources](docs/sources/guides/manage-resources.md).
+  [manage resources](docs/sources/resources/manage-resources.md).
 
 ### Providers and adapters
 

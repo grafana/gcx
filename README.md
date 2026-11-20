@@ -189,7 +189,7 @@ Refer to [Authentication](docs/sources/authentication.md) for the available path
 
 If you're contributing a new Grafana domain capability to `gcx`, ask your coding agent to use [`contribute`](.agents/skills/contribute/SKILL.md) before choosing a command, provider, or data source path.
 
-### Install agent skills
+### Install agent skills
 
 `gcx` ships a portable agent skills bundle for setup, dashboard creation and GitOps, datasource exploration, alert investigation, structured debugging, SLO management, Synthetic Monitoring workflows, Knowledge Graph diagnosis, project scaffolding, resource generation and import, and end-to-end Observability rollout. 
 
@@ -298,6 +298,8 @@ gcx metrics metadata
 
 # LogQL queries
 gcx logs query '{app="nginx"} |= "error"' --since 1h
+# Use a LogQL metric query for complete counts
+gcx logs metrics 'count_over_time({app="nginx"}[1h])'
 gcx logs labels
 gcx logs series --match '{app="nginx"}'
 ```
@@ -481,7 +483,7 @@ for the runtimes and an example manifest, and
 
 ### Manage Assistant Watchers (experimental)
 
-Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/sources/guides/manage-assistant-watchers.md).
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/sources/resources/manage-assistant-watchers.md).
 
 Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
 
@@ -509,7 +511,7 @@ gcx api /api/dashboards/calculate-diff -X POST -d @diff-request.json
 
 `gcx` reports limited usage statistics about itself to Grafana Labs. This data is used to understand which commands and flags are used most, where commands fail, and which commands people try that don’t exist, so we can make the product better.
 
-To find out more about `gcx` usage statistics, or for information on how to disable it, refer to the [Usage and statistics documentation](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/).
+To find out more about `gcx` usage statistics, or for information on how to disable it, refer to the [Usage and statistics documentation](https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/anonymous-usage-statistics/).
 
 ## Documentation
 
@@ -518,9 +520,10 @@ To find out more about `gcx` usage statistics, or for information on how to disa
 | [Installation](docs/sources/installation.md) | Install gcx on macOS, Linux, and Windows |
 | [Authentication](docs/sources/authentication.md) | Authenticate `gcx` |
 | [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
-| [Dashboards as Code](docs/sources/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
-| [Managing Resources](docs/sources/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
-| [Linting Resources](docs/sources/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Dashboards as Code](docs/sources/resources/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
+| [Managing Resources](docs/sources/resources/manage-resources.md) | Get, push, pull, delete, edit, validate |
+| [Linting Resources](docs/sources/resources/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Using gcx with AI Agents](docs/sources/use-gcx-with-agents.md) | Agent mode, skills, sign-in, and safety guards |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 

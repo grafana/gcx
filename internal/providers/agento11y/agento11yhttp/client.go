@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,9 +81,17 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Rea
 	return resp, nil
 }
 
+// DefaultPageSize is the page size requested from list endpoints when the
+// caller does not set its own "limit" query parameter.
+const DefaultPageSize = 100
+
 // ListAll fetches pages from a paginated endpoint up to maxItems,
 // using the common { "items": [...], "next_cursor": "..." } envelope.
 // Pass maxItems <= 0 for no limit (fetch all pages).
+//
+// Every request carries an explicit "limit" page size so the server never has
+// to materialize an unbounded result: the caller's own "limit" query value if
+// set, otherwise [DefaultPageSize] (or maxItems when that is smaller).
 func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.Values, maxItems ...int) ([]T, error) {
 	items, _, err := ListAllWithHasMore[T](ctx, c, basePath, query, maxItems...)
 	return items, err
@@ -102,6 +111,13 @@ func ListAllWithHasMore[T any](ctx context.Context, c *Client, basePath string, 
 	// Copy to avoid mutating the caller's map during pagination.
 	q := make(url.Values, len(query))
 	maps.Copy(q, query)
+	if q.Get("limit") == "" {
+		pageSize := DefaultPageSize
+		if limit > 0 && limit < pageSize {
+			pageSize = limit
+		}
+		q.Set("limit", strconv.Itoa(pageSize))
+	}
 
 	for {
 		path := basePath

@@ -26,6 +26,13 @@ const (
 	codeDestinationUnreachable = "destination_unreachable"
 )
 
+// Limit codes, sent with HTTP 403 when a create would exceed a tenant's
+// destination limit or a destination's stream limit.
+const (
+	codeDestinationLimitExceeded = "archive_destination_limit_exceeded"
+	codeSelectorLimitExceeded    = "archive_selector_limit_exceeded"
+)
+
 type FieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
@@ -133,8 +140,8 @@ var destinationCheckSuggestions = map[string]string{
 const unknownCheckSuggestion = "Check that the principal shown by 'gcx logs archive principal get' has list, read and write access to the bucket"
 
 // A failed bucket check is a 403, which cmd/gcx/fail would report as a
-// credential problem (exit 3). The API sends 403 only for bucket checks, always
-// with field errors, so any 403 with field errors is treated as one.
+// credential problem (exit 3). Of the API's 403s, only bucket checks have field
+// errors, so any 403 with field errors is treated as one.
 func explainDestinationCheck(err error) error {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
@@ -170,4 +177,40 @@ func explainDestinationCheck(err error) error {
 		Suggestions: suggestions,
 		DocsLink:    docs.AdaptiveLogsArchive,
 	}
+}
+
+const limitSupportSuggestion = "To raise the limit, open a support ticket: https://grafana.com/profile/org#support"
+
+//nolint:gochecknoglobals // Static lookup table.
+var limitSuggestions = map[string][]string{
+	codeDestinationLimitExceeded: {
+		"Delete destinations you no longer use: gcx logs archive destinations list",
+		limitSupportSuggestion,
+	},
+	codeSelectorLimitExceeded: {
+		"Delete streams you no longer use: gcx logs archive streams list --destination <destination-id>",
+		"Combine streams with a regex matcher, such as '{service=~\"payments|billing\"}'",
+		limitSupportSuggestion,
+	},
+}
+
+// A create over a limit is a 403, which cmd/gcx/fail would report as a
+// credential problem (exit 3). The limits vary by tenant, so the API's message
+// carries the number.
+func explainLimit(err error) (*gcxerrors.DetailedError, bool) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return nil, false
+	}
+	suggestions, ok := limitSuggestions[apiErr.Code]
+	if !ok {
+		return nil, false
+	}
+
+	return &gcxerrors.DetailedError{
+		Summary:     gcxerrors.SummaryAPIError,
+		Details:     fmt.Sprintf("%s limit reached (HTTP %d)\n%s", serviceName, apiErr.StatusCode, apiErr.Message),
+		Suggestions: suggestions,
+		DocsLink:    docs.AdaptiveLogsArchive,
+	}, true
 }

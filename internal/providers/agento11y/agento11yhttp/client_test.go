@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -201,6 +202,38 @@ func TestListAllWithHasMore_TruncatedWithNextPage(t *testing.T) {
 	assert.Len(t, items, 1)
 	assert.True(t, hasMore)
 	assert.Equal(t, 1, callCount)
+}
+
+func TestListAll_AlwaysSendsPageLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    url.Values
+		maxItems []int
+		want     string
+	}{
+		{name: "no bound uses default page size", want: "100"},
+		{name: "small maxItems shrinks the page", maxItems: []int{10}, want: "10"},
+		{name: "large maxItems keeps default page size", maxItems: []int{5000}, want: "100"},
+		{name: "caller limit is kept", query: url.Values{"limit": {"7"}}, maxItems: []int{50}, want: "7"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var limits []string
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				limits = append(limits, r.URL.Query().Get("limit"))
+				resp := map[string]any{"items": []testItem{{ID: "1"}}}
+				if len(limits) == 1 {
+					resp["next_cursor"] = "page2"
+				}
+				writeJSON(w, resp)
+			}))
+
+			_, err := agento11yhttp.ListAll[testItem](context.Background(), client, "/query/items", tc.query, tc.maxItems...)
+			require.NoError(t, err)
+			require.Len(t, limits, 2)
+			assert.Equal(t, []string{tc.want, tc.want}, limits, "first and cursor follow-up requests both carry the page limit")
+		})
+	}
 }
 
 func TestListAll_ErrorResponse(t *testing.T) {
