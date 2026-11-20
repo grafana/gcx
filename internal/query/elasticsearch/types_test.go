@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/elasticsearch"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,4 +80,66 @@ func TestParseMapping(t *testing.T) {
 		assert.Equal(t, "text", names["host.name"])
 		assert.Equal(t, "keyword", names["host.name.keyword"])
 	})
+}
+
+func TestTruncateRows(t *testing.T) {
+	rows := func(n int) [][]any {
+		out := make([][]any, n)
+		for i := range out {
+			out[i] = []any{i}
+		}
+		return out
+	}
+
+	tests := []struct {
+		name     string
+		rows     int
+		eff      int
+		wantRows int
+		wantDrop bool
+	}{
+		{name: "drops the sentinel row and reports truncation", rows: 4, eff: 3, wantRows: 3, wantDrop: true},
+		{name: "exact fit is not truncated", rows: 3, eff: 3, wantRows: 3, wantDrop: false},
+		{name: "fewer rows than the cap", rows: 1, eff: 3, wantRows: 1, wantDrop: false},
+		{name: "eff 0 is a no-op", rows: 5, eff: 0, wantRows: 5, wantDrop: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &querysql.QueryResponse{Rows: rows(tt.rows)}
+			got := elasticsearch.TruncateRows(resp, tt.eff)
+			assert.Equal(t, tt.wantDrop, got)
+			assert.Len(t, resp.Rows, tt.wantRows)
+		})
+	}
+}
+
+func TestTruncateSeries(t *testing.T) {
+	series := func(n int) []elasticsearch.MetricSeries {
+		out := make([]elasticsearch.MetricSeries, n)
+		for i := range out {
+			out[i] = elasticsearch.MetricSeries{Name: string(rune('a' + i))}
+		}
+		return out
+	}
+
+	tests := []struct {
+		name       string
+		series     int
+		eff        int
+		wantSeries int
+		wantDrop   bool
+	}{
+		{name: "drops the sentinel group and reports truncation", series: 4, eff: 3, wantSeries: 3, wantDrop: true},
+		{name: "exact fit is not truncated", series: 3, eff: 3, wantSeries: 3, wantDrop: false},
+		{name: "fewer groups than the cap", series: 1, eff: 3, wantSeries: 1, wantDrop: false},
+		{name: "eff 0 is a no-op", series: 5, eff: 0, wantSeries: 5, wantDrop: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &elasticsearch.MetricsResponse{Series: series(tt.series)}
+			got := elasticsearch.TruncateSeries(resp, tt.eff)
+			assert.Equal(t, tt.wantDrop, got)
+			assert.Len(t, resp.Series, tt.wantSeries)
+		})
+	}
 }
