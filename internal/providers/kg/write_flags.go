@@ -28,7 +28,7 @@ const tenantDomainPrefix = "tenant/"
 // of the token.
 func parseEntityRefToken(token string) (EntityRef, error) {
 	parts := strings.Split(token, "/")
-	if len(parts) == 4 && parts[0]+"/" == tenantDomainPrefix && parts[1] != "" {
+	if len(parts) == 4 && parts[0] == "tenant" && parts[1] != "" {
 		parts = []string{tenantDomainPrefix + parts[1], parts[2], parts[3]}
 	}
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {

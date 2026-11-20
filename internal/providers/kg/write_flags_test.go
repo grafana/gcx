@@ -61,14 +61,11 @@ func TestValidateDomains(t *testing.T) {
 	// A tenant domain names a schema the stack publishes itself (tenant/<name>).
 	require.NoError(t, kg.ValidateWritableDomain("tenant/github"))
 	require.NoError(t, kg.ValidateDomain("tenant/a1"))
-	for _, bad := range []string{"tenant/", "tenant/foo-bar", "tenant/Github", "tenant/1abc", "tenant/a/b", "tenant"} {
-		if bad == "tenant" {
-			// A bare "tenant" is an ordinary slug, as before.
-			require.NoError(t, kg.ValidateDomain(bad))
-			continue
-		}
+	for _, bad := range []string{"tenant/", "tenant/foo-bar", "tenant/Github", "tenant/1abc", "tenant/a/b"} {
 		require.Error(t, kg.ValidateWritableDomain(bad), "expected error for %q", bad)
 	}
+	// A bare "tenant" is an ordinary slug, as before.
+	require.NoError(t, kg.ValidateDomain("tenant"))
 	require.ErrorContains(t, kg.ValidateDomain("tenant/foo-bar"), "tenant domain")
 	require.Error(t, kg.ValidateIdentifier("9bad", "type"))
 	require.NoError(t, kg.ValidateIdentifier("Service", "type"))

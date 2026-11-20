@@ -383,10 +383,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg notifications get":    {Cost: "small", Hint: "<name> | get one alert notification config by name (list-then-filter; no by-name GET on the backend)"},
 	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML from notifications get/list) | accepts an alertConfigs wrapper, one config, or a config list; exact field names required; never deletes absent remote entries"},
 	"gcx kg notifications delete": {Cost: "small"},
-	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
-	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d|tenant/<name>> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
+	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d|tenant/<name>> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d|tenant/<name>> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; a tenant-domain ref is tenant/<name>/Type/name; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; a tenant-domain ref is tenant/<name>/Type/name; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
