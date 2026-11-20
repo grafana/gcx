@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/irm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -494,6 +496,26 @@ func TestIncidentsListCommand_RejectsNonPositiveLimit(t *testing.T) {
 			err := cmd.Execute()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "must be at least 1")
+		})
+	}
+}
+
+func TestIncidentsListCommand_InvalidFlagValuesAreUsageErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"--limit", "0"},
+		{"--status", "nope"},
+		{"--from", "garbage"},
+		{"--query", "x", "--status", "active"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cmd := irm.NewListCommand(fakeGrafanaConfigLoader{})
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs(args)
+
+			_, ok := errors.AsType[*fail.UsageError](cmd.Execute())
+			assert.True(t, ok, "want a usage error")
 		})
 	}
 }

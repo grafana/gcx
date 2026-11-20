@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	fail "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/testutils"
 )
@@ -273,5 +274,27 @@ func TestAlertGroupList_LegacyPath_ShortPageIsComplete(t *testing.T) {
 	}
 	if strings.Contains(stderr, "showing first") {
 		t.Errorf("unexpected truncation hint on stderr:\n%s", stderr)
+	}
+}
+
+func TestAlertGroupList_InvalidFlagValuesAreUsageErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"--state", "nope"},
+		{"--max-age", "nope"},
+		{"--max-age", "1h", "--from", "now-1d"},
+		{"--from", "garbage"},
+		{"--resolved-from", "garbage"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			resetAgentMode(t)
+			cmd := newAlertGroupListCommand(&fakeLoader{client: &fakeLegacyListAPI{}})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			if _, ok := errors.AsType[*fail.UsageError](err); !ok {
+				t.Fatalf("Execute() = %v (%T), want a usage error", err, err)
+			}
+		})
 	}
 }
