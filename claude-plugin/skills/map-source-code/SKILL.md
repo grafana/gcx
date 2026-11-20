@@ -271,14 +271,20 @@ If the stack allows the link:
 1. Find the Components of the Services you matched:
 
    ```bash
-   gcx kg graph query "MATCH (s:Service)-[:DEPLOYMENT_OF]->(c:Component) WHERE s.name IN ['checkout', 'cart'] RETURN DISTINCT c.name ORDER BY c.name LIMIT 300" --since 7d
+   gcx kg graph query "MATCH (s:Service)-[:DEPLOYMENT_OF]->(c:Component) WHERE s.name IN ['checkout', 'cart'] RETURN DISTINCT c.name ORDER BY c.name SKIP 0 LIMIT 300" --since 7d
    ```
 
 2. List every Service of those Components:
 
    ```bash
-   gcx kg graph query "MATCH (s:Service)-[:DEPLOYMENT_OF]->(c:Component) WHERE c.name IN ['checkout', 'cart'] RETURN c.name, s.name, s.env, s.namespace, s.site ORDER BY c.name, s.name, s.env, s.namespace, s.site LIMIT 300" --since 7d
+   gcx kg graph query "MATCH (s:Service)-[:DEPLOYMENT_OF]->(c:Component) WHERE c.name IN ['checkout', 'cart'] RETURN c.name, s.name, s.env, s.namespace, s.site ORDER BY c.name, s.name, s.env, s.namespace, s.site SKIP 0 LIMIT 300" --since 7d
    ```
+
+   Read every page of both queries, as Step 8 describes: when a page has as
+   many rows as `LIMIT`, run the query again with the next `SKIP`. A query
+   gives no sign that more rows exist, so a short list is complete only when
+   its last page has fewer rows than `LIMIT`. If you cannot read every page,
+   keep the per-Service links.
 
 3. Use the Component for a piece of code only when its Services are exactly
    the Services you matched for that code: every matched Service belongs to
@@ -325,6 +331,11 @@ run removes it. Compare what earlier runs wrote with the new plan, but only for
 the repositories that this run scans. A run never checks or removes the links
 of a repository that it did not scan.
 
+Read every page of each query in this section, as Step 8 describes, before you
+decide what is stale. A page with as many rows as `LIMIT` means that more rows
+can follow. If you cannot read every page of a query, remove nothing that the
+query covers, and say so in the summary.
+
 1. Read the links that earlier runs wrote to the scanned repositories: the
    Step 8 queries for `BUILT_FROM` (from Services and from Components) and
    `DEPLOYED_FROM`, with the repository names added to `WHERE`. For example:
@@ -349,14 +360,19 @@ of a repository that it did not scan.
    use the resource.
 
 4. A `CloudResource` that earlier runs wrote is stale when all of its links
-   are stale. Count its links:
+   are stale. Removing a resource removes every link it has, so count all of
+   them, in both directions:
 
    ```bash
-   gcx kg graph query "MATCH (res:CloudResource) WHERE res.managed_by = 'gcx-map-source-code' AND res.name IN ['arn:aws:sqs:us-east-1:111122223333:orders'] OPTIONAL MATCH (s:Service)-[r]->(res) RETURN res.name, count(r) AS links ORDER BY res.name LIMIT 300" --since 7d
+   gcx kg graph query "MATCH (res:CloudResource) WHERE res.managed_by = 'gcx-map-source-code' AND res.name IN ['arn:aws:sqs:us-east-1:111122223333:orders'] OPTIONAL MATCH (res)-[r]-(x) RETURN res.name, count(r) AS links ORDER BY res.name SKIP 0 LIMIT 300" --since 30d
    ```
 
-   Remove a resource only when its count equals the number of its links in
-   your list of stale links, and the plan does not write it again.
+   The count includes the `DEPLOYMENT_OF` link that telemetry adds from an S3
+   bucket, SQS queue or DynamoDB table (Step 8), and links that other
+   producers wrote. The wider window also counts links from Services that
+   were quiet for some days. Remove a resource only when its count equals the
+   number of its links in your list of stale links, and the plan does not
+   write it again. A resource with any other link stays.
 
 5. Never remove a `Repository` only because this run did not scan it. Read the
    repositories that earlier runs mapped:
