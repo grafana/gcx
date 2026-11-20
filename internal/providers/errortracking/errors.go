@@ -457,7 +457,8 @@ start and run to now); and by count (--limit 0 for all). A list cut off at
 			base := opts.query(start)
 			items, hasMore, err := collectPages(ctx, opts.Limit, func(ctx context.Context, cursor string, size int) ([]errorSummary, string, error) {
 				q := maps.Clone(base)
-				if q.Has("from") {
+				// A windowed query costs the backend more, so cap its page size.
+				if q.Has("from") || q.Has("firstSeenFrom") || q.Has("regressedFrom") {
 					size = min(size, 50)
 				}
 				q.Set("limit", strconv.Itoa(size))
