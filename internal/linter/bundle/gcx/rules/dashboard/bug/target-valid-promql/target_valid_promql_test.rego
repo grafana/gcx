@@ -303,3 +303,34 @@ test_dashboard_v1_missing_panel_id_does_not_collide_with_real_id if {
 	report := rule.report with input as resource
 	count(report) == 2
 }
+
+# v2 variables keep name, current and options under "spec".
+_interval_variable_v2 := {
+	"kind": "IntervalVariable",
+	"spec": {"name": "interval", "query": "1m,5m", "current": {"text": "5m", "value": "5m"}, "options": []},
+}
+
+test_dashboard_v2_expands_interval_variable if {
+	resource := _test_v2_resource("rate(up[$interval])", "prom", "prometheus", [_interval_variable_v2])
+
+	report := rule.report with input as resource
+
+	count(report) == 0
+}
+
+test_dashboard_v2_expands_variable_from_options if {
+	variable := {"kind": "CustomVariable", "spec": {"name": "interval", "current": {}, "options": [{"text": "1m", "value": "1m"}]}}
+	resource := _test_v2_resource("rate(up[$interval])", "prom", "prometheus", [variable])
+
+	report := rule.report with input as resource
+
+	count(report) == 0
+}
+
+test_dashboard_v2_undefined_interval_variable_still_reported if {
+	resource := _test_v2_resource("rate(up[$interval])", "prom", "prometheus", [])
+
+	report := rule.report with input as resource
+
+	count(report) == 1
+}
