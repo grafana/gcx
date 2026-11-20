@@ -205,7 +205,8 @@ func (c *client) section(ctx context.Context, project int64, q url.Values, limit
 	if items == nil {
 		items = []errorSummary{}
 	}
-	cut := len(items) > limit || (len(items) == limit && out.NextCursor != "")
+	// A windowed page can come back short with a cursor, so any cursor means more rows.
+	cut := len(items) > limit || out.NextCursor != ""
 	items = items[:min(len(items), limit)]
 	return errorsSection{Items: items, ListMeta: cmdio.PagedListMeta(len(items), limit, cut, 0)}, nil
 }
