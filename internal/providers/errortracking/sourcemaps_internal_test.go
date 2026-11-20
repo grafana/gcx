@@ -25,7 +25,8 @@ func TestSameSite(t *testing.T) {
 		{name: "custom domain with upload host on its own domain", uploadHost: "upload.example.com", grafana: "https://grafana.example.com", cloudStack: false, wantErr: false},
 		{name: "unrelated domains", uploadHost: "upload.example.org", grafana: "https://grafana.example.com", cloudStack: true, wantErr: true},
 		{name: "loopback", uploadHost: "localhost:8080", grafana: "http://127.0.0.1:3000", cloudStack: false, wantErr: false},
-		{name: "same non-loopback IP", uploadHost: "10.0.0.1", grafana: "https://10.0.0.1", cloudStack: true, wantErr: true},
+		{name: "same non-loopback IP", uploadHost: "10.0.0.1", grafana: "https://10.0.0.1", cloudStack: true, wantErr: false},
+		{name: "different non-loopback IPs", uploadHost: "10.0.0.2", grafana: "https://10.0.0.1", cloudStack: true, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

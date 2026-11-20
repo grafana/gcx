@@ -409,10 +409,10 @@ func sameSite(uploadHost, grafana string, cloudStack bool) error {
 	if isLoopback(upload) && isLoopback(server) {
 		return nil
 	}
+	if upload == server {
+		return nil
+	}
 	if net.ParseIP(server) == nil && net.ParseIP(upload) == nil {
-		if upload == server {
-			return nil
-		}
 		site, err := publicsuffix.EffectiveTLDPlusOne(server)
 		if other, err2 := publicsuffix.EffectiveTLDPlusOne(upload); err == nil && err2 == nil && site == other {
 			return nil
