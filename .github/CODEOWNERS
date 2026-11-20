@@ -89,9 +89,9 @@
 # non-standard command operations
 /cmd/gcx/root/testdata/non_canonical_command_operations.json @grafana/grafana-gcx
 
-/docs/sources/guides/manage-assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/sources/resources/manage-assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /docs/rfcs/027-provider-owned-resource-hooks.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
-/docs/sources/guides/manage-machine-learning.md @grafana/grafana-gcx @grafana/docs-ai @grafana/machine-learning
+/docs/sources/resources/manage-machine-learning.md @grafana/grafana-gcx @grafana/docs-ai @grafana/machine-learning

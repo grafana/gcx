@@ -33,19 +33,6 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 	return NewClient(base), nil
 }
 
-// printV2Hint writes a one-line v2-successor hint to stderr when the connected
-// stack is known to support the /api/v2 investigations surface. Reads from
-// cache only — no network. The `hint:` prefix and stderr channel match the
-// convention in internal/output (Options.Encode): agents read these and adjust
-// subsequent invocations, so we emit unconditionally rather than suppressing
-// in agent or piped modes.
-func printV2Hint(cmd *cobra.Command, loader *providers.ConfigLoader, message string) {
-	if !CachedAPIMode(cmd.Context(), loader).SupportsV2() {
-		return
-	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "hint: %s\n", message)
-}
-
 // loadClientAndAPIMode returns a client configured for the detected API mode.
 // Used by the auto-dispatching commands (list, get, create).
 func loadClientAndAPIMode(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, APIMode, error) {
@@ -498,11 +485,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
-				return err
-			}
-			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())

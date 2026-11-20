@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 7
+weight: 6
 ---
 
 # Roles and permissions
@@ -249,7 +249,7 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 | `gcx irm oncall schedules`, `gcx irm oncall shifts` | Read: `plugins:grafana-irm-app:schedules-reader`; Write: `plugins:grafana-irm-app:schedules-editor` |
 | `gcx irm oncall webhooks` | Read: `plugins:grafana-irm-app:outgoing-webhooks-reader`; Write: `plugins:grafana-irm-app:outgoing-webhooks-editor` |
 
-OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../guides/manage-oncall-notification-rules/) for the permissions those commands need.
+OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
 
