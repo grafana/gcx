@@ -2034,3 +2034,29 @@ func TestRun_ManualOAuthWithoutReaderFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "reader")
 	assert.False(t, called, "the auth flow must not start without a reader")
 }
+
+func TestLooksLikeToken(t *testing.T) {
+	tests := []struct {
+		server string
+		want   bool
+	}{
+		{"glsa_FAKE_example", true},
+		{"glc_FAKE+example/=", true},
+		{"https://glsa_FAKE_example", true},
+		{"  http://GLSA_FAKE_example  ", true},
+		{"eyJrIjoiFAKEexample", true},
+		{"https://eyJrIjoiFAKE/example=", true},
+		{"gat_FAKE_example", true},
+		{"gar_FAKE_example", true},
+		{"https://my-stack.grafana.net", false},
+		{"https://my_host.internal", false},
+		{"localhost:3000", false},
+		{"https://example.com/glsa_path", false},
+		{"", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.server, func(t *testing.T) {
+			assert.Equal(t, tc.want, login.LooksLikeToken(tc.server))
+		})
+	}
+}
