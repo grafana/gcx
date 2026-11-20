@@ -164,7 +164,7 @@ and respect `color.NoColor`:
 cmdio.Success(cmd.ErrOrStderr(), "Pushed %d resources", count)  // ✔
 cmdio.Warning(cmd.ErrOrStderr(), "Skipped %d resources", count) // ⚠
 cmdio.Error(cmd.ErrOrStderr(), "Failed %d resources", count)    // ✘
-cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // 🛈
+cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // ℹ
 ```
 
 **Status messages go to stderr**, per
