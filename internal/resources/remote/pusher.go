@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -126,7 +127,7 @@ func (p *Pusher) Push(ctx context.Context, request PushRequest) (*OperationSumma
 	supported := p.supportedDescriptors()
 
 	if request.MaxConcurrency < 1 {
-		request.MaxConcurrency = 1
+		request.MaxConcurrency = shared.DefaultMaxConcurrency
 	}
 	var err error
 	request.preflight, err = p.newPushPreflight(ctx, request, supported)

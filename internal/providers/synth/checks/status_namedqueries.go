@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/query/synth"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -31,7 +32,7 @@ const statusAnchorRange = 5 * time.Minute
 // statusConcurrency bounds the parallel queries, matching the repo's default for
 // batch I/O. One reachability, one probe count and at most one latency query per
 // check type, so it is rarely reached.
-const statusConcurrency = 10
+const statusConcurrency = shared.DefaultMaxConcurrency
 
 // errNoSMDatasource is returned when status is requested but no Synthetic
 // Monitoring datasource resolved for the context. The typed clients degrade to the

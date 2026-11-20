@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/grafana-app-sdk/logging"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -91,7 +92,7 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 	supported := deleter.supportedDescriptors()
 
 	if request.MaxConcurrency < 1 {
-		request.MaxConcurrency = 1
+		request.MaxConcurrency = shared.DefaultMaxConcurrency
 	}
 	if request.ResolveLocalIdentities {
 		selected, err := deleter.selectLocalIdentities(ctx, request, supported, summary)

@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/enumerate"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -89,10 +90,10 @@ func runList(
 		return fmt.Errorf("clusters list: enumerate: %w", err)
 	}
 
-	// Fan out GetK8SInstrumentation per cluster (cap 10 concurrent).
+	// Fan out GetK8SInstrumentation per cluster (bounded by shared.DefaultMaxConcurrency).
 	clusters := make([]instrumentation.Cluster, len(observed))
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(10)
+	g.SetLimit(shared.DefaultMaxConcurrency)
 	for i, oc := range observed {
 		name := oc.Name
 		g.Go(func() error {

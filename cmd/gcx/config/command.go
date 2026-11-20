@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/secrets"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
@@ -624,7 +625,7 @@ Without --context, checks every configured context. With --context, checks only 
 			source := configOpts.ConfigSource()
 
 			g, gctx := errgroup.WithContext(cmd.Context())
-			g.SetLimit(10)
+			g.SetLimit(shared.DefaultMaxConcurrency)
 			for i, name := range names {
 				g.Go(func() error {
 					errs[i] = checkContext(gctx, &cfg, cfg.Contexts[name], source, &bufs[i])

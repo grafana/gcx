@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/watchers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,7 +25,7 @@ func (a *manifestAdapter) GetMultiple(ctx context.Context, references []string, 
 	items := make([]*unstructured.Unstructured, len(references))
 	failures := make([]error, len(references))
 	group, readCtx := errgroup.WithContext(ctx)
-	group.SetLimit(10)
+	group.SetLimit(shared.DefaultMaxConcurrency)
 	for idx, reference := range references {
 		group.Go(func() error {
 			item, err := a.Get(readCtx, reference, opts)

@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/remote"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -32,7 +33,7 @@ func (opts *validateOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 
 	flags.StringSliceVarP(&opts.Paths, "path", "p", []string{defaultResourcesPath}, "Paths on disk from which to read the resources.")
-	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
+	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", shared.DefaultMaxConcurrency, "Maximum number of concurrent operations")
 	bindOnErrorFlag(flags, &opts.OnError)
 	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 }
