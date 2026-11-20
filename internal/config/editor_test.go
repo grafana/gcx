@@ -222,6 +222,21 @@ func Test_SetValue(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "grafana header in new stack",
+			input: config.Config{},
+			path:  "stacks.new.grafana.headers.X-Api-Key",
+			value: "secret",
+			expectedOutput: config.Config{
+				Stacks: map[string]*config.StackConfig{
+					"new": {
+						Grafana: &config.GrafanaConfig{
+							Headers: map[string]string{"X-Api-Key": "secret"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -398,6 +413,28 @@ func Test_UnsetValue(t *testing.T) {
 					"default": {
 						Providers: map[string]map[string]string{
 							"slo": {"token": "slo-token"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "grafana header key",
+			input: config.Config{
+				Stacks: map[string]*config.StackConfig{
+					"existing": {
+						Grafana: &config.GrafanaConfig{
+							Headers: map[string]string{"X-Api-Key": "secret", "X-Keep": "yes"},
+						},
+					},
+				},
+			},
+			path: "stacks.existing.grafana.headers.X-Api-Key",
+			expectedOutput: config.Config{
+				Stacks: map[string]*config.StackConfig{
+					"existing": {
+						Grafana: &config.GrafanaConfig{
+							Headers: map[string]string{"X-Keep": "yes"},
 						},
 					},
 				},

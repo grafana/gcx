@@ -403,6 +403,25 @@ func parseRFC3339OrZero(s string) time.Time {
 	return t
 }
 
+// headersTransport adds configured headers to every request. It clones the
+// request before mutating headers because RoundTrip may run concurrently and
+// the caller may reuse the request after this transport returns.
+type headersTransport struct {
+	Base    http.RoundTripper
+	Headers map[string]string
+}
+
+func (t *headersTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if len(t.Headers) == 0 {
+		return t.Base.RoundTrip(req)
+	}
+	r := req.Clone(req.Context())
+	for name, value := range t.Headers {
+		r.Header.Set(name, value)
+	}
+	return t.Base.RoundTrip(r)
+}
+
 // NewNamespacedRESTConfig creates a new namespaced REST config.
 func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTConfig, error) {
 	if cfg.Grafana == nil {
@@ -417,6 +436,12 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	}
 	selectedGrafana := *cfg.Grafana
 	selectedGrafana.TLS = cfg.Grafana.tlsForSelectedAuth(authSelection)
+
+	// Fail closed on malformed headers at every client build, not only where
+	// strict config validation runs.
+	if err := validateHeaders(selectedGrafana.Headers, cfg.Name); err != nil {
+		return NamespacedRESTConfig{}, err
+	}
 
 	rcfg := rest.Config{
 		UserAgent:       version.UserAgent(),
@@ -513,8 +538,15 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		rt = &retry.Transport{Base: rt}
 		// Outermost layer: stamp the caller-id header so every datasource query
 		// (unified query API and legacy proxy alike) is attributable upstream,
-		// and so it's visible to the logging transports above.
-		return &httputils.CallerIDTransport{Base: rt}
+		// and so it's visible to the logging transports above. Configured custom
+		// headers sit outside it for the same reason: the payload dump shows
+		// them on the wire. len == 0 keeps the known chain shape intact for
+		// header-less configs.
+		rt = &httputils.CallerIDTransport{Base: rt}
+		if len(selectedGrafana.Headers) > 0 {
+			rt = &headersTransport{Base: rt, Headers: selectedGrafana.Headers}
+		}
+		return rt
 	}
 
 	return NamespacedRESTConfig{

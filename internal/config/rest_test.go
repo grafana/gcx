@@ -2,12 +2,14 @@ package config_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -442,5 +444,116 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 
 	if !callbackCalled {
 		t.Fatal("expected OnRefresh callback to be called after token refresh")
+	}
+}
+
+// Configured headers must be present on the outgoing request.
+func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
+	const tenant = "acme"
+	const token = "secret-token"
+	var mu sync.Mutex
+	var got map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = map[string]string{
+			"X-Tenant":         r.Header.Get("X-Tenant"),
+			"X-Scaleway-Token": r.Header.Get("X-Scaleway-Token"),
+		}
+		mu.Unlock()
+	}))
+	defer server.Close()
+
+	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   server.URL,
+			StackID:  99999,
+			APIToken: "glsa_test",
+			Headers:  map[string]string{"X-Tenant": tenant, "X-Scaleway-Token": token},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test", nil)
+	if _, err := client.Do(req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if got["X-Tenant"] != tenant || got["X-Scaleway-Token"] != token {
+		t.Fatalf("expected custom headers on the request, got %#v", got)
+	}
+}
+
+// A stack with no configured headers must not gain any custom header on the
+// wire — no regression for existing configs.
+func TestNewNamespacedRESTConfig_NoHeadersAddsNothing(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Tenant")
+	}))
+	defer server.Close()
+
+	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   server.URL,
+			StackID:  99999,
+			APIToken: "glsa_test",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test", nil)
+	if _, err := client.Do(req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got != "" {
+		t.Fatalf("expected no X-Tenant header without configured headers, got %q", got)
+	}
+}
+
+// The custom header must be added outside the payload dump layer so a debug
+// dump shows it on the wire, alongside the caller-id header.
+func TestNewNamespacedRESTConfig_PayloadDumpShowsCustomHeaders(t *testing.T) {
+	const tenant = "acme"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	var logged bytes.Buffer
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelDebug)
+	logger := logging.NewSLogLogger(logs.NewHandler(&logged, &logs.Options{Level: level}))
+	ctx := httputils.WithPayloadLogging(logging.Context(t.Context(), logger), true)
+
+	restCfg, err := config.NewNamespacedRESTConfig(ctx, config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   server.URL,
+			StackID:  12345,
+			APIToken: "glsa_test",
+			Headers:  map[string]string{"X-Tenant": tenant},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/test", nil)
+	if _, err := client.Do(req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := "X-Tenant: " + tenant
+	if !strings.Contains(logged.String(), want) {
+		t.Errorf("payload dump is missing %q\ngot:\n%s", want, logged.String())
 	}
 }

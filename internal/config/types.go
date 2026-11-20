@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -808,6 +809,11 @@ type GrafanaConfig struct {
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
 
+	// Headers are additional HTTP headers sent with every request to this
+	// Grafana server. Values are redacted in `config view` unless --raw.
+	// Useful when Grafana sits behind a gateway that requires a custom header.
+	Headers map[string]string `datapolicy:"secret" json:"headers,omitempty" yaml:"headers,omitempty"`
+
 	// PathfinderInstalled caches that the Pathfinder plugin was detected as
 	// installed and enabled on this server during `gcx login`. Once true, later
 	// logins skip the detection probe and the one-time guide hint. In practice
@@ -877,6 +883,10 @@ func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, cont
 		}
 	}
 
+	if err := validateHeaders(grafana.Headers, contextName); err != nil {
+		return err
+	}
+
 	if err := grafana.validateSelectedAuth(selection, contextName); err != nil {
 		return err
 	}
@@ -890,8 +900,49 @@ func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, cont
 	return nil
 }
 
+// validateHeaders rejects header names or values that would be malformed on
+// the wire: empty names, or CR/LF characters that would enable header
+// injection. Called at every load boundary that can build a network client,
+// so malformed headers fail closed instead of reaching the transport.
+func validateHeaders(headers map[string]string, contextName string) error {
+	if len(headers) == 0 {
+		return nil
+	}
+	for name, value := range headers {
+		if name == "" {
+			return ValidationError{
+				Path:    fmt.Sprintf("$.stacks.'%s'.grafana.headers", contextName),
+				Message: "header names must not be empty",
+				Suggestions: []string{
+					"Remove the empty header name from stacks.<name>.grafana.headers",
+				},
+			}
+		}
+		if strings.EqualFold(name, "Authorization") {
+			return ValidationError{
+				Path:    fmt.Sprintf("$.stacks.'%s'.grafana.headers", contextName),
+				Message: "Authorization header must not be set in headers",
+				Suggestions: []string{
+					"Remove the Authorization header from stacks.<name>.grafana.headers",
+					"Configure authentication with the dedicated grafana fields (token, oauth-token, or user/password)",
+				},
+			}
+		}
+		if strings.ContainsAny(name, "\r\n") || strings.ContainsAny(value, "\r\n") {
+			return ValidationError{
+				Path:    fmt.Sprintf("$.stacks.'%s'.grafana.headers", contextName),
+				Message: fmt.Sprintf("header %q must not contain newline characters", name),
+				Suggestions: []string{
+					"Remove newline characters from header names and values in stacks.<name>.grafana.headers",
+				},
+			}
+		}
+	}
+	return nil
+}
+
 func (grafana GrafanaConfig) IsEmpty() bool {
-	return grafana == GrafanaConfig{}
+	return reflect.DeepEqual(grafana, GrafanaConfig{})
 }
 
 // InferredAuthMethod returns the effective authentication method for this config.
