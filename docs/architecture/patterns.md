@@ -258,14 +258,13 @@ query/stream endpoints that return Grafana-native response formats, not
 `Username+Password` on the `rest.Config`, so the same auth config flows to
 all three client paths without duplication.
 
-**Contrast with external APIs:** Provider clients calling **external** APIs
-(k6 Cloud, OnCall, Synth, Fleet — domains outside the Grafana server) must
-**not** use `rest.HTTPClientFor`. The k8s transport round-tripper injects the
-Grafana bearer token on every outgoing request, which conflicts with the
-product's own auth mechanism (e.g. OnCall raw token, k6 X-Grafana-Key).
-These providers use `httputils.NewDefaultClient(ctx)` — a fresh `*http.Client`
-per call with `LoggingRoundTripper` and no auth injection — and set their own
-auth headers per request.
+**Contrast with external hosts:** the client follows the request's destination
+host, not the product ([ARCHITECTURE.md § Configuration and transport](../../ARCHITECTURE.md#configuration-and-transport)).
+Products reached through a plugin or datasource proxy on the Grafana server use
+`rest.HTTPClientFor` like the query clients. A request to any other host uses
+`httputils.NewDefaultClient(ctx)`, which adds `LoggingRoundTripper` and no Grafana
+auth, and sets its own auth headers; the k8s transport would otherwise send the
+Grafana bearer token to that host.
 
 **HTTP logging layer:** All client paths share `httputils.LoggingRoundTripper`
 for request/response logging. The K8s tier chains it via `rest.Config.WrapTransport`
@@ -287,8 +286,9 @@ Clients using the unified datasource-query API share `internal/query/grafanaquer
 
 ### 13. Format-Agnostic Data Fetching
 
-Commands fetch **all** available data in `RunE`, regardless of the `--output`
-format. The output format (`-o table`, `-o wide`, `-o json`, etc.) controls
+Mechanics of the [DESIGN.md](../../DESIGN.md#output-model) rule that output
+shapes data and never affects it. Commands fetch **all** available data in
+`RunE`, regardless of the `--output` format. The output format (`-o table`, `-o wide`, `-o json`, etc.) controls
 **display**, not **data acquisition**. Custom table codecs select which columns
 to render; the built-in JSON/YAML codecs serialize the full data structure.
 
@@ -397,7 +397,7 @@ Provider-backed resource types (SLO, Synthetic Monitoring) implement the
 `resources` pipeline. Providers return their `adapter.Registration` values from
 `Provider.TypedRegistrations()`; the single `providers.Register()` call in the
 provider's `init()` registers them atomically (it invokes `adapter.Register()`
-internally — per CONSTITUTION § Architecture Invariants, no separate
+internally — per [ARCHITECTURE.md § Providers and adapters](../../ARCHITECTURE.md#providers-and-adapters), no separate
 `adapter.Register()` calls may exist outside `providers.Register()`). At runtime a
 `ResourceClientRouter` routes each CRUD call to the correct adapter by GVK,
 falling back to the k8s dynamic client for non-provider resource types.
@@ -736,7 +736,7 @@ list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
   reader (`cmd.InOrStdin()`), never `os.Stdin`.
 - Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
 
-The native-binding rule is a [constitutional invariant](../../CONSTITUTION.md). Dashboards still has a known migration gap until its native access moves to the shared binding; this does not create an additional exception.
+The native-binding rule is stated in [ARCHITECTURE.md § Providers and adapters](../../ARCHITECTURE.md#providers-and-adapters). Dashboards' remaining migration is tracked in [#1515](https://github.com/grafana/gcx/issues/1515); it is debt, not an exception.
 
 ---
 

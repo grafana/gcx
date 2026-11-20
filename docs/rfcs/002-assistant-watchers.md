@@ -274,7 +274,7 @@ The provider registers the resource descriptor, schema and factory. Command cons
 
 Extend the [existing Assistant provider](../../internal/providers/assistant/provider.go) and reuse its configuration loading and [product REST transport](../../internal/assistant/assistanthttp/client.go). Keep command wiring separate from domain behavior. Deterministic resource operations should call product APIs rather than ask a conversational agent to perform CRUD.
 
-Register a typed resource adapter in the existing provider. Both provider CRUD commands and the generic resource pipeline must use the same `TypedCRUD` implementation, following the [constitution](../../CONSTITUTION.md). Resource identity, schema and examples must satisfy the existing adapter contract.
+Register a typed resource adapter in the existing provider. Both provider CRUD commands and the generic resource pipeline must use the same `TypedCRUD` implementation, following the [architecture rules](../../ARCHITECTURE.md#rules). Resource identity, schema and examples must satisfy the existing adapter contract.
 
 The writable definition contains user-managed configuration. Lifecycle state, run history and learned state are excluded. Preserve identity for same-stack updates without treating generated runtime fields as writable configuration. The manifest uses the proposed Watcher kind and the Assistant API group/version shown above. Stable query identity and cross-stack creation semantics still require validation before implementation.
 

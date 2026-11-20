@@ -452,7 +452,7 @@ If the datasource also needs entries in `internal/agent/command_annotations.go`
 "gcx datasources {kind} labels": {Cost: "small"},
 ```
 
-### Gate: `mise run gate` per step, `GCX_AGENT_MODE=false mise run all` once before push
+### Gate: `mise run gate` per step, `mise run all` once before push
 
 ---
 
@@ -497,7 +497,7 @@ Repeat for each query type when the datasource has more than one.
 
 ```bash
 # Full quality gates
-GCX_AGENT_MODE=false mise run all
+mise run all
 
 # Agent annotation consistency
 mise exec -- go test ./internal/agent/...

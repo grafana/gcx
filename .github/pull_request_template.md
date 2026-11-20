@@ -16,6 +16,6 @@
 
 - [ ] I have reviewed the changes and verified the intended behavior.
 - [ ] I have added or updated tests and documentation where needed.
-- [ ] I have run `GCX_AGENT_MODE=false mise run all` and verified that it passes.
+- [ ] I have run `mise run all` and verified that it passes.
 - [ ] I have linked the accepted issue and RFC where required.
 - [ ] I have signed my commits.
