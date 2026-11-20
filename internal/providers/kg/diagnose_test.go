@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	promparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -1399,4 +1400,70 @@ func TestRunDiagnose_TracePropagationNoEnvSkipped(t *testing.T) {
 
 	check := findCheckByName(result.Checks)
 	assert.Nil(t, check, "Trace context propagation check should NOT run without an env scope")
+}
+
+// collectExprs walks a decoded query request body and returns every "expr".
+func collectExprs(v any) []string {
+	var out []string
+	switch x := v.(type) {
+	case map[string]any:
+		for k, val := range x {
+			if s, ok := val.(string); ok && k == "expr" {
+				out = append(out, s)
+				continue
+			}
+			out = append(out, collectExprs(val)...)
+		}
+	case []any:
+		for _, val := range x {
+			out = append(out, collectExprs(val)...)
+		}
+	}
+	return out
+}
+
+// TestServiceDiagnose_QuotedServiceNameBuildsValidPromQL pins that a service
+// name and env containing quotes and backslashes are escaped in every PromQL
+// probe and next-step hint instead of breaking the selector.
+func TestServiceDiagnose_QuotedServiceNameBuildsValidPromQL(t *testing.T) {
+	const name = `api"service\x`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/search/cypher" {
+			cypherHandler(nil, nil)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	kgServer := httptest.NewServer(mux)
+	defer kgServer.Close()
+
+	var (
+		mu    sync.Mutex
+		exprs []string
+	)
+	promServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		exprs = append(exprs, collectExprs(body)...)
+		mu.Unlock()
+		writeJSON(w, promResponseEmpty())
+	}))
+	defer promServer.Close()
+
+	scope := kg.NewTestScopeFlags(`prod"env`, "", "")
+	result := kg.RunServiceDiagnose(t.Context(), newTestClient(t, kgServer), name, &scope,
+		newTestPromClient(t, promServer), "test-prom-uid")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, exprs, "metric checks should issue PromQL queries")
+	for _, expr := range exprs {
+		_, err := promparser.NewParser(promparser.Options{}).ParseExpr(expr)
+		require.NoError(t, err, "query must be valid PromQL: %s", expr)
+		assert.Contains(t, expr, `"api\"service\\x"`, "service name must be escaped: %s", expr)
+	}
+	assert.Contains(t, strings.Join(result.NextSteps, "\n"), `service_name="api\"service\\x"`)
 }

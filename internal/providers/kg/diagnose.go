@@ -819,36 +819,69 @@ type metricCheckDef struct {
 	Recommendation string // shown on failure (used when the metric is genuinely absent)
 }
 
+// labelMatcher is one label filter on a diagnose PromQL probe.
+type labelMatcher struct {
+	name  string
+	value string
+	neq   bool
+}
+
+func eqMatcher(name, value string) labelMatcher { return labelMatcher{name: name, value: value} }
+
+func neqMatcher(name, value string) labelMatcher {
+	return labelMatcher{name: name, value: value, neq: true}
+}
+
+// escapePromqlValue escapes a raw user-supplied value for safe embedding as
+// the value side of a PromQL label matcher. promql-builder writes values
+// verbatim, so backslashes are doubled before quotes are escaped.
+func escapePromqlValue(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	return v
+}
+
+// vectorSelector builds metric{matchers} with promql-builder.
+func vectorSelector(metric string, matchers ...labelMatcher) *promql.VectorExprBuilder {
+	v := promql.Vector(metric)
+	for _, m := range matchers {
+		if m.neq {
+			v = v.LabelNeq(m.name, escapePromqlValue(m.value))
+		} else {
+			v = v.Label(m.name, escapePromqlValue(m.value))
+		}
+	}
+	return v
+}
+
+// countQuery builds count(metric{matchers}) with promql-builder.
+func countQuery(metric string, matchers ...labelMatcher) string {
+	return promql.Count(vectorSelector(metric, matchers...)).String()
+}
+
 // metricChecks returns the metric check definitions, optionally scoped by env and namespace.
 func metricChecks(env, namespace string) []metricCheckDef {
 	// Build label filters for recording rule metrics (use asserts_env).
-	var rrParts []string
+	var rrSelector []labelMatcher
 	if env != "" {
-		rrParts = append(rrParts, fmt.Sprintf(`asserts_env="%s"`, env))
+		rrSelector = append(rrSelector, eqMatcher("asserts_env", env))
 	}
 	if namespace != "" {
-		rrParts = append(rrParts, fmt.Sprintf(`namespace="%s"`, namespace))
-	}
-	rrSelector := ""
-	if len(rrParts) > 0 {
-		rrSelector = "{" + strings.Join(rrParts, ", ") + "}"
+		rrSelector = append(rrSelector, eqMatcher("namespace", namespace))
 	}
 
 	// Build label filters for raw Tempo metrics. Each metric uses different label names:
 	// - traces_target_info: deployment_environment (no reliable namespace label)
 	// - traces_service_graph_request_total: client_deployment_environment, client_service_namespace
-	buildRawSelector := func(envLabel, nsLabel string) string {
-		var parts []string
+	buildRawSelector := func(envLabel, nsLabel string) []labelMatcher {
+		var parts []labelMatcher
 		if env != "" {
-			parts = append(parts, fmt.Sprintf(`%s="%s"`, envLabel, env))
+			parts = append(parts, eqMatcher(envLabel, env))
 		}
 		if nsLabel != "" && namespace != "" {
-			parts = append(parts, fmt.Sprintf(`%s="%s"`, nsLabel, namespace))
+			parts = append(parts, eqMatcher(nsLabel, namespace))
 		}
-		if len(parts) == 0 {
-			return ""
-		}
-		return "{" + strings.Join(parts, ", ") + "}"
+		return parts
 	}
 
 	// Per-check selectors so that `withFallback` can gate the unscoped
@@ -864,8 +897,8 @@ func metricChecks(env, namespace string) []metricCheckDef {
 	// withFallback attaches an unscoped fallback only if the scoped query
 	// for this check actually carries a label filter. Otherwise the unscoped
 	// fallback equals the scoped query and reclassification would never fire.
-	withFallback := func(d metricCheckDef, metric, scopedSelector string) metricCheckDef {
-		if scopedSelector != "" {
+	withFallback := func(d metricCheckDef, metric string, scopedSelector []labelMatcher) metricCheckDef {
+		if len(scopedSelector) > 0 {
 			d.UnscopedQuery = promql.Count(promql.Vector(metric)).String()
 		}
 		return d
@@ -874,27 +907,27 @@ func metricChecks(env, namespace string) []metricCheckDef {
 	return []metricCheckDef{
 		withFallback(metricCheckDef{
 			Name:           "Metric: traces_target_info",
-			Query:          fmt.Sprintf("count(traces_target_info%s)", rawTargetInfoSel),
+			Query:          countQuery("traces_target_info", rawTargetInfoSel...),
 			Recommendation: "Tempo server-side metrics generation may not be enabled, or no traced services are sending telemetry to this stack.",
 		}, "traces_target_info", rawTargetInfoSel),
 		withFallback(metricCheckDef{
 			Name:           "Metric: traces_service_graph_request_total",
-			Query:          fmt.Sprintf("count(traces_service_graph_request_total%s)", rawServiceGraphSel),
+			Query:          countQuery("traces_service_graph_request_total", rawServiceGraphSel...),
 			Recommendation: "Tempo service graph metrics are not being generated. Enable server-side metrics generation in Tempo, or verify that traced services make inter-service HTTP/gRPC calls.",
 		}, "traces_service_graph_request_total", rawServiceGraphSel),
 		withFallback(metricCheckDef{
 			Name:           "Metric: asserts:mixin_workload_job",
-			Query:          fmt.Sprintf("count(asserts:mixin_workload_job%s)", rrSelector),
+			Query:          countQuery("asserts:mixin_workload_job", rrSelector...),
 			Recommendation: "The entity discovery recording rule is not producing data. This metric is central to how services appear in Entity Graph. Verify that asserts_env is set (check deployment_environment in your OTel config) and that 3po recording rules are installed.",
 		}, "asserts:mixin_workload_job", rrSelector),
 		withFallback(metricCheckDef{
 			Name:           "Metric: asserts:relation:calls",
-			Query:          fmt.Sprintf("count(asserts:relation:calls%s)", rrSelector),
+			Query:          countQuery("asserts:relation:calls", rrSelector...),
 			Recommendation: "No CALLS edge metrics found. This means Entity Graph will show services with no connections. Check that traces_service_graph_request_total exists and that the asserts_env relabeling pipeline is working.",
 		}, "asserts:relation:calls", rrSelector),
 		withFallback(metricCheckDef{
 			Name:           "Metric: asserts:request:rate5m",
-			Query:          fmt.Sprintf("count(asserts:request:rate5m%s)", rrSelector),
+			Query:          countQuery("asserts:request:rate5m", rrSelector...),
 			Recommendation: "Request rate KPI recording rule is not producing data. Service KPIs (request rate, error ratio, latency) may not display correctly.",
 		}, "asserts:request:rate5m", rrSelector),
 	}
@@ -936,27 +969,18 @@ func edgeSourceGapChecks() []edgeSourceGapDef {
 // custom relabeling rules.
 func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace string, def edgeSourceGapDef) *CheckResult {
 	// Build an optional namespace selector applied to every probe query.
-	nsSelector := ""
+	var nsSelector []labelMatcher
 	if namespace != "" {
-		nsSelector = fmt.Sprintf(`namespace="%s"`, namespace)
+		nsSelector = append(nsSelector, eqMatcher("namespace", namespace))
 	}
-	// joinSelectors builds {sel1,sel2,...}, dropping empty parts.
-	joinSelectors := func(parts ...string) string {
-		nonEmpty := parts[:0]
-		for _, p := range parts {
-			if p != "" {
-				nonEmpty = append(nonEmpty, p)
-			}
-		}
-		if len(nonEmpty) == 0 {
-			return ""
-		}
-		return "{" + strings.Join(nonEmpty, ",") + "}"
+	// probe builds count(metric{extra..., namespace}) for this gap check.
+	probe := func(extra ...labelMatcher) string {
+		return countQuery(def.Metric, append(extra, nsSelector...)...)
 	}
 
 	// First: does the metric exist at all?
 	existsResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf("count(%s%s)", def.Metric, joinSelectors(nsSelector)),
+		Query: probe(),
 	})
 	if err != nil || len(existsResp.Data.Result) == 0 {
 		return nil // metric doesn't exist — nothing to check
@@ -964,7 +988,7 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 
 	// Second: does it have asserts_env?
 	withEnvResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(`count(%s%s)`, def.Metric, joinSelectors(`asserts_env!=""`, nsSelector)),
+		Query: probe(neqMatcher("asserts_env", "")),
 	})
 	if err != nil {
 		return nil
@@ -981,7 +1005,7 @@ func checkEdgeSourceGap(ctx context.Context, client *prometheus.Client, datasour
 	// Check if deployment_environment is present — this changes the recommendation.
 	hasDepEnv := false
 	depEnvResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(`count(%s%s)`, def.Metric, joinSelectors(`deployment_environment!=""`, nsSelector)),
+		Query: probe(neqMatcher("deployment_environment", "")),
 	})
 	if err == nil && len(depEnvResp.Data.Result) > 0 {
 		hasDepEnv = true
@@ -1133,7 +1157,7 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 
 	// Gate 1: services must be emitting telemetry for this env.
 	targetResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(`count(traces_target_info{deployment_environment="%s"})`, env),
+		Query: countQuery("traces_target_info", eqMatcher("deployment_environment", env)),
 	})
 	if err != nil || len(targetResp.Data.Result) == 0 {
 		// No telemetry flowing — earlier checks (or the absence of any check
@@ -1144,9 +1168,8 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 
 	// Gate 2: are there any real (non-phantom) service-to-service edges?
 	realEdgesResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(
-			`count(traces_service_graph_request_total{server_deployment_environment="%s",client!="user"})`,
-			env),
+		Query: countQuery("traces_service_graph_request_total",
+			eqMatcher("server_deployment_environment", env), neqMatcher("client", "user")),
 	})
 	if err != nil {
 		return nil
@@ -1159,9 +1182,8 @@ func checkTracePropagation(ctx context.Context, client *prometheus.Client, datas
 	// Gate 3: are there phantom edges? Their presence confirms data is flowing
 	// to the metrics generator but lacks incoming context.
 	phantomResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{
-		Query: fmt.Sprintf(
-			`count(traces_service_graph_request_total{server_deployment_environment="%s",client="user"})`,
-			env),
+		Query: countQuery("traces_service_graph_request_total",
+			eqMatcher("server_deployment_environment", env), eqMatcher("client", "user")),
 	})
 	if err != nil || len(phantomResp.Data.Result) == 0 {
 		// No phantom edges either. This is a different failure mode (e.g. no
