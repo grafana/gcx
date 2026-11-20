@@ -89,6 +89,7 @@
 /cmd/gcx/root/testdata/non_canonical_command_operations.json @grafana/grafana-gcx
 
 /docs/sources/resources/manage-assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/sources/resources/manage-change-review-checks* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /docs/rfcs/027-provider-owned-resource-hooks.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
