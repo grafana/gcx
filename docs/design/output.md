@@ -164,8 +164,14 @@ and respect `color.NoColor`:
 cmdio.Success(cmd.ErrOrStderr(), "Pushed %d resources", count)  // ✔
 cmdio.Warning(cmd.ErrOrStderr(), "Skipped %d resources", count) // ⚠
 cmdio.Error(cmd.ErrOrStderr(), "Failed %d resources", count)    // ✘
-cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // 🛈
+cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // ℹ
 ```
+
+When the locale charset is not UTF-8 (the first non-empty of `LC_ALL`,
+`LC_CTYPE` and `LANG` decides, for example `LANG=C`), the symbols fall back to
+ASCII: `[ok]`, `[!]`, `[x]` and `[i]`. If none of them is set, gcx assumes
+UTF-8. Code that prints a status symbol outside these helpers uses
+`output.SuccessSymbol()` and its siblings instead of a hardcoded glyph.
 
 **Status messages go to stderr**, per
 `CONSTITUTION.md` § Output — stdout is the result, stderr
