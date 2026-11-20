@@ -19,6 +19,8 @@ type listTablesOpts struct {
 	Region     string
 	Catalog    string
 	Database   string
+	Filter     string
+	Limit      int
 }
 
 func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
@@ -29,6 +31,8 @@ func (opts *listTablesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&opts.Region, "region", "", "AWS region override")
 	flags.StringVar(&opts.Catalog, "catalog", "", "Data catalog to query")
 	flags.StringVar(&opts.Database, "database", "", "Database to query")
+	flags.StringVar(&opts.Filter, "filter", "", "Only show tables whose name contains this text (case-insensitive)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "tables", athena.DiscoveryRowLimit)
 }
 
 func (opts *listTablesOpts) Validate() error {
@@ -42,12 +46,22 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list-tables",
 		Short: "List tables in an Athena database",
+		Long: `List the tables in an Athena database.
+
+--filter keeps only tables whose name contains the given text, matched literally
+and case-insensitively. The Athena resource API has no name filter, so the
+filter and --limit are applied by gcx after the full list is fetched. By
+default every match is returned; with --limit N at most N are, and a warning
+on stderr says when more matched.`,
 		Example: `
   # List tables in a database
   gcx datasources athena list-tables -d UID --database mydb
 
+  # Find tables by name
+  gcx datasources athena list-tables -d UID --database mydb --filter events
+
   # With catalog and region
-  gcx datasources athena list-tables -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
+  gcx datasources athena list-tables --filter SUBSTRING -d UID --catalog AwsDataCatalog --database mydb --region us-east-1
 
   # Output as JSON
   gcx datasources athena list-tables -d UID --database mydb -o json`,
@@ -95,13 +109,15 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
 
+			tables = filterAndLimit(cmd.ErrOrStderr(), tables, opts.Filter, opts.Limit, "tables")
+
 			return opts.IO.Encode(cmd.OutOrStdout(), athena.StringList{Items: tables, Header: "TABLE"})
 		},
 	}
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx datasources athena list-tables -d UID --catalog AwsDataCatalog --database mydb -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources athena list-tables --filter SUBSTRING -d UID --catalog AwsDataCatalog --database mydb -o json`,
 	}
 
 	opts.setup(cmd.Flags())

@@ -17,6 +17,8 @@ type listCatalogsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Region     string
+	Filter     string
+	Limit      int
 }
 
 func (opts *listCatalogsOpts) setup(flags *pflag.FlagSet) {
@@ -25,6 +27,8 @@ func (opts *listCatalogsOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.athena is configured)")
 	flags.StringVar(&opts.Region, "region", "", "AWS region override")
+	flags.StringVar(&opts.Filter, "filter", "", "Only show catalogs whose name contains this text (case-insensitive)")
+	opts.IO.BindListLimit(flags, &opts.Limit, "catalogs", athena.DiscoveryRowLimit)
 }
 
 func (opts *listCatalogsOpts) Validate() error {
@@ -38,9 +42,19 @@ func ListCatalogsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list-catalogs",
 		Short: "List available Athena data catalogs",
+		Long: `List the Athena data catalogs available to the datasource.
+
+--filter keeps only catalogs whose name contains the given text, matched literally
+and case-insensitively. The Athena resource API has no name filter, so the
+filter and --limit are applied by gcx after the full list is fetched. By
+default every match is returned; with --limit N at most N are, and a warning
+on stderr says when more matched.`,
 		Example: `
   # List all catalogs
   gcx datasources athena list-catalogs
+
+  # Find catalogs by name
+  gcx datasources athena list-catalogs --filter prod
 
   # With explicit datasource and region
   gcx datasources athena list-catalogs -d UID --region us-east-1`,
@@ -82,13 +96,15 @@ func ListCatalogsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
 
+			catalogs = filterAndLimit(cmd.ErrOrStderr(), catalogs, opts.Filter, opts.Limit, "catalogs")
+
 			return opts.IO.Encode(cmd.OutOrStdout(), athena.StringList{Items: catalogs, Header: "CATALOG"})
 		},
 	}
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   `gcx datasources athena list-catalogs -d UID -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources athena list-catalogs --filter SUBSTRING -d UID -o json`,
 	}
 
 	opts.setup(cmd.Flags())
