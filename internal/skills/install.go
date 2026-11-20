@@ -66,6 +66,13 @@ func Install(source fs.FS, catalog []byte, root string, filter map[string]struct
 // before this function, and it never prunes obsolete local files.
 func installFiles(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
 	root = filepath.Clean(root)
+	if !force && !dryRun {
+		// Without --force a differing file aborts the walk. Check the whole
+		// selection first so a conflict never leaves a partial install behind.
+		if _, err := installFiles(source, root, filter, force, true); err != nil {
+			return InstallResult{}, err
+		}
+	}
 	result := InstallResult{
 		Root:      root,
 		SkillsDir: filepath.Join(root, "skills"),
