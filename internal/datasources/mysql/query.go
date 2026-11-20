@@ -21,6 +21,8 @@ const (
 type queryOpts struct {
 	dsquery.SharedOpts
 
+	Share dsquery.ExploreLinkOpts
+
 	Datasource string
 	Limit      int
 }
@@ -29,6 +31,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.mysql is configured)")
+	opts.Share.Setup(flags, "executed query")
 	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning (0 disables enforcement)", maxLimit))
 }
 
@@ -50,7 +53,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.mysql in your context.
-Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
+Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
+
+Use --share-link to print the equivalent Grafana Explore URL, or --open to open
+it in your browser after the query succeeds.`,
 		Example: `
   # Simple query
   gcx datasources mysql query 'SELECT count(*) FROM orders'
@@ -81,7 +87,7 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "mysql")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "mysql")
 			if err != nil {
 				return err
 			}
@@ -117,7 +123,23 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				Expr:           sql,
+				From:           opts.From,
+				To:             opts.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			})
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
