@@ -426,8 +426,11 @@ func TestLoginRejectsTokenAsServerWithoutPrintingIt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GCX_AGENT_MODE", "false")
 			t.Setenv("GCX_KEYCHAIN", "off")
+			unsetEnvForTest(t, "GRAFANA_TOKEN")
 			if tc.env != "" {
 				t.Setenv("GRAFANA_SERVER", tc.env)
+			} else {
+				unsetEnvForTest(t, "GRAFANA_SERVER")
 			}
 			agent.ResetForTesting()
 			t.Cleanup(agent.ResetForTesting)
@@ -456,9 +459,64 @@ func TestLoginRejectsTokenAsServerWithoutPrintingIt(t *testing.T) {
 	}
 }
 
+func TestLoginRejectsTokenAsServerBeforeInferringContextName(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	userDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	require.NoError(t, os.WriteFile(userPath, []byte(`version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.example.invalid
+contexts:
+  a:
+    stack: a
+current-context: a
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".gcx.yaml"), []byte(`version: 1
+stacks:
+  b:
+    grafana:
+      server: https://b.example.invalid
+contexts:
+  b:
+    stack: b
+`), 0o600))
+
+	var out bytes.Buffer
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--server", "glsa_FAKE_example", "--token", "fake", "--yes"})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "looks like a Grafana token")
+	assert.NotContains(t, err.Error(), "FAKE_example")
+	assert.NotContains(t, out.String(), "FAKE_example")
+}
+
 func TestLoginHidesTokenSavedAsServer(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("GCX_KEYCHAIN", "off")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
 

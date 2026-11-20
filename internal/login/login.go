@@ -667,9 +667,8 @@ func LooksLikeToken(server string) bool {
 	host = strings.TrimPrefix(host, "https://")
 	host = strings.TrimPrefix(host, "http://")
 	// Lowercased prefixes of service account tokens, Grafana Cloud access
-	// policy tokens, legacy API keys (base64 of `{"k":"`) and gcx OAuth access
-	// and refresh tokens.
-	for _, prefix := range []string{"glsa_", "glc_", "eyjrijoi", "gat_", "gar_"} {
+	// policy tokens and legacy API keys (base64 of `{"k":"`).
+	for _, prefix := range []string{"glsa_", "glc_", "eyjrijoi"} {
 		if strings.HasPrefix(host, prefix) {
 			return true
 		}
@@ -1100,7 +1099,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 				Field: "allow-override",
 				Question: fmt.Sprintf(
 					"Context %q already exists with server %s.\nOverride with %s?",
-					contextName, oldServer, newServer,
+					contextName, DisplayServer(oldServer), newServer,
 				),
 				Choices: []string{"yes", "no"},
 			}

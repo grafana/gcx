@@ -2046,8 +2046,6 @@ func TestLooksLikeToken(t *testing.T) {
 		{"  http://GLSA_FAKE_example  ", true},
 		{"eyJrIjoiFAKEexample", true},
 		{"https://eyJrIjoiFAKE/example=", true},
-		{"gat_FAKE_example", true},
-		{"gar_FAKE_example", true},
 		{"https://my-stack.grafana.net", false},
 		{"https://my_host.internal", false},
 		{"localhost:3000", false},
