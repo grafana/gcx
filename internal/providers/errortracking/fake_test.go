@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,6 +57,8 @@ func newFakeET(t *testing.T) *fakeET {
 
 func (f *fakeET) useToken(token string) { f.writeConfig(token, "") }
 
+func (f *fakeET) setenv(key, value string) { f.t.Setenv(key, value) }
+
 func (f *fakeET) writeConfig(token, defaultProject string) {
 	f.t.Helper()
 	cfg := `version: 1
@@ -74,6 +77,8 @@ stacks:
 	}
 	require.NoError(f.t, os.WriteFile(f.cfg, []byte(cfg), 0o600))
 }
+
+const serviceAccountToken = "glsa_test"
 
 func scratchEnv(t *testing.T) string {
 	t.Helper()
@@ -270,6 +275,8 @@ func replaced(base []string, pairs ...string) []string {
 	}
 	return out
 }
+
+func shell(argv ...string) string { return cmdio.ShellCommand(argv) }
 
 func routesOf(calls []etCall) []string {
 	out := make([]string, len(calls))

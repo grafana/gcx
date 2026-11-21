@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProjectsCreate(t *testing.T) {
@@ -146,6 +147,35 @@ func TestProjectsDelete(t *testing.T) {
 				t.Helper()
 				assert.Zero(t, redirected)
 			}},
+		{name: "deleting the saved default clears it and says so", setup: withConfig("314"), args: []string{"projects", "delete", "314", "--force", "-o", "json"},
+			calls: []string{"GET projects/314", "DELETE projects/314"}, has: []string{`"clearedDefault": true`},
+			check: func(t *testing.T, _ string, _ error, _ []etCall) {
+				t.Helper()
+				data, err := os.ReadFile(f.cfg)
+				require.NoError(t, err)
+				assert.NotContains(t, string(data), `"314"`)
+			}},
+		{name: "deleting the project saved as the default by name clears it", setup: withConfig("checkout api"), args: []string{"projects", "delete", "314", "--force", "-o", "json"},
+			calls: []string{"GET projects/314", "DELETE projects/314"}, has: []string{`"clearedDefault": true`}},
+		{name: "deleting another project leaves the saved default", setup: withConfig("2"), args: []string{"projects", "delete", "314", "--force", "-o", "json"},
+			calls: []string{"GET projects/314", "DELETE projects/314"}, hasNot: []string{"clearedDefault"},
+			check: func(t *testing.T, _ string, _ error, _ []etCall) {
+				t.Helper()
+				data, err := os.ReadFile(f.cfg)
+				require.NoError(t, err)
+				assert.Contains(t, string(data), `project: "2"`)
+			}},
+		{name: "with the env var set the default is not checked, and a warning says so", setup: withEnv("314"), args: []string{"projects", "delete", "314", "--force", "-o", "json"},
+			calls: []string{"GET projects/314", "DELETE projects/314"}, hasNot: []string{"clearedDefault"},
+			stderr: projectEnv + " is set, so the saved default project was not checked"},
+		{name: "an unreadable saved default is not cleared, and a warning says so", setup: func(f *fakeET) {
+			f.handle("DELETE projects/314", func(w http.ResponseWriter, _ *http.Request) {
+				assert.NoError(t, os.WriteFile(f.cfg, []byte("version: [\n"), 0o600))
+				w.WriteHeader(http.StatusNoContent)
+			})
+		}, args: []string{"projects", "delete", "314", "--force", "-o", "json"},
+			calls: []string{"GET projects/314", "DELETE projects/314"}, hasNot: []string{"clearedDefault"},
+			stderr: "could not read the saved default project, so it was not checked"},
 		{name: "forbidden", setup: func(f *fakeET) {
 			f.reply("DELETE projects/314", http.StatusForbidden, `{"error":{"code":"forbidden","message":"no"}}`)
 		}, args: []string{"projects", "delete", "314", "--force", "-o", "json"},

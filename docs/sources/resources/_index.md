@@ -54,7 +54,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Dashboards** | Dashboards, their version history, and rendered snapshots | [`gcx dashboards`](../cli-reference/#gcx-dashboards), [`gcx resources`](../cli-reference/#gcx-resources) | <ul><li>[Dashboards as code](./dashboards-as-code/)</li><li>[Lint resources](./lint-resources/)</li></ul> |
 | **Data sources** | Data source configurations and health checks | [`gcx datasources`](../cli-reference/#gcx-datasources) | |
 | **Database Observability** | Monitored database instances | [`gcx dbo11y`](../cli-reference/#gcx-dbo11y) | |
-| **Error Tracking** | Projects (experimental) | `gcx error-tracking` | |
+| **Error Tracking** | Projects, errors and their events (experimental) | `gcx error-tracking` | |
 | **Fleet Management** | Collectors and configuration pipelines | [`gcx fleet`](../cli-reference/#gcx-fleet) | |
 | **Folders** | Folders | [`gcx resources`](../cli-reference/#gcx-resources) | |
 | **Frontend Observability** | Frontend apps, source maps, and user sessions | [`gcx frontend`](../cli-reference/#gcx-frontend) | |

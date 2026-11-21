@@ -33,10 +33,13 @@ const apiVersion = apiGroup + "/v0alpha1"
 
 const apiPrefix = "/apis/" + apiVersion
 
+const maxPageSize = 200
+
 type client struct {
 	http      *http.Client
 	host      string
 	namespace string
+	robot     bool
 	project   *projectRef
 }
 
@@ -48,10 +51,15 @@ func newClient(ctx context.Context, loader *providers.ConfigLoader) (*client, er
 	return newClientFor(cfg)
 }
 
-func connect(ctx context.Context, loader *providers.ConfigLoader, t target) (*client, int64, error) {
+func connect(ctx context.Context, loader *providers.ConfigLoader, t target, guard func(*client) error) (*client, int64, error) {
 	c, err := newClient(ctx, loader)
 	if err != nil {
 		return nil, 0, err
+	}
+	if guard != nil {
+		if err := guard(c); err != nil {
+			return nil, 0, err
+		}
 	}
 	id, err := t.resolve(ctx, loader, c)
 	return c, id, err
@@ -66,6 +74,7 @@ func newClientFor(cfg config.NamespacedRESTConfig) (*client, error) {
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &client{
 		http: &noRedirect, host: strings.TrimRight(cfg.Host, "/"), namespace: cfg.Namespace,
+		robot: strings.HasPrefix(cfg.BearerToken, "glsa_"),
 	}, nil
 }
 
@@ -148,10 +157,13 @@ func (c *client) handleError(ctx context.Context, resp *http.Response, method, p
 func (c *client) missing(path string) error {
 	nouns := map[string][2]string{
 		"projects": {"project", "gcx error-tracking projects list"},
+		"errors":   {"error", "gcx error-tracking errors list --project {project}"},
+		"events":   {"event", "gcx error-tracking errors events list {error} --project {project}"},
 	}
 	segs := strings.Split(path, "/")
 	var what []string
-	list := ""
+	ids := map[string]string{}
+	list, last := "", ""
 	for i := 0; i+1 < len(segs); i += 2 {
 		noun, ok := nouns[segs[i]]
 		if !ok {
@@ -163,12 +175,22 @@ func (c *client) missing(path string) error {
 			shown = p.shown()
 		}
 		what = append([]string{shown}, what...)
-		list = noun[1]
+		ids[noun[0]] = printable(id)
+		list, last = noun[1], noun[0]
 	}
 	if len(what) == 0 {
 		return nil
 	}
+	if p := c.project; len(what) == 1 && last == "project" && p != nil && p.source {
+		return p.gone()
+	}
+	for k, v := range ids {
+		list = strings.ReplaceAll(list, "{"+k+"}", v)
+	}
 	suggestions := []string{"List what exists: " + list}
+	if len(what) > 1 {
+		suggestions = append(suggestions, "Check the project too: gcx error-tracking projects list")
+	}
 	details := "Error Tracking has no " + strings.Join(what, " in ")
 	return &gcxerrors.DetailedError{
 		Summary:     gcxerrors.SummaryResourceNotFound,
@@ -265,6 +287,33 @@ func routePath(segments ...any) string {
 		parts[i] = url.PathEscape(fmt.Sprint(s))
 	}
 	return strings.Join(parts, "/")
+}
+
+func collectPages[T any](ctx context.Context, limit int, fetch func(ctx context.Context, cursor string, pageSize int) ([]T, string, error)) ([]T, bool, error) {
+	items := []T{}
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		size := maxPageSize
+		if limit > 0 {
+			size = min(limit-len(items), maxPageSize)
+		}
+		page, next, err := fetch(ctx, cursor, size)
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, page...)
+		switch {
+		case limit > 0 && len(items) >= limit:
+			return items[:limit], next != "" || len(items) > limit, nil
+		case next == "":
+			return items, false, nil
+		case seen[next]:
+			return nil, false, errors.New("error tracking: the server repeated a page cursor")
+		}
+		seen[next] = true
+		cursor = next
+	}
 }
 
 type list[T any] []T

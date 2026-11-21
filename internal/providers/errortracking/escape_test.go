@@ -20,8 +20,9 @@ func assertNoEscapes(t *testing.T, where, s string) {
 func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 	f := newFakeET(t)
 	for route, body := range map[string]string{
-		"GET projects":     `{"projects":[{"id":314,"name":"` + evil + `","stats":{"dailyEvents":[]}}]}`,
-		"GET projects/314": `{"id":314,"name":"` + evil + `","stats":{"dailyEvents":[]}}`,
+		"GET projects":            `{"projects":[{"id":314,"name":"` + evil + `","stats":{"dailyEvents":[]}}]}`,
+		"GET projects/314":        `{"id":314,"name":"` + evil + `","stats":{"dailyEvents":[]}}`,
+		"GET projects/314/errors": `{"errors":[{"id":1,"status":"` + evil + `","exceptionType":"` + evil + `","message":"` + evil + `","lastRelease":"` + evil + `","lastSeen":"` + evil + `"}],"total":9,"nextCursor":"n"}`,
 	} {
 		f.reply(route, 200, body)
 	}
@@ -38,9 +39,13 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 		return cliCase{name: name, args: args, calls: calls, check: clean}
 	}
 	const p = "GET projects/314"
+	const list = "GET projects/314/errors"
 	f.runCases(t, []cliCase{
+		run("errors list in wide", []string{list}, "errors", "list", "--project", "314", "--limit", "1", "-o", "wide"),
 		{name: "a declined project delete prompt", stdin: "n\n", args: []string{"projects", "delete", "314"},
 			calls: []string{p}, exit: 5, check: clean},
+		run("projects use", []string{p}, "projects", "use", "314"),
+		{name: "no project given and none picked", args: []string{"errors", "get", "42"}, exit: 2, check: clean},
 		run("projects list names the default", []string{"GET projects"}, "projects", "list"),
 	})
 }

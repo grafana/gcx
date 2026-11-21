@@ -1,6 +1,9 @@
 package errortracking_test
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
@@ -22,8 +25,25 @@ func rendered(t *testing.T, err error) string {
 	return d.Error()
 }
 
+func withValue(args []string, flag, value string) ([]string, bool) {
+	out := append([]string{}, args...)
+	for i, a := range out {
+		if a == flag && i+1 < len(out) {
+			out[i+1] = value
+			return out, true
+		}
+	}
+	return nil, false
+}
+
 func byName(args []string) ([]string, bool) {
 	out := append([]string{}, args...)
+	for i, a := range out {
+		if a == "--project" && i+1 < len(out) {
+			out[i+1] = "checkout-api"
+			return out, true
+		}
+	}
 	if len(out) > 2 && out[0] == "projects" && out[2] == "314" {
 		out[2] = "by name"
 		return out, true
@@ -34,28 +54,36 @@ func byName(args []string) ([]string, bool) {
 type serverErrorCase struct {
 	args           []string
 	route, missing string
+	human          bool
 	pre            []string
 	conflict       string
 }
 
 func serverErrorCases() []serverErrorCase {
-	p := "project 314"
+	p, e := "project 314", "error 42 in project 314"
 	return []serverErrorCase{
 		{args: []string{"projects", "list"}, route: "GET projects"},
 		{args: []string{"projects", "get", "314"}, route: "GET projects/314", missing: p},
+		{args: []string{"projects", "use", "314"}, route: "GET projects/314", missing: p},
 		{args: []string{"projects", "timeline", "314"}, route: "GET projects/314/timeline", missing: p},
 		{args: []string{"projects", "create", "--name", "web"}, route: "POST projects", conflict: "GET projects"},
 		{args: []string{"projects", "update", "314", "--description", "web"}, route: "PATCH projects/314", missing: p},
 		{args: []string{"projects", "delete", "314", "--force"}, route: "DELETE projects/314", missing: "project web (ID 314)", pre: []string{"GET projects/314"}},
 		{args: []string{"projects", "ingest-keys", "rotate", "314", "--force"}, route: "POST projects/314/ingestKey/rotate", missing: p},
 		{args: []string{"projects", "ingest-keys", "delete-previous", "314", "--force"}, route: "POST projects/314/ingestKey/revokePrevious", missing: "project web (ID 314)", pre: []string{"GET projects/314"}},
+		{args: []string{"errors", "list", "--project", "314"}, route: "GET projects/314/errors", missing: p},
+		{args: []string{"errors", "list", "--project", "314", "--mine"}, route: "GET projects/314/errors", missing: p, human: true},
+		{args: []string{"errors", "get", "42", "--project", "314"}, route: "GET projects/314/errors/42", missing: e},
+		{args: []string{"errors", "events", "list", "42", "--project", "314"}, route: "GET projects/314/errors/42/events", missing: e},
+		{args: []string{"errors", "events", "get", "42", "e7", "--project", "314"}, route: "GET projects/314/errors/42/events/e7", missing: "event e7 in " + e},
 	}
 }
 
 func TestServerErrors(t *testing.T) {
 	before := map[string]string{
-		"GET projects/314": `{"id":314,"name":"web","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
-		"GET projects":     `{"projects":[]}`,
+		"GET projects/314":           `{"id":314,"name":"web","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
+		"GET projects/314/errors/42": `{"id":42,"status":"unresolved","history":[]}`,
+		"GET projects":               `{"projects":[]}`,
 	}
 	for _, tc := range serverErrorCases() {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -77,6 +105,18 @@ func TestServerErrors(t *testing.T) {
 				assert.Contains(t, out, gcxerrors.SummaryInvalidConfiguration)
 				assert.Contains(t, out, "context references no stack with grafana config")
 			})
+			for _, flag := range []string{"--project"} {
+				if bad, ok := withValue(tc.args, flag, "0"); ok {
+					t.Run(flag+" 0", func(t *testing.T) {
+						f := newFakeET(t)
+						_, err := f.run(append(bad, "-o", "json")...)
+						assert.Empty(t, routesOf(f.takeCalls()), "nothing is sent")
+						assert.Equal(t, gcxerrors.ExitUsageError, exitCode(err), "%v", err)
+						assert.Contains(t, rendered(t, err), flag)
+						assert.Contains(t, rendered(t, err), "must be a positive")
+					})
+				}
+			}
 			if len(tc.args) > 2 && strings.Trim(tc.args[2], "0123456789") == "" {
 				t.Run("a positional ID of 0", func(t *testing.T) {
 					f := newFakeET(t)
@@ -149,6 +189,9 @@ func TestServerErrors(t *testing.T) {
 					default:
 						assert.Equal(t, 1, strings.Count(out, "server says no"), "the server message is printed once: %s", out)
 					}
+					if st.status == 403 && tc.human {
+						assert.Contains(t, out, "Ask an organization admin for the ")
+					}
 				})
 			}
 		})
@@ -175,4 +218,32 @@ func TestConfirmLookupFails(t *testing.T) {
 			calls: []string{route}, exit: gcxerrors.ExitGeneralError, err: "server says no (HTTP 500)"})
 	}
 	f.runCases(t, cases)
+}
+
+func TestTransportErrors(t *testing.T) {
+	f := newFakeET(t)
+	f.reply("GET projects/314/errors", 200, `{"errors":`)
+	f.reply("GET projects", 200, twoProjects)
+	f.runCases(t, []cliCase{
+		{name: "a response that is not JSON", args: []string{"errors", "list", "--project", "314", "-o", "json"},
+			calls: []string{"GET projects/314/errors"}, err: "error tracking: decode projects/314/errors response", exit: gcxerrors.ExitGeneralError},
+	})
+
+	dir := scratchEnv(t)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	cfg := write(t, dir, "config.yaml", "version: 1\ncurrent-context: test\ncontexts:\n  test:\n    stack: test\nstacks:\n  test:\n    grafana:\n      server: "+closed.URL+"\n      token: test-token\n      stack-id: 123\n")
+	cmd := (&errortracking.Provider{}).Commands()[0]
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"--config", cfg, "projects", "list", "-o", "json"})
+	err := cmd.ExecuteContext(t.Context())
+	t.Run("an unreachable Grafana server", func(t *testing.T) {
+		out := rendered(t, err)
+		assert.Contains(t, out, gcxerrors.SummaryNetworkError)
+		assert.Contains(t, out, closed.URL+"/apis/error-tracking.ext.grafana.app/v0alpha1/namespaces/stacks-123/projects")
+		assert.Contains(t, out, "dial tcp "+strings.TrimPrefix(closed.URL, "http://"))
+		assert.Contains(t, out, "Make sure that the API is reachable")
+		assert.Equal(t, gcxerrors.ExitGeneralError, exitCode(err))
+	})
 }
