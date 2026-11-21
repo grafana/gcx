@@ -48,16 +48,27 @@ func checkRepoURL(cmd *cobra.Command, raw string) error {
 	return nil
 }
 
-func (c *client) nameTaken(ctx context.Context, err error, name string) error {
+func (c *client) nameTaken(ctx context.Context, err error, kind, name string) error {
 	status, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
 	if !ok || status.Status != http.StatusConflict {
 		return err
 	}
 	var id int64
-	if projects, lerr := c.listProjects(ctx); lerr == nil {
-		for _, p := range projects {
-			if strings.EqualFold(p.Name, name) {
-				id = p.ID
+	switch kind {
+	case "project":
+		if projects, lerr := c.listProjects(ctx); lerr == nil {
+			for _, p := range projects {
+				if strings.EqualFold(p.Name, name) {
+					id = p.ID
+				}
+			}
+		}
+	case "heatmap":
+		if heatmaps, lerr := c.listHeatmaps(ctx); lerr == nil {
+			for _, h := range heatmaps {
+				if strings.EqualFold(h.Name, name) {
+					id = h.ID
+				}
 			}
 		}
 	}
@@ -66,8 +77,8 @@ func (c *client) nameTaken(ctx context.Context, err error, name string) error {
 	}
 	return &gcxerrors.DetailedError{
 		Summary:     gcxerrors.SummaryResourceConflict,
-		Details:     fmt.Sprintf("a project named %q already exists (ID %d)", printable(name), id),
-		Suggestions: []string{fmt.Sprintf("See it: gcx error-tracking projects get %d", id)},
+		Details:     fmt.Sprintf("a %s named %q already exists (ID %d)", kind, printable(name), id),
+		Suggestions: []string{fmt.Sprintf("See it: gcx error-tracking %ss get %d", kind, id)},
 	}
 }
 
@@ -131,7 +142,7 @@ Names are unique in the stack. ` + noDryRun,
 			}
 			var p project
 			if err := c.do(ctx, http.MethodPost, "projects", nil, in, &p); err != nil {
-				return c.nameTaken(ctx, err, opts.Name)
+				return c.nameTaken(ctx, err, "project", opts.Name)
 			}
 			m := c.mutation("created", "Project", p.ID, true)
 			m.Target.Name, m.Project = p.Name, nil
@@ -226,7 +237,7 @@ and new names. ` + noDryRun,
 			var p project
 			if err := c.do(ctx, http.MethodPatch, routePath("projects", id), nil, opts.req, &p); err != nil {
 				if opts.req.Name != nil {
-					return c.nameTaken(ctx, err, *opts.req.Name)
+					return c.nameTaken(ctx, err, "project", *opts.req.Name)
 				}
 				return err
 			}

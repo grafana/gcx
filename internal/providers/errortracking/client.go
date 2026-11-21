@@ -161,6 +161,7 @@ func (c *client) missing(path string) error {
 		"events":    {"event", "gcx error-tracking errors events list {error} --project {project}"},
 		"rawEvents": {"raw event", "gcx error-tracking raw-events list --project {project}"},
 		"comments":  {"comment", "gcx error-tracking errors activity list {error} --project {project} --type comment"},
+		"heatmaps":  {"heatmap", "gcx error-tracking heatmaps list"},
 	}
 	segs := strings.Split(path, "/")
 	var what []string
