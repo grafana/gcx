@@ -99,7 +99,7 @@ func pruneCommand() *cobra.Command {
 		},
 		Long: `Remove gcx agent spill files (` + cmdio.SpillFilePattern + ` and ` + cmdio.SpillStreamFilePattern + `) from the system temp directory that are older than 30 minutes.
 
-These files are created when a command response exceeds the spill threshold (default 100 KiB). Run prune periodically to keep the temp directory clean, or call it at the end of an agent session.`,
+These files are created when a command response exceeds the spill threshold (default 24 KiB). Run prune periodically to keep the temp directory clean, or call it at the end of an agent session.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
