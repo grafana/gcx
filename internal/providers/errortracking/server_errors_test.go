@@ -90,6 +90,15 @@ func serverErrorCases() []serverErrorCase {
 		{args: []string{"errors", "assignees", "delete", "42", "me", "--project", "314"}, route: "GET projects/314/errors/42", missing: e, human: true},
 		{args: []string{"errors", "assignees", "delete", "42", "u1", "--project", "314"}, route: "DELETE projects/314/errors/42/assignees/u1", missing: e, human: true, pre: []string{"GET projects/314/errors/42", "GET projects/314/errors/42/assignees"}},
 		{args: []string{"errors", "events", "get", "42", "e7", "--project", "314"}, route: "GET projects/314/errors/42/events/e7", missing: "event e7 in " + e},
+		{args: []string{"raw-events", "list", "--project", "314"}, route: "GET projects/314/rawEvents", missing: p},
+		{args: []string{"raw-events", "get", "9", "--project", "314"}, route: "GET projects/314/rawEvents/9", missing: "raw event 9 in " + p},
+		{args: []string{"releases", "list", "--project", "314"}, route: "GET projects/314/releases", missing: p},
+		{args: []string{"releases", "status", "--project", "314"}, route: "GET projects/314/releases", missing: p},
+		{args: []string{"environments", "list", "--project", "314"}, route: "GET projects/314/environments", missing: p},
+		{args: []string{"transactions", "list", "--project", "314"}, route: "GET projects/314/transactions", missing: p},
+		{args: []string{"fields", "list", "--project", "314"}, route: "GET projects/314/customFields", missing: p},
+		{args: []string{"fields", "list-values", "browser", "--project", "314"}, route: "GET projects/314/customFields/values", missing: p},
+		{args: []string{"users", "list", "--project", "314"}, route: "GET projects/314/users", missing: p, human: true},
 	}
 }
 
@@ -238,8 +247,11 @@ func TestConfirmLookupFails(t *testing.T) {
 func TestTransportErrors(t *testing.T) {
 	f := newFakeET(t)
 	f.reply("GET projects/314/errors", 200, `{"errors":`)
+	f.reply("GET projects/314/releases", 200, `{"releases":{"v1":1}}`)
 	f.reply("GET projects", 200, twoProjects)
 	f.runCases(t, []cliCase{
+		{name: "a facet list of the wrong shape", args: []string{"releases", "list", "--project", "314", "-o", "json"},
+			calls: []string{"GET projects/314/releases"}, err: "cannot unmarshal object", exit: gcxerrors.ExitGeneralError},
 		{name: "a response that is not JSON", args: []string{"errors", "list", "--project", "314", "-o", "json"},
 			calls: []string{"GET projects/314/errors"}, err: "error tracking: decode projects/314/errors response", exit: gcxerrors.ExitGeneralError},
 	})

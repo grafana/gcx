@@ -394,11 +394,13 @@ func newErrorsAssigneeCommand(loader *providers.ConfigLoader, add bool) *cobra.C
 		Use:   "add <error> <user>",
 		Short: "Assign a user to an error" + needsLogin + ".",
 		Long: `Assign one Grafana user to one error, keeping the other assignees; a user
-already assigned gives changed: false with nothing sent. <user> is a UID or me. ` + humanOnlyNote + ` ` + noDryRun,
+already assigned gives changed: false with nothing sent. <user> is a UID or me; find
+a UID with users list --search <text>. ` + humanOnlyNote + ` ` + noDryRun,
 		Example: `  # Assign yourself.
   gcx error-tracking errors assignees add 42 me --project 314
 
-  # Assign a teammate by UID.
+  # Find a teammate's UID, then assign them.
+  gcx et users list --project checkout-api --search alex --json uid,login
   gcx et errors assignees add 42 u-alex --project checkout-api
 
   # As an agent: assign by UID and read the result.
@@ -456,6 +458,9 @@ already assigned gives changed: false with nothing sent. <user> is a UID or me. 
 				}
 			}
 			if err := c.do(ctx, method, path+"/assignees/"+url.PathEscape(user.UID), nil, nil, nil); err != nil {
+				if add {
+					err = badRequest(err, "Find a user's UID: "+et("users", "list", "--project", projectOf(cmd)))
+				}
 				return humanOnly(err, true)
 			}
 			m := assignMutation{mutationBase: c.mutation(action, "Error", opts.id, true)}
@@ -470,11 +475,12 @@ already assigned gives changed: false with nothing sent. <user> is a UID or me. 
 		cmd.Short = "Unassign a user from an error" + needsLogin + "."
 		cmd.Long = `Unassign one user from one error without asking; undo it with errors
 assignees add. <user> is a UID or me; a UID that is not assigned gives
-changed: false with nothing sent. ` + humanOnlyNote + ` ` + noDryRun
+changed: false with nothing sent. Find a UID with users list --search <text>. ` + humanOnlyNote + ` ` + noDryRun
 		cmd.Example = `  # Unassign yourself.
   gcx error-tracking errors assignees delete 42 me --project 314
 
-  # Unassign a teammate by UID.
+  # Find a teammate's UID, then unassign them.
+  gcx et users list --project checkout-api --search alex --json uid,login
   gcx et errors assignees delete 42 u-alex --project checkout-api
 
   # As an agent: unassign by UID and read the result.
