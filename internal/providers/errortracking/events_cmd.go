@@ -134,7 +134,8 @@ on stderr.`,
 				return err
 			}
 			if len(items) == 0 && !opts.IO.JSONDiscovery {
-				say(cmd.ErrOrStderr(), fmt.Sprintf("No events of error %d match in %s", opts.errID, c.projectShown()), "")
+				say(cmd.ErrOrStderr(), fmt.Sprintf("No events of error %d match in %s; see the error", opts.errID, c.projectShown()),
+					fmt.Sprintf("gcx error-tracking errors inspect %d --project %d", opts.errID, project))
 			}
 			return nil
 		},
@@ -180,7 +181,8 @@ func newErrorsGetEventCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "get <error> <event>",
 		Short: "Get one event of an error with its SDK payload.",
 		Long: `Get one event of an error with the full SDK payload (stack trace,
-breadcrumbs, tags, contexts); select fields with --json. <error> is the error
+breadcrumbs, tags, contexts); select fields with --json, or read the stack
+trace of an error's latest event with errors inspect. <error> is the error
 ID from errors list and
 <event> the EVENT ID from errors events list: the SDK's 32-character event ID,
 not the numeric id the JSON also carries.`,

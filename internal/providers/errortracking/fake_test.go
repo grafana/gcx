@@ -173,6 +173,7 @@ type cliCase struct {
 	stdin  string
 	args   []string
 	calls  []string
+	anyOrd bool
 	bare   bool
 	query  url.Values
 	body   string
@@ -224,6 +225,8 @@ func (f *fakeET) runCases(t *testing.T, groups ...[]cliCase) {
 			switch {
 			case len(tc.calls) == 0:
 				assert.Empty(t, routesOf(calls), "no call")
+			case tc.anyOrd:
+				assert.ElementsMatch(t, tc.calls, routesOf(calls))
 			default:
 				assert.Equal(t, tc.calls, routesOf(calls))
 			}

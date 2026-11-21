@@ -50,10 +50,17 @@ func projectOf(cmd *cobra.Command) string {
 	return projectSlot
 }
 
-func argHelp(cmd *cobra.Command, name string, _ []string) string {
+func argHelp(cmd *cobra.Command, name string, args []string) string {
 	project := projectOf(cmd)
-	if name == "<error>" {
+	errID := errorSlot
+	if len(args) > 0 {
+		errID = printable(args[0])
+	}
+	switch name {
+	case "<error>":
 		return et("errors", "list", "--project", project)
+	case "<comment>":
+		return et("errors", "activity", "list", errID, "--project", project, "--type", "comment")
 	}
 	return cmd.CommandPath() + " --help"
 }

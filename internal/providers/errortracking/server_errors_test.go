@@ -74,16 +74,31 @@ func serverErrorCases() []serverErrorCase {
 		{args: []string{"errors", "list", "--project", "314"}, route: "GET projects/314/errors", missing: p},
 		{args: []string{"errors", "list", "--project", "314", "--mine"}, route: "GET projects/314/errors", missing: p, human: true},
 		{args: []string{"errors", "get", "42", "--project", "314"}, route: "GET projects/314/errors/42", missing: e},
+		{args: []string{"errors", "inspect", "42", "--project", "314"}, route: "GET projects/314/errors/42", missing: e},
+		{args: []string{"errors", "update", "42", "--project", "314", "--status", "resolved"}, route: "PATCH projects/314/errors/42", missing: e, pre: []string{"GET projects/314/errors/42"}},
+		{args: []string{"errors", "update", "42", "--project", "314", "--reviewed"}, route: "POST projects/314/errors/42/review", missing: e, human: true, pre: []string{"GET projects/314/errors/42"}},
+		{args: []string{"errors", "timeline", "42", "--project", "314"}, route: "GET projects/314/errors/42/timeline", missing: e},
 		{args: []string{"errors", "events", "list", "42", "--project", "314"}, route: "GET projects/314/errors/42/events", missing: e},
+		{args: []string{"errors", "fields", "list", "42", "--project", "314"}, route: "GET projects/314/errors/42/customFields", missing: e},
+		{args: []string{"errors", "activity", "list", "42", "--project", "314"}, route: "GET projects/314/errors/42/activity", missing: e},
+		{args: []string{"errors", "comments", "create", "42", "--project", "314", "--body", "x"}, route: "POST projects/314/errors/42/comments", missing: "error 42 in project 314"},
+		{args: []string{"errors", "comments", "update", "42", "7", "--project", "314", "--body", "x"}, route: "PATCH projects/314/errors/42/comments/7", missing: "comment 7 in error 42 in project 314"},
+		{args: []string{"errors", "comments", "delete", "42", "7", "--project", "314", "--force"}, route: "DELETE projects/314/errors/42/comments/7", missing: "comment 7 in error 42 in project 314"},
+		{args: []string{"errors", "assignees", "list", "42", "--project", "314"}, route: "GET projects/314/errors/42/assignees", missing: e, human: true},
+		{args: []string{"errors", "assignees", "add", "42", "u2", "--project", "314"}, route: "PUT projects/314/errors/42/assignees/u2", missing: e, human: true, pre: []string{"GET projects/314/errors/42", "GET projects/314/errors/42/assignees"}},
+		{args: []string{"errors", "assignees", "add", "42", "me", "--project", "314"}, route: "GET projects/314/errors/42", missing: e, human: true},
+		{args: []string{"errors", "assignees", "delete", "42", "me", "--project", "314"}, route: "GET projects/314/errors/42", missing: e, human: true},
+		{args: []string{"errors", "assignees", "delete", "42", "u1", "--project", "314"}, route: "DELETE projects/314/errors/42/assignees/u1", missing: e, human: true, pre: []string{"GET projects/314/errors/42", "GET projects/314/errors/42/assignees"}},
 		{args: []string{"errors", "events", "get", "42", "e7", "--project", "314"}, route: "GET projects/314/errors/42/events/e7", missing: "event e7 in " + e},
 	}
 }
 
 func TestServerErrors(t *testing.T) {
 	before := map[string]string{
-		"GET projects/314":           `{"id":314,"name":"web","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
-		"GET projects/314/errors/42": `{"id":42,"status":"unresolved","history":[]}`,
-		"GET projects":               `{"projects":[]}`,
+		"GET projects/314":                     `{"id":314,"name":"web","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
+		"GET projects/314/errors/42":           `{"id":42,"status":"unresolved","history":[]}`,
+		"GET projects/314/errors/42/assignees": `{"assignees":[{"userUid":"u1"}]}`,
+		"GET projects":                         `{"projects":[]}`,
 	}
 	for _, tc := range serverErrorCases() {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
