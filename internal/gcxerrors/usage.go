@@ -13,6 +13,7 @@ type UsageError struct {
 	Message     string
 	Expected    string
 	Suggestions []string
+	Corrections []Correction
 	Cause       error
 }
 

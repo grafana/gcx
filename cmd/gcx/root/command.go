@@ -250,7 +250,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		if strings.Contains(err.Error(), "--log-http-payload") && strings.Contains(err.Error(), "flag has been renamed") {
 			err = errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
 		}
-		return commandUsageError(cmd, err)
+		return flagUsageError(cmd, err, os.Args[1:])
 	})
 
 	rootCmd.SetOut(os.Stdout)

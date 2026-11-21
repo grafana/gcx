@@ -225,7 +225,16 @@ alongside `error`.
 | `exitCode` | int | yes | Matches the process exit code |
 | `details` | string | no | Omitted when empty |
 | `suggestions` | []string | no | Omitted when empty |
+| `corrections` | []object | no | Omitted when no safe invocation is available. Ranked fixes for mistyped commands/flags: `{"command": "<full corrected invocation>", "hint": "<llm_hint or flag usage>"}` |
 | `docsLink` | string | no | Omitted when empty |
+
+#### Correction invocations
+
+Corrections keep the original context, flags, and arguments. Credential flag values are redacted. Replace each `<redacted>` value before running the command.
+Quoting follows the current platform. Windows commands that need quoting use PowerShell.
+Complete corrections are omitted for config commands because positional values can contain credentials.
+Root flag failures also omit complete corrections because the target command can be unresolved.
+
 
 **Guarantees:**
 - On success, no `error` key appears in stdout JSON (NC-004).
