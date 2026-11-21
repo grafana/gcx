@@ -3,6 +3,7 @@ package errortracking
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -101,13 +102,19 @@ func (o *projectsListOpts) Validate(cmd *cobra.Command) error {
 	return validIO(cmd, &o.IO)
 }
 
+func storedDefault(ctx context.Context, loader *providers.ConfigLoader) (string, error) {
+	cfg, _, err := loader.LoadProviderConfig(ctx, providerName)
+	return strings.TrimSpace(cfg["project"]), err
+}
+
 func newProjectsListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &projectsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Error Tracking projects.",
 		Long: `List the stack's Error Tracking projects with their error and event counts;
-the ID, the name (case-insensitive) or name-ID is what projects get takes.
+the ID, the name (case-insensitive) or name-ID is what --project and
+projects get take.
 
 The API returns every project in one response, so there is no --limit, and
 --search keeps the projects whose name contains the text, case-insensitive.
@@ -167,6 +174,209 @@ returns them.`,
 	return cmd
 }
 
+type defaultProject struct {
+	Stack   string       `json:"stack,omitempty"`
+	Project *projectInfo `json:"project"`
+	Source  string       `json:"source,omitempty"`
+
+	text string
+}
+
+type useMutation struct {
+	mutationBase `json:",inline"`
+
+	Stack  string `json:"stack,omitempty"`
+	Source string `json:"source,omitempty"`
+}
+
+type projectsUseOpts struct {
+	IO      cmdio.Options
+	Project projectRef
+	Unset   bool
+}
+
+func (o *projectsUseOpts) setup(flags *pflag.FlagSet) {
+	flags.BoolVar(&o.Unset, "unset", false, "Clear the default project")
+	bindText(&o.IO, flags, useText{})
+}
+
+func (o *projectsUseOpts) Validate(cmd *cobra.Command, args []string) error {
+	if o.Unset && len(args) > 0 {
+		return usage(cmd, "--unset takes no <project>")
+	}
+	if len(args) == 1 {
+		o.Project.value = args[0]
+		if err := o.Project.validate(cmd); err != nil {
+			return err
+		}
+	}
+	return validIO(cmd, &o.IO)
+}
+
+type useText struct{ mutationText }
+
+func (u useText) Encode(w io.Writer, v any) error {
+	d, ok := v.(defaultProject)
+	if !ok {
+		return u.mutationText.Encode(w, v)
+	}
+	cmdio.Info(w, "%s", printable(d.text))
+	return nil
+}
+
+func stackName(ctx context.Context, loader *providers.ConfigLoader) string {
+	cfg, err := loader.LoadConfigTolerant(ctx)
+	if err != nil {
+		return ""
+	}
+	return cfg.GetCurrentContext().Stack
+}
+
+func showDefault(ctx context.Context, loader *providers.ConfigLoader, stack string) (defaultProject, error) {
+	v, err := storedDefault(ctx, loader)
+	d := defaultProject{Stack: stack}
+	forStack := ""
+	if stack != "" {
+		forStack = " for stack " + stack
+	}
+	d.text = "No default project" + forStack
+	if err != nil || v == "" {
+		return d, err
+	}
+	id, numeric, ok := parseID(v)
+	if numeric && !ok {
+		return d, configError(fmt.Sprintf("the default project %q (%s) is not a project ID or name", printable(v), fromDefault()),
+			"Pick another: gcx error-tracking projects use <id>",
+			"If "+projectEnv+" is set, unset it or set it to a project")
+	}
+	d.Project = &projectInfo{ID: id}
+	if id == 0 {
+		d.Project.Name = v
+	}
+	d.Source = defaultSource()
+	d.text = fmt.Sprintf("Default project%s: %s (from %s)", forStack, printable(v), defaultSource())
+	return d, nil
+}
+
+func useTarget(ctx context.Context, loader *providers.ConfigLoader, opts *projectsUseOpts) (int64, project, error) {
+	c, err := newClient(ctx, loader)
+	if err != nil {
+		return 0, project{}, err
+	}
+	id, err := opts.Project.resolve(ctx, loader, c)
+	if err != nil {
+		return 0, project{}, err
+	}
+	if opts.Project.name != "" {
+		return id, project{ID: id, Name: opts.Project.name}, nil
+	}
+	saved, err := c.getProject(ctx, id)
+	return id, saved, err
+}
+
+func saveDefault(cmd *cobra.Command, loader *providers.ConfigLoader, opts *projectsUseOpts) (string, project, error) {
+	ctx := cmd.Context()
+	value := ""
+	var saved project
+	if !opts.Unset {
+		id, p, err := useTarget(ctx, loader, opts)
+		if err != nil {
+			return "", p, err
+		}
+		saved, value = p, strconv.FormatInt(id, 10)
+	}
+	if err := loader.SaveProviderConfig(ctx, providerName, "project", value); err != nil {
+		return "", saved, err
+	}
+	after, err := storedDefault(ctx, loader)
+	if err != nil {
+		return "", saved, err
+	}
+	if after == "" && value != "" {
+		return "", saved, configError(fmt.Sprintf("the default project reads as empty after saving %q: no gcx config file took it, or %s is set to empty in this environment", value, projectEnv),
+			"Create a context first: gcx login",
+			"Or unset "+projectEnv)
+	}
+	if after != value {
+		cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("%s=%s wins over the stack's saved default, so commands here use project %s; unset it to use what projects use saves",
+			projectEnv, printable(after), printable(after)))
+	}
+	return value, saved, nil
+}
+
+func newProjectsUseCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &projectsUseOpts{}
+	cmd := &cobra.Command{
+		Use:   "use [project]",
+		Short: "Set the project Error Tracking commands use when --project is not given.",
+		Long: `Remember one Error Tracking project for the stack, so commands that take
+--project use it, silently, when the flag is not given; write results name
+the project in their output. With no argument it shows the default, --unset
+clears it, and ` + projectEnv + `
+overrides it in one environment, with a warning when it hides what was
+saved; leaves that take a positional <project> never use it. It is saved by
+ID in the gcx config file already in use, and when there is none gcx creates
+the user config file; if no file takes it, the command fails. With no
+argument the JSON is the default's own shape: the stack, the project and
+where the default comes from. Setting or clearing returns the mutation
+result with those same fields: target.id is what was saved, while project
+and source are the default in effect, which ` + projectEnv + ` can
+override. ` + noDryRun,
+		Example: `  # Use a project by name from now on.
+  gcx error-tracking projects use checkout-api
+
+  # Show the default and where it comes from.
+  gcx et projects use
+
+  # Clear it.
+  gcx et projects use --unset
+
+  # As an agent: set it and read the result.
+  gcx error-tracking projects use 314 -o json`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(cmd, args); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			value, write := "", len(args) > 0 || opts.Unset
+			var saved project
+			if write {
+				var err error
+				if value, saved, err = saveDefault(cmd, loader, opts); err != nil {
+					return err
+				}
+			}
+			d, err := showDefault(ctx, loader, stackName(ctx, loader))
+			if err != nil {
+				return err
+			}
+			if saved.ID != 0 && d.Project != nil && d.Project.ID == saved.ID {
+				d.Project.Name = saved.Name
+				d.text = strings.Replace(d.text, " (from ", " ("+printable(saved.Name)+") (from ", 1)
+			}
+			var out any = d
+			if write {
+				m := cmdio.NewSingleMutation("use", cmdio.MutationTarget{Kind: "Project", ID: value})
+				if opts.Unset {
+					m.Action = "unset"
+				}
+				out = useMutation{mutationBase: mutationBase{SingleMutation: m, Project: d.Project, text: d.text}, Stack: d.Stack, Source: d.Source}
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), out); err != nil {
+				return err
+			}
+			if d.Project == nil {
+				say(cmd.ErrOrStderr(), "set one", "gcx error-tracking projects use <project>")
+			}
+			return nil
+		},
+		Annotations: map[string]string{agent.AnnotationTokenCost: "small", agent.AnnotationLLMHint: "<project> -o json"},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
 type projectsGetOpts struct {
 	IO      cmdio.Options
 	Project projectRef
@@ -210,7 +420,7 @@ or name-ID. An ID costs no lookup; a name costs one projects list first.`,
 			if err := opts.Validate(cmd); err != nil {
 				return err
 			}
-			c, id, err := connect(cmd.Context(), loader, &opts.Project)
+			c, id, err := connect(cmd.Context(), loader, &opts.Project, nil)
 			if err != nil {
 				return err
 			}
@@ -296,7 +506,7 @@ errors they match.`,
 				return err
 			}
 			ctx := cmd.Context()
-			c, id, err := connect(ctx, loader, &opts.Project)
+			c, id, err := connect(ctx, loader, &opts.Project, nil)
 			if err != nil {
 				return err
 			}

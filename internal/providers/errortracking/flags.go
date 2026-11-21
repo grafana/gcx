@@ -1,10 +1,13 @@
 package errortracking
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type ref struct {
@@ -108,19 +112,38 @@ const (
 type projectRef struct {
 	ref
 
-	cmd *cobra.Command
+	flag   string
+	cmd    *cobra.Command
+	source bool
 }
 
-func (p *projectRef) label() string { return "<project>" }
+const projectFlagUsage = "Project: its ID from projects list (314), name (case-insensitive) or name-ID. Without it: " + projectEnv + ", then the stack's default (projects use)"
+
+func (p *projectRef) setup(flags *pflag.FlagSet) {
+	p.flag = "--project"
+	flags.StringVar(&p.value, "project", "", projectFlagUsage)
+}
+
+func (p *projectRef) label() string { return cmp.Or(p.flag, "<project>") }
+
+func (p *projectRef) defaults() bool {
+	return p.flag != "" && p.cmd != nil && p.cmd.Flags().Lookup("project") != nil
+}
 
 func (p *projectRef) validate(cmd *cobra.Command) error {
 	p.cmd = cmd
+	if p.defaults() && !cmd.Flags().Changed("project") {
+		return nil
+	}
 	return p.parse(cmd, p.label(), "project")
 }
 
 func (p *projectRef) useID() string {
 	args := strings.Fields(p.cmd.Use)[1:]
-	return strings.Join(append([]string{p.cmd.CommandPath(), "{id}"}, args[1:]...), " ")
+	if p.flag == "" && len(args) > 0 {
+		return strings.Join(append([]string{p.cmd.CommandPath(), "{id}"}, args[1:]...), " ")
+	}
+	return strings.Join(append([]string{p.cmd.CommandPath()}, args...), " ") + " " + cmp.Or(p.flag, "--project") + " {id}"
 }
 
 func (p *projectRef) pick(projects []project) (int64, error) {
@@ -129,33 +152,113 @@ func (p *projectRef) pick(projects []project) (int64, error) {
 
 func (p *projectRef) resolve(ctx context.Context, loader *providers.ConfigLoader, c *client) (int64, error) {
 	c.project = p
+	if p.id == 0 && p.value == "" && p.defaults() {
+		if err := p.fallback(ctx, loader); err != nil {
+			return 0, err
+		}
+	}
 	if p.id == 0 {
 		projects, err := c.listProjects(ctx)
 		if err != nil {
 			return 0, err
 		}
 		if _, err := p.pick(projects); err != nil {
+			if d, ok := errors.AsType[*gcxerrors.DetailedError](err); ok && p.source && d.Summary == gcxerrors.SummaryResourceNotFound {
+				return 0, p.gone()
+			}
 			return 0, err
 		}
 	}
 	return p.id, nil
 }
 
+func (p *projectRef) fallback(ctx context.Context, loader *providers.ConfigLoader) error {
+	v, err := storedDefault(ctx, loader)
+	if err != nil {
+		return err
+	}
+	if v != "" {
+		p.value, p.source = v, true
+	}
+	if p.source {
+		id, numeric, ok := parseID(p.value)
+		if numeric && !ok {
+			return configError(fmt.Sprintf("the default project %q (%s) is not a project ID or name", printable(p.value), fromDefault()),
+				"Pick another: gcx error-tracking projects use <id>",
+				"If "+projectEnv+" is set, unset it or set it to a project")
+		}
+		if numeric {
+			p.id = id
+		}
+		return nil
+	}
+	return p.unset()
+}
+
+func defaultSource() string {
+	if _, ok := os.LookupEnv(projectEnv); ok {
+		return projectEnv
+	}
+	return "the stack's saved default"
+}
+
+func fromDefault() string { return "from " + defaultSource() }
+
+func (p *projectRef) unset() error {
+	msg := "--project is not set"
+	suggestions := []string{
+		"Pass it: " + strings.ReplaceAll(p.useID(), "{id}", "<id>"),
+		"List them with gcx error-tracking projects list",
+		"Remember one for this stack: gcx error-tracking projects use <id>",
+	}
+	if v, ok := os.LookupEnv(projectEnv); ok && strings.TrimSpace(v) == "" {
+		msg = "--project is not set and " + projectEnv + " is set to an empty value"
+		suggestions = append(suggestions, "Unset "+projectEnv)
+	}
+	return usage(p.cmd, msg, suggestions...)
+}
+
+func (p *projectRef) gone() error {
+	what := strconv.Quote(p.value)
+	if p.id != 0 {
+		what = strconv.FormatInt(p.id, 10)
+	}
+	return &gcxerrors.DetailedError{
+		Summary: gcxerrors.SummaryResourceNotFound,
+		Details: fmt.Sprintf("the default project %s (%s) no longer exists", what, fromDefault()),
+		Suggestions: []string{
+			"Pick another: gcx error-tracking projects use <id>",
+			"If " + projectEnv + " is set, unset it or set it to a project",
+			"Or pass one: " + strings.ReplaceAll(p.useID(), "{id}", "<id>"),
+			"See what exists: gcx error-tracking projects list",
+		},
+	}
+}
+
 func (p *projectRef) shown() string { return projectLabel(p.id, p.name) }
 
 func (p *projectRef) argv() []string {
-	return os.Args
+	if p == nil || !p.source || p.id == 0 {
+		return os.Args
+	}
+	return append(slices.Clone(os.Args), "--project", strconv.FormatInt(p.id, 10))
 }
 
 type timeRange struct {
 	dsquery.TimeRangeOpts
 
-	from, to string
+	from, to  string
+	openEnd   bool
+	openStart bool
 }
 
 func (t *timeRange) validate(cmd *cobra.Command) error {
 	if err := nonEmpty(cmd, "since", "from", "to"); err != nil {
 		return err
+	}
+	t.openEnd = t.Since != "" && t.To == ""
+	if t.openStart && t.From != "" && t.To == "" {
+		t.To, t.openEnd = "now", true
 	}
 	if err := t.ValidateTimeRange(); err != nil {
 		return usage(cmd, err.Error())
@@ -224,6 +327,15 @@ func nonEmpty(cmd *cobra.Command, names ...string) error {
 		}
 	}
 	return nil
+}
+
+func (t *timeRange) set(q url.Values) {
+	if t.from != "" {
+		q.Set("from", t.from)
+	}
+	if t.to != "" && !t.openEnd {
+		q.Set("to", t.to)
+	}
 }
 
 func (t *timeRange) setClosed(q url.Values) {
