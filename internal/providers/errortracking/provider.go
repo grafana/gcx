@@ -74,7 +74,7 @@ other list has flat items (--json id,message).`,
 
 errors assignees list, add and delete, errors update --reviewed and the
 errors list flags --mine, --assigned and --assignee need a signed-in Grafana
-user (gcx login); a service account token is refused
+user (gcx login), as does users list; a service account token is refused
 before the request.`
 
 	root.AddCommand(
@@ -85,6 +85,18 @@ before the request.`
 			group("ingest-keys", "Rotate a project's ingest key, or stop the previous one.",
 				newIngestKeyCommand(loader, true), newIngestKeyCommand(loader, false))),
 		errorsCmd,
+		group("raw-events", "Check what an SDK sent to an Error Tracking project.",
+			newRawEventsListCommand(loader), newRawEventsGetCommand(loader)),
+		group("releases", "List the releases an Error Tracking project saw, and what broke in one.",
+			newReleasesListCommand(loader), newReleasesStatusCommand(loader)),
+		group("environments", "List the environments an Error Tracking project saw.",
+			newEnvironmentsListCommand(loader)),
+		group("transactions", "List the transactions an Error Tracking project's errors happened in.",
+			newTransactionsListCommand(loader)),
+		group("fields", "List the custom fields an Error Tracking project's events carry.",
+			newFieldsListCommand(loader), newFieldsListValuesCommand(loader)),
+		group("users", "List the Grafana users of an Error Tracking project.",
+			newUsersListCommand(loader)),
 	)
 	agent.MarkExperimental(root)
 	return []*cobra.Command{root}

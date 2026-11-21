@@ -156,10 +156,11 @@ func (c *client) handleError(ctx context.Context, resp *http.Response, method, p
 
 func (c *client) missing(path string) error {
 	nouns := map[string][2]string{
-		"projects": {"project", "gcx error-tracking projects list"},
-		"errors":   {"error", "gcx error-tracking errors list --project {project}"},
-		"events":   {"event", "gcx error-tracking errors events list {error} --project {project}"},
-		"comments": {"comment", "gcx error-tracking errors activity list {error} --project {project} --type comment"},
+		"projects":  {"project", "gcx error-tracking projects list"},
+		"errors":    {"error", "gcx error-tracking errors list --project {project}"},
+		"events":    {"event", "gcx error-tracking errors events list {error} --project {project}"},
+		"rawEvents": {"raw event", "gcx error-tracking raw-events list --project {project}"},
+		"comments":  {"comment", "gcx error-tracking errors activity list {error} --project {project} --type comment"},
 	}
 	segs := strings.Split(path, "/")
 	var what []string
@@ -193,6 +194,9 @@ func (c *client) missing(path string) error {
 		suggestions = append(suggestions, "Check the project too: gcx error-tracking projects list")
 	}
 	details := "Error Tracking has no " + strings.Join(what, " in ")
+	if last == "raw event" {
+		details += ". Only the latest items are kept"
+	}
 	return &gcxerrors.DetailedError{
 		Summary:     gcxerrors.SummaryResourceNotFound,
 		Details:     details,

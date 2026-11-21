@@ -342,6 +342,17 @@ func TestErrorsGet(t *testing.T) {
 	})
 }
 
+func TestReleasesList(t *testing.T) {
+	f := newFakeET(t)
+	f.reply("GET projects/314/releases", 200, `{"releases":[{"release":"v1.2","eventCount":4}]}`)
+	out, err := f.run("releases", "list", "--project", "314", "--since", "7d", "-o", "json")
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"items":[{"release":"v1.2","firstSeen":"","lastSeen":"","eventCount":4}]}`, out)
+	q := f.takeCalls()[0].Query
+	assert.NotEmpty(t, q.Get("from"))
+	assert.NotContains(t, q, "to")
+}
+
 func TestForbidden(t *testing.T) {
 	f := newFakeET(t)
 	f.reply("GET projects", http.StatusForbidden, `{"error":{"code":"forbidden","message":"You cannot read projects in this stack."}}`)

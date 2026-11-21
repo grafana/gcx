@@ -233,7 +233,7 @@ func (o *errorsListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Transaction, "transaction", "", "Keep errors last seen in exactly this transaction, case-sensitive")
 	flags.StringVar(&o.ReopenedFrom, "reopened-from", "", "Keep errors reopened at or after this time, at most 7 days ago (now-1h, 2026-11-16T00:00:00Z)")
 	flags.StringVar(&o.ReopenedBy, "reopened-by", "", "With --reopened-from: which reopenings count: condition (the default: an ignore's condition was met), person or any")
-	flags.StringArrayVar(&o.Assignees, "assignee", nil, "Keep errors assigned to this user UID. Repeat for any of several"+needsLogin)
+	flags.StringArrayVar(&o.Assignees, "assignee", nil, "Keep errors assigned to this user UID (see users list). Repeat for any of several"+needsLogin)
 	flags.BoolVar(&o.Assigned, "assigned", false, "Keep assigned errors; --assigned=false keeps the unassigned ones"+needsLogin)
 	flags.BoolVar(&o.Mine, "mine", false, "Keep the unresolved errors assigned to you"+needsLogin)
 	flags.StringArrayVar(&o.CustomFields, "custom-field", nil, "Keep errors with an event in the window that carried this custom field"+customFieldUsage)
@@ -389,6 +389,10 @@ func (c *client) findRelease(ctx context.Context, project int64, name string) (*
 		return nil, &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryResourceNotFound,
 			Details: fmt.Sprintf("%s has no release %q among its latest %d. %s", c.projectShown(), printable(name), facetCap, countsLag),
+			Suggestions: []string{
+				fmt.Sprintf("See them: gcx error-tracking releases list --project %d", project),
+				fmt.Sprintf("See what arrived: gcx error-tracking raw-events list --project %d", project),
+			},
 		}
 	case out.Releases[i].FirstSeen == "":
 		return nil, noFirstEvent(c, project, out.Releases[i].Release)
@@ -396,7 +400,7 @@ func (c *client) findRelease(ctx context.Context, project int64, name string) (*
 	return &out.Releases[i], nil
 }
 
-const countsLag = "Counts can lag a minute or two behind new events"
+const countsLag = "Counts can lag a minute or two behind new events; raw-events list shows arrivals at once"
 
 func noFirstEvent(c *client, project int64, name string) error {
 	return &gcxerrors.DetailedError{
