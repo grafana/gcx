@@ -31,6 +31,8 @@
 /internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/dbo11y/ @grafana/grafana-gcx @grafana/db-o11y-squad
 /internal/providers/alert/ @grafana/grafana-gcx @grafana/alerting-squad
+/internal/providers/scim/ @grafana/grafana-gcx @grafana/identity-squad
+/docs/reference/scim.md @grafana/grafana-gcx @grafana/identity-squad
 /internal/providers/stacks/ @grafana/grafana-gcx @grafana/appcore
 /internal/providers/logs/ @grafana/grafana-gcx @grafana/loki-team
 /internal/providers/logs/archive/ @grafana/grafana-gcx @grafana/adaptive-telemetry
