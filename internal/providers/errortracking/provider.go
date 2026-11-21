@@ -35,11 +35,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		Aliases: []string{"et"},
 		Short:   p.ShortDesc(),
 		Long: `Manage Grafana Error Tracking projects, the errors and events their SDKs
-send, and heatmaps (for browser errors from Frontend Observability, use gcx
-frontend). Start with projects list, then errors list --project <id> and errors
-inspect <error>; projects use remembers a project so --project can be left out.
-Projects and heatmaps come as resources with their fields under spec (--json
-spec.id,spec.name), and every other list has flat items (--json id,message).`,
+send, heatmaps and source maps (for browser errors from Frontend
+Observability, use gcx frontend). Start with projects list, then errors list
+--project <id> and errors inspect <error>; projects use remembers a project so
+--project can be left out. Projects and heatmaps come as resources with their
+fields under spec (--json spec.id,spec.name), and every other list has flat
+items (--json id,message).`,
 		Example: `  # The projects and their IDs.
   gcx error-tracking projects list
 
@@ -102,6 +103,8 @@ before the request.`
 			newHeatmapsCreateCommand(loader), newHeatmapsUpdateCommand(loader),
 			newHeatmapsDeleteCommand(loader), newHeatmapsReportCommand(loader),
 			newHeatmapsBreakdownCommand(loader)),
+		group("sourcemaps", "Manage the JavaScript source maps Error Tracking uses to show source frames.",
+			newUpsertCommand(loader), newSourcemapsListCommand(loader)),
 	)
 	agent.MarkExperimental(root)
 	return []*cobra.Command{root}

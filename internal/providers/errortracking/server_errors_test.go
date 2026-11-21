@@ -99,6 +99,7 @@ func serverErrorCases() []serverErrorCase {
 		{args: []string{"fields", "list", "--project", "314"}, route: "GET projects/314/customFields", missing: p},
 		{args: []string{"fields", "list-values", "browser", "--project", "314"}, route: "GET projects/314/customFields/values", missing: p},
 		{args: []string{"users", "list", "--project", "314"}, route: "GET projects/314/users", missing: p, human: true},
+		{args: []string{"sourcemaps", "list", "--project", "314"}, route: "GET projects/314/sourcemaps", missing: p},
 		{args: []string{"heatmaps", "list"}, route: "GET heatmaps"},
 		{args: []string{"heatmaps", "get", "3"}, route: "GET heatmaps/3", missing: "heatmap 3"},
 		{args: []string{"heatmaps", "create", "--name", "x", "--field", "region", "--window-days", "7", "--projects", "314"}, route: "POST heatmaps", conflict: "GET heatmaps"},

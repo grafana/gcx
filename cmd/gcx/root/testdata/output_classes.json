@@ -371,6 +371,8 @@
  "gcx error-tracking raw-events list": "finite",
  "gcx error-tracking releases list": "finite",
  "gcx error-tracking releases status": "finite",
+ "gcx error-tracking sourcemaps list": "finite",
+ "gcx error-tracking sourcemaps upsert": "finite",
  "gcx error-tracking transactions list": "finite",
  "gcx error-tracking users list": "finite",
  "gcx fleet collectors create": "finite",

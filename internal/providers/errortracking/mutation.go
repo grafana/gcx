@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -53,8 +54,24 @@ type ingestKeyMutation struct {
 	PreviousIngestKeyUntil string `json:"previousIngestKeyUntil,omitempty"`
 }
 
+type sourceMapMutation struct {
+	mutationBase `json:",inline"`
+
+	Release      string        `json:"release"`
+	Host         string        `json:"host,omitempty"`
+	Files        []uploadedMap `json:"files,omitempty"`
+	Skipped      []string      `json:"skipped,omitempty"`
+	SkippedLinks []string      `json:"skippedLinks,omitempty"`
+}
+
 type noted interface {
 	line() string
+}
+
+type uploadedMap struct {
+	File   string `json:"file"`
+	Bundle string `json:"bundle"`
+	Size   int64  `json:"size"`
 }
 
 type hint struct{ summary, command string }
@@ -111,6 +128,14 @@ func (mutationText) Decode(io.Reader, any) error {
 
 func (mutationText) Encode(w io.Writer, v any) error {
 	switch m := v.(type) {
+	case sourceMapMutation:
+		cmdio.Success(w, "%s", printable(m.text))
+		if len(m.Files) > 0 {
+			if err := cleanTable(uploadTable()).Codec("table").Encode(w, m.Files); err != nil {
+				return err
+			}
+		}
+		return nil
 	case noted:
 		cmdio.Success(w, "%s", printable(m.line()))
 		return nil
@@ -161,4 +186,12 @@ func confirm(cmd *cobra.Command, question, summary, details string) error {
 		return nil
 	}
 	return &gcxerrors.DetailedError{Summary: summary, Details: printable(details), ExitCode: new(gcxerrors.ExitCancelled)}
+}
+
+func joinShort(items []string) string {
+	const n = 5
+	if len(items) <= n {
+		return strings.Join(items, ", ")
+	}
+	return strings.Join(items[:n], ", ") + fmt.Sprintf(" and %d more", len(items)-n)
 }
