@@ -306,7 +306,7 @@ Embedded in command opts structs to add `--output / -o` and `--json` flag suppor
 ```go
 type Options struct {
     OutputFormat  string
-    JSONFields    []string   // set when --json field1,field2 is used
+    JSONFields    []string   // set when --json <path>,<path> is used
     JSONDiscovery bool       // set when --json ? is used
     IsPiped       bool       // true when stdout is not a TTY (from terminal.IsPiped())
     NoTruncate    bool       // true when --no-truncate or stdout is piped
@@ -388,11 +388,15 @@ and arbitrary types (marshaled to JSON, then fields extracted).
 | List/collection | `{"items": [{"field": value}, ...]}` |
 
 **Dot-path resolution:** `metadata.name` walks `obj["metadata"]["name"]`.
-Missing paths produce `null` — never omitted, never an error (FR-008).
+A path that a declared item type denies emits a warning and renders as `null`.
+A path stays `null` without a warning when the type declares it but the value is
+absent. Dynamic objects and types that implement `json.Marshaler` fail open
+because reflection cannot define their wire fields. A path that enters an array
+emits a warning that directs the caller to `--jq`.
 
 **Field discovery** is handled by `DiscoverFields(obj map[string]any) []string`:
-returns top-level keys plus `spec.*` sub-keys, sorted alphabetically. Call this
-on a sample object fetched from the API.
+returns sorted top-level and nested paths. Discovery uses a sample object when
+one exists and the declared item type when a typed result is empty.
 
 ### Custom Table Codecs
 
@@ -488,6 +492,7 @@ default API version. It does not imply incorrect command syntax.
 ```
 ErrorToDetailedError(err)
     │
+    ├─ isEmittedError → EmittedError (the command already wrote its document; suppress secondary output)
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
     ├─ ... domain and transport converters (specific errors first)
     ├─ convertHTTPStatusErrors → concrete gcxerrors.HTTPStatusError
