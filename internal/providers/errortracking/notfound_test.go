@@ -13,7 +13,7 @@ func TestNotFoundNamesWhat(t *testing.T) {
 	const notFound = `{"error":{"code":"not_found","message":"not found"}}`
 	routes := []string{
 		"GET projects/314/errors", "GET projects/314/errors/42", "GET projects/314/errors/42/events/abc",
-		"PATCH projects/314/errors/42/comments/7", "POST projects/314/errors/42/review",
+		"PATCH projects/314/errors/42/comments/7", "POST projects/314/errors/42/review", "GET heatmaps/3",
 	}
 	for _, r := range routes {
 		f.reply(r, 404, notFound)
@@ -42,5 +42,7 @@ func TestNotFoundNamesWhat(t *testing.T) {
 			"Error Tracking has no comment 7 in error 42 in project 314", "List what exists: gcx error-tracking errors activity list 42 --project 314 --type comment", "Check the project too: gcx error-tracking projects list"),
 		notFoundCase("an error to review", []string{"errors", "update", "42", "--project", "314", "--reviewed", "-o", "json"}, routes[1],
 			"Error Tracking has no error 42 in project 314", "List what exists: gcx error-tracking errors list --project 314", "Check the project too: gcx error-tracking projects list"),
+		notFoundCase("a heatmap", []string{"heatmaps", "get", "3", "-o", "json"}, routes[5],
+			"Error Tracking has no heatmap 3", "List what exists: gcx error-tracking heatmaps list"),
 	})
 }
