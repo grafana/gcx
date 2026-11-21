@@ -335,7 +335,9 @@ local file tools for those. Projection reduces model input, not backend work.
 ### Optional native transformations
 
 These are examples, not a required processing stage. Keep stdout and stderr
-separate; never pipe `2>&1` into a JSON parser. The filters below modify only
+separate; never pipe `2>&1` into a JSON parser. Small or projected results
+suppress the field-selection hint, but truncation notices and other diagnostics
+can still appear on stderr. The filters below modify only
 successful results of the expected kind, preserving the surrounding response,
 including notices and warnings. Retain stderr diagnostics too.
 

@@ -236,10 +236,8 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 			if runtime.GOOS != "windows" {
 				assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 			}
-			var hint map[string]any
-			require.NoError(t, json.Unmarshal(stderr.Bytes(), &hint), "one typed spill hint")
-			assert.Equal(t, "hint", hint["class"])
-			assert.Contains(t, hint["summary"], path)
+			assert.Empty(t, stderr.String(), "agent-mode spill writes no stderr hint")
+			assert.NotContains(t, receipt, "hint", "jq output gets no field-selection hint")
 		})
 	}
 }
