@@ -29,10 +29,22 @@ type mutationBase struct {
 
 func (m mutationBase) line() string { return m.text }
 
+type assignMutation struct {
+	mutationBase `json:",inline"`
+
+	User string `json:"user,omitempty"`
+}
+
 type projectDeleteMutation struct {
 	mutationBase `json:",inline"`
 
 	ClearedDefault bool `json:"clearedDefault,omitempty"`
+}
+
+type commentMutation struct {
+	mutationBase `json:",inline"`
+
+	ErrorID string `json:"errorId"`
 }
 
 type ingestKeyMutation struct {
@@ -44,6 +56,8 @@ type ingestKeyMutation struct {
 type noted interface {
 	line() string
 }
+
+type hint struct{ summary, command string }
 
 func (c *client) mutation(action, kind string, id int64, changed bool) mutationBase {
 	m := cmdio.NewSingleMutation(action, cmdio.MutationTarget{Kind: kind, Namespace: c.namespace})
@@ -68,6 +82,13 @@ func (c *client) projectShown() string {
 	return c.project.shown()
 }
 
+func (c *client) projectArg() string {
+	if c.project == nil || c.project.id == 0 {
+		return "<project>"
+	}
+	return strconv.FormatInt(c.project.id, 10)
+}
+
 func (c *client) knowProject(id int64, name string) {
 	if c.project != nil && c.project.id == id && name != "" {
 		c.project.name = name
@@ -89,16 +110,36 @@ func (mutationText) Decode(io.Reader, any) error {
 }
 
 func (mutationText) Encode(w io.Writer, v any) error {
-	if m, ok := v.(noted); ok {
+	switch m := v.(type) {
+	case noted:
 		cmdio.Success(w, "%s", printable(m.line()))
 		return nil
+	case batchUpdate:
+		switch {
+		case m.Summary.Failed > 0 && m.Summary.Succeeded == 0:
+			cmdio.Error(w, "%s", printable(m.text))
+		case m.Summary.Failed > 0:
+			cmdio.Warning(w, "%s", printable(m.text))
+		default:
+			cmdio.Success(w, "%s", printable(m.text))
+		}
+		for _, f := range m.Failures {
+			fmt.Fprintf(w, "  %s: %s\n", printable(f.Target.ID), printable(f.Error))
+		}
+		if len(m.Results) == 0 {
+			return nil
+		}
+		return cleanTable(batchTable()).Codec("table").Encode(w, m.Results)
 	}
 	return fmt.Errorf("invalid data type for text codec: expected a mutation result, got %T", v)
 }
 
-func emit(cmd *cobra.Command, opts *cmdio.Options, v any) error {
+func emit(cmd *cobra.Command, opts *cmdio.Options, v any, hints ...hint) error {
 	if err := opts.Encode(cmd.OutOrStdout(), v); err != nil {
 		return err
+	}
+	for _, h := range hints {
+		say(cmd.ErrOrStderr(), h.summary, h.command)
 	}
 	return nil
 }

@@ -37,5 +37,20 @@ func TestHintCommandsQuoteWhatTheyEmbed(t *testing.T) {
 				assert.Contains(t, out, "See them: "+shell("gcx", "error-tracking", "errors", "list", "--project", "<$(id)>"))
 				assert.Contains(t, out, "'<$(id)>'")
 			}},
+		{name: "a placeholder stays bare beside a quoted value", args: []string{"errors", "comments", "update", "4 2", "x", "--body", "b"}, exit: gcxerrors.ExitUsageError,
+			check: func(t *testing.T, _ string, err error, _ []etCall) {
+				t.Helper()
+				out := rendered(t, err)
+				assert.Contains(t, out, "'4 2'")
+				assert.Regexp(t, `--project'? <project> `, out)
+				assert.NotContains(t, out, "'<project>'")
+			}},
+		{name: "a positional value in a suggestion is quoted", args: []string{"errors", "comments", "update", "4 2", "x", "--project", "314", "--body", "b"}, exit: gcxerrors.ExitUsageError,
+			check: func(t *testing.T, _ string, err error, _ []etCall) {
+				t.Helper()
+				out := rendered(t, err)
+				assert.Contains(t, out, "See them: "+shell("gcx", "error-tracking", "errors", "activity", "list", "4 2", "--project", "314", "--type", "comment"))
+				neutralised("4 2")(t, "", err, nil)
+			}},
 	})
 }

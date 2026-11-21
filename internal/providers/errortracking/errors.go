@@ -515,7 +515,8 @@ func newErrorsGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 status changes and its latest event with the full SDK payload (stack trace,
 breadcrumbs, tags). The payload can be large; select fields with --json.
 
-<error> is the error ID from errors list.`,
+<error> is the error ID from errors list. errors inspect shows the same error
+as a card with its stack trace, recent activity and assignees.`,
 		Example: `  # Get an error.
   gcx error-tracking errors get 42 --project 314
 
