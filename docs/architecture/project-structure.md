@@ -19,6 +19,8 @@ Locate implementation by domain rather than maintaining a mirrored package tree 
 
 Grafana annotations use provider commands only. Server-assigned IDs prevent safe resource push between stacks. The provider has no registration in the resource pipeline.
 
+Error Tracking is commands-only too; it registers no adapter. [ARCHITECTURE.md](../../ARCHITECTURE.md) describes its routes and credentials.
+
 ## Build and Dependencies
 
 [mise.toml](../../mise.toml) is authoritative for toolchain pins and tasks; [CONTRIBUTING.md](../../CONTRIBUTING.md) describes development setup and required checks. Build the executable into `bin/gcx`. Version, revision, and build date are injected at link time; an untagged development build reports a snapshot version.
