@@ -2,7 +2,19 @@ package errortracking_test
 
 import (
 	"testing"
+
+	"github.com/grafana/gcx/internal/gcxerrors"
 )
+
+func TestMissingRequiredFlagsSayWhat(t *testing.T) {
+	f := newFakeET(t)
+	missing := func(name string, args []string, flag string) cliCase {
+		return cliCase{name: name, args: args, exit: gcxerrors.ExitUsageError, err: `required flag(s) "` + flag + `" not set`}
+	}
+	f.runCases(t, []cliCase{
+		missing("projects create --name", []string{"projects", "create"}, "name"),
+	})
+}
 
 func TestMissingListsAreEmptyNotNull(t *testing.T) {
 	f := newFakeET(t)

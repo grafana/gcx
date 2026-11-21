@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -44,6 +46,8 @@ type dailyEventCount struct {
 func (p project) GetResourceName() string {
 	return resourceName(p.Name, p.ID)
 }
+
+func (p project) shown() string { return projectLabel(p.ID, p.Name) }
 
 func (c *client) getProject(ctx context.Context, id int64) (project, error) {
 	var p project
@@ -151,7 +155,7 @@ returns them.`,
 			w := cmd.ErrOrStderr()
 			switch {
 			case len(projects) == 0:
-				say(w, "No Error Tracking projects yet", "")
+				say(w, "No Error Tracking projects yet; create one", "gcx error-tracking projects create --name <name>")
 			case len(items) == 0:
 				say(w, fmt.Sprintf("No project name contains %q; see all", printable(opts.Search)), "gcx error-tracking projects list")
 			}
@@ -217,6 +221,92 @@ or name-ID. An ID costs no lookup; a name costs one projects list first.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), wrap(c, "Project", p))
 		},
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small", agent.AnnotationLLMHint: "<project> --json spec.id,spec.name,spec.dsn"},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
+}
+
+type projectsTimelineOpts struct {
+	timelineWindow
+
+	Project      projectRef
+	Status       string
+	Search       string
+	Transaction  string
+	Release      string
+	CustomFields []string
+}
+
+func (o *projectsTimelineOpts) setup(flags *pflag.FlagSet) {
+	o.timelineWindow.setup(flags)
+	flags.StringVar(&o.Status, "status", "all", "Count the events of errors in this status: unresolved, regressed, resolved, ignored or all")
+	flags.StringVar(&o.Search, "search", "", "Count the events of errors whose type, message or culprit contains this text (case-insensitive)")
+	flags.StringVar(&o.Transaction, "transaction", "", "Count the events of errors last seen in exactly this transaction, case-sensitive")
+	flags.StringVar(&o.Release, "release", "", "Count only the events of exactly this release, case-sensitive")
+	flags.StringArrayVar(&o.CustomFields, "custom-field", nil, "Count the events of errors that carry this custom field"+customFieldUsage)
+}
+
+func (o *projectsTimelineOpts) Validate(cmd *cobra.Command) error {
+	if err := o.Project.validate(cmd); err != nil {
+		return err
+	}
+	if err := nonEmpty(cmd, "search", "transaction", "release"); err != nil {
+		return err
+	}
+	statuses := []string{"unresolved", "regressed", "resolved", "ignored", "all"}
+	if !slices.Contains(statuses, o.Status) {
+		return usage(cmd, fmt.Sprintf("--status %q: use one of %s", o.Status, strings.Join(statuses, ", ")))
+	}
+	o.filter = url.Values{}
+	for key, v := range map[string]string{"status": o.Status, "search": o.Search, "transaction": o.Transaction, "release": o.Release} {
+		if v = strings.TrimSpace(v); v != "" && (key != "status" || v != "all") {
+			o.filter.Set(key, v)
+		}
+	}
+	if err := customFields(cmd, o.CustomFields, o.filter); err != nil {
+		return err
+	}
+	return o.validate(cmd)
+}
+
+func newProjectsTimelineCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &projectsTimelineOpts{}
+	cmd := &cobra.Command{
+		Use:   "timeline <project>",
+		Short: "Show an Error Tracking project's event counts over time.",
+		Long: `Show how many events an Error Tracking project received per time bucket
+across all its errors, over the last 24 hours unless --since or --from/--to
+say otherwise (at most 30 days). The filter flags count only the events of the
+errors they match.`,
+		Example: `  # Events per hour over the last day.
+  gcx error-tracking projects timeline 314
+
+  # Events per day over the last week, by name.
+  gcx et projects timeline checkout-api --since 7d
+
+  # Unresolved errors' events per 5 minutes, from one browser.
+  gcx et projects timeline 314 --since 1h --step 5m --status unresolved --custom-field browser:Chrome
+
+  # As an agent: a fixed window as JSON.
+  gcx error-tracking projects timeline 314 --from 2026-11-16T00:00:00Z --to 2026-11-17T00:00:00Z -o json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Project.value = args[0]
+			if err := opts.Validate(cmd); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			c, id, err := connect(ctx, loader, &opts.Project)
+			if err != nil {
+				return err
+			}
+			tl, err := opts.get(ctx, c, routePath("projects", id, "timeline"))
+			if err != nil {
+				return err
+			}
+			return opts.encode(cmd, tl)
+		},
+		Annotations: map[string]string{agent.AnnotationTokenCost: "medium", agent.AnnotationLLMHint: "<project> --since 7d"},
 	}
 	opts.setup(cmd.Flags())
 	return cmd

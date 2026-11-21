@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -68,9 +70,25 @@ func stamp(ts string) string {
 	return t.UTC().Format("2006-01-02 15:04:05Z")
 }
 
+func minute(ts string) string {
+	t, ok := parseTime(ts)
+	if !ok {
+		return cmdio.OrDash(printable(ts))
+	}
+	return t.UTC().Format("2006-01-02 15:04Z")
+}
+
 func optTime(s *string) string {
 	if s == nil {
 		return ""
 	}
 	return *s
+}
+
+func capital(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if size == 0 {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[size:]
 }
