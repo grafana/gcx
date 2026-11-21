@@ -23,18 +23,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const experimental = "This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions."
-
-func markExperimental(cmd *cobra.Command) {
-	cmd.Short = "[experimental] " + cmd.Short
-	cmd.Long = experimental + "\n\n" + cmd.Long
-	cmd.Annotations = map[string]string{agent.AnnotationStability: agent.StabilityExperimental}
-}
-
 // Commands returns the experimental Watcher subtree.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{Use: "watchers", Short: "Manage Assistant Watcher configuration.", Long: "Read and manage recurring telemetry-monitoring definitions. Use get for configuration and status for calibration and assessments. Create saves configuration and requests background calibration without automatic activation. Update and resources push reconcile configuration without requesting calibration. Use explicit start/pause/run controls, list-runs for bounded execution summaries, and archive/unarchive to retain inactive definitions and history.", Example: "  gcx assistant watchers list\n  gcx assistant watchers get checkout-health -o yaml\n  gcx assistant watchers update checkout-health -f watcher.yaml"}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.AddCommand(newVersionListCommand(loader), newVersionsCommand(loader))
 	cmd.AddCommand(newListCommand(loader), newReadCommand(loader, false), newReadCommand(loader, true), newWriteCommand(loader, false), newWriteCommand(loader, true), newDeleteCommand(loader))
 	for _, verb := range []string{"start", "pause", "run", "archive", "unarchive"} {
@@ -100,7 +92,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		}
 		return runList(cmd, client, namespace, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -125,7 +117,7 @@ func newReadCommand(loader *providers.ConfigLoader, status bool) *cobra.Command 
 		}
 		return runGet(cmd, client, namespace, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
