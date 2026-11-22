@@ -3,13 +3,17 @@ package errortracking
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 )
 
@@ -98,6 +102,7 @@ type target interface {
 
 const (
 	providerName = "errortracking"
+	projectEnv   = "GRAFANA_PROVIDER_ERRORTRACKING_PROJECT"
 )
 
 type projectRef struct {
@@ -142,6 +147,76 @@ func (p *projectRef) argv() []string {
 	return os.Args
 }
 
+type timeRange struct {
+	dsquery.TimeRangeOpts
+
+	from, to string
+}
+
+func (t *timeRange) validate(cmd *cobra.Command) error {
+	if err := nonEmpty(cmd, "since", "from", "to"); err != nil {
+		return err
+	}
+	if err := t.ValidateTimeRange(); err != nil {
+		return usage(cmd, err.Error())
+	}
+	now := time.Now()
+	parse := func(name, in string) (string, error) {
+		if in == "" {
+			return "", nil
+		}
+		at, err := shared.ParseTime(in, now)
+		if err != nil {
+			return "", usage(cmd, fmt.Sprintf("invalid %s %q: %v", name, in, err))
+		}
+		return at.UTC().Format(time.RFC3339), nil
+	}
+	var err error
+	if t.from, err = parse("--from", t.From); err != nil {
+		return err
+	}
+	if t.to, err = parse("--to", t.To); err != nil {
+		return err
+	}
+	if t.from != "" && t.to != "" && t.from >= t.to {
+		return usage(cmd, fmt.Sprintf("--from %q is not before --to %q", t.From, t.To))
+	}
+	return nil
+}
+
+func validField(f string) bool {
+	if key, ok := strings.CutPrefix(f, "has:"); ok {
+		return strings.TrimSpace(key) != ""
+	}
+	key, value, ok := strings.Cut(strings.TrimPrefix(f, "!"), ":")
+	if !ok || strings.TrimSpace(key) == "" || value == "" {
+		return false
+	}
+	if strings.HasPrefix(value, "[") {
+		return len(value) > 2 && strings.HasSuffix(value, "]")
+	}
+	return true
+}
+
+func customFields(cmd *cobra.Command, fields []string, q url.Values) error {
+	if len(fields) > 8 {
+		return usage(cmd, "--custom-field takes at most 8 pairs")
+	}
+	for _, f := range fields {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			return usage(cmd, "--custom-field must not be empty")
+		}
+		if !validField(f) {
+			return usage(cmd, fmt.Sprintf("--custom-field %q: use key:value, !key:value, has:key or key:[a,b]", f))
+		}
+		q.Add("customField", f)
+	}
+	return nil
+}
+
+const customFieldUsage = ": key:value, !key:value, has:key or key:[a,b]. Repeat for up to 8; all must match; keys and values match exactly, case-sensitive"
+
 func nonEmpty(cmd *cobra.Command, names ...string) error {
 	for _, name := range names {
 		if f := cmd.Flags().Lookup(name); f != nil && f.Changed && strings.TrimSpace(f.Value.String()) == "" {
@@ -149,4 +224,9 @@ func nonEmpty(cmd *cobra.Command, names ...string) error {
 		}
 	}
 	return nil
+}
+
+func (t *timeRange) setClosed(q url.Values) {
+	q.Set("from", t.from)
+	q.Set("to", t.to)
 }

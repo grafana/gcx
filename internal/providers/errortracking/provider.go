@@ -42,7 +42,11 @@ resources with their fields under spec (--json spec.id,spec.name).`,
 
 	root.AddCommand(
 		group("projects", "Manage Error Tracking projects.",
-			newProjectsListCommand(loader), newProjectsGetCommand(loader)),
+			newProjectsListCommand(loader), newProjectsGetCommand(loader),
+			newProjectsCreateCommand(loader), newProjectsUpdateCommand(loader),
+			newProjectsDeleteCommand(loader), newProjectsTimelineCommand(loader),
+			group("ingest-keys", "Rotate a project's ingest key, or stop the previous one.",
+				newIngestKeyCommand(loader, true), newIngestKeyCommand(loader, false))),
 	)
 	agent.MarkExperimental(root)
 	return []*cobra.Command{root}

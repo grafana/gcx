@@ -68,6 +68,12 @@ func TestProjects(t *testing.T) {
 		{name: "there is no --name alias", args: []string{"projects", "list", "--name", "api"}, exit: gcxerrors.ExitUsageError, err: "unknown flag: --name"},
 		{name: "no match says so on stderr", args: []string{"projects", "list", "--search", "nope", "-o", "json"},
 			calls: []string{"GET projects"}, json: `{"items":[]}`, stderr: `hint: No project name contains "nope"; see all: gcx error-tracking projects list`},
+		{name: "no projects at all", setup: func(f *fakeET) { f.reply("GET projects", 200, `{"projects":[]}`) }, args: []string{"projects", "list"},
+			calls: []string{"GET projects"}, stderr: "hint: No Error Tracking projects yet; create one: gcx error-tracking projects create --name <name>",
+			check: func(t *testing.T, _ string, _ error, _ []etCall) {
+				t.Helper()
+				f.reply("GET projects", 200, twoProjects)
+			}},
 		{name: "get by ID keeps the name-id as metadata.name", args: []string{"projects", "get", "314", "-o", "json"},
 			calls: []string{"GET projects/314"}, has: []string{`"name": "checkout-api-314"`}},
 	})
