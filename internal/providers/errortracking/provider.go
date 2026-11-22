@@ -19,9 +19,7 @@ func (p *Provider) Name() string { return providerName }
 
 func (p *Provider) ShortDesc() string { return "Manage Grafana Error Tracking resources." }
 
-func (p *Provider) ConfigKeys() []providers.ConfigKey {
-	return []providers.ConfigKey{{Name: "project"}}
-}
+func (p *Provider) ConfigKeys() []providers.ConfigKey { return nil }
 
 func (p *Provider) Validate(_ map[string]string) error { return nil }
 
