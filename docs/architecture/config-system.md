@@ -622,8 +622,7 @@ Flow (`discoverStackIDCached` in `internal/config/stack_id.go`):
      5s timeout, no retry, respects TLS config, selected credentials attached
 2. Parse top-level JSON: { "namespace": "stacks-12345", ... }
      "stacks-N"            → StackID=N (done)
-     other namespace       → definitive on-prem answer; no fallback
-     non-200 / empty / err → fall back to step 3
+     other / non-200 / empty / err → fall back to step 3
 3. GET {server}/bootdata → { "settings": { "namespace": "stacks-12345" } }
 ```
 

@@ -13,7 +13,6 @@ import (
 
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/version"
 )
 
 var (
@@ -84,8 +83,9 @@ func cachedStackID(server string) (int64, bool) {
 //
 // The authenticated whoami endpoint is tried first; the unauthenticated
 // /bootdata endpoint is only used when whoami is unavailable (older Grafana,
-// missing or expired credentials). A whoami answer with a non-stack namespace
-// is definitive (on-prem) and skips /bootdata.
+// missing or expired credentials, or a non-stack namespace). A non-stack whoami
+// namespace is not treated as final: /bootdata still gets the last word so a
+// deployment answering whoami with an org namespace keeps resolving its stack.
 func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMode) (int64, error) {
 	key := strings.TrimSuffix(cfg.Server, "/")
 
@@ -97,7 +97,7 @@ func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 	}
 
 	id, err := discoverStackIDWhoami(ctx, cfg, mode)
-	if err != nil && !errors.Is(err, errNotCloudStack) {
+	if err != nil {
 		id, err = DiscoverStackID(ctx, cfg)
 	}
 	if err != nil {
@@ -140,7 +140,6 @@ func discoverStackIDWhoami(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 		return 0, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", version.UserAgent())
 	switch mode {
 	case grafanaAuthOAuth:
 		req.Header.Set("Authorization", "Bearer "+cfg.OAuthToken)

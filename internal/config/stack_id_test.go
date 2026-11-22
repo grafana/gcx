@@ -163,11 +163,11 @@ func TestNamespaceDiscovery_Whoami(t *testing.T) {
 			wantBootdata:  0,
 		},
 		{
-			name:          "on-prem whoami answer is definitive",
+			name:          "non-stack whoami namespace falls back to bootdata",
 			whoami:        whoamiNamespace("default"),
 			bootdata:      bootdataNamespace("stacks-99999"),
-			wantNamespace: "default",
-			wantBootdata:  0,
+			wantNamespace: "stacks-99999",
+			wantBootdata:  1,
 		},
 		{
 			name:          "whoami unavailable falls back to bootdata",

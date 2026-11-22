@@ -288,7 +288,7 @@ func TestLegacyPartialOAuthDoesNotFallThroughToToken(t *testing.T) {
 	}
 }
 
-func TestExplicitNonMTLSAuthStripsClientIdentityFromBootdataDiscovery(t *testing.T) {
+func TestExplicitNonMTLSAuthStripsClientIdentityFromNamespaceDiscovery(t *testing.T) {
 	material := newTestTLSMaterial(t)
 	tests := map[string]func(*testing.T, *config.Context) error{
 		"context validation": func(t *testing.T, ctx *config.Context) error {

@@ -171,9 +171,9 @@ GET {server}/bootdata
 
 Uses a dedicated 5-second-timeout, no-retry HTTP client (separate from the
 main client) that attaches the selected credentials directly instead of going
-through the OAuth refresh transport. A whoami answer with an on-prem namespace
-(e.g. `"default"`) is definitive; discovery then fails and the configured
-values are used as-is.
+through the OAuth refresh transport. A whoami answer with a non-stack namespace
+(e.g. `"default"`) falls through to `/bootdata`; if that also yields no stack
+ID, discovery fails and the configured values are used as-is.
 See [Stack ID Auto-Discovery](config-system.md#stack-id-auto-discovery).
 
 ### Layer 3: `NamespacedClient` — Primary CRUD Client
