@@ -277,8 +277,7 @@ func newUsersListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `List the stack's Grafana users who can use an Error Tracking project, by
 name, with the UID errors assignees add takes. It reads one page of at most
 100 users; narrow it with --search. A list cut off at --limit says so in
-list_meta and on stderr with a command that shows more, and at --limit 100 it
-says to narrow with --search. ` + signedInNote,
+list_meta and on stderr with a command that shows more. ` + signedInNote,
 		Example: `  # The first 50 users.
   gcx error-tracking users list --project 314
 
@@ -300,9 +299,6 @@ says to narrow with --search. ` + signedInNote,
 			users, total, err := c.users(ctx, id, strings.TrimSpace(opts.Query), min(opts.Limit+1, userPageSize))
 			if err != nil {
 				return humanOnly(err, false)
-			}
-			if users == nil {
-				users = []usersItem{}
 			}
 			full := len(users) == opts.Limit && ((total == nil && opts.Limit == userPageSize) || (total != nil && *total > opts.Limit))
 			more := len(users) > opts.Limit || full

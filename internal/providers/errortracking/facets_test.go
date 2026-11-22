@@ -115,7 +115,7 @@ func TestUsersList(t *testing.T) {
 				withArgv(f.t, "gcx", "error-tracking", "users", "list", "--project", "314", "--limit", "60")
 				f.reply(route, 200, `{"users":[`+strings.TrimSuffix(strings.Repeat(`{"uid":"u","name":"A","login":"a"},`, 61), ",")+`],"totalCount":150}`)
 			}, calls: []string{route}, json: `[null, true]`},
-		{name: "a cut at 100 says to narrow with --search", args: []string{"users", "list", "--project", "314", "--limit", "100", "-o", "json"},
+		{name: "a cut at 100 says it is a safety cap", args: []string{"users", "list", "--project", "314", "--limit", "100", "-o", "json"},
 			setup: func(f *fakeET) {
 				f.reply(route, 200, `{"users":[`+strings.TrimSuffix(strings.Repeat(`{"uid":"u","name":"A","login":"a"},`, 100), ",")+`],"totalCount":150}`)
 			}, calls: []string{route}, stderr: "showing first 100 (safety cap). Refine filters to narrow the result set"},

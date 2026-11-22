@@ -18,7 +18,7 @@ func TestEmptyListsSayWhy(t *testing.T) {
 	} {
 		f.reply(route, 200, body)
 	}
-	const lag = "Counts can lag a minute or two behind new events; see what arrived: gcx error-tracking raw-events list --project 314"
+	const lag = "Counts can lag a minute or two behind new events; raw-events list shows arrivals at once"
 	f.runCases(t, []cliCase{
 		{name: "releases list", args: []string{"releases", "list", "--project", "314"}, calls: []string{"GET projects/314/releases"},
 			stderr: "hint: No releases in project 314; an event carries one when the SDK sets its release option. " + lag},
