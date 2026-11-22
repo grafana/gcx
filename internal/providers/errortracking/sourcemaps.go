@@ -184,10 +184,19 @@ func (o *upsertOpts) add(cmd *cobra.Command, p string, info fs.FileInfo) error {
 	return nil
 }
 
+// notNull records whether a JSON value is present and not null without keeping
+// a copy of it, since a source map's mappings are most of the file.
+type notNull bool
+
+func (n *notNull) UnmarshalJSON(b []byte) error {
+	*n = string(b) != "null"
+	return nil
+}
+
 func mapProblem(data []byte) string {
 	var m struct {
 		Version  json.RawMessage `json:"version"`
-		Mappings json.RawMessage `json:"mappings"`
+		Mappings notNull         `json:"mappings"`
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
 		if _, ok := errors.AsType[*json.SyntaxError](err); ok {
@@ -198,7 +207,7 @@ func mapProblem(data []byte) string {
 	switch {
 	case len(m.Version) == 0 || string(m.Version) == "null":
 		return `no "version"`
-	case len(m.Mappings) == 0 || string(m.Mappings) == "null":
+	case !bool(m.Mappings):
 		return `no "mappings"`
 	}
 	return ""
@@ -301,14 +310,14 @@ apply-sourcemap. ` + noDryRun,
 				if len(m.Skipped) == 1 {
 					files = "file that is not a source map"
 				}
-				cmdio.Warning(cmd.ErrOrStderr(), "skipped %d %s: %s", len(m.Skipped), files, printable(joinShort(m.Skipped)))
+				cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("skipped %d %s: %s", len(m.Skipped), files, printable(joinShort(m.Skipped))))
 			}
 			if len(m.SkippedLinks) > 0 {
 				links := "links"
 				if len(m.SkippedLinks) == 1 {
 					links = "link"
 				}
-				cmdio.Warning(cmd.ErrOrStderr(), "skipped %d %s, since links are not followed: %s", len(m.SkippedLinks), links, printable(joinShort(m.SkippedLinks)))
+				cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("skipped %d %s, since links are not followed: %s", len(m.SkippedLinks), links, printable(joinShort(m.SkippedLinks))))
 			}
 			return nil
 		},
@@ -322,7 +331,7 @@ func uploadTable() cmdio.Table[uploadedMap] {
 	return cmdio.Table[uploadedMap]{Columns: []cmdio.Column[uploadedMap]{
 		{Header: "FILE", Content: func(m uploadedMap) string { return m.File }},
 		{Header: "BUNDLE", Content: func(m uploadedMap) string { return m.Bundle }},
-		{Header: "SIZE", Content: func(m uploadedMap) string { return humanize.Bytes(uint64(max(m.Size, 0))) }},
+		{Header: "SIZE", Content: func(m uploadedMap) string { return humanize.IBytes(uint64(max(m.Size, 0))) }},
 	}}
 }
 
@@ -406,7 +415,7 @@ func uploadURL(raw string) (string, string, error) {
 }
 
 func sameSite(uploadHost, grafana string, cloudStack bool) error {
-	upload, server := strings.ToLower(hostOf("https://"+uploadHost)), strings.ToLower(hostOf(grafana))
+	upload, server := hostOf("https://"+uploadHost), hostOf(grafana)
 	if isLoopback(upload) && isLoopback(server) {
 		return nil
 	}

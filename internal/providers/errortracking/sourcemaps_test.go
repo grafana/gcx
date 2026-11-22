@@ -464,7 +464,7 @@ func TestUpsertDirectories(t *testing.T) {
 				assert.Contains(t, out, "✔ Uploaded 2 source maps for release v1 a/b to project Checkout API (ID 314)\n")
 				assert.Contains(t, out, "vendor.js.map")
 				assert.NotContains(t, out, "skipped")
-				assert.Contains(t, e.stderr.String(), "⚠ skipped 2 files that are not source maps: "+filepath.FromSlash("web/._app.js.map")+", "+filepath.FromSlash("web/notes.txt")+"\n")
+				assert.Contains(t, e.stderr.String(), "warn: skipped 2 files that are not source maps: "+filepath.FromSlash("web/._app.js.map")+", "+filepath.FromSlash("web/notes.txt")+"\n")
 			}},
 		{name: "links in a directory are skipped, not followed", files: []string{"dist"}, calls: sent(),
 			write: map[string]string{"dist/app.js.map": appMap, "linked.js.map": vendorMap, "vendor/vendor.js.map": vendorMap},
@@ -488,8 +488,8 @@ func TestUpsertDirectories(t *testing.T) {
 			check: func(t *testing.T, out string, _ error) {
 				t.Helper()
 				assert.NotContains(t, out, "skipped")
-				assert.Contains(t, e.stderr.String(), "⚠ skipped 1 file that is not a source map: "+filepath.FromSlash("dist/notes.txt")+"\n")
-				assert.Contains(t, e.stderr.String(), "⚠ skipped 1 link, since links are not followed: "+filepath.FromSlash("dist/linked.js.map")+"\n")
+				assert.Contains(t, e.stderr.String(), "warn: skipped 1 file that is not a source map: "+filepath.FromSlash("dist/notes.txt")+"\n")
+				assert.Contains(t, e.stderr.String(), "warn: skipped 1 link, since links are not followed: "+filepath.FromSlash("dist/linked.js.map")+"\n")
 			}},
 		{name: "a broken link in a directory is skipped", files: []string{"dist"}, calls: sent(),
 			write: map[string]string{"dist/app.js.map": appMap},
