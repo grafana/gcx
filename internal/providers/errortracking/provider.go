@@ -74,8 +74,8 @@ other list has flat items (--json id,message).`,
 
 errors assignees list, add and delete, errors update --reviewed and the
 errors list flags --mine, --assigned and --assignee need a signed-in Grafana
-user (gcx login), as does users list; a service account token is refused
-before the request.`
+user (gcx login), as does users list; a glsa_ service account token is
+refused before the request.`
 
 	root.AddCommand(
 		group("projects", "Manage Error Tracking projects.",
