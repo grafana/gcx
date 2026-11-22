@@ -100,7 +100,7 @@ declining exits 5. ` + noDryRun,
 			if err != nil {
 				return err
 			}
-			if !rotate || !force {
+			if !rotate || (!force && opts.Project.name == "") {
 				before, err := c.getProject(ctx, id)
 				if err != nil {
 					return err
