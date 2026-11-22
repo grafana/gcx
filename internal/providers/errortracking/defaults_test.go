@@ -195,10 +195,10 @@ func TestProjectsUse(t *testing.T) {
 		{name: "show names the env var when it is the source", setup: withEnv("314"), args: []string{"projects", "use"},
 			has: []string{"Default project for stack test: 314 " + fromEnv}},
 		{name: "set by name saves the ID, as JSON", args: []string{"projects", "use", "web", "-o", "json"}, calls: []string{"GET projects"},
-			json:  `{"type":"gcx.mutation","schema_version":"1","action":"use","target":{"kind":"Project","id":"2"},"project":{"id":2,"name":"web"},"stack":"test","source":"the stack's saved default"}`,
+			json:  `{"type":"gcx.mutation","schema_version":"1","action":"use","target":{"kind":"Project","id":"2","namespace":"stacks-123"},"changed":true,"project":{"id":2,"name":"web"},"stack":"test","source":"the stack's saved default"}`,
 			check: saved("2")},
 		{name: "setting the default it already has succeeds", setup: withConfig("314"), args: []string{"projects", "use", "314", "-o", "json"},
-			calls: []string{"GET projects/314"}, has: []string{`"action": "use"`}, hasNot: []string{`"changed"`}, check: saved("314")},
+			calls: []string{"GET projects/314"}, has: []string{`"action": "use"`, `"changed": false`}, check: saved("314")},
 		{name: "a project that does not exist is not saved", setup: withConfig("2"), args: []string{"projects", "use", "9"},
 			calls: []string{"GET projects/9"}, exit: gcxerrors.ExitGeneralError, err: "Error Tracking has no project 9", check: saved("2")},
 		{name: "an env var that overrides the saved default is a success with a warning", setup: withEnv("5"), args: []string{"projects", "use", "314"},
@@ -216,7 +216,7 @@ func TestProjectsUse(t *testing.T) {
 		{name: "--unset clears it", setup: withConfig("314"), args: []string{"projects", "use", "--unset"},
 			has: []string{"No default project for stack test"}, check: saved("")},
 		{name: "--unset with no default succeeds", args: []string{"projects", "use", "--unset", "-o", "json"},
-			has: []string{`"action": "unset"`}, hasNot: []string{`"changed"`}},
+			has: []string{`"action": "unset"`, `"changed": false`}},
 		{name: "--unset takes no project", args: []string{"projects", "use", "314", "--unset"}, exit: gcxerrors.ExitUsageError, err: "--unset takes no <project>"},
 		{name: "two projects", args: []string{"projects", "use", "314", "2"}, exit: gcxerrors.ExitUsageError, err: "accepts at most 1 arg(s), received 2"},
 		{name: "with no config file, gcx creates one and saves there", setup: func(f *fakeET) {
@@ -284,7 +284,8 @@ stacks:
         project: "314"
 `), 0o600))
 	}
-	unset := `{"type":"gcx.mutation","schema_version":"1","action":"unset","target":{"kind":"Project"},"stack":"test"}`
+	unset := `{"type":"gcx.mutation","schema_version":"1","action":"unset","target":{"kind":"Project"},"changed":true,"stack":"test"}`
+	unsetWithServer := `{"type":"gcx.mutation","schema_version":"1","action":"unset","target":{"kind":"Project","namespace":"stacks-123"},"changed":true,"stack":"test"}`
 	f.runCases(t, []cliCase{
 		{name: "--unset clears the default of a context that has no server", setup: noServer, args: []string{"projects", "use", "--unset", "-o", "json"},
 			json: unset,
@@ -294,8 +295,8 @@ stacks:
 				require.NoError(t, err)
 				assert.NotContains(t, string(data), `"314"`)
 			}},
-		{name: "--unset with a server gives the same result", setup: withConfig("314"), args: []string{"projects", "use", "--unset", "-o", "json"},
-			json: unset},
+		{name: "--unset with a server also names the stack's namespace", setup: withConfig("314"), args: []string{"projects", "use", "--unset", "-o", "json"},
+			json: unsetWithServer},
 		{name: "and says so in text", setup: noServer, args: []string{"projects", "use", "--unset"},
 			has: []string{"No default project for stack test"}},
 		{name: "while setting one still needs the server", setup: noServer, args: []string{"projects", "use", "314"},
