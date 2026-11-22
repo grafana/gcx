@@ -271,15 +271,15 @@ func TestHeatmapsReport(t *testing.T) {
 				t.Helper()
 				assert.Equal(t, "hint: No events on 2026-11-16. Counts can lag a minute or two behind new events; raw-events list shows arrivals at once\n", f.stderr.String())
 			}},
-		{name: "50 values are cut at the API cap, in list_meta and in a hint", setup: func(f *fakeET) {
+		{name: "50 values are cut at the API cap, in a hint", setup: func(f *fakeET) {
 			cells := make([]string, 0, 50)
 			for i := range 50 {
 				cells = append(cells, fmt.Sprintf(`{"bucket":"2026-11-16T00:00:00Z","value":"v%d","eventCount":1}`, i))
 			}
 			f.reply(route, 200, `{"bucket":"1d","from":"2026-11-03T00:00:00Z","to":"2026-11-17T00:00:00Z","cells":[`+strings.Join(cells, ",")+`]}`)
 		}, args: []string{"heatmaps", "report", "3", "-o", "json", "--jq", ".list_meta"},
-			calls: []string{route}, query: window, json: `{"truncated":true,"returned":50,"cap":50}`, stderr: "hint: The API keeps only the 50 custom field values with the most events; with that many, some may not be shown"},
-		{name: "49 values carry no list_meta", setup: func(f *fakeET) {
+			calls: []string{route}, query: window, json: `null`, stderr: "hint: The API keeps only the 50 custom field values with the most events; with that many, some may not be shown"},
+		{name: "49 values carry no hint", setup: func(f *fakeET) {
 			cells := make([]string, 0, 49)
 			for i := range 49 {
 				cells = append(cells, fmt.Sprintf(`{"bucket":"2026-11-16T00:00:00Z","value":"v%d","eventCount":1}`, i))

@@ -58,8 +58,7 @@ func (o *facetsOpts[T]) none(what, why string) func(cmd *cobra.Command, c *clien
 		if o.Time.from != "" || o.Time.to != "" {
 			summary += " in that window"
 		}
-		say(cmd.ErrOrStderr(), summary+"; "+why+". Counts can lag a minute or two behind new events; see what arrived",
-			fmt.Sprintf("gcx error-tracking raw-events list --project %d", project))
+		say(cmd.ErrOrStderr(), summary+"; "+why+". "+countsLag, "")
 	}
 }
 
