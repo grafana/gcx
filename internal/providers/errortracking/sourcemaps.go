@@ -493,6 +493,8 @@ func upload(ctx context.Context, base string, stackID int64, token string, opts 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %d:%s", stackID, token))
 
+	// No payload-logging middleware on purpose: --insecure-log-http-payload
+	// would dump the Cloud token in Authorization and the uploaded maps.
 	resp, err := httputils.NewClient(httputils.ClientOpts{
 		Timeout:       5 * time.Minute,
 		DisableRetry:  true,
