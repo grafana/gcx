@@ -103,6 +103,11 @@ type heatmapRef struct {
 
 func (r *heatmapRef) validate(cmd *cobra.Command) error {
 	r.use = cmd.CommandPath() + " {id}"
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		if f.Annotations[cobra.BashCompOneRequiredFlag] != nil {
+			r.use += " --" + f.Name + " <" + f.Name + ">"
+		}
+	})
 	return r.parse(cmd, "<heatmap>", "heatmap")
 }
 
@@ -162,7 +167,11 @@ func (c *client) projectNamesOrIDs(cmd *cobra.Command, io *cmdio.Options, heatma
 	}
 	names, err := c.projectNames(cmd.Context(), heatmaps...)
 	if err != nil {
-		cmdio.EmitWarn(cmd.ErrOrStderr(), "could not read project names; showing project IDs: "+printable(err.Error()))
+		msg := "could not read project names; showing project IDs: " + printable(err.Error())
+		if io.OutputFormat == cmdio.FormatTable {
+			msg += " (-o wide lists the IDs of heatmaps with many projects)"
+		}
+		cmdio.EmitWarn(cmd.ErrOrStderr(), msg)
 		return projectNames{}
 	}
 	return names
@@ -590,7 +599,7 @@ GCX_AUTO_APPROVE still reads the heatmap first, to show its name. ` + noDryRun,
 				shown = heatmap{ID: id, Name: opts.Heatmap.name}.shown()
 			}
 			if !force || opts.Heatmap.name == "" {
-				h, err := c.getHeatmap(cmd.Context(), id)
+				h, err := c.getHeatmap(ctx, id)
 				if err != nil {
 					return err
 				}
