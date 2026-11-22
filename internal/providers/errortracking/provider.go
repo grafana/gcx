@@ -60,8 +60,8 @@ items (--json id,message).`,
 	errorsCmd.Long = errorsCmd.Short + `
 
 The errors list flags --mine, --assigned and --assignee need a signed-in
-Grafana user (gcx login); a service account token is refused before the
-request.`
+Grafana user (gcx login); a glsa_ service account token is refused before
+the request.`
 
 	root.AddCommand(
 		group("projects", "Manage Error Tracking projects.",

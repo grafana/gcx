@@ -232,6 +232,16 @@ func stackName(ctx context.Context, loader *providers.ConfigLoader) string {
 	return cfg.GetCurrentContext().Stack
 }
 
+// namespaceOf returns the stack namespace for mutation targets, or "" when the
+// config does not resolve one.
+func namespaceOf(ctx context.Context, loader *providers.ConfigLoader) string {
+	cfg, err := loader.LoadGrafanaConfig(ctx)
+	if err != nil {
+		return ""
+	}
+	return cfg.Namespace
+}
+
 func showDefault(ctx context.Context, loader *providers.ConfigLoader, stack string) (defaultProject, error) {
 	v, err := storedDefault(ctx, loader)
 	d := defaultProject{Stack: stack}
@@ -341,8 +351,12 @@ override. ` + noDryRun,
 			ctx := cmd.Context()
 			value, write := "", len(args) > 0 || opts.Unset
 			var saved project
+			before := ""
 			if write {
 				var err error
+				if before, err = storedDefault(ctx, loader); err != nil {
+					return err
+				}
 				if value, saved, err = saveDefault(cmd, loader, opts); err != nil {
 					return err
 				}
@@ -357,7 +371,9 @@ override. ` + noDryRun,
 			}
 			var out any = d
 			if write {
-				m := cmdio.NewSingleMutation("use", cmdio.MutationTarget{Kind: "Project", ID: value})
+				m := cmdio.NewSingleMutation("use", cmdio.MutationTarget{Kind: "Project", ID: value, Namespace: namespaceOf(ctx, loader)})
+				changed := value != before
+				m.Changed = &changed
 				if opts.Unset {
 					m.Action = "unset"
 				}
