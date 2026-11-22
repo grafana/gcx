@@ -122,7 +122,7 @@ Get one item's bytes with raw-events get.`,
 			if len(items) == 0 && !opts.IO.JSONDiscovery {
 				w := cmd.ErrOrStderr()
 				if eventID != "" {
-					say(w, fmt.Sprintf("No item with event ID %q in the latest items of %s. Event IDs are 32 hex characters", printable(eventID), c.projectShown()), "")
+					say(w, fmt.Sprintf("No item with event ID %q in the latest items of %s. Event IDs are 32 hex characters, with or without dashes", printable(eventID), c.projectShown()), "")
 				} else {
 					say(w, fmt.Sprintf("Nothing has arrived in %s yet; point an SDK at its DSN", c.projectShown()), fmt.Sprintf("gcx error-tracking projects get %d --json spec.dsn", project))
 				}
@@ -164,7 +164,7 @@ func (c *client) rawEventByEventID(ctx context.Context, project int64, eventID s
 	case 0:
 		return 0, &gcxerrors.DetailedError{
 			Summary:     gcxerrors.SummaryResourceNotFound,
-			Details:     fmt.Sprintf("no item with event ID %q in the latest items of %s; Error Tracking keeps only the latest items, and event IDs are 32 hex characters", printable(eventID), c.projectShown()),
+			Details:     fmt.Sprintf("no item with event ID %q in the latest items of %s; Error Tracking keeps only the latest items, and event IDs are 32 hex characters, with or without dashes", printable(eventID), c.projectShown()),
 			Suggestions: []string{fmt.Sprintf("List what arrived: gcx error-tracking raw-events list --project %d", project)},
 		}
 	case 1:
