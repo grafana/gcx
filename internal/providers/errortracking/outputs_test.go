@@ -121,7 +121,7 @@ func outputCases() []outputCase {
 			json:  `{"apiVersion":"error-tracking.ext.grafana.app/v0alpha1","kind":"Project","metadata":{"name":"checkout-api-314",` + ns + `},"spec":{"id":314,"ingestKey":"k314","dsn":"https://k314@ingest.example.com/314"}}`,
 			table: []string{"NAME", "checkout-api-314"}, wide: []string{"DSN", "https://k314@ingest.example.com/314"}, jq: []string{".spec.dsn", `"https://k314@ingest.example.com/314"`}},
 		{name: "projects use", calls: []string{"GET projects/314"}, args: []string{"projects", "use", "314"}, noTable: true,
-			json: `{"type":"gcx.mutation","schema_version":"1","action":"use","target":{"kind":"Project","id":"314"},` + project + `,"stack":"test"}`, text: "Default project for stack test: 314 (Checkout API)"},
+			json: `{"type":"gcx.mutation","schema_version":"1","action":"use","target":{"kind":"Project","id":"314","namespace":"stacks-123"},` + project + `,"stack":"test"}`, text: "Default project for stack test: 314 (Checkout API)"},
 		{name: "projects timeline", calls: []string{"GET projects/314/timeline"}, query: map[string]string{"from": "*", "to": "*"}, args: []string{"projects", "timeline", "314"}, exact: true,
 			json:  `{"bucket":"1h","buckets":[{"bucket":"2026-11-17T08:00:00Z","eventCount":4}]}`,
 			table: []string{"BUCKET", "EVENTS", "2026-11-17 08:00Z", "4"}, jq: []string{".buckets[0].eventCount", "4"}},
