@@ -19,7 +19,10 @@ func TestMissingRequiredFlagsSayWhat(t *testing.T) {
 func TestMissingListsAreEmptyNotNull(t *testing.T) {
 	f := newFakeET(t)
 	f.reply("GET projects/314", 200, `{"id":314,"name":"web","stats":{}}`)
+	f.reply("GET projects/314/errors/42", 200, `{"id":42,"projectId":314,"status":"unresolved"}`)
 	f.runCases(t, []cliCase{
+		{name: "an error without history", args: []string{"errors", "get", "42", "--project", "314", "--jq", ".history", "-o", "json"},
+			calls: []string{"GET projects/314/errors/42"}, json: `[]`},
 		{name: "project stats without dailyEvents", args: []string{"projects", "get", "314", "--jq", ".spec.stats.dailyEvents", "-o", "json"},
 			calls: []string{"GET projects/314"}, json: `[]`},
 		{name: "and YAML says the same", args: []string{"projects", "get", "314", "-o", "yaml"},

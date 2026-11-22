@@ -75,7 +75,7 @@ Provider (internal/providers/slo/)
 
 Machine Learning uses the Grafana ML plugin proxy. Its jobs, holidays, and outlier detectors share typed adapters with the resource pipeline. Alerts require a parent ID and use parent-scoped commands. ML writes use `ClientDeps.GrafanaURL` for the public stack URL and `BaseURL` for transport, including OAuth proxy routing.
 
-Error Tracking is a commands-only provider. It registers no adapter, because Error Tracking's API is custom routes rather than list and watch resources; the JSON for projects uses the envelope kind `Project`. Its commands call the namespaced custom routes under `error-tracking.ext.grafana.app/v0alpha1` on the stack's Grafana with the context's credentials. It ships the `projects` commands; the rest of the command shape is the one proposed in [RFC 033](docs/rfcs/033-error-tracking-area.md).
+Error Tracking is a commands-only provider. It registers no adapter, because Error Tracking's API is custom routes rather than list and watch resources; the JSON for projects uses the envelope kind `Project`. Its commands call the namespaced custom routes under `error-tracking.ext.grafana.app/v0alpha1` on the stack's Grafana with the context's credentials. The command shape, including the `--project` scope that can default to the stack's saved project and the nested noun groups whose leaves take the parent's ID first, is the one proposed in [RFC 033](docs/rfcs/033-error-tracking-area.md).
 
 Resource declarations can require unique natural-key matches and name the explicit identifier used in recovery messages. The generic matcher reads that policy from the adapter registry.
 

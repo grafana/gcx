@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -79,7 +81,7 @@ func (o *projectsCreateOpts) setup(flags *pflag.FlagSet) {
 	_ = cobra.MarkFlagRequired(flags, "name")
 	flags.StringVar(&o.Description, "description", "", "Project description")
 	flags.StringVar(&o.RepoURL, "repo-url", "", "http(s) URL of the source repository")
-	bindText(&o.IO, flags)
+	bindText(&o.IO, flags, mutationText{})
 }
 
 func (o *projectsCreateOpts) Validate(cmd *cobra.Command) error {
@@ -99,7 +101,7 @@ func newProjectsCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "create",
 		Short: "Create an Error Tracking project.",
 		Long: `Create an Error Tracking project. The result names the new project's ID,
-which projects get takes.
+which --project and projects get take.
 
 Names are unique in the stack. ` + noDryRun,
 		Example: `  # Create a project.
@@ -153,7 +155,7 @@ func (o *projectsUpdateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Name, "name", "", "New project name, at most 255 characters")
 	flags.StringVar(&o.Description, "description", "", "New description; empty clears it")
 	flags.StringVar(&o.RepoURL, "repo-url", "", "New http(s) source repository URL; empty clears it")
-	bindText(&o.IO, flags)
+	bindText(&o.IO, flags, mutationText{})
 }
 
 func (o *projectsUpdateOpts) Validate(cmd *cobra.Command) error {
@@ -209,7 +211,7 @@ and new names. ` + noDryRun,
 				return err
 			}
 			ctx := cmd.Context()
-			c, id, err := connect(ctx, loader, &opts.Project)
+			c, id, err := connect(ctx, loader, &opts.Project, nil)
 			if err != nil {
 				return err
 			}
@@ -266,7 +268,7 @@ type projectsDeleteOpts struct {
 
 func (o *projectsDeleteOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Delete without asking")
-	bindText(&o.IO, flags)
+	bindText(&o.IO, flags, mutationText{})
 }
 
 func (o *projectsDeleteOpts) Validate(cmd *cobra.Command) error {
@@ -274,6 +276,28 @@ func (o *projectsDeleteOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	return validIO(cmd, &o.IO)
+}
+
+func clearDeletedDefault(cmd *cobra.Command, loader *providers.ConfigLoader, id int64, name string, m *projectDeleteMutation) {
+	if _, fromEnv := os.LookupEnv(projectEnv); fromEnv {
+		cmdio.EmitWarn(cmd.ErrOrStderr(), projectEnv+" is set, so the saved default project was not checked; if it is this project, clear it: gcx error-tracking projects use --unset")
+		return
+	}
+	v, err := storedDefault(cmd.Context(), loader)
+	if err != nil {
+		cmdio.EmitWarn(cmd.ErrOrStderr(), "could not read the saved default project, so it was not checked; if it is this project, clear it: gcx error-tracking projects use --unset ("+err.Error()+")")
+		return
+	}
+	// The saved default may be the ID, the name or the name-ID, as --project accepts.
+	if v != strconv.FormatInt(id, 10) && !strings.EqualFold(v, name) && !strings.EqualFold(v, resourceName(name, id)) {
+		return
+	}
+	if err := loader.SaveProviderConfig(cmd.Context(), providerName, "project", ""); err != nil {
+		cmdio.EmitWarn(cmd.ErrOrStderr(), "could not clear the saved default project: "+err.Error())
+		return
+	}
+	m.text += "; cleared it as the default project"
+	m.ClearedDefault = true
 }
 
 func newProjectsDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -286,7 +310,11 @@ timelines; it cannot be undone. Its ingest key stops working at once, so
 SDKs still sending to it get refused.
 
 gcx asks first; --force or GCX_AUTO_APPROVE skips the question, agent mode
-needs one of them, and declining exits 5. ` + noDryRun,
+needs one of them, and declining exits 5. When the project is the saved default, delete clears the
+default and the JSON result says clearedDefault: true; later commands then
+need --project. When ` + projectEnv + ` is set or the saved
+default cannot be read, delete leaves the default alone, says so on stderr and
+the result has no clearedDefault. ` + noDryRun,
 		Example: `  # Delete a project, after a prompt.
   gcx error-tracking projects delete 314
 
@@ -306,7 +334,7 @@ needs one of them, and declining exits 5. ` + noDryRun,
 				return err
 			}
 			ctx := cmd.Context()
-			c, id, err := connect(ctx, loader, &opts.Project)
+			c, id, err := connect(ctx, loader, &opts.Project, nil)
 			if err != nil {
 				return err
 			}
@@ -330,6 +358,7 @@ needs one of them, and declining exits 5. ` + noDryRun,
 			m := projectDeleteMutation{mutationBase: c.mutation("deleted", "Project", id, true)}
 			m.Target.Name, m.Project = opts.Project.name, nil
 			m.text = "Deleted " + c.projectShown()
+			clearDeletedDefault(cmd, loader, id, opts.Project.name, &m)
 			return emit(cmd, &opts.IO, m)
 		},
 		Annotations: map[string]string{agent.AnnotationTokenCost: "small", agent.AnnotationLLMHint: "<project> --force -o json"},

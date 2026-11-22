@@ -27,7 +27,7 @@ func (o *ingestKeyOpts) setup(flags *pflag.FlagSet, rotate bool) {
 		flags.StringVar(&o.Grace, "grace", "", "How long the replaced key keeps working: 0s (stop it at once) to 7d; without it, the server picks the grace period")
 	}
 	flags.BoolVar(&o.Force, "force", false, "Go ahead without asking")
-	bindText(&o.IO, flags)
+	bindText(&o.IO, flags, mutationText{})
 }
 
 func (o *ingestKeyOpts) Validate(cmd *cobra.Command, rotate bool) error {
@@ -96,7 +96,7 @@ declining exits 5. ` + noDryRun,
 				return err
 			}
 			ctx := cmd.Context()
-			c, id, err := connect(ctx, loader, &opts.Project)
+			c, id, err := connect(ctx, loader, &opts.Project, nil)
 			if err != nil {
 				return err
 			}

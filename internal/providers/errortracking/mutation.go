@@ -31,6 +31,8 @@ func (m mutationBase) line() string { return m.text }
 
 type projectDeleteMutation struct {
 	mutationBase `json:",inline"`
+
+	ClearedDefault bool `json:"clearedDefault,omitempty"`
 }
 
 type ingestKeyMutation struct {
@@ -72,8 +74,8 @@ func (c *client) knowProject(id int64, name string) {
 	}
 }
 
-func bindText(opts *cmdio.Options, flags *pflag.FlagSet) {
-	opts.RegisterCustomCodec("text", mutationText{})
+func bindText(opts *cmdio.Options, flags *pflag.FlagSet, codec format.Codec) {
+	opts.RegisterCustomCodec("text", codec)
 	opts.DefaultFormat("text")
 	opts.BindFlags(flags)
 }

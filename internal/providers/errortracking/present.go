@@ -19,8 +19,9 @@ func say(w io.Writer, summary, command string) {
 	cmdio.EmitHint(w, printable(summary), printable(command))
 }
 
-func usage(cmd *cobra.Command, msg string) error {
+func usage(cmd *cobra.Command, msg string, suggestions ...string) error {
 	err := gcxerrors.NewCommandUsageError(cmd, msg, nil)
+	err.Suggestions = append(suggestions, err.Suggestions...)
 	return err
 }
 
@@ -29,6 +30,32 @@ func validIO(cmd *cobra.Command, io *cmdio.Options) error {
 		return usage(cmd, err.Error())
 	}
 	return nil
+}
+
+const (
+	projectSlot = "gcx-slot-project"
+	errorSlot   = "gcx-slot-error"
+	dirSlot     = "gcx-slot-dir"
+)
+
+func et(args ...string) string {
+	slots := strings.NewReplacer("'"+projectSlot+"'", "<project>", projectSlot, "<project>", "'"+errorSlot+"'", "<error>", errorSlot, "<error>", "'"+dirSlot+"'", "<dir>", dirSlot, "<dir>")
+	return slots.Replace(cmdio.ShellCommand(append([]string{"gcx", "error-tracking"}, args...)))
+}
+
+func projectOf(cmd *cobra.Command) string {
+	if f := cmd.Flags().Lookup("project"); f != nil && f.Changed && strings.TrimSpace(f.Value.String()) != "" {
+		return printable(strings.TrimSpace(f.Value.String()))
+	}
+	return projectSlot
+}
+
+func argHelp(cmd *cobra.Command, name string, _ []string) string {
+	project := projectOf(cmd)
+	if name == "<error>" {
+		return et("errors", "list", "--project", project)
+	}
+	return cmd.CommandPath() + " --help"
 }
 
 const maxID = 1<<53 - 1
@@ -40,6 +67,23 @@ func parseID(v string) (int64, bool, bool) {
 		return 0, isNum && errors.Is(ne.Err, strconv.ErrRange), false
 	}
 	return id, true, id > 0 && id <= maxID
+}
+
+func positiveID(cmd *cobra.Command, label, arg string) (int64, error) {
+	id, _, ok := parseID(strings.TrimSpace(arg))
+	if !ok {
+		return 0, positiveIDErr(cmd, label, arg)
+	}
+	return id, nil
+}
+
+func positiveIDErr(cmd *cobra.Command, label, arg string) error {
+	kind := strings.Trim(label, "<>-")
+	see := argHelp(cmd, "<"+kind+">", nil)
+	if kind == "raw-event" {
+		return usage(cmd, fmt.Sprintf("%s %q must be a positive raw event ID or an EVENT ID", label, arg), "See them: "+see)
+	}
+	return usage(cmd, fmt.Sprintf("%s %q must be a positive %s ID", label, arg, strings.ReplaceAll(kind, "-", " ")), "See them: "+see)
 }
 
 func projectLabel(id int64, name string) string {
@@ -91,4 +135,16 @@ func capital(s string) string {
 		return s
 	}
 	return string(unicode.ToUpper(r)) + s[size:]
+}
+
+func minutes(n int64) string {
+	switch {
+	case n > 0 && n%(24*60) == 0:
+		return strconv.FormatInt(n/(24*60), 10) + "d"
+	case n > 0 && n%60 == 0:
+		return strconv.FormatInt(n/60, 10) + "h"
+	case n > 60:
+		return fmt.Sprintf("%dh%dm", n/60, n%60)
+	}
+	return strconv.FormatInt(n, 10) + "m"
 }

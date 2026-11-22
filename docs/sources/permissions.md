@@ -150,6 +150,14 @@ To learn more about roles and permissions for Application Observability, refer t
 
 To learn more about roles and permissions for Database Observability, refer to [Grafana Cloud app plugin role definitions](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-control/plugin-role-definitions/).
 
+### Error Tracking
+
+`gcx error-tracking` commands call the Error Tracking API on your stack through your Grafana sign-in or token. Other commands, including `errors list --reviewed`, also accept a service account token.
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Filter errors by assignee (`gcx error-tracking errors list --assignee`, `--assigned` or `--mine`) | Signed-in Grafana user. `gcx` refuses a `glsa_` service account token before it sends the request. |
+
 ### Fleet Management
 
 `gcx fleet` commands reach Fleet Management through the Collector app on your stack, so they use your Grafana sign-in and don't need a Grafana Cloud access policy scope. You need these Collector app permissions:
