@@ -284,9 +284,10 @@ func (o *errorsUpdateOpts) batch(cmd *cobra.Command, c *client, outcomes []updat
 	if len(outcomes) == 1 && b.Summary.Failed == 1 {
 		return outcomes[0].err
 	}
-	b.text = fmt.Sprintf("%s %d of %d errors in %s", statusVerb(o.target()), b.Summary.Succeeded, len(outcomes), c.projectShown())
 	if o.Reviewed {
 		b.text = fmt.Sprintf("Marked %d of %d errors in %s reviewed", b.Summary.Succeeded, len(outcomes), c.projectShown())
+	} else {
+		b.text = fmt.Sprintf("%s %d of %d errors in %s", statusVerb(o.target()), b.Summary.Succeeded, len(outcomes), c.projectShown())
 	}
 	if n := b.Summary.Skipped; n > 0 {
 		b.text += fmt.Sprintf("; %d %s already %s", n, map[bool]string{true: "was", false: "were"}[n == 1], o.target())
@@ -322,9 +323,9 @@ them or the first condition given is met (--until, --more-events,
 status is a success with changed: false, except with --status ignored, which
 replaces its conditions and so always changes it. The result counts the
 changes and lists only the errors that failed or were already in that status,
-whatever the number of IDs. The command exits 4 if some failed and others
-succeeded, and with the failures' own exit code if every one failed the
-same way (1 if they differ). ` + noDryRun,
+whatever the number of IDs. The command exits 4 if only some failed, and
+with the failures' own exit code if every one failed the same way (1 if
+they differ). ` + noDryRun,
 		Example: `  # Resolve an error.
   gcx error-tracking errors update 42 --project 314 --status resolved
 

@@ -37,7 +37,7 @@ func TestIngestKeys(t *testing.T) {
 				require.Empty(t, calls[0].Body, "no --grace sends no body, so the server picks the grace period")
 			}},
 		{name: "rotate as text names the project and hides the DSN", stdin: "y\n", args: []string{"projects", "ingest-keys", "rotate", "Checkout API", "--grace", "0s"},
-			calls: []string{"GET projects", get, rotate}, body: `{"grace":"0s"}`, stderr: "Rotate the ingest key of Error Tracking project Checkout API (ID 314)?",
+			calls: []string{"GET projects", rotate}, body: `{"grace":"0s"}`, stderr: "Rotate the ingest key of Error Tracking project Checkout API (ID 314)?",
 			has:    []string{"Rotated the ingest key of project Checkout API (ID 314); the old key works until 2026-11-19 10:00Z ("},
 			hasNot: []string{"k-new", "k-old", "checkout-api-314"}},
 		{name: "a declined rotation changes nothing", stdin: "n\n", args: []string{"projects", "ingest-keys", "rotate", "314", "--grace", "168h"},
