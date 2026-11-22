@@ -98,3 +98,22 @@ func TestEnrollmentEvidenceSurvivesReads(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(encoded), "SENTINEL")
 }
+
+func TestEnrollmentEvidenceIgnoresDisabledScheduleAndRunHistory(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeData(t, w, map[string]any{
+			"enabled":          false,
+			"watcherId":        "id",
+			"scheduleCron":     "0 8 * * *",
+			"scheduleTimezone": "America/Chicago",
+			"lastRunAt":        "2026-11-16T14:00:00Z",
+			"lastRunStatus":    "completed",
+			"lastRun":          map[string]any{"id": "run", "trigger": "schedule", "status": "completed", "chatId": "chat", "startedAt": "2026-11-16T14:00:00Z"},
+		})
+	})
+	item, err := client.Enrollment(t.Context(), "id")
+	require.NoError(t, err)
+	assert.Empty(t, item.UnsupportedConfiguration())
+	item.Enabled = true
+	assert.Equal(t, []string{"automatic recalibration scheduling"}, item.UnsupportedConfiguration())
+}
