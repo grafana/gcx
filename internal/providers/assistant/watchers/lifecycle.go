@@ -57,7 +57,7 @@ func newLifecycleCommand(loader *providers.ConfigLoader, verb string) *cobra.Com
 		}
 		return runLifecycle(cmd, client, opts, verb)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "small"
 	if hint != "" {
 		cmd.Annotations[agent.AnnotationLLMHint] = hint
@@ -193,7 +193,7 @@ func newHistoryCommand(loader *providers.ConfigLoader) *cobra.Command {
 		}
 		return runHistory(cmd, client, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "medium"
 	cmd.Annotations[agent.AnnotationLLMHint] = "Bounded run summaries; use --limit and --json status,assessment,startedAt to reduce output. Coverage is retained under field selection."
 	opts.setup(cmd.Flags())
