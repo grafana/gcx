@@ -64,8 +64,6 @@ type heatmapReport struct {
 	From   string            `json:"from"`
 	To     string            `json:"to"`
 	Cells  list[heatmapCell] `json:"cells"`
-
-	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty"`
 }
 
 type heatmapBreakdownProject struct {
@@ -814,9 +812,9 @@ func newHeatmapsReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 custom field, per UTC day over its window (ending yesterday), or per hour of
 one day with --day. Tables have one row per value, most events first, a
 column per bucket and a TOTAL, and JSON keeps the API's shape (bucket, from,
-to, cells, plus list_meta when 50 values came back). The API keeps only the 50
-values with the most events, so list_meta.returned counts values, not cells,
-and "(no fields)" ("" in JSON) counts events without custom fields.`,
+to, cells). The API keeps only the 50 values with the most events, so a grid
+with 50 values may be missing some, and "(no fields)" ("" in JSON) counts
+events without custom fields.`,
 		Example: `  # The daily grid over the heatmap's window.
   gcx error-tracking heatmaps report 3
 
@@ -848,7 +846,6 @@ and "(no fields)" ("" in JSON) counts events without custom fields.`,
 			for _, cell := range r.Cells {
 				values[cell.Value] = true
 			}
-			r.ListMeta = cmdio.PagedListMeta(len(values), 0, len(values) >= maxHeatmapValues, maxHeatmapValues)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), r); err != nil {
 				return err
 			}
@@ -859,7 +856,7 @@ and "(no fields)" ("" in JSON) counts events without custom fields.`,
 				opts.emptyHint(cmd.ErrOrStderr(), id, r)
 				return nil
 			}
-			if r.ListMeta != nil {
+			if len(values) >= maxHeatmapValues {
 				say(cmd.ErrOrStderr(), fmt.Sprintf("The API keeps only the %d custom field values with the most events; with that many, some may not be shown", maxHeatmapValues), "")
 			}
 			return nil
@@ -928,8 +925,8 @@ func newHeatmapsBreakdownCommand(loader *providers.ConfigLoader) *cobra.Command 
 heatmap's projects, most events first. --value is the VALUE column of heatmaps
 report ("" for events without custom fields). Without a window flag it uses
 the heatmap's own window, ending yesterday (UTC), which costs one heatmaps
-get; to match one cell, pass its bucket as --from and the next bucket as
---to.`,
+get; to match one cell, pass its bucket from -o json as --from and the next
+bucket as --to.`,
 		Example: `  # Which projects sent region=eu events over the heatmap's window.
   gcx error-tracking heatmaps breakdown 3 --value eu
 
@@ -972,7 +969,7 @@ get; to match one cell, pass its bucket as --from and the next bucket as
 			}
 			return nil
 		},
-		Annotations: map[string]string{agent.AnnotationTokenCost: "medium", agent.AnnotationLLMHint: "<heatmap> --value <value>"},
+		Annotations: map[string]string{agent.AnnotationTokenCost: "small", agent.AnnotationLLMHint: "<heatmap> --value <value>"},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
