@@ -448,6 +448,7 @@ func TestStatsCommand(t *testing.T) {
 		wantByCategory map[string]float64
 		wantIncomplete []any
 		wantStderr     string
+		wantErr        string // non-empty: the command fails with an error containing this
 	}{
 		{
 			name: "follows pages, counts a repeated row once, counts insights on catalog records",
@@ -507,6 +508,41 @@ func TestStatsCommand(t *testing.T) {
 			wantStderr:     `entity type "Service": page 1 failed`,
 		},
 		{
+			name: "a rate limit on the first page skips the type and marks it",
+			pages: map[string][]statsPage{
+				"Service": {{status: http.StatusTooManyRequests}},
+				"Pod":     {podPage},
+			},
+			wantSearched:   allTypes,
+			wantInsights:   1,
+			wantByCategory: map[string]float64{"error": 1},
+			wantIncomplete: []any{"Service"},
+			wantStderr:     `skipping entity type "Service" — rate limited`,
+		},
+		{
+			name: "a rate limit on a later page keeps the earlier rows and marks the type",
+			pages: map[string][]statsPage{
+				"Service": {
+					{entities: []map[string]any{statsEntity("Service", "svc-a", errInsight)}},
+					{status: http.StatusTooManyRequests},
+				},
+				"Pod": {podPage},
+			},
+			wantSearched:   allTypes,
+			wantInsights:   2,
+			wantByCategory: map[string]float64{"error": 2},
+			wantIncomplete: []any{"Service"},
+			wantStderr:     `entity type "Service": page 1 failed — rate limited`,
+		},
+		{
+			name: "any other client error fails the command",
+			pages: map[string][]statsPage{
+				"Service": {{status: http.StatusBadRequest}},
+				"Pod":     {podPage},
+			},
+			wantErr: "search entity type Service",
+		},
+		{
 			name: "a server-side result limit marks the type",
 			pages: map[string][]statsPage{
 				"Service": {{entities: []map[string]any{statsEntity("Service", "svc-a", amend)}, last: true, limitHit: true}},
@@ -560,6 +596,10 @@ func TestStatsCommand(t *testing.T) {
 			args := append([]string{"--from", "1757000000", "--to", "1757003600"}, tt.args...)
 			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewSummaryCommand(loader) }, args, "")
 			assert.Equal(t, 1, fake.maxConcurrentSearches(), "entity types are searched one at a time")
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
 			require.NoError(t, err)
 			if tt.wantStderr != "" {
 				assert.Contains(t, stderr, tt.wantStderr)

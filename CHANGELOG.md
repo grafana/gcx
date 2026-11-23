@@ -25,9 +25,13 @@
 - `gcx kg stats` now lists in `insights.incompleteTypes` every entity type whose
   insight-carrying entities it could not read in full: the server's result
   limit, more than 50 search pages, or a server error. Its JSON output gave no
-  sign of this before; only stderr did. It also follows further search pages
-  while the server reports more, up to 50 per type, in place of the stderr hint
-  to use `--page`. `--type` still limits only the insight counts.
+  sign of these before; only stderr did. A search that is still rate limited
+  (HTTP 429) after gcx's retries no longer fails the whole command: stats warns
+  on stderr, as it does for a server error, lists that type in
+  `insights.incompleteTypes` and prints the counts for the other types. It also
+  follows further search pages while the server reports more, up to 50 per
+  type, in place of the stderr hint to use `--page`. `--type` still limits only
+  the insight counts.
 
 ## v1.8.0 (2026-11-17)
 

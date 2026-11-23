@@ -2644,8 +2644,9 @@ in exactly one category, so the byCategory totals add up to insights.total.
 stats follows each entity type's search pages while the server reports more,
 up to %d pages per type. insights.incompleteTypes lists every type whose
 insight-carrying entities it could not read in full (the server's result limit,
-more pages than that, or a server error); insights on the entities it did not
-read are not counted. Read the categories here instead of listing entities; use
+more pages than that, a server error, or a rate limit that persisted through
+gcx's retries); insights on the entities it did not read are not counted.
+Read the categories here instead of listing entities; use
 'kg entities list --insight' only to see which entities carry them.`, statsMaxSearchPages),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {

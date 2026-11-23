@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,8 +24,9 @@ var statsMaxSearchPages = 50 //nolint:gochecknoglobals // Overridden only by tes
 // one, up to statsMaxSearchPages, and keeps one row per entity when a later
 // page repeats a row. The second result lists, sorted, the types whose rows
 // could not all be read: more pages than the bound, a server-side result
-// limit, or a server error (which is also reported on errOut, as before). Any
-// other error fails the whole search.
+// limit, or a page that failed with a server error or was still rate limited
+// after the client's retries (both also reported on errOut). Any other error
+// fails the whole search.
 func searchInsightCarriers(ctx context.Context, errOut io.Writer, client *Client, entityTypes []string, sc *ScopeCriteria, startMs, endMs int64) ([]SearchResult, []string, error) {
 	if startMs == 0 && endMs == 0 {
 		now := time.Now().UnixMilli()
@@ -49,8 +51,8 @@ func searchInsightCarriers(ctx context.Context, errOut io.Writer, client *Client
 
 // searchTypePages reads one entity type's insight-carrying entities page by
 // page. It reports false when the rows are incomplete: the page bound was
-// reached, the server said it hit its result limit, or a page failed with a
-// server error.
+// reached, the server said it hit its result limit, or a page failed with an
+// error that skippedSearchError accepts.
 func searchTypePages(ctx context.Context, errOut io.Writer, client *Client, entityType string, sc *ScopeCriteria, startMs, endMs int64) ([]SearchResult, bool, error) {
 	seen := map[string]bool{}
 	var rows []SearchResult
@@ -66,14 +68,14 @@ func searchTypePages(ctx context.Context, errOut io.Writer, client *Client, enti
 			PageNum:       pageNum,
 		})
 		if err != nil {
-			var apiErr *APIError
-			if !errors.As(err, &apiErr) || !apiErr.IsServerError() {
+			apiErr, reason := skippedSearchError(err)
+			if apiErr == nil {
 				return nil, false, fmt.Errorf("search entity type %s: %w", entityType, err)
 			}
 			if pageNum == 0 {
-				fmt.Fprintf(errOut, "warning: skipping entity type %q — server error: %v\n", entityType, apiErr)
+				fmt.Fprintf(errOut, "warning: skipping entity type %q — %s: %v\n", entityType, reason, apiErr)
 			} else {
-				fmt.Fprintf(errOut, "warning: entity type %q: page %d failed — server error: %v; its insight counts are incomplete\n", entityType, pageNum, apiErr)
+				fmt.Fprintf(errOut, "warning: entity type %q: page %d failed — %s: %v; its insight counts are incomplete\n", entityType, pageNum, reason, apiErr)
 			}
 			return rows, false, nil
 		}
@@ -93,6 +95,25 @@ func searchTypePages(ctx context.Context, errOut io.Writer, client *Client, enti
 		}
 	}
 	return rows, false, nil
+}
+
+// skippedSearchError returns the API error and a short reason when a failed
+// search page should leave only its type's insight counts incomplete rather
+// than fail `kg stats`: a server error, or a rate limit (HTTP 429) that
+// persisted through the client's retries. It returns nil for any other error.
+func skippedSearchError(err error) (*APIError, string) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return nil, ""
+	}
+	switch {
+	case apiErr.IsServerError():
+		return apiErr, "server error"
+	case apiErr.StatusCode == http.StatusTooManyRequests:
+		return apiErr, "rate limited"
+	default:
+		return nil, ""
+	}
 }
 
 // statsRowKey identifies one entity across search pages: its id when the
