@@ -48,6 +48,6 @@ Some more notes about extensions:
 
 We only provide an interface for Go, but extensions can in theory be written in other languages. Check the protocol definitions in [`proto/extension.proto`](proto/extension.proto).
 
-#### Changing the protocol
+#### Protocol changes
 
-After editing `proto/extension.proto`, run `mise run generate:extsdk` from the repository root and commit the generated files. It regenerates both the SDK's code in `internal/extensionpb` and gcx's own copy in `../internal/extensions/extensionpb`, because gcx doesn't import this module.
+After making changes to the protocol definition in `proto/extension.proto`, run `mise run generate:extsdk` from the repository root and commit the generated files. It regenerates both the SDK's code in `internal/extensionpb` and gcx's own copy in `../internal/extensions/extensionpb`.
