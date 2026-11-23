@@ -72,10 +72,7 @@ func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
 			return c.CreateEscalationPolicy(ctx, *item)
 		}),
 		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
-			if err := validateEscalationPolicy(item); err != nil {
-				return nil, err
-			}
-			if err := checkEscalationPolicyTeam(ctx, c, item); err != nil {
+			if err := validateEscalationPolicyUpdate(ctx, c, name, item); err != nil {
 				return nil, err
 			}
 			return c.UpdateEscalationPolicy(ctx, name, *item)

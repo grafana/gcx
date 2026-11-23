@@ -65,8 +65,11 @@ func TestValidateEscalationPolicy(t *testing.T) {
 type fakePolicyAPI struct {
 	OnCallAPI
 
-	created []EscalationPolicy
-	updated []EscalationPolicy
+	created   []EscalationPolicy
+	updated   []EscalationPolicy
+	stored    EscalationPolicy
+	policyErr error
+	policyIDs []string
 
 	// teams lists the team IDs that exist. teamErr, when set, makes every team
 	// lookup fail with it.
@@ -84,6 +87,14 @@ func (f *fakePolicyAPI) GetTeam(_ context.Context, id string) (*Team, error) {
 		return &Team{ID: id}, nil
 	}
 	return nil, &resourceNotFoundError{resourceType: "team", id: id}
+}
+
+func (f *fakePolicyAPI) GetEscalationPolicy(_ context.Context, id string) (*EscalationPolicy, error) {
+	f.policyIDs = append(f.policyIDs, id)
+	if f.policyErr != nil {
+		return nil, f.policyErr
+	}
+	return &f.stored, nil
 }
 
 func (f *fakePolicyAPI) CreateEscalationPolicy(_ context.Context, p EscalationPolicy) (*EscalationPolicy, error) {
@@ -136,6 +147,48 @@ func TestEscalationPolicyCommandsRequireTeamForPauseStep(t *testing.T) {
 	}
 	if len(fake.updated) != 1 || fake.updated[0].NotifyToTeamMembers != "T1" {
 		t.Errorf("expected the team to reach the backend on update, got %v", fake.updated)
+	}
+}
+
+func TestEscalationPolicyUpdateWithOmittedTeam(t *testing.T) {
+	resetAgentMode(t)
+
+	for _, tc := range []struct {
+		name      string
+		step      string
+		stored    EscalationPolicy
+		lookupErr error
+		wantGet   bool
+		wantError bool
+	}{
+		{name: "preserve existing team when changing steps", step: "27", stored: EscalationPolicy{Step: 17, NotifyToTeamMembers: "T1"}, wantGet: true},
+		{name: "reject when there is no team to preserve", step: "27", wantGet: true, wantError: true},
+		{name: "let backend decide when policy cannot be read", step: "27", lookupErr: errors.New("403 forbidden"), wantGet: true},
+		{name: "skip lookup for unrelated steps", step: "0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakePolicyAPI{stored: tc.stored, policyErr: tc.lookupErr}
+			err := runPolicyCmd(t, fake, "step: "+tc.step+"\n", "update", "P1", "-f", "-")
+			if tc.wantError {
+				if err == nil || !strings.Contains(err.Error(), "needs a team") || len(fake.updated) != 0 {
+					t.Fatalf("expected missing-team error and no update; got %v and %v", err, fake.updated)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(fake.updated) != 1 || fake.updated[0].NotifyToTeamMembers != nil {
+					t.Errorf("expected one update with the team field still omitted, got %v", fake.updated)
+				}
+			}
+			var wantIDs []string
+			if tc.wantGet {
+				wantIDs = []string{"P1"}
+			}
+			if !slices.Equal(fake.policyIDs, wantIDs) || len(fake.looked) != 0 {
+				t.Errorf("expected policy lookups %v and no team lookup; got %v and %v", wantIDs, fake.policyIDs, fake.looked)
+			}
+		})
 	}
 }
 

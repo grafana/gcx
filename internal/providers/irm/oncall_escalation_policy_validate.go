@@ -42,6 +42,23 @@ func validateEscalationPolicy(p *EscalationPolicy) error {
 	}
 }
 
+func validateEscalationPolicyUpdate(ctx context.Context, c OnCallAPI, id string, p *EscalationPolicy) error {
+	if step, ok := escalationStepValue(p.Step); ok && step == escalationStepPauseUntilTeamHours && p.NotifyToTeamMembers == nil {
+		if existing, err := c.GetEscalationPolicy(ctx, id); err == nil {
+			// Validate the team the backend will retain without adding it to the update.
+			effective := *p
+			effective.NotifyToTeamMembers = existing.NotifyToTeamMembers
+			return validateEscalationPolicy(&effective)
+		}
+		// Read and write permissions differ. Let the update report its own outcome.
+		return nil
+	}
+	if err := validateEscalationPolicy(p); err != nil {
+		return err
+	}
+	return checkEscalationPolicyTeam(ctx, c, p)
+}
+
 // checkEscalationPolicyTeam confirms that the team of a pause step exists, so
 // that a mistyped ID gets a plain message instead of the backend's raw 400. It
 // asks for that one team and not for the whole list. Only a definite "no such
