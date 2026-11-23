@@ -20,6 +20,21 @@ func TestParseEntityRefToken(t *testing.T) {
 	}
 }
 
+func TestParseEntityRefTokenTenantDomain(t *testing.T) {
+	ref, err := kg.ParseEntityRefToken("tenant/github/Repository/gcx")
+	require.NoError(t, err)
+	assert.Equal(t, "tenant/github", ref.Domain)
+	assert.Equal(t, "Repository", ref.Type)
+	assert.Equal(t, "gcx", ref.Name)
+
+	// Only a tenant/ prefix may carry the extra slash; a name still cannot.
+	for _, bad := range []string{"tenant//Repository/gcx", "tenant/github/Repository/", "tenant/github//gcx",
+		"myapp/github/Repository/gcx", "tenant/github/Repository/gcx/extra"} {
+		_, err := kg.ParseEntityRefToken(bad)
+		require.Error(t, err, "expected error for %q", bad)
+	}
+}
+
 func TestParseTTL(t *testing.T) {
 	cases := map[string]int64{"": -1, "1h": 3600, "30m": 1800, "7d": 604800, "0": 0, "-1h": -3600}
 	for in, want := range cases {
@@ -42,6 +57,16 @@ func TestValidateDomains(t *testing.T) {
 	require.Error(t, kg.ValidateWritableDomain("kg"))
 	require.Error(t, kg.ValidateWritableDomain("MyApp"))
 	require.NoError(t, kg.ValidateDomain("kg"))
+
+	// A tenant domain names a schema the stack publishes itself (tenant/<name>).
+	require.NoError(t, kg.ValidateWritableDomain("tenant/github"))
+	require.NoError(t, kg.ValidateDomain("tenant/a1"))
+	for _, bad := range []string{"tenant/", "tenant/foo-bar", "tenant/Github", "tenant/1abc", "tenant/a/b"} {
+		require.Error(t, kg.ValidateWritableDomain(bad), "expected error for %q", bad)
+	}
+	// A bare "tenant" is an ordinary slug, as before.
+	require.NoError(t, kg.ValidateDomain("tenant"))
+	require.ErrorContains(t, kg.ValidateDomain("tenant/foo-bar"), "tenant domain")
 	require.Error(t, kg.ValidateIdentifier("9bad", "type"))
 	require.NoError(t, kg.ValidateIdentifier("Service", "type"))
 }
