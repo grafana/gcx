@@ -22,10 +22,12 @@
   The warning counts those rows, names their labels and says how to leave
   them out. It is detected from returned nodes and from columns that project
   a `labels(...)` call at any depth, with or without an alias, such as
-  `labels(a)[0]` or `coalesce(head(labels(a)), 'none')`. A catalog label the
-  query names itself, as a label or in a string literal outside comments, is
-  not counted, so a query that filters out one catalog label is still warned
-  about the others. Rows are unchanged.
+  `labels(a)[0]` or `coalesce(head(labels(a)), 'none')`, also through aliases
+  that WITH gives such a call, as in
+  `MATCH (a) WITH labels(a) AS ls, count(a) AS c RETURN ls[0] AS type, c LIMIT 50`.
+  A catalog label the query names itself, as a label or in a string literal
+  outside comments, is not counted, so a query that filters out one catalog
+  label is still warned about the others. Rows are unchanged.
 - The `gcx kg diagnose` entity overview now also leaves `Account` records out
   of its entity total and per-type counts, as it already did `EntityType`,
   `Env` and `Schema` records. `gcx kg meta schema`, `gcx kg graph query` and

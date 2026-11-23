@@ -201,6 +201,46 @@ func TestCatalogRowsWarning(t *testing.T) {
 func TestCatalogRowsWarningLabelColumns(t *testing.T) {
 	runCatalogWarningCases(t, []catalogWarningCase{
 		{
+			name:    "a WITH alias of labels renamed in RETURN",
+			query:   "MATCH (a) WITH labels(a)[0] AS t, count(a) AS c RETURN t AS type, c ORDER BY type LIMIT 50",
+			columns: []string{"type", "c"},
+			rows:    [][]string{{`"Schema"`, `3`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows holds", "(label Schema)"},
+		},
+		{
+			name:    "a WITH alias of a labels list indexed in RETURN",
+			query:   "MATCH (a) WITH labels(a) AS ls, count(a) AS c RETURN ls[0] AS type, c ORDER BY type LIMIT 50",
+			columns: []string{"type", "c"},
+			rows:    [][]string{{`"EntityType"`, `2`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows holds", "(label EntityType)"},
+		},
+		{
+			name:    "an unaliased column indexing a WITH alias of a labels list",
+			query:   "MATCH (a) WITH labels(a) AS ls RETURN ls[0], count(*) LIMIT 50",
+			columns: []string{"ls[0]", "count(*)"},
+			rows:    [][]string{{`"Env"`, `1`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows holds", "(label Env)"},
+		},
+		{
+			name:    "an alias chain through two WITH clauses and a backtick name",
+			query:   "MATCH (a) WITH head(labels(a)) AS `first label`, a WITH `first label` AS t, count(a) AS c RETURN coalesce(t, 'none') AS type, c LIMIT 50",
+			columns: []string{"type", "c"},
+			rows:    [][]string{{`"Schema"`, `3`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows holds", "(label Schema)"},
+		},
+		{
+			name:    "an alias given a new expression no longer projects labels",
+			query:   "MATCH (a) WITH labels(a)[0] AS t, a WITH a.name AS t RETURN t LIMIT 10",
+			columns: []string{"t"},
+			rows:    [][]string{{`"Env"`}, {`"svc-a"`}},
+		},
+		{
+			name:    "a property key equal to an alias of labels does not refer to it",
+			query:   "MATCH (a) WITH labels(a)[0] AS t, a RETURN a.t AS x, a. t AS y LIMIT 10",
+			columns: []string{"x", "y"},
+			rows:    [][]string{{`"Env"`, `"Schema"`}},
+		},
+		{
 			name:    "labels of startNode and endNode",
 			query:   "MATCH ()-[r]->() RETURN labels(startNode(r))[0] AS from_type, type(r) AS rel, labels(endNode(r))[0] AS to_type, count(r) AS n LIMIT 50",
 			columns: []string{"from_type", "rel", "to_type", "n"},
@@ -291,6 +331,32 @@ func TestCatalogRowsWarningLabelColumns(t *testing.T) {
 			want:    []string{"1 of 1 row holds", "(label EntityType)"},
 		},
 	})
+}
+
+func TestCypherRefersTo(t *testing.T) {
+	marked := map[string]bool{"t": true, "first label": true, "old": false}
+	for _, tt := range []struct {
+		name string
+		expr string
+		want bool
+	}{
+		{name: "the alias itself", expr: "t", want: true},
+		{name: "an index of the alias", expr: "t[0]", want: true},
+		{name: "an argument of a call", expr: "coalesce(t, 'none')", want: true},
+		{name: "a backtick-quoted alias", expr: "`first label`", want: true},
+		{name: "a slice bound", expr: "x[1..t]", want: true},
+		{name: "a property key", expr: "a.t"},
+		{name: "a property key after a space", expr: "a. t"},
+		{name: "a backtick-quoted property key", expr: "a.`t`"},
+		{name: "a longer word", expr: "type"},
+		{name: "a word ending in the alias", expr: "at"},
+		{name: "an alias that is not marked", expr: "old"},
+		{name: "an alias that is not known", expr: "u"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, cypherRefersTo(tt.expr, marked))
+		})
+	}
 }
 
 func TestCypherNamedLabels(t *testing.T) {

@@ -139,25 +139,67 @@ func cypherNamedLabels(query string) map[string]bool {
 
 // cypherLabelColumns reports, per column, whether it projects a labels(...)
 // call, at any depth, such as labels(a), labels(a)[0], head(labels(a)) or
-// coalesce(labels(a)[0], 'none'). A column without an alias is named after its
-// expression, so it projects one when its name contains such a call; a column
-// named after an alias projects one when the expression the query gives that
-// alias in a RETURN, WITH or UNWIND item contains such a call. Marking a column
-// that returns something else, such as size(labels(a)), is harmless: only a
-// string or a list of strings equal to a catalog label counts (see
+// coalesce(labels(a)[0], 'none'), directly or through aliases. An expression
+// projects one when it contains such a call or refers to an alias that
+// projects one (see cypherRefersTo), as t AS type does after
+// WITH labels(a)[0] AS t, and ls[0] after WITH labels(a) AS ls. The RETURN,
+// WITH and UNWIND items are read in query order, and an item that gives an
+// alias a new expression replaces the earlier one. A column without an alias
+// is named after its expression, so it projects one when its name does; a
+// column named after an alias projects one when that alias does. Marking a
+// column that returns something else, such as size(labels(a)), is harmless:
+// only a string or a list of strings equal to a catalog label counts (see
 // catalogLabelValues).
 func cypherLabelColumns(query string, columns []string) []bool {
 	aliases := map[string]bool{}
+	projects := func(expr string) bool {
+		return cypherLabelsCall.MatchString(expr) || cypherRefersTo(expr, aliases)
+	}
 	for _, item := range cypherProjections(maskCypherStrings(query, nil)) {
-		if item.alias != "" && cypherLabelsCall.MatchString(item.expr) {
-			aliases[item.alias] = true
+		if item.alias != "" {
+			aliases[item.alias] = projects(item.expr)
 		}
 	}
 	out := make([]bool, len(columns))
 	for i, column := range columns {
-		out[i] = aliases[column] || cypherLabelsCall.MatchString(column)
+		out[i] = aliases[column] || projects(maskCypherStrings(column, nil))
 	}
 	return out
+}
+
+// cypherRefersTo reports whether expr, whose string literals are masked (see
+// maskCypherStrings), refers to an alias that marked maps to true: names it as
+// a word, plain or backtick-quoted, that does not follow a dot, as a property
+// key does.
+func cypherRefersTo(expr string, marked map[string]bool) bool {
+	for i := 0; i < len(expr); i++ {
+		start := i
+		var name string
+		switch c := expr[i]; {
+		case c == '`':
+			end := strings.IndexByte(expr[i+1:], '`')
+			if end < 0 {
+				end = len(expr) - i - 1
+			}
+			name = expr[i+1 : i+1+end]
+			i += end + 1
+		case isCypherWordStart(c) && (i == 0 || !isCypherWordByte(expr[i-1])):
+			j := i
+			for j < len(expr) && isCypherWordByte(expr[j]) {
+				j++
+			}
+			name = expr[i:j]
+			i = j - 1
+		default:
+			continue
+		}
+		before := strings.TrimRight(expr[:start], " \t\r\n")
+		isKey := strings.HasSuffix(before, ".") && !strings.HasSuffix(before, "..")
+		if marked[name] && !isKey {
+			return true
+		}
+	}
+	return false
 }
 
 // cypherProjection is one item of a RETURN, WITH or UNWIND clause.
