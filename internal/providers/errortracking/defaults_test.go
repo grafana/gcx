@@ -193,7 +193,7 @@ func TestProjectsUse(t *testing.T) {
 			exit: gcxerrors.ExitUsageError, err: "--project must be a positive project ID up to 9007199254740991 or a project name"},
 		{name: "show as text", setup: withConfig("314"), args: []string{"projects", "use"}, has: []string{saved314}},
 		{name: "show names the env var when it is the source", setup: withEnv("314"), args: []string{"projects", "use"},
-			has: []string{"Default project for stack test: 314 " + fromEnv}},
+			has: []string{"Default project for stack test: 314 " + fromEnv + "; not checked against the stack's projects"}},
 		{name: "set by name saves the ID, as JSON", args: []string{"projects", "use", "web", "-o", "json"}, calls: []string{"GET projects"},
 			json:  `{"type":"gcx.mutation","schema_version":"1","action":"use","target":{"kind":"Project","id":"2"},"project":{"id":2,"name":"web"},"stack":"test","source":"the stack's saved default"}`,
 			check: saved("2")},

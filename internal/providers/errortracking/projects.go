@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -255,6 +256,9 @@ func showDefault(ctx context.Context, loader *providers.ConfigLoader, stack stri
 	}
 	d.Source = defaultSource()
 	d.text = fmt.Sprintf("Default project%s: %s (from %s)", forStack, printable(v), defaultSource())
+	if _, fromEnv := os.LookupEnv(projectEnv); fromEnv {
+		d.text += "; not checked against the stack's projects"
+	}
 	return d, nil
 }
 
