@@ -36,17 +36,17 @@ func runEntities(t *testing.T, f *fakeKG, args string) (string, string, error) {
 }
 
 func entitiesFake(applyScope bool) *fakeKG {
-	api := svc("api", "deployment")
+	api := svc("api", "gadget")
 	api.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
-	db := svc("db", "statefulset")
+	db := svc("db", "Widget")
 	db.Scope = map[string]string{"env": "prod", "namespace": "ns2"}
 	// gateway is a Service without a namespace.
-	gateway := svc("gateway", "deployment")
+	gateway := svc("gateway", "gadget")
 	gateway.Scope = map[string]string{"env": "prod"}
 	return &fakeKG{
 		counts: map[string]int64{"Service": 3, "Node": 2},
 		schema: map[string][]string{
-			"Service": {"name", "namespace", "workload_type"},
+			"Service": {"name", "namespace", "class"},
 			"Node":    {"name"},
 		},
 		entities: map[string][]SearchResult{
@@ -157,17 +157,26 @@ func TestEntitiesListCommand(t *testing.T) {
 		},
 		{
 			name:    "an unknown type with a name suggests the command with the caller's flags",
-			args:    "list --type Deployment --property name=api --namespace ns1 " + testWindow,
-			wantErr: `entity type "Deployment" is not in the graph`,
+			args:    "list --type Gadget --property name=api --namespace ns1 " + testWindow,
+			wantErr: `entity type "Gadget" is not in the graph`,
 			wantSuggestions: []string{
-				"These return matching entities: gcx kg entities list --type Service --property workload_type=deployment --property name=api --namespace ns1 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
+				"These return matching entities: gcx kg entities list --type Service --property class=gadget --property name=api --namespace ns1 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
+			},
+			wantCountCalls: 1,
+		},
+		{
+			name:    "an unknown type in lower case suggests the value as stored",
+			args:    "list --type widget --namespace ns2 " + testWindow,
+			wantErr: `entity type "widget" is not in the graph`,
+			wantSuggestions: []string{
+				"These return matching entities: gcx kg entities list --type Service --property class=Widget --namespace ns2 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
 			},
 			wantCountCalls: 1,
 		},
 		{
 			name:    "an unknown type with a name found under another type",
-			args:    "list --type Container --property name=node-1 --insight any " + testWindow,
-			wantErr: `entity type "Container" is not in the graph`,
+			args:    "list --type Gizmo --property name=node-1 --insight any " + testWindow,
+			wantErr: `entity type "Gizmo" is not in the graph`,
 			wantSuggestions: []string{
 				"These return matching entities: gcx kg entities list --type Node --property name=node-1 --insight any --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
 			},
@@ -175,8 +184,8 @@ func TestEntitiesListCommand(t *testing.T) {
 		},
 		{
 			name:            "probes apply --insight like the caller's search",
-			args:            "list --type Container --property name=node-2 --insight any " + testWindow,
-			wantErr:         `entity type "Container" is not in the graph`,
+			args:            "list --type Gizmo --property name=node-2 --insight any " + testWindow,
+			wantErr:         `entity type "Gizmo" is not in the graph`,
 			wantSuggestions: []string{},
 			wantCountCalls:  1,
 		},
@@ -196,7 +205,7 @@ func TestEntitiesListCommand(t *testing.T) {
 		},
 		{
 			name:           "an unknown type in the default window points at the window first",
-			fake:           &fakeKG{counts: map[string]int64{"K6Test": 1}, schema: map[string][]string{"K6Test": {"name"}}},
+			fake:           &fakeKG{counts: map[string]int64{"Other": 1}, schema: map[string][]string{"Other": {"name"}}},
 			args:           "list --type Service -o json",
 			wantErr:        "(the default window: the last hour)",
 			wantCountCalls: 1,
@@ -288,30 +297,30 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 			// The fake ignores the scope, so only the client-side filter on
 			// the probe keeps an entity of another namespace out.
 			name:           "a probe drops an entity outside the requested scope",
-			args:           "inspect Deployment--api --namespace ns2 " + testWindow,
-			wantErr:        `entity type "Deployment" is not in the graph`,
+			args:           "inspect Gadget--api --namespace ns2 " + testWindow,
+			wantErr:        `entity type "Gadget" is not in the graph`,
 			wantNoSuggest:  "These return matching entities",
 			wantCountCalls: 1,
 		},
 		{
 			name:           "a probe keeps an entity inside the requested scope",
-			args:           "inspect Deployment--api --namespace ns1 " + testWindow,
-			wantErr:        `entity type "Deployment" is not in the graph`,
+			args:           "inspect Gadget--api --namespace ns1 " + testWindow,
+			wantErr:        `entity type "Gadget" is not in the graph`,
 			wantSuggestion: "These return matching entities: gcx kg entities inspect Service--api --env prod --namespace ns1 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
 			wantCountCalls: 1,
 		},
 		{name: "a type in the wrong case is corrected", args: "inspect service--api " + testWindow, wantCountCalls: 1},
 		{
 			name:           "an unknown type suggests the entity under its type, with its scope",
-			args:           "inspect Deployment--api --env prod " + testWindow,
-			wantErr:        `entity type "Deployment" is not in the graph`,
+			args:           "inspect Gadget--api --env prod " + testWindow,
+			wantErr:        `entity type "Gadget" is not in the graph`,
 			wantSuggestion: "These return matching entities: gcx kg entities inspect Service--api --env prod --namespace ns1 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
 			wantCountCalls: 1,
 		},
 		{name: "a known type keeps the not-found error", args: "inspect Service--nope " + testWindow, wantErr: "Service/nope not found", wantCountCalls: 1},
 		{
 			name:           "an unknown type in the default window points at the window",
-			fake:           &fakeKG{counts: map[string]int64{"K6Test": 1}, schema: map[string][]string{"K6Test": {"name"}}},
+			fake:           &fakeKG{counts: map[string]int64{"Other": 1}, schema: map[string][]string{"Other": {"name"}}},
 			args:           "inspect Service--api",
 			wantErr:        "(the default window: the last hour)",
 			wantSuggestion: "Pass --from/--to covering the time you are asking about",

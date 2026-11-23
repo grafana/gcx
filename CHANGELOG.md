@@ -17,14 +17,25 @@
   the window's schema but has no entities still returns `[]` (list) or "not
   found" (inspect). Any other type, which used to give the same result, now
   returns an error that names the window's entity types and, where a probe
-  finds entities, the command that returns them: the name under another
-  type, or the type name as the value of a kind-like property such as a
-  workload type. The suggested command keeps the call's `--property`,
-  `--insight` and window, and its scope. For inspect, it is an inspect
-  command with the found entity's full scope when the probe finds one
-  entity, and a `list --property name=<name>` command when the name has
-  several entities. When no `--from`/`--to`/`--since`
-  was passed, the error also says that the default window is the last hour.
+  finds entities, the command that returns them. The probes run the
+  lookup's search (list's filters, or for inspect the name in the given
+  scope), first backend page only, under each of up to 12 schema types that
+  have entities in the window, most entities first. They suggest the given
+  name under a type whose search returns it, and
+  `--property <property>=<value>` for a property of the returned entities,
+  other than name and their scope dimensions, whose value equals the type
+  name ignoring letter case. The value is written as stored. Up to 12 such
+  values are checked, in type order and, within a type, the values that more
+  of its returned entities hold first, each with the same search plus that
+  property match. A value is suggested only when that search returns
+  entities, and not when the search for an earlier suggested value of the
+  same type and property also returned entities with this value (as a
+  backend does whose exact match ignores letter case). The suggested command keeps the
+  call's `--property`, `--insight` and window, and its scope. For inspect, it
+  is an inspect command with the found entity's full scope when the probe
+  finds one entity, and a `list --property name=<name>` command when the
+  name has several entities. When no `--from`/`--to`/`--since` was passed,
+  the error also says that the default window is the last hour.
   Behaviour change: when the window holds no entities of any type and no
   window was passed, list now exits 1 (it printed `[]`) and inspect's
   not-found error says that the default window is the last hour. With a

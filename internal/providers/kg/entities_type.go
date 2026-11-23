@@ -18,8 +18,8 @@ type typeCheck struct {
 	verb string // "list" or "inspect"
 	name string // the entity name asked for; "" if none
 	// search is the caller's search. Probes reuse it, with the entity type
-	// (and a kind property) swapped, so a suggested command returns what the
-	// probe found.
+	// swapped (and a property match added), so a suggested command returns
+	// what the probe found.
 	search typeSearch
 	// windowGiven reports whether the caller passed --from/--to or --since.
 	windowGiven bool
@@ -36,12 +36,13 @@ type typeCheck struct {
 // result stands. A type that the window's types do not include is rejected
 // with an error that names those types and, where a probe finds them,
 // commands that return the entities the caller is probably after (an entity
-// with the given name under another type, or the type name used as the value
-// of a *_type/*kind property); when the caller passed no window, the error
-// also says the default window is the last hour. If the window holds no
-// entities of any type, the result stands when the caller chose the window,
-// and otherwise the error says the default window is the last hour. The check is best-effort: if the
-// type counts or the schema cannot be read, entityType comes back unchanged.
+// with the given name under another type, or entities of another type with a
+// property whose value is the type name; see probeTypeAlternatives); when the
+// caller passed no window, the error also says the default window is the
+// last hour. If the window holds no entities of any type, the result stands
+// when the caller chose the window, and otherwise the error says the default
+// window is the last hour. The check is best-effort: if the type counts or
+// the schema cannot be read, entityType comes back unchanged.
 func checkEntityType(ctx context.Context, client *Client, entityType string, c typeCheck) (string, error) {
 	startMs, endMs := c.search.startMs, c.search.endMs
 	counts, err := client.CountEntityTypes(ctx, startMs, endMs, nil)
@@ -224,53 +225,123 @@ func (f *scopeFlags) args() []string {
 	return out
 }
 
-// isKindProperty reports whether a property name looks like it holds a kind
-// (e.g. a workload kind), so a type name may appear as its value.
-func isKindProperty(p string) bool {
-	p = strings.ToLower(p)
-	return strings.HasSuffix(p, "_type") || strings.HasSuffix(p, "kind")
-}
-
-// maxKindProbes and maxNameProbes bound the searches run to build
-// suggestions for one unknown type.
+// maxTypeProbes bounds the types whose entities are read to build
+// suggestions for one unknown type, and maxValueProbes the searches that
+// confirm a property value read from those entities.
 const (
-	maxKindProbes = 12
-	maxNameProbes = 12
+	maxTypeProbes  = 12
+	maxValueProbes = 12
 )
 
 // probeTypeAlternatives looks for the entities a caller probably meant by an
-// unknown type: entities whose kind-like property equals the type name (in
-// lower case), and entities called c.name under another schema type. Each probe is
-// the caller's search with the type swapped (and the kind property added),
-// filtered client-side as the caller's search is, so a probe that returns
-// rows means the suggested command returns them. Only types with entities in
-// the window are probed, most entities first; kind and name probes have
-// separate budgets. Property matches come first.
+// unknown type. It runs the caller's search, page 0 and filtered client-side
+// as the caller's search is, under each schema type that has entities in the
+// window, most entities first, up to maxTypeProbes types. When the caller
+// gave a name, a type whose rows pass is a match for it. Among those rows, a
+// string property other than name and the row's scope dimensions whose value
+// equals the type name, ignoring letter case, is a candidate property match,
+// kept with its value as stored; the values more rows hold come first. Up to
+// maxValueProbes candidates are each confirmed by the same search with the
+// property match added, so a suggested command returns the rows its probe
+// found, and a candidate is left out when an earlier one's search returned
+// its value. Property matches come first; a name match is left out for a
+// type that has one.
 func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaResult, present []string, entityType string, c typeCheck) []typeAlternative {
-	props := make(map[string][]string, len(schema.EntityTypes))
+	inSchema := make(map[string]bool, len(schema.EntityTypes))
 	for _, et := range schema.EntityTypes {
-		props[et.Type] = et.Properties
+		inSchema[et.Type] = true
 	}
-	value := strings.ToLower(strings.TrimSpace(entityType))
-	var kindProbes, nameProbes []typeAlternative
+	var typeProbes []typeAlternative
 	for _, t := range present {
-		if _, ok := props[t]; !ok {
+		if !inSchema[t] {
 			continue // not an entity type of the schema, such as a catalog record
 		}
-		for _, p := range props[t] {
-			if isKindProperty(p) && len(kindProbes) < maxKindProbes {
-				kindProbes = append(kindProbes, typeAlternative{entityType: t, property: p, value: value})
-			}
+		if len(typeProbes) == maxTypeProbes {
+			break
 		}
-		if c.name != "" && len(nameProbes) < maxNameProbes {
-			nameProbes = append(nameProbes, typeAlternative{entityType: t})
+		typeProbes = append(typeProbes, typeAlternative{entityType: t})
+	}
+
+	want := strings.TrimSpace(entityType)
+	var nameHits, valueProbes []typeAlternative
+	for i, r := range runProbes(ctx, client, c, typeProbes) {
+		if len(r.rows) == 0 {
+			continue
+		}
+		t := typeProbes[i].entityType
+		if c.name != "" {
+			nameHits = append(nameHits, r.alternative(c, typeAlternative{entityType: t}))
+		}
+		for _, pv := range propertyValuesEqualFold(r.rows, want) {
+			valueProbes = append(valueProbes, typeAlternative{entityType: t, property: pv[0], value: pv[1]})
 		}
 	}
-	probes := make([]typeAlternative, 0, len(kindProbes)+len(nameProbes))
-	probes = append(probes, kindProbes...)
-	probes = append(probes, nameProbes...)
+	if len(valueProbes) > maxValueProbes {
+		valueProbes = valueProbes[:maxValueProbes]
+	}
 
-	found := make([]bool, len(probes))
+	var hits []typeAlternative
+	var hitRows [][]SearchResult
+	seenType := map[string]bool{}
+	for i, r := range runProbes(ctx, client, c, valueProbes) {
+		pr := valueProbes[i]
+		if len(r.rows) == 0 || returnedBy(hits, hitRows, pr) {
+			continue
+		}
+		hits = append(hits, r.alternative(c, pr))
+		hitRows = append(hitRows, r.rows)
+		seenType[pr.entityType] = true
+	}
+	for _, h := range nameHits {
+		if !seenType[h.entityType] {
+			hits = append(hits, h)
+		}
+	}
+	return hits
+}
+
+// returnedBy reports whether one of hits, a property match on a's type and
+// property whose search returned rows[i], returned a row that holds a's
+// value: the search matched both values (as a backend does that ignores
+// letter case), so a would repeat that suggestion.
+func returnedBy(hits []typeAlternative, rows [][]SearchResult, a typeAlternative) bool {
+	for i, h := range hits {
+		if h.entityType != a.entityType || h.property != a.property {
+			continue
+		}
+		for _, r := range rows[i] {
+			if v, ok := r.Properties[a.property].(string); ok && v == a.value {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// probeResult is what one probe search returned, after the caller's
+// client-side filter.
+type probeResult struct {
+	rows []SearchResult
+	more bool // the backend signalled a further page
+}
+
+// alternative returns a with the scope of the one entity an inspect probe
+// found, when it found exactly one.
+func (r probeResult) alternative(c typeCheck, a typeAlternative) typeAlternative {
+	if c.verb == "inspect" && len(r.rows) == 1 && !r.more {
+		a.scope = r.rows[0].Scope
+		if a.scope == nil {
+			a.scope = map[string]string{}
+		}
+	}
+	return a
+}
+
+// runProbes runs page 0 of the caller's search for each probe, with the
+// probe's entity type and, when it has one, its property match put first.
+// A probe that fails returns no rows; it does not fail the check.
+func runProbes(ctx context.Context, client *Client, c typeCheck, probes []typeAlternative) []probeResult {
+	out := make([]probeResult, len(probes))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
 	for i, pr := range probes {
@@ -279,33 +350,55 @@ func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaR
 			if pr.property != "" {
 				s.propertyFilters = append([]PropertyMatcher{{Name: pr.property, Op: "=", Value: pr.value}}, c.search.propertyFilters...)
 			}
-			// A probe that fails finds nothing; it does not fail the check.
 			if page, err := s.page(gctx, client, pr.entityType, 0); err == nil {
-				rows := s.filter(page.Entities)
-				found[i] = len(rows) > 0
-				if c.verb == "inspect" && len(rows) == 1 && !hasMorePages(page) {
-					probes[i].scope = rows[0].Scope
-					if probes[i].scope == nil {
-						probes[i].scope = map[string]string{}
-					}
-				}
+				out[i] = probeResult{rows: s.filter(page.Entities), more: hasMorePages(page)}
 			}
 			return nil
 		})
 	}
 	_ = g.Wait()
+	return out
+}
 
-	var hits []typeAlternative
-	seenType := map[string]bool{}
-	for i, pr := range probes {
-		if !found[i] {
-			continue
-		}
-		if pr.property == "" && seenType[pr.entityType] {
-			continue // a property match for this type already names the entity
-		}
-		seenType[pr.entityType] = true
-		hits = append(hits, pr)
+// propertyValuesEqualFold returns the distinct [property, value] pairs of
+// rows whose value is a string equal to want ignoring letter case, the pairs
+// that more rows hold first, then sorted by property and value. The value is
+// kept as stored. Name and each row's scope dimensions are left out, and so
+// is a pair that '--property property=value' would not parse back to that
+// exact match.
+func propertyValuesEqualFold(rows []SearchResult, want string) [][2]string {
+	if want == "" {
+		return nil
 	}
-	return hits
+	count := map[[2]string]int{}
+	var out [][2]string
+	for _, r := range rows {
+		for k, v := range r.Properties {
+			s, ok := v.(string)
+			if !ok || k == "name" || !strings.EqualFold(s, want) {
+				continue
+			}
+			if _, isScope := r.Scope[k]; isScope {
+				continue
+			}
+			if pm, err := parsePropertyFlag(k + "=" + s); err != nil || pm != (PropertyMatcher{Name: k, Op: "=", Value: s}) {
+				continue
+			}
+			pv := [2]string{k, s}
+			if count[pv] == 0 {
+				out = append(out, pv)
+			}
+			count[pv]++
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if count[out[i]] != count[out[j]] {
+			return count[out[i]] > count[out[j]]
+		}
+		if out[i][0] != out[j][0] {
+			return out[i][0] < out[j][0]
+		}
+		return out[i][1] < out[j][1]
+	})
+	return out
 }

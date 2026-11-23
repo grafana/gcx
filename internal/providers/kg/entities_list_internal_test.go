@@ -35,6 +35,12 @@ type fakeKG struct {
 	// its type has no row that carries it, and "none" matches a row without
 	// the dimension.
 	applyScope bool
+	// unfilterable is a property that search cannot match on: a search
+	// with an exact match on it returns no rows.
+	unfilterable string
+	// foldCase makes an exact property match ignore letter case, as some
+	// backends do.
+	foldCase bool
 
 	mu          sync.Mutex
 	searchReq   []SearchRequest
@@ -126,8 +132,13 @@ func (f *fakeKG) search(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	m := req.FilterCriteria[0]
 	var rows []SearchResult
 	for _, e := range f.entities[m.EntityType] {
-		if matchesAll(e, m.PropertyMatchers) && (!f.applyScope || backendScopeMatches(e, f.entities[m.EntityType], req.ScopeCriteria)) {
+		if matchesAll(e, m.PropertyMatchers, f.foldCase) && (!f.applyScope || backendScopeMatches(e, f.entities[m.EntityType], req.ScopeCriteria)) {
 			rows = append(rows, e)
+		}
+	}
+	for _, pm := range m.PropertyMatchers {
+		if f.unfilterable != "" && pm.Name == f.unfilterable && pm.Op == "=" {
+			rows = nil
 		}
 	}
 	size := f.pageSize
@@ -171,7 +182,7 @@ func backendScopeMatches(e SearchResult, all []SearchResult, sc *ScopeCriteria) 
 	return true
 }
 
-func matchesAll(e SearchResult, ms []PropertyMatcher) bool {
+func matchesAll(e SearchResult, ms []PropertyMatcher, foldCase bool) bool {
 	for _, m := range ms {
 		if m.Op != "=" {
 			continue
@@ -182,7 +193,7 @@ func matchesAll(e SearchResult, ms []PropertyMatcher) bool {
 		} else {
 			got, _ = e.Properties[m.Name].(string)
 		}
-		if got != m.Value {
+		if got != m.Value && (!foldCase || !strings.EqualFold(got, m.Value)) {
 			return false
 		}
 	}
@@ -202,8 +213,8 @@ func newFakeClient(t *testing.T, f *fakeKG) *Client {
 	return c
 }
 
-func svc(name, kind string) SearchResult {
-	return SearchResult{Name: name, Type: "Service", Properties: map[string]any{"workload_type": kind}}
+func svc(name, class string) SearchResult {
+	return SearchResult{Name: name, Type: "Service", Properties: map[string]any{"class": class}}
 }
 
 func scoped(name, env, namespace string) SearchResult {
@@ -227,17 +238,17 @@ func names(rs []SearchResult) []string {
 
 func TestCheckEntityType(t *testing.T) {
 	schema := map[string][]string{
-		"Service": {"name", "namespace", "workload_type"},
+		"Service": {"name", "namespace", "class"},
 		"Pod":     {"name", "namespace", "node"},
 		"Volume":  {"name"},
 	}
-	api := svc("api", "deployment")
+	api := svc("api", "gadget")
 	api.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
-	db := svc("db", "statefulset")
+	db := svc("db", "Widget")
 	db.Scope = map[string]string{"env": "prod", "namespace": "ns2"}
-	dup1 := svc("dup", "deployment")
+	dup1 := svc("dup", "gadget")
 	dup1.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
-	dup2 := svc("dup", "deployment")
+	dup2 := svc("dup", "gadget")
 	dup2.Scope = map[string]string{"env": "prod", "namespace": "ns2"}
 	entities := map[string][]SearchResult{
 		"Service": {api, db, dup1, dup2},
@@ -270,84 +281,92 @@ func TestCheckEntityType(t *testing.T) {
 		{name: "schema type case is corrected", entityType: "volume", want: "Volume"},
 		{name: "count API error skips the check", fake: &fakeKG{countErr: true}, entityType: "Nope", want: "Nope"},
 		{
-			name:        "unknown type names a kind property match",
-			entityType:  "StatefulSet",
+			name:        "unknown type names a property whose value is the type name, as stored",
+			entityType:  "Gadget",
 			check:       typeCheck{verb: "list"},
-			wantSummary: `entity type "StatefulSet" is not in the graph in the window`,
+			wantSummary: `entity type "Gadget" is not in the graph in the window`,
 			wantDetails: "Entity types in this window: Pod, Service, Volume",
 			wantSuggestions: []string{
-				"gcx kg entities list --type Service --property workload_type=statefulset --from ",
+				"gcx kg entities list --type Service --property class=gadget --from ",
 				"gcx kg meta schema --from ",
 			},
 		},
 		{
+			name:            "a lower-case type matches a value stored in another case",
+			entityType:      "widget",
+			check:           typeCheck{verb: "list"},
+			wantSummary:     `entity type "widget" is not in the graph`,
+			wantSuggestions: []string{"gcx kg entities list --type Service --property class=Widget --from "},
+			wantNoSuggest:   "class=widget",
+		},
+		{
 			name:       "unknown type with a name adds the caller's flags to the list command",
-			entityType: "Deployment",
+			entityType: "Gadget",
 			check: typeCheck{
 				verb:   "list",
 				name:   "api",
 				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "api"}}},
 				flags:  []string{"--property name=api", "--insight any", "--namespace ns1"},
 			},
-			wantSummary: `entity type "Deployment" is not in the graph`,
+			wantSummary: `entity type "Gadget" is not in the graph`,
 			wantSuggestions: []string{
-				"gcx kg entities list --type Service --property workload_type=deployment --property name=api --insight any --namespace ns1 --from ",
+				"gcx kg entities list --type Service --property class=gadget --property name=api --insight any --namespace ns1 --from ",
 			},
 			wantNoSuggest: "--type Service --property name=api",
 		},
 		{
 			name:       "probes apply the caller's scope filter",
-			entityType: "StatefulSet",
+			entityType: "Widget",
 			check: typeCheck{
 				verb:   "list",
 				search: typeSearch{sc: &ScopeCriteria{NameAndValues: map[string][]string{"namespace": {"ns1"}}}, keep: ns1},
 				flags:  []string{"--namespace ns1"},
 			},
-			wantSummary:   `entity type "StatefulSet" is not in the graph`,
+			wantSummary:   `entity type "Widget" is not in the graph`,
 			wantNoSuggest: "These return matching entities",
 		},
 		{
 			name:       "inspect suggests the one entity under the type it has, with its scope",
-			entityType: "Deployment",
+			entityType: "Gadget",
 			check: typeCheck{
 				verb:   "inspect",
 				name:   "api",
 				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "api"}}},
 				flags:  []string{"--env prod"},
 			},
-			wantSummary:     `entity type "Deployment" is not in the graph`,
+			wantSummary:     `entity type "Gadget" is not in the graph`,
 			wantSuggestions: []string{"gcx kg entities inspect Service--api --env prod --namespace ns1 --from "},
 		},
 		{
 			name:       "inspect suggests list when the name has several entities",
-			entityType: "Deployment",
+			entityType: "Gizmo",
 			check: typeCheck{
 				verb:   "inspect",
 				name:   "dup",
 				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "dup"}}},
 				flags:  []string{"--env prod"},
 			},
-			wantSummary:     `entity type "Deployment" is not in the graph`,
-			wantSuggestions: []string{"gcx kg entities list --type Service --property workload_type=deployment --property name=dup --env prod --from "},
+			wantSummary:     `entity type "Gizmo" is not in the graph`,
+			wantSuggestions: []string{"gcx kg entities list --type Service --property name=dup --env prod --from "},
 			wantNoSuggest:   "gcx kg entities inspect Service--dup",
 		},
 		{
-			name:       "a name found under another type without a kind match",
-			entityType: "Container",
+			name:       "a name found under another type without a property match",
+			entityType: "Gizmo",
 			check: typeCheck{
 				verb:   "inspect",
 				name:   "api-1",
 				search: typeSearch{propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "api-1"}}},
 			},
-			wantSummary:     `entity type "Container" is not in the graph`,
+			wantSummary:     `entity type "Gizmo" is not in the graph`,
 			wantSuggestions: []string{"gcx kg entities inspect Pod--api-1 --from "},
 			wantNoSuggest:   "Service--api-1",
 		},
 		{
 			name:          "no probe matches leaves only the schema pointer",
-			entityType:    "Widget",
+			entityType:    "Sprocket",
 			check:         typeCheck{verb: "list"},
-			wantSummary:   `entity type "Widget" is not in the graph`,
+			wantSummary:   `entity type "Sprocket" is not in the graph`,
 			wantNoSuggest: "These return matching entities",
 		},
 		{
@@ -360,20 +379,20 @@ func TestCheckEntityType(t *testing.T) {
 		},
 		{
 			name:        "unknown type in the default window says the window is the last hour",
-			fake:        &fakeKG{counts: map[string]int64{"K6Test": 1}, schema: map[string][]string{"K6Test": {"name"}}},
+			fake:        &fakeKG{counts: map[string]int64{"Other": 1}, schema: map[string][]string{"Other": {"name"}}},
 			entityType:  "Service",
 			check:       typeCheck{verb: "list"},
 			wantSummary: `entity type "Service" is not in the graph in the window`,
-			wantDetails: "Without --from/--to or --since, the window is the last hour. Entity types in this window: K6Test",
+			wantDetails: "Without --from/--to or --since, the window is the last hour. Entity types in this window: Other",
 			wantFirst:   "Pass --from/--to covering the time you are asking about",
 		},
 		{
 			name:        "unknown type in a window the caller chose does not blame the window",
-			fake:        &fakeKG{counts: map[string]int64{"K6Test": 1}, schema: map[string][]string{"K6Test": {"name"}}},
+			fake:        &fakeKG{counts: map[string]int64{"Other": 1}, schema: map[string][]string{"Other": {"name"}}},
 			entityType:  "Service",
 			check:       typeCheck{verb: "list", windowGiven: true},
 			wantSummary: `entity type "Service" is not in the graph in the window`,
-			wantDetails: "Entity types in this window: K6Test",
+			wantDetails: "Entity types in this window: Other",
 			wantFirst:   "Run 'gcx kg meta schema --from ",
 			wantNoText:  "last hour",
 		},
@@ -431,30 +450,31 @@ func TestCheckEntityType(t *testing.T) {
 	}
 }
 
-// TestProbeTypeAlternativesBudget covers a schema with more candidate probes
-// than the budgets allow: types are probed most entities first, name probes
-// have their own budget, and types without entities or outside the schema are
-// not probed.
+// TestProbeTypeAlternativesBudget covers a schema with more types and more
+// property matches than the budgets allow: types are probed most entities
+// first, up to maxTypeProbes; property matches are confirmed up to
+// maxValueProbes; and types without entities or outside the schema are not
+// probed.
 func TestProbeTypeAlternativesBudget(t *testing.T) {
 	schema := map[string][]string{}
 	counts := map[string]int64{}
+	entities := map[string][]SearchResult{}
 	for i := range 20 {
-		typ := fmt.Sprintf("A%02d", i) // sorts before the type that holds the entity
-		schema[typ] = []string{"name", "a_type", "b_kind"}
+		typ := fmt.Sprintf("A%02d", i) // sorts before the type with the most entities
+		schema[typ] = []string{"name", "class", "group"}
 		counts[typ] = int64(i + 1)
+		// Two properties hold the type name, in two letter cases.
+		entities[typ] = []SearchResult{{Name: "target", Type: typ, Properties: map[string]any{"class": "gadget", "group": "Gadget"}}}
 	}
-	schema["Empty"] = []string{"name", "x_type"}
+	schema["Empty"] = []string{"name", "class"}
 	counts["Empty"] = 0
 	schema["Zeta"] = []string{"name"}
 	counts["Zeta"] = 1000
+	entities["Zeta"] = []SearchResult{{Name: "target", Type: "Zeta"}}
 	counts["EntityType"] = 5000 // a catalog record, not in the schema
-	f := &fakeKG{
-		counts:   counts,
-		schema:   schema,
-		entities: map[string][]SearchResult{"Zeta": {{Name: "target", Type: "Zeta"}}},
-	}
+	f := &fakeKG{counts: counts, schema: schema, entities: entities}
 	client := newFakeClient(t, f)
-	_, err := checkEntityType(t.Context(), client, "Microservice", typeCheck{
+	_, err := checkEntityType(t.Context(), client, "Gadget", typeCheck{
 		verb:   "list",
 		name:   "target",
 		search: typeSearch{startMs: 1000, endMs: 2000, propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "target"}}},
@@ -464,12 +484,23 @@ func TestProbeTypeAlternativesBudget(t *testing.T) {
 	})
 	var de gcxerrors.DetailedError
 	require.ErrorAs(t, err, &de)
-	assert.Contains(t, de.Suggestions[0], "gcx kg entities list --type Zeta --property name=target --from ")
-	require.Len(t, f.searchReq, maxKindProbes+maxNameProbes)
+	require.NotEmpty(t, de.Suggestions)
+	assert.Equal(t, "These return matching entities: gcx kg entities list --type A19 --property class=gadget --property name=target --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z", de.Suggestions[0])
+	assert.Contains(t, de.Suggestions, "These return matching entities: gcx kg entities list --type A19 --property group=Gadget --property name=target --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z")
+	assert.Contains(t, de.Suggestions, "These return matching entities: gcx kg entities list --type Zeta --property name=target --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z")
+	propertyMatches := 0
+	for _, sug := range de.Suggestions {
+		if strings.Contains(sug, "--property class=") || strings.Contains(sug, "--property group=") {
+			propertyMatches++
+		}
+	}
+	assert.Equal(t, maxValueProbes, propertyMatches)
+	require.Len(t, f.searchReq, maxTypeProbes+maxValueProbes)
 	probed := map[string]bool{}
 	for _, req := range f.searchReq {
 		probed[req.FilterCriteria[0].EntityType] = true
 	}
+	assert.True(t, probed["Zeta"], "the type with the most entities is probed")
 	assert.True(t, probed["A19"], "the most populous A type is probed")
 	assert.False(t, probed["A00"], "the least populous types fall outside the budget")
 	assert.False(t, probed["Empty"], "a type without entities is not probed")
@@ -477,15 +508,15 @@ func TestProbeTypeAlternativesBudget(t *testing.T) {
 }
 
 func TestProbeTypeAlternativesSkipsEmptyTypes(t *testing.T) {
-	// Two types with a kind property and room in the budget for both: only
-	// the type that has entities is probed.
+	// Two types with room in the budget for both: only the type that has
+	// entities is probed.
 	f := &fakeKG{
 		counts:   map[string]int64{"Busy": 3, "Empty": 0},
-		schema:   map[string][]string{"Busy": {"name", "x_type"}, "Empty": {"name", "x_type"}},
+		schema:   map[string][]string{"Busy": {"name", "class"}, "Empty": {"name", "class"}},
 		entities: map[string][]SearchResult{"Busy": {{Name: "target", Type: "Busy"}}},
 	}
 	client := newFakeClient(t, f)
-	_, err := checkEntityType(t.Context(), client, "Microservice", typeCheck{
+	_, err := checkEntityType(t.Context(), client, "Gadget", typeCheck{
 		verb:        "list",
 		name:        "target",
 		search:      typeSearch{startMs: 1000, endMs: 2000, propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: "target"}}},
@@ -501,15 +532,135 @@ func TestProbeTypeAlternativesSkipsEmptyTypes(t *testing.T) {
 	assert.False(t, probed["Empty"], "a type without entities is not probed")
 }
 
+// TestCheckEntityTypeSkipsNameAndScope covers a row that holds the type name
+// in its name, in a scope dimension that its properties repeat, and in one
+// other property: only the other property is suggested.
+func TestCheckEntityTypeSkipsNameAndScope(t *testing.T) {
+	f := &fakeKG{
+		counts: map[string]int64{"Service": 1},
+		schema: map[string][]string{"Service": {"name", "namespace", "label", "size"}},
+		entities: map[string][]SearchResult{"Service": {{
+			Name: "gadget", Type: "Service",
+			Scope:      map[string]string{"namespace": "gadget"},
+			Properties: map[string]any{"name": "gadget", "namespace": "gadget", "size": 3, "label": "GADGET"},
+		}}},
+	}
+	client := newFakeClient(t, f)
+	_, err := checkEntityType(t.Context(), client, "Gadget", typeCheck{verb: "list", search: typeSearch{startMs: 1000, endMs: 2000}, windowGiven: true})
+	var de gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de)
+	assert.Equal(t, []string{
+		"These return matching entities: gcx kg entities list --type Service --property label=GADGET --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z",
+		"Run 'gcx kg meta schema --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z' for each type's properties",
+	}, de.Suggestions)
+}
+
+// TestCheckEntityTypeConfirmsPropertyMatch covers the search that confirms a
+// property value read from the rows: a value that this search does not
+// return is not suggested, since the suggested command would return nothing,
+// and a value whose rows an earlier suggestion already returned is not
+// suggested again.
+func TestCheckEntityTypeConfirmsPropertyMatch(t *testing.T) {
+	const window = " --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z"
+	two := []SearchResult{svc("a", "gadget"), svc("b", "gadget"), svc("c", "Gadget")}
+	tests := []struct {
+		name         string
+		rows         []SearchResult
+		unfilterable string
+		foldCase     bool
+		want         []string
+		wantSearches int
+	}{
+		{
+			name: "a confirmed value is suggested",
+			rows: []SearchResult{svc("api", "gadget")},
+			want: []string{"These return matching entities: gcx kg entities list --type Service --property class=gadget" + window},
+			// One search reads the type's rows and one confirms the value.
+			wantSearches: 2,
+		},
+		{name: "a value the search cannot match on is not suggested", rows: []SearchResult{svc("api", "gadget")}, unfilterable: "class", want: []string{}, wantSearches: 2},
+		{
+			name: "values in two cases, matched exactly: both, the more frequent first",
+			rows: two,
+			want: []string{
+				"These return matching entities: gcx kg entities list --type Service --property class=gadget" + window,
+				"These return matching entities: gcx kg entities list --type Service --property class=Gadget" + window,
+			},
+			wantSearches: 3,
+		},
+		{
+			name:         "values in two cases, matched ignoring case: the more frequent only",
+			rows:         two,
+			foldCase:     true,
+			want:         []string{"These return matching entities: gcx kg entities list --type Service --property class=gadget" + window},
+			wantSearches: 3,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeKG{
+				counts:       map[string]int64{"Service": int64(len(tt.rows))},
+				schema:       map[string][]string{"Service": {"name", "class"}},
+				entities:     map[string][]SearchResult{"Service": tt.rows},
+				unfilterable: tt.unfilterable,
+				foldCase:     tt.foldCase,
+			}
+			client := newFakeClient(t, f)
+			_, err := checkEntityType(t.Context(), client, "GADGET", typeCheck{verb: "list", search: typeSearch{startMs: 1000, endMs: 2000}, windowGiven: true})
+			var de gcxerrors.DetailedError
+			require.ErrorAs(t, err, &de)
+			assert.Equal(t, append(tt.want, "Run 'gcx kg meta schema"+window+"' for each type's properties"), de.Suggestions)
+			assert.Len(t, f.searchReq, tt.wantSearches)
+		})
+	}
+}
+
+func TestPropertyValuesEqualFold(t *testing.T) {
+	row := func(scope map[string]string, props map[string]any) SearchResult {
+		return SearchResult{Name: "r", Type: "Service", Scope: scope, Properties: props}
+	}
+	tests := []struct {
+		name string
+		rows []SearchResult
+		want string
+		out  [][2]string
+	}{
+		{name: "the value is kept as stored", rows: []SearchResult{row(nil, map[string]any{"class": "gadget"})}, want: "Gadget", out: [][2]string{{"class", "gadget"}}},
+		{name: "a typed value in lower case", rows: []SearchResult{row(nil, map[string]any{"class": "Gadget"})}, want: "gadget", out: [][2]string{{"class", "Gadget"}}},
+		{name: "another value does not match", rows: []SearchResult{row(nil, map[string]any{"class": "gadgets"})}, want: "Gadget"},
+		{name: "a value that is not a string", rows: []SearchResult{row(nil, map[string]any{"count": 7})}, want: "7"},
+		{name: "name is left out", rows: []SearchResult{row(nil, map[string]any{"name": "gadget"})}, want: "Gadget"},
+		{name: "a scope dimension of the row is left out", rows: []SearchResult{row(map[string]string{"zone": "gadget"}, map[string]any{"zone": "gadget"})}, want: "Gadget"},
+		{
+			name: "pairs are distinct, one per stored case, more rows first",
+			rows: []SearchResult{
+				row(nil, map[string]any{"group": "gadget", "class": "GADGET"}),
+				row(nil, map[string]any{"class": "gadget"}),
+				row(nil, map[string]any{"class": "gadget"}),
+			},
+			want: "Gadget",
+			out:  [][2]string{{"class", "gadget"}, {"class", "GADGET"}, {"group", "gadget"}},
+		},
+		{name: "a value that --property would read as a substring match", rows: []SearchResult{row(nil, map[string]any{"class": "~gadget"})}, want: "~Gadget"},
+		{name: "a property name that --property would split", rows: []SearchResult{row(nil, map[string]any{"a=b": "gadget"})}, want: "Gadget"},
+		{name: "an empty type name matches nothing", rows: []SearchResult{row(nil, map[string]any{"class": ""})}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.out, propertyValuesEqualFold(tt.rows, tt.want))
+		})
+	}
+}
+
 func TestSearchByTypesAllPages(t *testing.T) {
 	five := make([]SearchResult, 0, 5)
 	for _, n := range []string{"a", "b", "c", "d", "e"} {
-		five = append(five, svc(n, map[bool]string{true: "statefulset", false: "deployment"}[n == "b" || n == "e"]))
+		five = append(five, svc(n, map[bool]string{true: "widget", false: "gadget"}[n == "b" || n == "e"]))
 	}
-	statefulSets := func(rs []SearchResult) []SearchResult {
+	widgets := func(rs []SearchResult) []SearchResult {
 		var out []SearchResult
 		for _, r := range rs {
-			if r.Properties["workload_type"] == "statefulset" {
+			if r.Properties["class"] == "widget" {
 				out = append(out, r)
 			}
 		}
@@ -529,7 +680,7 @@ func TestSearchByTypesAllPages(t *testing.T) {
 		{name: "limit 0 follows every page", limit: 0, wantNames: []string{"a", "b", "c", "d", "e"}, wantPages: 3},
 		{name: "stops once the limit is reached", limit: 2, wantNames: []string{"a", "b"}, wantPages: 1},
 		{name: "a limit past the first page fetches the next", limit: 3, wantNames: []string{"a", "b", "c", "d"}, wantPages: 2},
-		{name: "client-side filter counts kept rows against the limit", limit: 2, keep: statefulSets, wantNames: []string{"b", "e"}, wantPages: 3},
+		{name: "client-side filter counts kept rows against the limit", limit: 2, keep: widgets, wantNames: []string{"b", "e"}, wantPages: 3},
 		{
 			name: "stops at the page bound", limit: 0, maxPages: 2,
 			wantNames: []string{"a", "b", "c", "d"}, wantPages: 2, wantStderr: "stopped after 2 backend pages",
@@ -799,7 +950,7 @@ func TestSearchByTypesAllPagesScopeFilter(t *testing.T) {
 			if tt.applyScope {
 				var unfiltered []SearchResult
 				for _, e := range entities[tt.entityType] {
-					if matchesAll(e, tt.props) && backendScopeMatches(e, entities[tt.entityType], s.sc) {
+					if matchesAll(e, tt.props, false) && backendScopeMatches(e, entities[tt.entityType], s.sc) {
 						unfiltered = append(unfiltered, e)
 					}
 				}
