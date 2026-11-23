@@ -210,3 +210,30 @@ func TestClient_QueryStateHistory_AnnotationsBackendNullData(t *testing.T) {
 	assert.Empty(t, transitions[0].RuleUID)
 	assert.Nil(t, transitions[0].Values)
 }
+
+func TestClient_QueryStateHistory_AnnotationsBackendInflatedTime(t *testing.T) {
+	// Grafana releases without grafana/grafana#137865 return times 1000x too
+	// large; data also arrives as an already-decoded object here.
+	const frame = `{
+  "schema": {"fields": [
+    {"name": "time", "type": "time"},
+    {"name": "text", "type": "string"},
+    {"name": "prev", "type": "string"},
+    {"name": "next", "type": "string"},
+    {"name": "data", "type": "other"}
+  ]},
+  "data": {"values": [[1792583050000000], ["MyAlertRule {} - A=1.000000"], ["Normal"], ["Alerting"], [{"values": {"A": 1}}]]}
+}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(frame))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	transitions, err := client.QueryStateHistory(context.Background(), alert.StateHistoryOptions{RuleUID: "uid-1"})
+	require.NoError(t, err)
+	require.Len(t, transitions, 1)
+	assert.Equal(t, time.Date(2026, time.October, 21, 11, 44, 10, 0, time.UTC), transitions[0].Time)
+	assert.Equal(t, map[string]any{"A": float64(1)}, transitions[0].Values)
+}

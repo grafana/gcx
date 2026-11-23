@@ -234,7 +234,7 @@ func transitionsFromAnnotationsFrame(frame *dataframe.Frame, cols map[string]int
 	transitions := make([]StateTransition, 0, len(timeCol))
 	for i := range timeCol {
 		st := StateTransition{
-			Time:    frameTime(timeCol[i]),
+			Time:    annotationTime(timeCol[i]),
 			RuleUID: ruleUID,
 		}
 		if i < len(prevCol) {
@@ -260,15 +260,54 @@ func transitionsFromAnnotationsFrame(frame *dataframe.Frame, cols map[string]int
 	return transitions, nil
 }
 
-// decodeAnnotationData decodes the annotations frame's "data" value, which
-// Grafana sends as a JSON-encoded string.
+// annotationsMaxMillis is far above any real Unix millisecond timestamp
+// (1e14 ms is the year 5138). Grafana releases without
+// grafana/grafana#137865 return annotations-backend times 1000x too large, so
+// larger values are scaled back to milliseconds.
+const annotationsMaxMillis = 1e14
+
+// annotationTime converts an annotations frame time value, compensating for
+// the 1000x inflated timestamps of affected Grafana releases.
+func annotationTime(v any) time.Time {
+	var ms int64
+	switch t := v.(type) {
+	case float64:
+		ms = int64(t)
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return time.Time{}
+		}
+		ms = n
+	default:
+		return frameTime(v)
+	}
+	if ms > annotationsMaxMillis {
+		ms /= 1000
+	}
+	return time.UnixMilli(ms).UTC()
+}
+
+// decodeAnnotationData decodes the annotations frame's "data" value. Grafana
+// sends it as a JSON-encoded string, but an already-decoded object is
+// accepted too.
 func decodeAnnotationData(v any) (annotationData, error) {
 	var d annotationData
-	s, ok := v.(string)
-	if !ok || s == "" {
+	raw, ok := v.(string)
+	if !ok {
+		if v == nil {
+			return d, nil
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			return d, fmt.Errorf("failed to re-encode state history data: %w", err)
+		}
+		raw = string(b)
+	}
+	if raw == "" {
 		return d, nil
 	}
-	if err := json.Unmarshal([]byte(s), &d); err != nil {
+	if err := json.Unmarshal([]byte(raw), &d); err != nil {
 		return d, fmt.Errorf("failed to decode state history data: %w", err)
 	}
 	return d, nil
