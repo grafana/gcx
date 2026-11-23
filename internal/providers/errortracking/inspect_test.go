@@ -230,7 +230,7 @@ func TestReleasesStatus(t *testing.T) {
 			}},
 		{name: "a project with no releases exits 0 and says so on stderr", setup: func(f *fakeET) { f.reply(releases, 200, `{"releases":[]}`) },
 			args: status("--project", "314"), calls: []string{releases},
-			stderr: "hint: Project 314 has no releases yet. Counts can lag a minute or two behind new events; raw-events list shows arrivals at once: gcx error-tracking raw-events list --project 314",
+			stderr: "hint: Project 314 has no releases yet. Counts can lag a minute or two behind new events; see what arrived: gcx error-tracking raw-events list --project 314",
 			check: func(t *testing.T, out string, _ error, _ []etCall) {
 				t.Helper()
 				assert.Empty(t, out)

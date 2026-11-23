@@ -58,7 +58,8 @@ func (o *facetsOpts[T]) none(what, why string) func(cmd *cobra.Command, c *clien
 		if o.Time.from != "" || o.Time.to != "" {
 			summary += " in that window"
 		}
-		say(cmd.ErrOrStderr(), summary+"; "+why+". "+countsLag, "")
+		say(cmd.ErrOrStderr(), summary+"; "+why+". "+countsLag+"; see what arrived",
+			fmt.Sprintf("gcx error-tracking raw-events list --project %d", project))
 	}
 }
 
@@ -289,7 +290,7 @@ with no releases prints nothing and says so on stderr.`,
 			if errors.Is(err, errNoReleases) {
 				st := releaseStatus{Project: projectInfo{ID: project, Name: opts.Project.name},
 					New: errorsSection{Items: []errorSummary{}}, Regressed: errorsSection{Items: []errorSummary{}}, LastSeen: errorsSection{Items: []errorSummary{}}}
-				return emit(cmd, &opts.IO, st, hint{capital(c.projectShown()) + " has no releases yet. " + countsLag,
+				return emit(cmd, &opts.IO, st, hint{capital(c.projectShown()) + " has no releases yet. " + countsLag + "; see what arrived",
 					fmt.Sprintf("gcx error-tracking raw-events list --project %d", project)})
 			}
 			if err != nil {

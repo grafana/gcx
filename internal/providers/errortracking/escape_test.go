@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 )
@@ -85,7 +84,6 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 			calls: []string{"GET projects/314/releases", list, list, list},
 			check: func(t *testing.T, _ string, _ error, _ []etCall) {
 				t.Helper()
-				agent.SetFlag(false)
 				assert.Contains(t, f.stderr.String(), `"class":"hint"`)
 				assertNoEscapes(t, "stderr", f.stderr.String())
 			}},

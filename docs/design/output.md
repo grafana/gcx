@@ -516,9 +516,13 @@ output must say so. The commands taking this exception are
 `agento11y review-queues list-scores`, whose cap is set by the backend export
 (not client-side) and cannot be raised by the caller, and the
 `error-tracking` lookups `releases list`, `environments list`,
-`transactions list`, `fields list`, `fields list-values` and `users list`,
-whose endpoints return at most 100 entries with no cursor or page parameter
-(`users list` takes `--limit` up to that page of 100). The last client-side
+`transactions list`, `fields list` and `fields list-values`, whose endpoints
+return at most 100 entries with no cursor or page parameter, and `users list`,
+which reads only the first page of 100 that its paged endpoint serves and
+takes `--limit` 1 to 100, so `--search` is how a caller reaches the rest.
+`releases status` takes a bespoke `--limit` (1 to 200) for the sections of a
+status card; a section that has more says so with a command that shows it, so
+the card needs no cap exception. The last client-side
 one, `irm oncall alert-groups list`, dropped its 1000-item cap in favour of a
 real cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
 raise makes the complete set unreachable, which is the defect that issue

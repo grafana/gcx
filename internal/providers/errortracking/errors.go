@@ -400,7 +400,7 @@ func (c *client) findRelease(ctx context.Context, project int64, name string) (*
 	return &out.Releases[i], nil
 }
 
-const countsLag = "Counts can lag a minute or two behind new events; raw-events list shows arrivals at once"
+const countsLag = "Counts can lag a minute or two behind new events"
 
 func noFirstEvent(c *client, project int64, name string) error {
 	return &gcxerrors.DetailedError{
