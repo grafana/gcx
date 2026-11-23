@@ -93,7 +93,10 @@ func (m *Manifest) validate() error {
 			return fmt.Errorf("platforms[%d]: url must use https", i)
 		case p.URL != "" && !sha256Pattern.MatchString(p.SHA256):
 			return fmt.Errorf("platforms[%d]: sha256 must be a hex-encoded SHA-256 digest", i)
-		case path.Base(p.Bin) == recordFile:
+		// Windows treats a backslash as a separator, so it could escape the extension directory.
+		case strings.Contains(p.Bin, `\`):
+			return fmt.Errorf("platforms[%d]: bin must use / as its path separator", i)
+		case strings.EqualFold(path.Base(p.Bin), recordFile):
 			return fmt.Errorf("platforms[%d]: bin cannot be named %s", i, recordFile)
 		case p.URL != "" && archiveFormat(p.URL) != "" && p.Bin == "":
 			return fmt.Errorf("platforms[%d]: bin is required for archives", i)

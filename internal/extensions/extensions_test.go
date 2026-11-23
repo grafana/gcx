@@ -162,6 +162,8 @@ func TestInstallRejectsInvalidManifests(t *testing.T) {
 		{"missing checksum", "name: x\nversion: 1.0.0\nplatforms: [{os: linux, arch: amd64, url: 'https://e/x'}]\n", "sha256"},
 		{"archive without bin", "name: x\nversion: 1.0.0\nplatforms: [{os: linux, arch: amd64, url: 'https://e/x.tar.gz', sha256: " + sum + "}]\n", "bin is required"},
 		{"bin named like the record", "name: x\nversion: 1.0.0\nplatforms: [{os: linux, arch: amd64, url: 'https://e/x.zip', sha256: " + sum + ", bin: dir/extension.json}]\n", "bin cannot be named"},
+		{"bin named like the record in another case", "name: x\nversion: 1.0.0\nplatforms: [{os: linux, arch: amd64, url: 'https://e/x.zip', sha256: " + sum + ", bin: Extension.JSON}]\n", "bin cannot be named"},
+		{"bin with a backslash", "name: x\nversion: 1.0.0\nplatforms: [{os: windows, arch: amd64, url: 'https://e/x', sha256: " + sum + ", bin: '..\\..\\x.exe'}]\n", "bin must use /"},
 		{"wildcard release", "name: x\nversion: 1.0.0\nplatforms: [{os: '*', arch: '*', url: 'https://e/x', sha256: " + sum + "}]\n", "must name an os and arch"},
 		{"newer gcx", "name: x\nversion: 1.0.0\nminGCXVersion: 2.0.0\nplatforms: [{os: '*', arch: '*', path: x}]\n", "requires gcx 2.0.0"},
 		{"no local path", "name: x\nversion: 1.0.0\nplatforms: [{os: plan9, arch: amd64, path: x}]\n", "no local path"},
