@@ -7,3 +7,7 @@ Do not use `managed_by` to manage v2 rules. A manifest with a non-empty value ca
 ## Deleting rules from manifests
 
 When you pass an `AggregationRule` manifest to `gcx resources delete -p <path>`, gcx counts the deletion as successful even if the rule is already absent. The dedicated `gcx metrics adaptive rules delete <metric>` command still reports an error when the rule does not exist.
+
+## Recommendation previews
+
+`gcx metrics adaptive recommendations apply --all --dry-run` summarizes recommendations in the analyzed metrics catalog. It counts `keep` verdicts as skipped and leaves out `none` verdicts because there is no recommendation to apply. If you name a metric explicitly, a `none` verdict counts as skipped because the metric was part of your request.

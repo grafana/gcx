@@ -363,6 +363,7 @@ func applyAllRecommendations(cmd *cobra.Command, backend *rulesBackend, opts *re
 		}
 		changes := counts[actionAdd] + counts[actionUpdate] + counts[actionRemove]
 		if opts.DryRun {
+			// Metrics with no recommendation are outside the scope of --all.
 			kept := counts["keep"]
 			cmdio.Info(stderr, "Dry run — would apply all recommendations: %d add, %d update, %d remove, %d keep.",
 				counts[actionAdd], counts[actionUpdate], counts[actionRemove], kept)
@@ -557,14 +558,17 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 			}
 
 			rules, meta := cmdio.TruncatePagedList(rules, opts.Limit)
-			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), cmdio.AttachListMeta(meta, os.Args))
-			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
 
 			// Always encode, even when empty: agent mode and explicit
 			// -o json/yaml must emit exactly one document ([] rather than
 			// nothing). The table codec prints nothing for an empty list,
 			// keeping default human stdout byte-identical.
-			return opts.Encode(cmd.OutOrStdout(), rules)
+			if err := opts.Encode(cmd.OutOrStdout(), rules); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), cmdio.AttachListMeta(meta, os.Args))
+			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

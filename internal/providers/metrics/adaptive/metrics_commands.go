@@ -92,13 +92,15 @@ func (h *metricsHelper) metricsListCommand() *cobra.Command {
 
 			metrics, meta := cmdio.TruncatePagedList(metrics, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
-			fmt.Fprintf(cmd.ErrOrStderr(), "%d metric(s)\n", len(metrics))
-
 			if metrics == nil {
 				metrics = []AdaptiveMetric{}
 			}
-			return opts.Encode(cmd.OutOrStdout(), metricsListEnvelope{Items: metrics, ListMeta: meta})
+			if err := opts.Encode(cmd.OutOrStdout(), metricsListEnvelope{Items: metrics, ListMeta: meta}); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			fmt.Fprintf(cmd.ErrOrStderr(), "%d metric(s)\n", len(metrics))
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

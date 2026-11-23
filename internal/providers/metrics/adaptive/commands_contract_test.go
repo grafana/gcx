@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	metrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -142,9 +143,10 @@ func newApplyFake(t *testing.T) *fakeRules {
 	t.Helper()
 	removeA := fakeRec{Action: "remove", CurrentSeries: 10}
 	return newFakeRules(t).
-		seed("default", ruleA, ruleB).
+		seed("default", ruleA, ruleC).
 		recommend("default", "a_metric", removeA).
-		recommend("default", "b_metric", fakeRec{Action: "keep"})
+		recommend("default", "b_metric", fakeRec{Action: "none"}).
+		recommend("default", "c_metric", fakeRec{Action: "keep", Rule: &ruleC})
 }
 
 func TestRecommendationsApply_OutputContract(t *testing.T) {
@@ -184,7 +186,7 @@ func TestRecommendationsApply_OutputContract(t *testing.T) {
 			wantSkipped:   1,
 		},
 		{
-			name:          "agent all dry-run emits one doc with dry_run",
+			name:          "agent all dry-run counts keeps but excludes metrics with no recommendation",
 			agentMode:     true,
 			args:          []string{"recommendations", "apply", "--all", "--dry-run"},
 			wantSucceeded: 1,
@@ -313,6 +315,37 @@ func TestRecommendationsApply_TotalFailure(t *testing.T) {
 				assert.Contains(t, res.err.Error(), tc.want)
 			})
 		}
+	}
+}
+
+func TestAdaptiveLists_TruncationDiagnosticsFollowPayload(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	f := newFakeRules(t).
+		seed("default", ruleA, ruleB).
+		recommend("default", "a_metric", fakeRec{Action: "keep"}).
+		recommend("default", "b_metric", fakeRec{Action: "none"})
+	loader := f.loader(t, fakeConfig{grafana: true})
+
+	for _, tc := range []struct {
+		group string
+		count string
+	}{
+		{group: "rules", count: "1 rule(s)"},
+		{group: "metrics", count: "1 metric(s)"},
+	} {
+		t.Run(tc.group, func(t *testing.T) {
+			var combined bytes.Buffer
+			cmd := metrics.Commands(loader)
+			cmd.SetOut(&combined)
+			cmd.SetErr(&combined)
+			cmd.SetArgs([]string{tc.group, "list", "--limit", "1", "-o", "table"})
+			require.NoError(t, cmd.ExecuteContext(t.Context()))
+
+			before, after, found := strings.Cut(combined.String(), "showing first 1")
+			require.True(t, found, "%s", combined.String())
+			assert.Contains(t, before, "a_metric")
+			assert.Contains(t, after, tc.count)
+		})
 	}
 }
 
