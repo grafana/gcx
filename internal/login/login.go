@@ -663,9 +663,19 @@ func NormalizeServerURL(raw string) string {
 // usually pasted into the wrong prompt. Such a value must never be resolved or
 // printed: it would leak in a DNS query and in error output.
 func LooksLikeToken(server string) bool {
-	host := strings.ToLower(strings.TrimSpace(server))
-	host = strings.TrimPrefix(host, "https://")
-	host = strings.TrimPrefix(host, "http://")
+	host := strings.ToLower(server)
+	// Pasted tokens often arrive quoted or as an Authorization header value,
+	// either bare or after a scheme, so peel those off in any order.
+	for {
+		prev := host
+		host = strings.TrimLeft(host, " \t\"'")
+		host = strings.TrimPrefix(host, "https://")
+		host = strings.TrimPrefix(host, "http://")
+		host = strings.TrimPrefix(host, "bearer ")
+		if host == prev {
+			break
+		}
+	}
 	// Lowercased prefixes of service account tokens, Grafana Cloud access
 	// policy tokens and legacy API keys (base64 of `{"k":"`).
 	for _, prefix := range []string{"glsa_", "glc_", "eyjrijoi"} {

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
@@ -411,16 +412,18 @@ func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 func TestLoginRejectsTokenAsServerWithoutPrintingIt(t *testing.T) {
 	const fakeToken = "glsa_FAKE_example"
 	tests := []struct {
-		name   string
-		args   []string
-		env    string
-		stored string
+		name       string
+		args       []string
+		env        string
+		stored     string
+		wantSource string
 	}{
-		{name: "flag", args: []string{"--server", fakeToken}},
-		{name: "flag with scheme", args: []string{"--server", "https://" + fakeToken}},
-		{name: "cloud token flag", args: []string{"--server", "glc_FAKE_example"}},
-		{name: "environment", env: fakeToken},
-		{name: "saved context", stored: "https://" + fakeToken},
+		{name: "flag", args: []string{"--server", fakeToken}, wantSource: "--server"},
+		{name: "flag with scheme", args: []string{"--server", "https://" + fakeToken}, wantSource: "--server"},
+		{name: "cloud token flag", args: []string{"--server", "glc_FAKE_example"}, wantSource: "--server"},
+		{name: "quoted bearer flag", args: []string{"--server", `"Bearer ` + fakeToken + `"`}, wantSource: "--server"},
+		{name: "environment", env: fakeToken, wantSource: "GRAFANA_SERVER"},
+		{name: "saved context", stored: "https://" + fakeToken, wantSource: `context "default"`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -453,8 +456,13 @@ func TestLoginRejectsTokenAsServerWithoutPrintingIt(t *testing.T) {
 
 			err := cmd.ExecuteContext(t.Context())
 			require.ErrorContains(t, err, "looks like a Grafana token")
+			require.ErrorContains(t, err, tc.wantSource)
 			assert.NotContains(t, err.Error(), "FAKE_example")
 			assert.NotContains(t, out.String(), "FAKE_example")
+			det := fail.ErrorToDetailedError(err)
+			require.NotNil(t, det)
+			require.NotNil(t, det.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *det.ExitCode)
 		})
 	}
 }
