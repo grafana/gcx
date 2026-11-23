@@ -17,12 +17,13 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 )
 
-const disclosure = "Extensions are third-party programs that run with your permissions and can use your gcx credentials through the commands they run. Grafana Labs does not review or support them. Install only extensions you trust."
+const disclosure = "Extensions are third-party programs that run with your permissions and have the same access as you, including to the credentials gcx has saved. Grafana Labs does not review or support them. Install only extensions you trust."
 
 // Command returns the ext command group.
 func Command() *cobra.Command {
@@ -94,19 +95,31 @@ func run(cmd *cobra.Command, opts *cmdconfig.Options, name string, args []string
 
 func installCommand() *cobra.Command {
 	out := cmdio.Options{}
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "install SOURCE",
 		Short: "Install an extension from a git repository or local directory",
 		Long: disclosure + "\n\n" +
 			"SOURCE is a git URL (https, ssh or file) or a local directory containing " + extensions.ManifestFile + ". " +
 			"A repository is installed at its latest semantic version tag; the release for this OS and architecture is downloaded and its checksum verified. " +
-			"A local directory is installed in place, so rebuilding its executable needs no reinstall.",
+			"A local directory is installed in place, so rebuilding its executable needs no reinstall. " +
+			"In agent mode, --force is required.",
 		Example: `  gcx ext install https://github.com/example/gcx-hello.git
   gcx ext install git@github.com:example/gcx-hello.git
-  gcx ext install .`,
+  gcx ext install .
+  gcx --agent ext install --force https://github.com/example/gcx-hello.git`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := out.Validate(); err != nil {
+				return err
+			}
+			// An agent could be talked into installing an extension, which then runs
+			// as the user, so it must confirm the install explicitly.
+			if _, err := providers.CheckDestructiveBypass(force); errors.Is(err, providers.ErrAgentModeRequiresForce) {
+				usage := gcxerrors.NewCommandUsageError(cmd, "installing an extension in agent mode requires --force", err)
+				usage.Suggestions = append(usage.Suggestions, "Install only extensions the user asked for, then re-run with --force")
+				return usage
+			} else if err != nil {
 				return err
 			}
 			ext, err := newStore().Install(cmd.Context(), args[0])
@@ -121,6 +134,7 @@ func installCommand() *cobra.Command {
 		_, err := fmt.Fprintf(w, "Installed %s %s from %s\n", ext.Name, ext.Version, ext.Source)
 		return err
 	}))
+	cmd.Flags().BoolVar(&force, "force", false, "Install in agent mode, where installing requires explicit confirmation")
 	return cmd
 }
 

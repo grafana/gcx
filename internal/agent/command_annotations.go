@@ -184,7 +184,7 @@ var commandAnnotations = map[string]annotation{
 
 	// ext — extension output belongs to third-party code
 	"gcx ext":           {Cost: "large", Hint: "Runs a third-party extension; its output is not gcx's. Run only extensions the user asked for. Example: <name> [args...]"},
-	"gcx ext install":   {Cost: "small"},
+	"gcx ext install":   {Cost: "small", Hint: "<git-url> --force | installs third-party code; install only extensions the user asked for"},
 	"gcx ext list":      {Cost: "small"},
 	"gcx ext uninstall": {Cost: "small"},
 	"gcx ext update":    {Cost: "small"},

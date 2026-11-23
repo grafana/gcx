@@ -19,7 +19,7 @@ weight: 40
 `gcx` extensions are git repositories that provide additional gcx commands. `gcx` is used to fetch data from your Grafana instance, so the extension does not need to handle credentials or config. All arguments passed to `gcx ext <name>` will be forwarded to the extension.
 
 {{< admonition type="warning" >}}
-Extensions are third-party programs. They run with your permissions and can use your `gcx` credentials through the commands they run. Grafana Labs does not review or support them. Only install extensions that you have reviewed and trust.
+Extensions are third-party programs. They run with your permissions and have the same access as you, including to the credentials `gcx` has saved. Grafana Labs does not review or support them. Only install extensions that you have reviewed and trust.
 {{< /admonition >}}
 
 ## Install and run extensions
@@ -29,6 +29,8 @@ Install an extension from any git repository. `gcx` installs the latest release 
 ```shell
 gcx ext install https://github.com/example/gcx-hello.git
 ```
+
+In agent mode, `gcx ext install` requires `--force`, so an agent can't install an extension without explicit confirmation.
 
 `gcx ext` requires git to install extensions. git URLs starting with `https://`, `ssh://` and `user@host:path` are accepted. Flags for `gcx` go before the extension name, and every argument after it is passed to the extension:
 
