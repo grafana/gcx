@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -128,8 +129,12 @@ func (c *YAMLCodec) Decode(src io.Reader, value any) error {
 		return err
 	}
 
+	if !c.PromoteExponentFloats {
+		return yaml.NewDecoder(bytes.NewReader(data), opts...).Decode(value)
+	}
+
 	tokens := lexer.Tokenize(string(data))
-	if !c.PromoteExponentFloats || !promoteExponentFloats(tokens) {
+	if !promoteExponentFloats(tokens) {
 		return yaml.NewDecoder(bytes.NewReader(data), opts...).Decode(value)
 	}
 
@@ -138,9 +143,10 @@ func (c *YAMLCodec) Decode(src io.Reader, value any) error {
 		return err
 	}
 
-	// Only the first document is decoded, as with Decoder.Decode.
+	// Only the first document is decoded, as with Decoder.Decode, which
+	// reports io.EOF for an empty first document.
 	if len(file.Docs) == 0 || file.Docs[0].Body == nil {
-		return nil
+		return io.EOF
 	}
 
 	return yaml.NewDecoder(bytes.NewReader(data), opts...).DecodeFromNode(file.Docs[0].Body, value)
@@ -166,8 +172,14 @@ func promoteExponentFloats(tokens token.Tokens) bool {
 			continue
 		}
 
-		// Content of a | or > block scalar is text, not a number.
-		if tk.Prev != nil && (tk.Prev.Type == token.LiteralType || tk.Prev.Type == token.FoldedType) {
+		// Content of a | or > block scalar is text, not a number, and an
+		// explicit tag such as !!str decides the type itself.
+		if tk.Prev != nil && (tk.Prev.Type == token.LiteralType || tk.Prev.Type == token.FoldedType || tk.Prev.Type == token.TagType) {
+			continue
+		}
+
+		// Out-of-range values (1e400) stay strings, as in kubectl.
+		if _, err := strconv.ParseFloat(tk.Value, 64); err != nil {
 			continue
 		}
 
@@ -177,7 +189,13 @@ func promoteExponentFloats(tokens token.Tokens) bool {
 
 		// "1e-07" -> "1.0e-07" so the parser accepts it as a float.
 		i := strings.IndexAny(tk.Value, "eE")
-		tk.Value = tk.Value[:i] + ".0" + tk.Value[i:]
+		promoted := tk.Value[:i] + ".0" + tk.Value[i:]
+		// UseJSONUnmarshaler re-reads the node text from Origin, so keep it in sync.
+		// Origin may start with a comment, so rewrite the last occurrence.
+		if j := strings.LastIndex(tk.Origin, tk.Value); j >= 0 {
+			tk.Origin = tk.Origin[:j] + promoted + tk.Origin[j+len(tk.Value):]
+		}
+		tk.Value = promoted
 		tk.Type = token.FloatType
 		changed = true
 	}

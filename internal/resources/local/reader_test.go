@@ -66,3 +66,41 @@ func TestFSReader_Read(t *testing.T) {
 		})
 	}
 }
+
+func TestFSReader_ReadBytes_YAMLExponentFloats(t *testing.T) {
+	manifest := "apiVersion: test.reader-test.app/v1\nkind: Widget\nmetadata:\n  name: w\nspec:\n" +
+		"  v: 1e-07\n  big: 1e400\n  tagged: !!str 1e5\n  sha: '4385e12'\n  text: |-\n    1e5\n"
+
+	check := func(t *testing.T, spec map[string]any) {
+		t.Helper()
+		assert.InDelta(t, 1e-07, spec["v"], 0)
+		assert.Equal(t, "1e400", spec["big"], "out-of-range values stay strings")
+		assert.Equal(t, "1e5", spec["tagged"], "explicit !!str tag is respected")
+		assert.Equal(t, "4385e12", spec["sha"])
+		assert.Equal(t, "1e5", spec["text"])
+	}
+	reader := local.FSReader{Decoders: format.Codecs()}
+
+	t.Run("ReadBytes", func(t *testing.T) {
+		items := resources.NewResources()
+		require.NoError(t, reader.ReadBytes(t.Context(), items, []byte(manifest), "yaml"))
+		require.Equal(t, 1, items.Len())
+		spec, err := items.AsList()[0].Spec()
+		require.NoError(t, err)
+		specMap, ok := spec.(map[string]any)
+		require.True(t, ok)
+		check(t, specMap)
+	})
+
+	t.Run("ReadFile", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "w.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(manifest), 0600))
+		res := &resources.Resource{}
+		require.NoError(t, reader.ReadFile(t.Context(), res, path))
+		spec, err := res.Spec()
+		require.NoError(t, err)
+		specMap, ok := spec.(map[string]any)
+		require.True(t, ok)
+		check(t, specMap)
+	})
+}
