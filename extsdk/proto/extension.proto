@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package gcx.extension.v1;
+
+option go_package = "github.com/grafana/gcx/extsdk/internal/extensionpb";
+
+// Extension is served by the extension process. gcx calls Run once per
+// invocation of `gcx ext <name>`.
+service Extension {
+  rpc Run(RunRequest) returns (RunResponse);
+}
+
+// Host is served by gcx for the duration of a Run call.
+service Host {
+  // Execute runs one gcx command in a new gcx process and returns its
+  // captured output. A command that exits non-zero is not an RPC error.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  // Output carries the extension's stdout and stderr. The extension closes
+  // the stream before Run returns, so gcx has written all of it when Run
+  // completes.
+  rpc Output(stream OutputChunk) returns (OutputResponse);
+}
+
+message RunRequest {
+  // go-plugin broker ID on which gcx serves the Host service.
+  uint32 host_broker_id = 1;
+  // Arguments that followed the extension name, unchanged.
+  repeated string args = 2;
+}
+
+message RunResponse {
+  int32 exit_code = 1;
+}
+
+message ExecuteRequest {
+  // gcx arguments, without the binary name.
+  repeated string args = 1;
+  bytes stdin = 2;
+}
+
+message ExecuteResponse {
+  bytes stdout = 1;
+  bytes stderr = 2;
+  int32 exit_code = 3;
+}
+
+message OutputChunk {
+  enum Stream {
+    STREAM_UNSPECIFIED = 0;
+    STREAM_STDOUT = 1;
+    STREAM_STDERR = 2;
+  }
+  Stream stream = 1;
+  bytes data = 2;
+}
+
+message OutputResponse {}

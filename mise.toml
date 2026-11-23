@@ -24,7 +24,10 @@ depends = ["lint", "vet:wasip1", "tests", "build"]
 
 [tasks.lint]
 description = "Lint the codebase with golangci-lint"
-run = "golangci-lint run -c .golangci.yaml"
+run = [
+  "golangci-lint run -c .golangci.yaml",
+  "cd extsdk && golangci-lint run -c ../.golangci.yaml",
+]
 
 [tasks."validate-skills"]
 description = "Validate skill front matter (claude-plugin/skills + .agents/skills)"
@@ -32,7 +35,7 @@ run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
 description = "Run all tests (CLI + linter rules + install and release scripts)"
-depends = ["tests:cli", "tests:linter", "tests:install", "tests:tag"]
+depends = ["tests:cli", "tests:extsdk", "tests:linter", "tests:install", "tests:tag"]
 
 # GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
 # through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
@@ -42,6 +45,11 @@ depends = ["tests:cli", "tests:linter", "tests:install", "tests:tag"]
 [tasks."tests:cli"]
 description = "Run CLI tests"
 env = { GCX_AGENT_MODE = "false" }
+run = "go test ./..."
+
+[tasks."tests:extsdk"]
+description = "Run extension SDK tests (a separate Go module)"
+dir = "extsdk"
 run = "go test ./..."
 
 [tasks."tests:linter"]
