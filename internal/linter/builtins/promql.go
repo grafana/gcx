@@ -90,6 +90,21 @@ type variableOption struct {
 
 type rawVariableOption map[string]any
 
+// firstString returns the first element of a multi-value selection. An empty
+// selection, or a first element that is not a string, counts as no value.
+func firstString(values []any) string {
+	if len(values) == 0 {
+		return ""
+	}
+
+	s, ok := values[0].(string)
+	if !ok {
+		return ""
+	}
+
+	return s
+}
+
 func (raw *rawVariableOption) Get() (variableOption, error) {
 	t := variableOption{}
 	var txt, val any
@@ -101,8 +116,7 @@ func (raw *rawVariableOption) Get() (variableOption, error) {
 		case string:
 			t.Text = tt
 		case []any:
-			//nolint:forcetypeassert
-			t.Text = tt[0].(string)
+			t.Text = firstString(tt)
 		default:
 			return t, fmt.Errorf("invalid type for field 'text': %v", tt)
 		}
@@ -114,8 +128,7 @@ func (raw *rawVariableOption) Get() (variableOption, error) {
 		case string:
 			t.Value = vt
 		case []any:
-			//nolint:forcetypeassert
-			t.Value = vt[0].(string)
+			t.Value = firstString(vt)
 		default:
 			return t, fmt.Errorf("invalid type for field 'value': %v", vt)
 		}

@@ -334,3 +334,45 @@ test_dashboard_v2_undefined_interval_variable_still_reported if {
 
 	count(report) == 1
 }
+
+test_dashboard_v2_multi_value_variable_with_empty_current if {
+	variable := {"kind": "CustomVariable", "spec": {
+		"name": "job",
+		"multi": true,
+		"current": {"text": [], "value": []},
+		"options": [],
+	}}
+	resource := _test_v2_resource("sum by ($job) (up)", "prom", "prometheus", [variable])
+
+	report := rule.report with input as resource
+
+	count(report) == 0
+}
+
+test_dashboard_v2_multi_value_variable_with_empty_current_uses_options if {
+	variable := {"kind": "CustomVariable", "spec": {
+		"name": "job",
+		"multi": true,
+		"current": {"text": [], "value": []},
+		"options": [{"text": "api", "value": "api"}],
+	}}
+	resource := _test_v2_resource("sum by ($job) (up)", "prom", "prometheus", [variable])
+
+	report := rule.report with input as resource
+
+	count(report) == 0
+}
+
+test_dashboard_v2_multi_value_variable_expands_first_value if {
+	variable := {"kind": "CustomVariable", "spec": {
+		"name": "interval",
+		"multi": true,
+		"current": {"text": ["1m", "5m"], "value": ["1m", "5m"]},
+		"options": [],
+	}}
+	resource := _test_v2_resource("rate(up[$interval])", "prom", "prometheus", [variable])
+
+	report := rule.report with input as resource
+
+	count(report) == 0
+}
