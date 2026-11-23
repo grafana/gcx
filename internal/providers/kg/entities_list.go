@@ -78,9 +78,8 @@ func hasMorePages(p SearchPage) bool {
 // for each type it follows the backend's pages until the backend reports the
 // last page, limit matching entities are collected (limit <= 0 means no
 // limit) or maxPages pages are read. A row that an earlier page returned is
-// skipped, a hint says how many were skipped for the type before the rows
-// that are printed ended, and only rows that pass s.keep count against limit.
-// A failure on
+// skipped, a hint says how many repeats the pages read for the type returned,
+// and only rows that pass s.keep count against limit. A failure on
 // the first page of a type is handled as searchByTypes does; a failure on a
 // later page aborts the listing, since the rows read so far would be an
 // incomplete answer.
@@ -100,10 +99,6 @@ func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Clie
 		// again on a later page, and a repeat is skipped and counted.
 		seen := map[string]bool{}
 		repeats := 0
-		// rawKeys[i] is raw[i]'s key, and repeatsBefore[i] is how many
-		// repeats were read before raw[i].
-		var rawKeys []string
-		var repeatsBefore []int
 		for pageNum := 0; ; pageNum++ {
 			if pageNum == maxPages {
 				msg := fmt.Sprintf("stopped after %d backend pages for type %q — the list is incomplete; narrow with --property/--namespace, or count with 'gcx kg graph query'", maxPages, et)
@@ -132,8 +127,6 @@ func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Clie
 					repeats++
 				} else {
 					raw = append(raw, r)
-					rawKeys = append(rawKeys, k)
-					repeatsBefore = append(repeatsBefore, repeats)
 				}
 				pageKeys = append(pageKeys, k)
 			}
@@ -145,53 +138,24 @@ func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Clie
 				break
 			}
 		}
-		if n := repeatsBeforeLimit(kept, rawKeys, repeatsBefore, repeats, limit, len(all)); n > 0 {
-			cmdio.EmitHint(cmd.ErrOrStderr(), repeatedRowsHint(et, n), "")
+		if repeats > 0 {
+			cmdio.EmitHint(cmd.ErrOrStderr(), repeatedRowsHint(et, repeats), "")
 		}
 		all = append(all, kept...)
 	}
 	return all, nil
 }
 
-// repeatsBeforeLimit returns how many of one type's repeats can have changed
-// the rows list prints. While the list stays under limit (limit <= 0 means no
-// limit) that is every repeat. Once the type's rows reach limit, only the
-// first limit-before of its kept rows are printed, and a repeat read after
-// the last of them is not counted. kept is the part of the type's unique rows
-// that passed the filter, in the same order; rawKeys and repeatsBefore are
-// those rows' keys and the repeats read before each of them.
-func repeatsBeforeLimit(kept []SearchResult, rawKeys []string, repeatsBefore []int, repeats int, limit int64, before int) int {
-	if limit <= 0 || int64(before+len(kept)) < limit {
-		return repeats
-	}
-	room := int(limit) - before
-	if room <= 0 {
-		return 0
-	}
-	// kept is in raw's order, so matching its rows in turn finds the raw
-	// position of the last printed row, even when two rows share a key.
-	pos := -1
-	for _, r := range kept[:room] {
-		k := rowKey(r)
-		pos++
-		for pos < len(rawKeys) && rawKeys[pos] != k {
-			pos++
-		}
-		if pos == len(rawKeys) {
-			return repeats
-		}
-	}
-	return repeatsBefore[pos]
-}
-
-// repeatedRowsHint is the hint list prints when later backend pages for
-// entityType returned n rows that an earlier page had returned.
+// repeatedRowsHint is the hint list prints when the backend pages it read for
+// entityType returned n rows that an earlier page had returned. n counts every
+// repeat on those pages, including any past the --limit cut: a repeat anywhere
+// means that the backend may have left out a row, before the cut or after it.
 func repeatedRowsHint(entityType string, n int) string {
 	rows := "rows"
 	if n == 1 {
 		rows = "row"
 	}
-	return fmt.Sprintf("dropped %d %s of type %q that a later backend page repeated — results may be incomplete, since pages that repeat rows can leave out others; for an exact count use 'gcx kg graph query' with count()", n, rows, entityType)
+	return fmt.Sprintf("the backend pages read for type %q repeated %d %s from earlier pages, and each row is listed once — results may be incomplete, since pages that repeat rows can leave out others; for an exact count use 'gcx kg graph query' with count()", entityType, n, rows)
 }
 
 // listPageError reports a failed backend page after the first: the listing
