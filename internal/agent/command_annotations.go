@@ -560,7 +560,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall teams get":                           {Cost: "small"},
 	"gcx irm oncall teams get-team-hours":                {Cost: "small"},
 	"gcx irm oncall teams list":                          {Cost: "small"},
-	"gcx irm oncall teams update-team-hours":             {Cost: "small"},
+	"gcx irm oncall teams update-team-hours":             {Cost: "small", Hint: "<id> -f hours.yaml"},
 	"gcx irm oncall user-groups list":                    {Cost: "small"},
 	"gcx irm oncall users current":                       {Cost: "small"},
 	"gcx irm oncall users get":                           {Cost: "small"},

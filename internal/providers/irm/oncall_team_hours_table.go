@@ -23,18 +23,19 @@ func (o *teamHoursGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// teamHoursUpdateOpts holds the flags of update-team-hours. Like
-// get-team-hours it prints the stored hours as a weekly grid by default.
+// teamHoursUpdateOpts holds the flags of update-team-hours.
 type teamHoursUpdateOpts struct {
-	IO   cmdio.Options
-	File string
+	IO    cmdio.Options
+	File  string
+	Force bool
 }
 
 func (o *teamHoursUpdateOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, teamHoursTable())
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the resource definition (JSON/YAML, use - for stdin)")
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation when clearing all team hours")
 }
 
 // encodeTeamHours writes a team-hours document in the format that the

@@ -1,6 +1,8 @@
 package irm
 
 import (
+	"fmt"
+
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -56,9 +58,10 @@ func newTeamUpdateHoursCmd(loader OnCallConfigLoader) *cobra.Command {
 		Short: "Replace the business hours of a team.",
 		Long: `Replace the business hours of a team.
 
-The file holds the document that get-team-hours emits. The intervals in it
-become the team's entire set: an interval that the file omits is deleted. Pass
-{"team_hours": null} to clear every business hour of the team.
+The file holds the document that get-team-hours -o yaml emits. The intervals
+in it become the team's entire set: an interval that the file omits is deleted.
+To clear all hours, pass {"team_hours": null} or {"team_hours": []} and confirm.
+Use --force to skip confirmation, including when piping a clear document via -f -.
 
 Times are wall-clock times (HH:MM:SS) in the team's timezone. A weekday with no
 ranges is a day off, but every interval needs a time range on at least one
@@ -77,8 +80,8 @@ Example file:
         saturday:  []
         sunday:    []
 
-The command prints the stored hours as a weekly grid. Use -o yaml or -o json
-to emit the stored document instead.`,
+The command prints the stored hours as YAML by default. Use -o table for the
+weekly grid or -o json for JSON.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -92,6 +95,19 @@ to emit the stored document instead.`,
 
 			if err := validateTeamHours(hours); err != nil {
 				return err
+			}
+
+			// After validation, a nil or empty list means clear all hours.
+			intervals, _ := hours["team_hours"].([]any)
+			if len(intervals) == 0 {
+				proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+					fmt.Sprintf("Clear all business hours for team %q?", args[0]))
+				if err != nil {
+					return err
+				}
+				if !proceed {
+					return cancelledError()
+				}
 			}
 
 			client, _, err := loader.LoadOnCallClient(cmd.Context())

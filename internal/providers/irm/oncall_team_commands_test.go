@@ -5,10 +5,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/testutils"
+	"sigs.k8s.io/yaml"
 )
 
 // fakeTeamAPI stubs the team-hours surface. Unimplemented OnCallAPI
@@ -38,6 +46,7 @@ func runTeamsCmd(t *testing.T, fake *fakeTeamAPI, args ...string) (string, error
 	out := &bytes.Buffer{}
 	cmd.SetOut(out)
 	cmd.SetErr(out)
+	cmd.SetIn(strings.NewReader(""))
 	cmd.SetArgs(args)
 	err := cmd.ExecuteContext(context.Background())
 	return out.String(), err
@@ -100,19 +109,69 @@ func TestTeamUpdateHoursCommand(t *testing.T) {
 }
 
 func TestTeamUpdateHoursClear(t *testing.T) {
-	resetAgentMode(t)
+	for _, tc := range []struct {
+		name, value, answer string
+		force, agentMode    bool
+		autoApprove         bool
+		wantPrompt          bool
+	}{
+		{name: "null declined", value: "null", answer: "n\n", wantPrompt: true},
+		{name: "empty list confirmed", value: "[]", answer: "y\n", wantPrompt: true},
+		{name: "null forced", value: "null", force: true},
+		{name: "empty list blocked in agent mode", value: "[]", agentMode: true},
+		{name: "empty list auto-approved in agent mode", value: "[]", agentMode: true, autoApprove: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutils.SetAgentMode(t, tc.agentMode)
+			t.Setenv("GCX_AUTO_APPROVE", strconv.FormatBool(tc.autoApprove))
 
-	file := filepath.Join(t.TempDir(), "clear.yaml")
-	if err := os.WriteFile(file, []byte("team_hours: null\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+			file := filepath.Join(t.TempDir(), "clear.yaml")
+			if err := os.WriteFile(file, []byte("team_hours: "+tc.value+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 
-	fake := &fakeTeamAPI{}
-	if _, err := runTeamsCmd(t, fake, "update-team-hours", "T1", "-f", file, "-o", "json"); err != nil {
-		t.Fatal(err)
-	}
-	if v, ok := fake.gotHours["team_hours"]; !ok || v != nil {
-		t.Errorf("expected an explicit null to reach the backend, got %v", fake.gotHours)
+			fake := &fakeTeamAPI{}
+			cmd := newTeamsCmd(&fakeLoader{client: fake})
+			cmd.SilenceUsage = true
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SetIn(strings.NewReader(tc.answer))
+			args := []string{"update-team-hours", "T1", "-f", file, "-o", "json"}
+			if tc.force {
+				args = append(args, "--force")
+			}
+			cmd.SetArgs(args)
+			err := cmd.ExecuteContext(context.Background())
+			if got := strings.Contains(stderr.String(), `Clear all business hours for team "T1"? [y/N]`); got != tc.wantPrompt {
+				t.Errorf("expected prompt: %v, stderr: %q", tc.wantPrompt, stderr.String())
+			}
+
+			switch {
+			case tc.answer == "n\n":
+				detail, ok := errors.AsType[*gcxerrors.DetailedError](err)
+				if !ok || detail.ExitCode == nil || *detail.ExitCode != gcxerrors.ExitCancelled {
+					t.Fatalf("expected a cancellation error, got %v", err)
+				}
+			case tc.agentMode && !tc.autoApprove:
+				if !errors.Is(err, providers.ErrAgentModeRequiresForce) {
+					t.Fatalf("expected --force error, got %v", err)
+				}
+			default:
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := `{"team_hours":` + tc.value + `}`
+				got, err := json.Marshal(fake.gotHours)
+				if err != nil || string(got) != want || fake.gotID != "T1" {
+					t.Errorf("expected %s sent to T1, got %s sent to %q (error: %v)", want, got, fake.gotID, err)
+				}
+				return
+			}
+			if fake.gotID != "" || stdout.Len() != 0 {
+				t.Errorf("expected no update or result, got a call for %q and stdout %q", fake.gotID, stdout.String())
+			}
+		})
 	}
 }
 
@@ -189,8 +248,9 @@ func TestTeamGetHoursTableEmpty(t *testing.T) {
 	}
 }
 
-func TestTeamUpdateHoursPrintsGridByDefault(t *testing.T) {
+func TestTeamUpdateHoursOutputFormats(t *testing.T) {
 	resetAgentMode(t)
+	t.Setenv("GCX_AUTO_APPROVE", "false")
 
 	file := filepath.Join(t.TempDir(), "hours.yaml")
 	doc := `team_hours:
@@ -202,7 +262,17 @@ func TestTeamUpdateHoursPrintsGridByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runTeamsCmd(t, &fakeTeamAPI{}, "update-team-hours", "T1", "-f", file)
+	fake := &fakeTeamAPI{}
+	out, err := runTeamsCmd(t, fake, "update-team-hours", "T1", "-f", file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := yaml.Unmarshal([]byte(out), &got); err != nil || !reflect.DeepEqual(got, fake.gotHours) || !strings.HasPrefix(out, "team_hours:\n") {
+		t.Errorf("expected the stored document as YAML, got:\n%s", out)
+	}
+
+	out, err = runTeamsCmd(t, fake, "update-team-hours", "T1", "-f", file, "-o", "table")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,14 +280,5 @@ func TestTeamUpdateHoursPrintsGridByDefault(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("grid is missing %q:\n%s", want, out)
 		}
-	}
-
-	// The document formats still emit the stored document.
-	out, err = runTeamsCmd(t, &fakeTeamAPI{}, "update-team-hours", "T1", "-f", file, "-o", "yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "team_hours:") || strings.Contains(out, "INTERVAL") {
-		t.Errorf("expected the YAML document, got:\n%s", out)
 	}
 }
