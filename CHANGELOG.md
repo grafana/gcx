@@ -14,22 +14,30 @@
   filled in, since a key the type lacks matches nothing. The examples used
   to name specific types, relationship types and properties that not every
   stack has, and a copied query matched nothing there without an error.
-- `gcx kg graph query` now adds a `warnings` entry to its `-o json` and
-  `-o yaml` output, and writes the same warning to stderr in every format,
+- `gcx kg graph query` now adds a `warnings` entry to its agents, `-o json`
+  and `-o yaml` output, and writes the same warning to stderr in every format,
   when returned rows hold the graph's own catalog records: nodes labeled
   `Account`, `EntityType`, `Env` or `Schema`, which are not observed entities.
   A node pattern without a label matches them too, so a query such as
-  `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r) LIMIT 100`
+  `MATCH (n) RETURN labels(n)[0] AS type, count(n) AS c ORDER BY c DESC LIMIT 100`
   returned catalog groups next to real ones with nothing telling them apart.
   The warning counts those rows, names their labels and says how to leave
-  them out. It is detected from returned nodes and from columns that project
-  a `labels(...)` call at any depth, with or without an alias, such as
-  `labels(a)[0]` or `coalesce(head(labels(a)), 'none')`, also through aliases
-  that WITH gives such a call, as in
+  them out: a label on each node, or, for an unlabeled node `n`, a filter on
+  its label after a WITH, as in `WITH n, labels(n)[0] AS type WHERE type <> '<label>'`,
+  because a WHERE on `labels(n)` right after MATCH can time out on a large
+  graph. It is detected from returned nodes, also inside paths, lists and
+  maps, and from columns that project a `labels(...)` call at any depth,
+  with or without an alias, such as `labels(a)[0]` or
+  `coalesce(head(labels(a)), 'none')`, also under a key of a map literal or
+  map projection, as in `{t: labels(a)[0]}`, and through aliases that WITH
+  gives such a call, as in
   `MATCH (a) WITH labels(a) AS ls, count(a) AS c RETURN ls[0] AS type, c LIMIT 50`.
-  A catalog label the query names itself, as a label or in a string literal
-  outside comments, is not counted, so a query that filters out one catalog
-  label is still warned about the others. Rows are unchanged.
+  A catalog label the query names itself is not counted: as a label in a
+  pattern or a label predicate, or in a string compared with a `labels(...)`
+  expression or an alias of one, outside comments. A string compared with a
+  property, as in `n.name <> '<label>'`, does not name a label, and a query
+  that filters out one catalog label is still warned about the others. Rows
+  are unchanged.
 - The `gcx kg diagnose` entity overview now also leaves `Account` records out
   of its entity total and per-type counts, as it already did `EntityType`,
   `Env` and `Schema` records. `gcx kg meta schema`, `gcx kg graph query` and
