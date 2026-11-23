@@ -15,46 +15,54 @@ keywords:
 weight: 1
 cards:
   items:
-    - title: Overview
-      description: Overview of the `gcx` CLI.
+    - title: Introduction
+      description: What `gcx` is, what it costs, and which Grafana versions it works with.
       href: overview/
       height: 24
-    - title: Installation
-      description: Install `gcx` with the quick installer, Homebrew, or a prebuilt binary.
+    - title: Install gcx
+      description: Install `gcx` with the quick installer, Homebrew, Windows, a prebuilt binary, or a container.
       href: installation/
       height: 24
-    - title: Authentication
-      description: Options for `gcx` authentication.
+    - title: Authenticate gcx
+      description: Sign in with browser OAuth, a service account token, or basic authentication.
       href: authentication/
       height: 24
-    - title: Configuration
-      description: Configure `gcx` with the configuration file or using environment variables.
+    - title: Configure gcx
+      description: Set up contexts with the configuration file or environment variables.
       href: configuration/
+      height: 24
+    - title: Roles and permissions
+      description: Roles and access policy scopes that `gcx` commands need, and how to fix authorization errors.
+      href: permissions/
+      height: 24
+    - title: Work with your resources
+      description: Grafana and Grafana Cloud resources you can manage with `gcx`, the commands to use for each, and resource-specific guides.
+      href: resources/
+      height: 24
+    - title: User guides
+      description: Diagnose missing telemetry, compare profiles, and check Assistant usage.
+      href: guides/
+      height: 24
+    - title: Use gcx with AI agents
+      description: How `gcx` behaves when an AI coding agent runs it, and how to set up sign-in, destructive operations, and skills for agents.
+      href: use-gcx-with-agents/
+      height: 24
+    - title: Usage statistics
+      description: What `gcx` reports to Grafana Labs, and how to opt out.
+      href: anonymous-usage-statistics/
+      height: 24
+    - title: Keychain credential storage
+      description: How `gcx` stores credentials in your operating system's keychain, and when it falls back to plaintext.
+      href: keychain/
+      height: 24
+    - title: CLI reference
+      description: Commands, flags, environment variables, and configuration for the latest stable release.
+      href: cli-reference/
       height: 24
     - title: Migrate your configuration
       description: Move a legacy `gcx` configuration to the version 1 format.
       href: migrate-configuration/
       height: 24
-    - title: Permissions
-      description: Permissions that `gcx` commands need, and how to fix authorization errors.
-      href: permissions/
-      height: 24
-    - title: Usage statistics
-      description: Understand which statistics `gcx` reports to Grafana Labs, and what they're used for. 
-      href: anonymous-usage-statistics/
-      height: 24
-    - title: Keychain credential storage
-      description: Learn how `gcx` stores credentials. 
-      href: keychain/
-      height: 24            
-    - title: User guides
-      description: User guides for dashboards as code, diagnostics, manage resources, and more. 
-      href: guides/
-      height: 24  
-    - title: CLI reference
-      description: Commands, flags, environment variables, and configuration for the latest stable release.
-      href: cli-reference/
-      height: 24          
   title_class: pt-0 lh-1
 hero:
   title: gcx CLI

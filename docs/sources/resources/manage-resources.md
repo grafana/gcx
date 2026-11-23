@@ -12,8 +12,9 @@ keywords:
   - observability as code
   - telemetry
 aliases:
-  - ./explore-modify-resources/ # /docs/grafana/<GRAFANA_VERSION>/as-code/observability-as-code/grafana-cli/gcx/guides/explore-modify-resources/
-weight: 2
+  - ../guides/explore-modify-resources/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/explore-modify-resources/
+  - ../guides/manage-resources/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/manage-resources/
+weight: 1
 ---
 
 # Resource management workflows with `gcx`

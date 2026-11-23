@@ -233,7 +233,11 @@ func reconcile(ctx context.Context, client *watchers.Client, desired Watcher, id
 		if err != nil {
 			return nil, err
 		}
-		unsupported := append(raw.UnsupportedConfiguration(), enrollment.UnsupportedConfiguration()...)
+		// Check the enrollment this update leaves: enabling reuses the stored
+		// schedule, while disabling only sends enabled and is always safe.
+		next := *enrollment
+		next.Enabled = desired.AutomaticRecalibration.Enabled
+		unsupported := append(raw.UnsupportedConfiguration(), next.UnsupportedConfiguration()...)
 		if len(unsupported) > 0 {
 			return nil, fmt.Errorf("Watcher has unrepresented configuration (%s); continue editing in Grafana", strings.Join(unsupported, ", "))
 		}

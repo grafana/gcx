@@ -277,10 +277,12 @@ func TestContractDeferredSettingsRefuseBeforeSourceResolution(t *testing.T) {
 	for _, tt := range []struct {
 		name, actions string
 		enrollment    watchers.Enrollment
+		enable        bool
 	}{
-		{"new configuration", `{"webhook":{"futureOption":"SECRET-SETTING"}}`, watchers.Enrollment{}},
-		{"scheduled enrollment", `{}`, watchers.Enrollment{ScheduleCron: "0 8 * * 1"}},
-		{"enrollment timezone", `{}`, watchers.Enrollment{ScheduleTimezone: "Europe/Helsinki"}},
+		{"new configuration", `{"webhook":{"futureOption":"SECRET-SETTING"}}`, watchers.Enrollment{}, false},
+		{"scheduled enrollment", `{}`, watchers.Enrollment{Enabled: true, ScheduleCron: "0 8 * * 1"}, true},
+		{"enrollment timezone", `{}`, watchers.Enrollment{Enabled: true, ScheduleTimezone: "Europe/Helsinki"}, true},
+		{"enabling a stored schedule", `{}`, watchers.Enrollment{ScheduleCron: "0 8 * * 1"}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			raw := contractRaw()
@@ -295,6 +297,7 @@ func TestContractDeferredSettingsRefuseBeforeSourceResolution(t *testing.T) {
 			require.NoError(t, err)
 			fixture.RawDetails = map[string]json.RawMessage{raw.ID: data}
 			desired := minimalWatcher(t)
+			desired.AutomaticRecalibration.Enabled = tt.enable
 			desired.Notifications.Webhook.SigningSecret = &SecretInput{FromFile: filepath.Join(t.TempDir(), "must-not-read")}
 			_, err = reconcile(t.Context(), clientForServer(t, fixture.ServeHTTP), desired, raw.ID)
 			require.ErrorContains(t, err, "unrepresented configuration")
@@ -303,6 +306,32 @@ func TestContractDeferredSettingsRefuseBeforeSourceResolution(t *testing.T) {
 			assert.Zero(t, fixture.MutationCalls())
 		})
 	}
+}
+
+func TestContractDisabledEnrollmentScheduleAllowsUpdates(t *testing.T) {
+	raw := contractRaw()
+	fixture := contractFixture(raw)
+	fixture.EnrollmentDetails = map[string]watchers.Enrollment{raw.ID: {Enabled: false, ScheduleCron: "0 8 * * *", ScheduleTimezone: "America/Chicago"}}
+	desired := WatcherFromResponse(raw, false)
+	desired.Description = "Saved config"
+	result, err := reconcile(t.Context(), clientForServer(t, fixture.ServeHTTP), desired, raw.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "saved", result.MutationOutcome().Configuration)
+	assert.Equal(t, "unchanged", result.MutationOutcome().Enrollment)
+	require.Equal(t, 1, fixture.MutationCalls())
+	assert.False(t, strings.HasSuffix(fixture.MutationRequests()[0].Path, "/auto-calibration"))
+}
+
+func TestContractDisablingCustomScheduleIsAllowed(t *testing.T) {
+	raw := contractRaw()
+	fixture := contractFixture(raw)
+	fixture.EnrollmentDetails = map[string]watchers.Enrollment{raw.ID: {Enabled: true, ScheduleCron: "0 8 * * *", ScheduleTimezone: "America/Chicago"}}
+	result, err := reconcile(t.Context(), clientForServer(t, fixture.ServeHTTP), WatcherFromResponse(raw, false), raw.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "unchanged", result.MutationOutcome().Configuration)
+	assert.Equal(t, "saved", result.MutationOutcome().Enrollment)
+	require.Equal(t, 1, fixture.MutationCalls())
+	assert.JSONEq(t, `{"enabled":false}`, string(fixture.MutationRequests()[0].Body))
 }
 
 func TestContractWebhookSourcesAndFullSecretOnlyPayload(t *testing.T) {
