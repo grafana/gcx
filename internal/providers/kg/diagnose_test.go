@@ -116,7 +116,7 @@ func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
 					mu.Lock()
 					countWindow = w0
 					mu.Unlock()
-					writeJSON(w, map[string]int64{"Service": 10, "Pod": 20, "RecordTypeA": 4, "EntityType": 3, "Account": 1, "Env": 2})
+					writeJSON(w, map[string]int64{"TypeX": 10, "TypeY": 20, "RecordTypeA": 4, "EntityType": 3, "Account": 1, "Env": 2})
 				case prefix + "/search":
 					w0 := readWindow(r)
 					mu.Lock()
@@ -126,7 +126,7 @@ func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
-					_, _ = io.WriteString(w, `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"},{"id":4,"name":"Env"}]}}`)
+					_, _ = io.WriteString(w, `{"data":{"entities":[{"id":1,"name":"TypeX"},{"id":2,"name":"TypeY"},{"id":3,"name":"Account"},{"id":4,"name":"Env"}]}}`)
 				default:
 					http.NotFound(w, r)
 				}
@@ -143,8 +143,8 @@ func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
 			for _, typ := range tt.wantNotType {
 				assert.NotContains(t, overview.ByType, typ)
 			}
-			assert.Contains(t, overview.ByType, "Service")
-			assert.Contains(t, overview.ByType, "Pod")
+			assert.Contains(t, overview.ByType, "TypeX")
+			assert.Contains(t, overview.ByType, "TypeY")
 			assert.Equal(t, countWindow, schemaWindow, "the schema is read for the same window as the entity counts")
 			assert.Equal(t, int64(3600000), countWindow.End-countWindow.Start, "the entity counts cover the last hour")
 		})
