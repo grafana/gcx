@@ -51,6 +51,11 @@ func TestMain(m *testing.M) {
 }
 
 func fakeGCX() int {
+	if len(os.Args) > 1 && os.Args[1] == "big" {
+		// Larger than any single gRPC message gcx accepts by default.
+		_, _ = os.Stdout.Write(bytes.Repeat([]byte("x"), bigOutput))
+		return 3
+	}
 	if len(os.Args) > 1 && os.Args[1] == "fail" {
 		_, _ = os.Stdout.WriteString(`{"error":{"summary":"boom","details":"it broke"}}`)
 		return 4
@@ -67,6 +72,8 @@ func fakeGCX() int {
 	_, _ = os.Stdout.Write(append(out, '\n'))
 	return 0
 }
+
+const bigOutput = 70 << 20
 
 func exe(name string) string {
 	if runtime.GOOS == "windows" {
@@ -376,6 +383,7 @@ func TestRun(t *testing.T) {
 			stdout: `{"agent":"true","args":["resources","get","dashboards","--output","json"],"config":"/tmp/gcx.yaml","context":"prod"}` + "\n",
 		},
 		{name: "gcx command fails", args: []string{"gcx", "fail"}, code: 4, stderr: "Error: boom: it broke\n"},
+		{name: "large gcx output", args: []string{"size", "big"}, stdout: fmt.Sprintf("%d 3\n", bigOutput)},
 		{name: "output before returning", args: []string{"flood"}, code: 1, stdout: strings.Repeat("x", 2<<20) + "END\n", stderr: "Error: after output\n"},
 	}
 	for _, tt := range tests {

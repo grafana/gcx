@@ -137,9 +137,10 @@ const (
 //
 // Host is served by gcx for the duration of a Run call.
 type HostClient interface {
-	// Execute runs one gcx command in a new gcx process and returns its
-	// captured output. A command that exits non-zero is not an RPC error.
-	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error)
+	// Execute runs one gcx command in a new gcx process. It streams the
+	// command's output as it is written, then its exit code as the last event.
+	// A command that exits non-zero is not an RPC error.
+	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteEvent], error)
 	// Output carries the extension's stdout and stderr. The extension closes
 	// the stream before Run returns, so gcx has written all of it when Run
 	// completes.
@@ -154,19 +155,28 @@ func NewHostClient(cc grpc.ClientConnInterface) HostClient {
 	return &hostClient{cc}
 }
 
-func (c *hostClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error) {
+func (c *hostClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecuteEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ExecuteResponse)
-	err := c.cc.Invoke(ctx, Host_Execute_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Host_ServiceDesc.Streams[0], Host_Execute_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[ExecuteRequest, ExecuteEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Host_ExecuteClient = grpc.ServerStreamingClient[ExecuteEvent]
 
 func (c *hostClient) Output(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[OutputChunk, OutputResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Host_ServiceDesc.Streams[0], Host_Output_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Host_ServiceDesc.Streams[1], Host_Output_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -183,9 +193,10 @@ type Host_OutputClient = grpc.ClientStreamingClient[OutputChunk, OutputResponse]
 //
 // Host is served by gcx for the duration of a Run call.
 type HostServer interface {
-	// Execute runs one gcx command in a new gcx process and returns its
-	// captured output. A command that exits non-zero is not an RPC error.
-	Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error)
+	// Execute runs one gcx command in a new gcx process. It streams the
+	// command's output as it is written, then its exit code as the last event.
+	// A command that exits non-zero is not an RPC error.
+	Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteEvent]) error
 	// Output carries the extension's stdout and stderr. The extension closes
 	// the stream before Run returns, so gcx has written all of it when Run
 	// completes.
@@ -200,8 +211,8 @@ type HostServer interface {
 // pointer dereference when methods are called.
 type UnimplementedHostServer struct{}
 
-func (UnimplementedHostServer) Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Execute not implemented")
+func (UnimplementedHostServer) Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecuteEvent]) error {
+	return status.Error(codes.Unimplemented, "method Execute not implemented")
 }
 func (UnimplementedHostServer) Output(grpc.ClientStreamingServer[OutputChunk, OutputResponse]) error {
 	return status.Error(codes.Unimplemented, "method Output not implemented")
@@ -227,23 +238,16 @@ func RegisterHostServer(s grpc.ServiceRegistrar, srv HostServer) {
 	s.RegisterService(&Host_ServiceDesc, srv)
 }
 
-func _Host_Execute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ExecuteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _Host_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExecuteRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(HostServer).Execute(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Host_Execute_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HostServer).Execute(ctx, req.(*ExecuteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(HostServer).Execute(m, &grpc.GenericServerStream[ExecuteRequest, ExecuteEvent]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Host_ExecuteServer = grpc.ServerStreamingServer[ExecuteEvent]
 
 func _Host_Output_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(HostServer).Output(&grpc.GenericServerStream[OutputChunk, OutputResponse]{ServerStream: stream})
@@ -258,13 +262,13 @@ type Host_OutputServer = grpc.ClientStreamingServer[OutputChunk, OutputResponse]
 var Host_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "gcx.extension.v1.Host",
 	HandlerType: (*HostServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Execute",
-			Handler:    _Host_Execute_Handler,
-		},
-	},
+	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Execute",
+			Handler:       _Host_Execute_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "Output",
 			Handler:       _Host_Output_Handler,

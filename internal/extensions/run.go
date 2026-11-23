@@ -28,7 +28,8 @@ const (
 	magicCookieKey   = "GCX_EXTENSION"
 	magicCookieValue = "gcx-extension"
 	pluginName       = "extension"
-	maxMessageSize   = 64 << 20
+	// maxStdinSize bounds an ExecuteRequest, which carries the command's stdin.
+	maxStdinSize = 64 << 20
 )
 
 // RunOptions configures one run of an extension.
@@ -64,7 +65,6 @@ func (e *Extension) Run(ctx context.Context, opts RunOptions) (int, error) {
 		Cmd:              exec.Command(e.Executable), //nolint:gosec,noctx // go-plugin owns the process lifecycle
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 		AutoMTLS:         true,
-		GRPCDialOptions:  []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize))},
 		StartTimeout:     10 * time.Second,
 		Logger:           hclog.NewNullLogger(),
 		Stderr:           stderr,
@@ -93,7 +93,7 @@ func (e *Extension) Run(ctx context.Context, opts RunOptions) (int, error) {
 	go func() {
 		defer close(stopped)
 		ext.broker.AcceptAndServe(brokerID, func(serverOpts []grpc.ServerOption) *grpc.Server {
-			s := grpc.NewServer(append(serverOpts, grpc.MaxRecvMsgSize(maxMessageSize))...)
+			s := grpc.NewServer(append(serverOpts, grpc.MaxRecvMsgSize(maxStdinSize))...)
 			extensionpb.RegisterHostServer(s, host)
 			served <- s
 			return s
@@ -182,10 +182,11 @@ func (h *hostServer) Output(stream extensionpb.Host_OutputServer) error {
 	}
 }
 
-func (h *hostServer) Execute(ctx context.Context, req *extensionpb.ExecuteRequest) (*extensionpb.ExecuteResponse, error) {
+func (h *hostServer) Execute(req *extensionpb.ExecuteRequest, stream extensionpb.Host_ExecuteServer) error {
 	if len(req.GetArgs()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "gcx arguments are required")
+		return status.Error(codes.InvalidArgument, "gcx arguments are required")
 	}
+	ctx := stream.Context()
 	cmd := exec.CommandContext(ctx, h.opts.GCX, req.GetArgs()...) //nolint:gosec // arguments are passed without a shell
 	// --agent is read from gcx's own arguments, so pass the resolved mode on.
 	cmd.Env = append(os.Environ(), "GCX_AGENT_MODE="+strconv.FormatBool(agent.IsAgentMode()))
@@ -196,20 +197,37 @@ func (h *hostServer) Execute(ctx context.Context, req *extensionpb.ExecuteReques
 		cmd.Env = append(cmd.Env, config.ConfigFileEnvVar+"="+h.opts.ConfigFile)
 	}
 	cmd.Stdin = bytes.NewReader(req.GetStdin())
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// exec copies each pipe from its own goroutine, in chunks of at most 32 KiB.
+	var mu sync.Mutex
+	cmd.Stdout = &chunkSender{mu: &mu, stream: stream, kind: extensionpb.OutputChunk_STREAM_STDOUT}
+	cmd.Stderr = &chunkSender{mu: &mu, stream: stream, kind: extensionpb.OutputChunk_STREAM_STDERR}
 
 	err := cmd.Run()
 	if ctx.Err() != nil {
-		return nil, status.FromContextError(ctx.Err()).Err()
+		return status.FromContextError(ctx.Err()).Err()
 	}
-	resp := &extensionpb.ExecuteResponse{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
+	code := 0
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		resp.ExitCode = int32(exitErr.ExitCode()) //nolint:gosec // exit codes fit in int32
-		return resp, nil
+		code = exitErr.ExitCode()
+	} else if err != nil {
+		return status.Errorf(codes.Internal, "run gcx: %v", err)
 	}
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "run gcx: %v", err)
+	return stream.Send(&extensionpb.ExecuteEvent{Event: &extensionpb.ExecuteEvent_ExitCode{ExitCode: int32(code)}})
+}
+
+// chunkSender sends a command's output to the extension as it is written.
+type chunkSender struct {
+	mu     *sync.Mutex // gRPC streams do not support concurrent sends
+	stream extensionpb.Host_ExecuteServer
+	kind   extensionpb.OutputChunk_Stream
+}
+
+func (c *chunkSender) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	chunk := &extensionpb.OutputChunk{Stream: c.kind, Data: p}
+	if err := c.stream.Send(&extensionpb.ExecuteEvent{Event: &extensionpb.ExecuteEvent_Output{Output: chunk}}); err != nil {
+		return 0, err
 	}
-	return resp, nil
+	return len(p), nil
 }

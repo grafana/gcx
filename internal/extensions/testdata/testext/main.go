@@ -32,6 +32,13 @@ func main() {
 				return err
 			}
 			return json.NewEncoder(os.Stdout).Encode(out)
+		case "size":
+			res, err := gcx.Execute(ctx, extsdk.Request{Args: args[1:]})
+			if err != nil {
+				return err
+			}
+			fmt.Println(len(res.Stdout), res.ExitCode)
+			return nil
 		case "flood":
 			// Output written just before returning must still reach gcx.
 			fmt.Print(strings.Repeat("x", 2<<20) + "END\n")

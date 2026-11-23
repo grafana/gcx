@@ -1,6 +1,9 @@
 # gcx extension SDK
 
-`github.com/grafana/gcx/extsdk` is the Go SDK for [gcx extensions](../docs/sources/guides/extensions.md). An extension is an executable that gcx starts with [go-plugin](https://github.com/hashicorp/go-plugin) when a user runs `gcx ext <name> [args...]`.
+`github.com/grafana/gcx/extsdk` is the Go SDK for [gcx extensions](../docs/sources/guides/extensions.md). An extension is an executable that gcx starts when a user runs `gcx ext <name> [args...]`. It communicates with `gcx` using [go-plugin](https://github.com/hashicorp/go-plugin) .
+
+
+Here is an example extension, which fetches a Grafana instance's version from gcx:
 
 ```go
 package main
@@ -26,6 +29,8 @@ func main() {
 }
 ```
 
+
+
 - `GCX.Execute` runs any gcx command in a new gcx process and returns its stdout, stderr and exit code. A non-zero exit is not an error: gcx can report a partial failure with a complete result, so check `Result.ExitCode` or `Result.Err()`
 - `GCX.DecodeJSON` adds `--output json`, fails on a non-zero exit and decodes stdout
 - Commands use the context, configuration file and agent mode the user ran `gcx ext` with, so the extension doesn't need to handle credentials. Extensions aren't sandboxed, though: they run with the user's permissions
@@ -37,6 +42,6 @@ gcx JSON output is the contract for `Execute` and `DecodeJSON`; use `minGCXVersi
 
 ## Protocol
 
-Extensions in other languages implement the gRPC services in [`proto/extension.proto`](proto/extension.proto) with go-plugin's handshake: magic cookie `GCX_EXTENSION=gcx-extension`, protocol version `1` and plugin name `extension`. gcx calls `Extension.Run` once and serves `Host` on the go-plugin broker ID in the request for as long as `Run` lasts. Send the extension's stdout and stderr through `Host.Output` and close that stream before `Run` returns: go-plugin's own stdio forwarding can drop output written at the end of a run.
+Extensions in other languages implement the gRPC services in [`proto/extension.proto`](proto/extension.proto) with go-plugin's handshake: magic cookie `GCX_EXTENSION=gcx-extension`, protocol version `1` and plugin name `extension`. gcx calls `Extension.Run` once and serves `Host` on the go-plugin broker ID in the request for as long as `Run` lasts. Send the extension's stdout and stderr through `Host.Output` and close that stream before `Run` returns: go-plugin's own stdio forwarding can drop output written at the end of a run. `Host.Execute` streams a command's output in chunks as it is written and sends its exit code as the last event, so output size isn't limited by gRPC's message size. A request's stdin can be up to 64 MiB.
 
 Run `./generate.sh` after changing the proto file. It regenerates the SDK's code and gcx's copy in `internal/extensions/extensionpb`; gcx does not import this module.

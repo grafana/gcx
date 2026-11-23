@@ -221,29 +221,31 @@ func (x *ExecuteRequest) GetStdin() []byte {
 	return nil
 }
 
-type ExecuteResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Stdout        []byte                 `protobuf:"bytes,1,opt,name=stdout,proto3" json:"stdout,omitempty"`
-	Stderr        []byte                 `protobuf:"bytes,2,opt,name=stderr,proto3" json:"stderr,omitempty"`
-	ExitCode      int32                  `protobuf:"varint,3,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+type ExecuteEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Event:
+	//
+	//	*ExecuteEvent_Output
+	//	*ExecuteEvent_ExitCode
+	Event         isExecuteEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecuteResponse) Reset() {
-	*x = ExecuteResponse{}
+func (x *ExecuteEvent) Reset() {
+	*x = ExecuteEvent{}
 	mi := &file_extension_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecuteResponse) String() string {
+func (x *ExecuteEvent) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecuteResponse) ProtoMessage() {}
+func (*ExecuteEvent) ProtoMessage() {}
 
-func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
+func (x *ExecuteEvent) ProtoReflect() protoreflect.Message {
 	mi := &file_extension_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -255,31 +257,51 @@ func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecuteResponse.ProtoReflect.Descriptor instead.
-func (*ExecuteResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ExecuteEvent.ProtoReflect.Descriptor instead.
+func (*ExecuteEvent) Descriptor() ([]byte, []int) {
 	return file_extension_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ExecuteResponse) GetStdout() []byte {
+func (x *ExecuteEvent) GetEvent() isExecuteEvent_Event {
 	if x != nil {
-		return x.Stdout
+		return x.Event
 	}
 	return nil
 }
 
-func (x *ExecuteResponse) GetStderr() []byte {
+func (x *ExecuteEvent) GetOutput() *OutputChunk {
 	if x != nil {
-		return x.Stderr
+		if x, ok := x.Event.(*ExecuteEvent_Output); ok {
+			return x.Output
+		}
 	}
 	return nil
 }
 
-func (x *ExecuteResponse) GetExitCode() int32 {
+func (x *ExecuteEvent) GetExitCode() int32 {
 	if x != nil {
-		return x.ExitCode
+		if x, ok := x.Event.(*ExecuteEvent_ExitCode); ok {
+			return x.ExitCode
+		}
 	}
 	return 0
 }
+
+type isExecuteEvent_Event interface {
+	isExecuteEvent_Event()
+}
+
+type ExecuteEvent_Output struct {
+	Output *OutputChunk `protobuf:"bytes,1,opt,name=output,proto3,oneof"`
+}
+
+type ExecuteEvent_ExitCode struct {
+	ExitCode int32 `protobuf:"varint,2,opt,name=exit_code,json=exitCode,proto3,oneof"`
+}
+
+func (*ExecuteEvent_Output) isExecuteEvent_Event() {}
+
+func (*ExecuteEvent_ExitCode) isExecuteEvent_Event() {}
 
 type OutputChunk struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -382,11 +404,11 @@ const file_extension_proto_rawDesc = "" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\":\n" +
 	"\x0eExecuteRequest\x12\x12\n" +
 	"\x04args\x18\x01 \x03(\tR\x04args\x12\x14\n" +
-	"\x05stdin\x18\x02 \x01(\fR\x05stdin\"^\n" +
-	"\x0fExecuteResponse\x12\x16\n" +
-	"\x06stdout\x18\x01 \x01(\fR\x06stdout\x12\x16\n" +
-	"\x06stderr\x18\x02 \x01(\fR\x06stderr\x12\x1b\n" +
-	"\texit_code\x18\x03 \x01(\x05R\bexitCode\"\xa7\x01\n" +
+	"\x05stdin\x18\x02 \x01(\fR\x05stdin\"o\n" +
+	"\fExecuteEvent\x127\n" +
+	"\x06output\x18\x01 \x01(\v2\x1d.gcx.extension.v1.OutputChunkH\x00R\x06output\x12\x1d\n" +
+	"\texit_code\x18\x02 \x01(\x05H\x00R\bexitCodeB\a\n" +
+	"\x05event\"\xa7\x01\n" +
 	"\vOutputChunk\x12<\n" +
 	"\x06stream\x18\x01 \x01(\x0e2$.gcx.extension.v1.OutputChunk.StreamR\x06stream\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\"F\n" +
@@ -396,9 +418,9 @@ const file_extension_proto_rawDesc = "" +
 	"\rSTREAM_STDERR\x10\x02\"\x10\n" +
 	"\x0eOutputResponse2O\n" +
 	"\tExtension\x12B\n" +
-	"\x03Run\x12\x1c.gcx.extension.v1.RunRequest\x1a\x1d.gcx.extension.v1.RunResponse2\xa3\x01\n" +
-	"\x04Host\x12N\n" +
-	"\aExecute\x12 .gcx.extension.v1.ExecuteRequest\x1a!.gcx.extension.v1.ExecuteResponse\x12K\n" +
+	"\x03Run\x12\x1c.gcx.extension.v1.RunRequest\x1a\x1d.gcx.extension.v1.RunResponse2\xa2\x01\n" +
+	"\x04Host\x12M\n" +
+	"\aExecute\x12 .gcx.extension.v1.ExecuteRequest\x1a\x1e.gcx.extension.v1.ExecuteEvent0\x01\x12K\n" +
 	"\x06Output\x12\x1d.gcx.extension.v1.OutputChunk\x1a .gcx.extension.v1.OutputResponse(\x01B4Z2github.com/grafana/gcx/extsdk/internal/extensionpbb\x06proto3"
 
 var (
@@ -420,29 +442,34 @@ var file_extension_proto_goTypes = []any{
 	(*RunRequest)(nil),      // 1: gcx.extension.v1.RunRequest
 	(*RunResponse)(nil),     // 2: gcx.extension.v1.RunResponse
 	(*ExecuteRequest)(nil),  // 3: gcx.extension.v1.ExecuteRequest
-	(*ExecuteResponse)(nil), // 4: gcx.extension.v1.ExecuteResponse
+	(*ExecuteEvent)(nil),    // 4: gcx.extension.v1.ExecuteEvent
 	(*OutputChunk)(nil),     // 5: gcx.extension.v1.OutputChunk
 	(*OutputResponse)(nil),  // 6: gcx.extension.v1.OutputResponse
 }
 var file_extension_proto_depIdxs = []int32{
-	0, // 0: gcx.extension.v1.OutputChunk.stream:type_name -> gcx.extension.v1.OutputChunk.Stream
-	1, // 1: gcx.extension.v1.Extension.Run:input_type -> gcx.extension.v1.RunRequest
-	3, // 2: gcx.extension.v1.Host.Execute:input_type -> gcx.extension.v1.ExecuteRequest
-	5, // 3: gcx.extension.v1.Host.Output:input_type -> gcx.extension.v1.OutputChunk
-	2, // 4: gcx.extension.v1.Extension.Run:output_type -> gcx.extension.v1.RunResponse
-	4, // 5: gcx.extension.v1.Host.Execute:output_type -> gcx.extension.v1.ExecuteResponse
-	6, // 6: gcx.extension.v1.Host.Output:output_type -> gcx.extension.v1.OutputResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	5, // 0: gcx.extension.v1.ExecuteEvent.output:type_name -> gcx.extension.v1.OutputChunk
+	0, // 1: gcx.extension.v1.OutputChunk.stream:type_name -> gcx.extension.v1.OutputChunk.Stream
+	1, // 2: gcx.extension.v1.Extension.Run:input_type -> gcx.extension.v1.RunRequest
+	3, // 3: gcx.extension.v1.Host.Execute:input_type -> gcx.extension.v1.ExecuteRequest
+	5, // 4: gcx.extension.v1.Host.Output:input_type -> gcx.extension.v1.OutputChunk
+	2, // 5: gcx.extension.v1.Extension.Run:output_type -> gcx.extension.v1.RunResponse
+	4, // 6: gcx.extension.v1.Host.Execute:output_type -> gcx.extension.v1.ExecuteEvent
+	6, // 7: gcx.extension.v1.Host.Output:output_type -> gcx.extension.v1.OutputResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_extension_proto_init() }
 func file_extension_proto_init() {
 	if File_extension_proto != nil {
 		return
+	}
+	file_extension_proto_msgTypes[3].OneofWrappers = []any{
+		(*ExecuteEvent_Output)(nil),
+		(*ExecuteEvent_ExitCode)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

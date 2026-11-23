@@ -12,9 +12,10 @@ service Extension {
 
 // Host is served by gcx for the duration of a Run call.
 service Host {
-  // Execute runs one gcx command in a new gcx process and returns its
-  // captured output. A command that exits non-zero is not an RPC error.
-  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  // Execute runs one gcx command in a new gcx process. It streams the
+  // command's output as it is written, then its exit code as the last event.
+  // A command that exits non-zero is not an RPC error.
+  rpc Execute(ExecuteRequest) returns (stream ExecuteEvent);
   // Output carries the extension's stdout and stderr. The extension closes
   // the stream before Run returns, so gcx has written all of it when Run
   // completes.
@@ -38,10 +39,11 @@ message ExecuteRequest {
   bytes stdin = 2;
 }
 
-message ExecuteResponse {
-  bytes stdout = 1;
-  bytes stderr = 2;
-  int32 exit_code = 3;
+message ExecuteEvent {
+  oneof event {
+    OutputChunk output = 1;
+    int32 exit_code = 2;
+  }
 }
 
 message OutputChunk {

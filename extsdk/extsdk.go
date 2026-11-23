@@ -8,10 +8,12 @@
 package extsdk
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -31,7 +33,6 @@ const (
 	magicCookieKey   = "GCX_EXTENSION"
 	magicCookieValue = "gcx-extension"
 	pluginName       = "extension"
-	maxMessageSize   = 64 << 20
 )
 
 // RunFunc implements an extension. args are the arguments that followed the
@@ -48,10 +49,8 @@ func Serve(run RunFunc) {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: handshake(),
 		Plugins:         map[string]plugin.Plugin{pluginName: &extensionPlugin{run: run}},
-		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
-			return grpc.NewServer(append(opts, grpc.MaxRecvMsgSize(maxMessageSize))...)
-		},
-		Logger: hclog.NewNullLogger(),
+		GRPCServer:      plugin.DefaultGRPCServer,
+		Logger:          hclog.NewNullLogger(),
 	})
 }
 
@@ -120,14 +119,36 @@ type GCX struct {
 // failure alongside a complete result. The error is non-nil only when the
 // command could not be run.
 func (g *GCX) Execute(ctx context.Context, req Request) (*Result, error) {
-	resp, err := g.host.Execute(ctx, &extensionpb.ExecuteRequest{Args: req.Args, Stdin: req.Stdin})
+	stream, err := g.host.Execute(ctx, &extensionpb.ExecuteRequest{Args: req.Args, Stdin: req.Stdin})
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		return nil, err
+		return nil, rpcError(ctx, err)
 	}
-	return &Result{Stdout: resp.GetStdout(), Stderr: resp.GetStderr(), ExitCode: int(resp.GetExitCode())}, nil
+	var stdout, stderr bytes.Buffer
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = errors.New("gcx ended the command without an exit code")
+			}
+			return nil, rpcError(ctx, err)
+		}
+		if out := event.GetOutput(); out != nil {
+			if out.GetStream() == extensionpb.OutputChunk_STREAM_STDERR {
+				stderr.Write(out.GetData())
+			} else {
+				stdout.Write(out.GetData())
+			}
+			continue
+		}
+		return &Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: int(event.GetExitCode())}, nil
+	}
+}
+
+func rpcError(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return err
 }
 
 // DecodeJSON runs a gcx command with --output json and decodes its stdout
@@ -177,7 +198,7 @@ type extensionServer struct {
 }
 
 func (s *extensionServer) Run(ctx context.Context, req *extensionpb.RunRequest) (*extensionpb.RunResponse, error) {
-	conn, err := s.broker.DialWithOptions(req.GetHostBrokerId(), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)))
+	conn, err := s.broker.Dial(req.GetHostBrokerId())
 	if err != nil {
 		return nil, fmt.Errorf("connect to gcx: %w", err)
 	}
