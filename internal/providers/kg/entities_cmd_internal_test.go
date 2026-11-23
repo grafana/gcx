@@ -282,6 +282,19 @@ func TestEntitiesListCommandPageBound(t *testing.T) {
 	}
 }
 
+// sharedNameFake serves two entities of one type that share a name, one per
+// backend page.
+func sharedNameFake() *fakeKG {
+	a := SearchResult{Name: "dup", Type: "Service", Scope: map[string]string{"env": "prod", "namespace": "ns1"}}
+	b := SearchResult{Name: "dup", Type: "Service", Scope: map[string]string{"env": "prod", "namespace": "ns2"}}
+	return &fakeKG{
+		counts:   map[string]int64{"Service": 2},
+		schema:   map[string][]string{"Service": {"name", "namespace"}},
+		entities: map[string][]SearchResult{"Service": {a, b}},
+		pageSize: 1,
+	}
+}
+
 func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -318,6 +331,18 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 			wantCountCalls: 1,
 		},
 		{name: "a known type keeps the not-found error", args: "inspect Service--nope " + testWindow, wantErr: "Service/nope not found", wantCountCalls: 1},
+		{
+			// The backend pages one row at a time, so the probe reads one
+			// entity and a further page: the name can have more entities,
+			// so the suggestion is list, not inspect.
+			name:           "an unknown type whose probe page is not the last suggests list",
+			fake:           sharedNameFake(),
+			args:           "inspect Gadget--dup " + testWindow,
+			wantErr:        `entity type "Gadget" is not in the graph`,
+			wantSuggestion: "These return matching entities: gcx kg entities list --type Service --property name=dup --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
+			wantNoSuggest:  "inspect Service--dup",
+			wantCountCalls: 1,
+		},
 		{
 			name:           "an unknown type in the default window points at the window",
 			fake:           &fakeKG{counts: map[string]int64{"Other": 1}, schema: map[string][]string{"Other": {"name"}}},
