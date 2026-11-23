@@ -61,6 +61,10 @@ type Request struct {
 	Args []string
 	// Stdin is passed to the command's standard input.
 	Stdin []byte
+	// Stdout, when set, receives the command's standard output as it is
+	// written, and Result.Stdout stays empty. Use it to read a stream, such
+	// as server-sent events from `gcx api`, before the command exits.
+	Stdout io.Writer
 }
 
 // Result is the captured output of a gcx command.
@@ -133,9 +137,14 @@ func (g *GCX) Execute(ctx context.Context, req Request) (*Result, error) {
 			return nil, rpcError(ctx, err)
 		}
 		if out := event.GetOutput(); out != nil {
-			if out.GetStream() == extensionpb.OutputChunk_STREAM_STDERR {
+			switch {
+			case out.GetStream() == extensionpb.OutputChunk_STREAM_STDERR:
 				stderr.Write(out.GetData())
-			} else {
+			case req.Stdout != nil:
+				if _, err := req.Stdout.Write(out.GetData()); err != nil {
+					return nil, fmt.Errorf("write gcx output: %w", err)
+				}
+			default:
 				stdout.Write(out.GetData())
 			}
 			continue
