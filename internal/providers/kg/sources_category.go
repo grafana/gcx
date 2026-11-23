@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
@@ -15,27 +16,35 @@ import (
 // labels, so a lookup built from timeLines[].labels misses it.
 const alertCategoryLabel = "asserts_alert_category"
 
+// entityTypeLabel is the assertion label that names the entity's type.
+const entityTypeLabel = "asserts_entity_type"
+
 // sourceMetricsWithCategoryFill runs the source-metrics lookup. When it
-// returns nothing and the labels name an insight but no category, it looks up
-// the insight's category on the entity and, if there is exactly one, retries
-// once with that category added. A lookup that returns metrics the first time
-// costs no extra request; a failed search or retry leaves the first result,
-// unless the command's context was cancelled or timed out meanwhile, in which
-// case the context's error is returned and nothing is printed.
+// returns nothing and the labels name an insight but no category, it reads
+// the insight's category from the entity's insight timeline and, if there is
+// exactly one, retries once with that category added. A lookup that returns
+// metrics the first time costs no extra request; a failed read or retry
+// leaves the first result, unless the command's context was cancelled or
+// timed out meanwhile, in which case the context's error is returned and
+// nothing is printed.
 func sourceMetricsWithCategoryFill(cmd *cobra.Command, client *Client, req SourceMetricsRequest) ([]SourceMetricsResponse, error) {
 	ctx := cmd.Context()
 	results, err := client.AssertionSourceMetrics(ctx, req)
 	if err != nil || len(results) > 0 {
 		return results, err
 	}
-	category, fromConnected := insightCategoryForSources(ctx, client, req)
-	if category == "" {
+	fill := insightCategoryForSources(ctx, client, req)
+	if fill.category == "" {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
 		return results, nil
 	}
-	retried, err := client.AssertionSourceMetrics(ctx, withLabel(req, alertCategoryLabel, category))
+	retryReq := withLabel(req, alertCategoryLabel, fill.category)
+	if fill.entityType != "" {
+		retryReq.Labels[entityTypeLabel] = fill.entityType
+	}
+	retried, err := client.AssertionSourceMetrics(ctx, retryReq)
 	if err != nil || len(retried) == 0 {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
@@ -43,37 +52,46 @@ func sourceMetricsWithCategoryFill(cmd *cobra.Command, client *Client, req Sourc
 		// The first (empty) result stands when the retry fails.
 		return results, nil
 	}
-	where := "on this entity"
-	if fromConnected {
-		where = "on an entity connected to this one"
+	hint := fmt.Sprintf("no source matched the labels given; added %s=%s, the category of this insight on the entity's insight timeline in the same window",
+		alertCategoryLabel, fill.category)
+	if fill.entityType != "" {
+		hint += fmt.Sprintf(", and set %s=%s, the graph's name for entity type %s",
+			entityTypeLabel, fill.entityType, req.Labels[entityTypeLabel])
 	}
-	cmdio.EmitHint(cmd.ErrOrStderr(),
-		fmt.Sprintf("no source matched the labels given; added %s=%s, the insight's category %s", alertCategoryLabel, category, where),
-		"")
+	cmdio.EmitHint(cmd.ErrOrStderr(), hint, "")
 	return retried, nil
 }
 
+// categoryFill is what the retry changes: the insight's category, and the
+// graph's name for the entity type when the labels write the type in another
+// case ("" = the type is kept as given).
+type categoryFill struct {
+	category   string
+	entityType string
+}
+
 // insightCategoryForSources returns the category of the insight named by
-// labels["alertname"] on the entity named by labels["asserts_entity_type"] and
-// labels["asserts_entity_name"], read from one entity search over the
-// request's window and the scope labels it carries (env, namespace, site).
-// The entity's own insights are used first; when none of them has that name,
-// the insights the search reports on its connected entities are used (an
-// insight raised on a connected entity is listed in the search result's
-// connectedAssertion), and the second result is true. It returns "" (no
-// retry) when the labels already carry a category, lack an alertname or
-// entity, the search fails, or the search finds no category or more than one
-// category for that insight name.
-func insightCategoryForSources(ctx context.Context, client *Client, req SourceMetricsRequest) (string, bool) {
+// labels["alertname"] on the entity named by labels["asserts_entity_type"]
+// and labels["asserts_entity_name"]: the asserts_alert_category label of that
+// insight's entries on the entity's insight timeline, read over the request's
+// window and the scope labels it carries (env, namespace, site). When the
+// timeline read finds no such entity, the type may be written in another
+// case than the graph's (the backend matches type names by case): if exactly
+// one entity type of that window and scope equals it ignoring case, the read
+// is repeated with that name, which is also returned for the retry. It
+// returns no category (no retry) when the labels already carry a category,
+// lack an alertname or entity, a request fails, or the timeline has no
+// category or more than one category for that insight name.
+func insightCategoryForSources(ctx context.Context, client *Client, req SourceMetricsRequest) categoryFill {
 	labels := req.Labels
 	if labels[alertCategoryLabel] != "" {
-		return "", false
+		return categoryFill{}
 	}
 	alertname := labels["alertname"]
-	entityType := labels["asserts_entity_type"]
+	entityType := labels[entityTypeLabel]
 	name := labels["asserts_entity_name"]
 	if alertname == "" || entityType == "" || name == "" {
-		return "", false
+		return categoryFill{}
 	}
 
 	var sc *ScopeCriteria
@@ -85,78 +103,144 @@ func insightCategoryForSources(ctx context.Context, client *Client, req SourceMe
 			sc.NameAndValues[dim] = []string{v}
 		}
 	}
-	searchReq := SearchRequest{
+
+	var fill categoryFill
+	entries, found, err := entityTimeline(ctx, client, req, entityType, name, sc)
+	if err != nil {
+		return categoryFill{}
+	}
+	if !found {
+		graphType := graphEntityType(ctx, client, req, entityType, sc)
+		if graphType == "" {
+			return categoryFill{}
+		}
+		entries, _, err = entityTimeline(ctx, client, req, graphType, name, sc)
+		if err != nil {
+			return categoryFill{}
+		}
+		fill.entityType = graphType
+	}
+	fill.category = soleCategory(entries, alertname)
+	if fill.category == "" {
+		return categoryFill{}
+	}
+	return fill
+}
+
+// entityTimeline reads the insight timeline of one entity, matched by type
+// and exact name, over the request's window and scope (POST
+// /v1/search/assertions) and returns the labels of its entries that carry an
+// alertname and name no other entity. found is false when the answer has no
+// timeline for that entity. The request sets no havingAssertion filter: that
+// filter is applied by the entity search, which can leave out an entity whose
+// insight only touches the window's start although the entity's timeline for
+// that window lists the insight.
+func entityTimeline(ctx context.Context, client *Client, req SourceMetricsRequest, entityType, name string, sc *ScopeCriteria) ([]map[string]string, bool, error) {
+	timelines, err := client.SearchAssertions(ctx, SearchRequest{
 		TimeCriteria: &TimeCriteria{Start: req.StartTime, End: req.EndTime},
 		FilterCriteria: []EntityMatcher{{
-			EntityType:                 entityType,
-			HavingAssertion:            true,
-			HavingPropagatedAssertions: true,
+			EntityType: entityType,
 			PropertyMatchers: []PropertyMatcher{
 				{Name: "name", Op: "=", Value: name},
 			},
 		}},
 		ScopeCriteria: sc,
-	}
-	page, err := client.Search(ctx, searchReq)
+	})
 	if err != nil {
-		return "", false
+		return nil, false, err
 	}
-
-	var own, connected []GraphAssertion
-	for _, e := range page.Entities {
-		if e.Name != name || (e.Type != entityType && e.EntityType != entityType) {
-			continue
-		}
-		own = append(own, assertionList(e.Assertion)...)
-		connected = append(connected, assertionList(e.ConnectedAssertion)...)
-	}
-	if c, found := soleCategory(own, alertname); found {
-		return c, false
-	}
-	c, _ := soleCategory(connected, alertname)
-	return c, c != ""
-}
-
-// soleCategory returns the category of the assertions named alertname. found
-// is true when at least one assertion has that name; the category is "" when
-// those assertions carry no category or more than one.
-func soleCategory(assertions []GraphAssertion, alertname string) (string, bool) {
-	categories := map[string]struct{}{}
+	var entries []map[string]string
 	found := false
-	for _, a := range assertions {
-		if a.AssertionName != alertname {
+	for _, tl := range timelines {
+		if tl.Name != name || !strings.EqualFold(tl.Type, entityType) {
 			continue
 		}
 		found = true
-		if a.Category != "" {
-			categories[a.Category] = struct{}{}
+		for _, node := range tl.AllAssertions {
+			entries = appendTimelineEntries(entries, node)
+		}
+	}
+	kept := entries[:0]
+	for _, l := range entries {
+		if v := l["asserts_entity_name"]; v != "" && v != name {
+			continue
+		}
+		if v := l[entityTypeLabel]; v != "" && !strings.EqualFold(v, entityType) {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	return kept, found, nil
+}
+
+// appendTimelineEntries appends the string labels of every node of an
+// insight timeline tree (the node and its nestedTimelines) whose labels
+// carry an alertname. Nodes that are not objects are skipped.
+func appendTimelineEntries(out []map[string]string, node any) []map[string]string {
+	m, ok := node.(map[string]any)
+	if !ok {
+		return out
+	}
+	if raw, ok := m["labels"].(map[string]any); ok {
+		if _, ok := raw["alertname"].(string); ok {
+			labels := make(map[string]string, len(raw))
+			for k, v := range raw {
+				if s, ok := v.(string); ok {
+					labels[k] = s
+				}
+			}
+			out = append(out, labels)
+		}
+	}
+	nested, _ := m["nestedTimelines"].([]any)
+	for _, n := range nested {
+		out = appendTimelineEntries(out, n)
+	}
+	return out
+}
+
+// graphEntityType returns the graph's name for an entity type written in
+// another case: the one entity type of the request's window and scope whose
+// name equals entityType ignoring case but not exactly. It returns "" when
+// there is no such type or more than one, or the lookup fails.
+func graphEntityType(ctx context.Context, client *Client, req SourceMetricsRequest, entityType string, sc *ScopeCriteria) string {
+	counts, err := client.CountEntityTypes(ctx, req.StartTime, req.EndTime, sc)
+	if err != nil {
+		return ""
+	}
+	match := ""
+	for t := range counts {
+		if t == entityType || !strings.EqualFold(t, entityType) {
+			continue
+		}
+		if match != "" {
+			return ""
+		}
+		match = t
+	}
+	return match
+}
+
+// soleCategory returns the asserts_alert_category of the timeline entries
+// named alertname, or "" when those entries carry no category or more than
+// one.
+func soleCategory(entries []map[string]string, alertname string) string {
+	categories := map[string]struct{}{}
+	for _, l := range entries {
+		if l["alertname"] != alertname {
+			continue
+		}
+		if c := l[alertCategoryLabel]; c != "" {
+			categories[c] = struct{}{}
 		}
 	}
 	if len(categories) != 1 {
-		return "", found
+		return ""
 	}
 	for c := range categories {
-		return c, true
+		return c
 	}
-	return "", found
-}
-
-// assertionList decodes the "assertions" array of a search result's inlined
-// assertion summary. Entries that are not objects are skipped.
-func assertionList(summary map[string]any) []GraphAssertion {
-	raw, _ := summary["assertions"].([]any)
-	out := make([]GraphAssertion, 0, len(raw))
-	for _, item := range raw {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		a := GraphAssertion{}
-		a.AssertionName, _ = m["assertionName"].(string)
-		a.Category, _ = m["category"].(string)
-		out = append(out, a)
-	}
-	return out
+	return ""
 }
 
 // withLabel returns a copy of req with one more label set.

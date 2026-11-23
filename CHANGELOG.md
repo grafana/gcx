@@ -5,13 +5,16 @@
   `asserts_alert_category`. Alert-rule and change insights are matched on
   that label, which `kg entities inspect` shows as a timeline entry's
   `category` rather than among its labels, so a lookup built from the
-  timeline labels returned `[]`. The category comes from one entity search
-  over the same window and scope: the entity's own insights of that name, or,
-  when it has none, those of the entities connected to it. It is used only
-  when those insights have exactly one category. A lookup that returns
-  metrics the first time sends no extra request. The help now says to copy
-  every label of the timeline entry with `--label` and, for alert-rule and
-  change insights, to pass the entry's category as `asserts_alert_category`.
+  timeline labels returned `[]`. The category comes from the entity's insight
+  timeline over the same window and scope: the `asserts_alert_category` label
+  of that insight's entries, used only when they have exactly one category.
+  When the entity type is written in another case than the graph's type name
+  (for example all lower case), the timeline read and the retry use the
+  graph's name, found with one entity type lookup over the same window and
+  scope. A lookup that returns metrics the first time sends no extra request.
+  The help now says to copy every label of the timeline entry with `--label`
+  and, for alert-rule and change insights, to pass the entry's category as
+  `asserts_alert_category`.
   It also says that the same labels can return an empty array for a window
   that does not cover the insight, that the output lists metrics and label
   matchers, not the rule's expression or threshold, and that

@@ -2069,12 +2069,13 @@ grafana_rule_uid, 'gcx alert rules get <uid>' shows that alert rule,
 including its query.
 
 When the labels have an alertname but no asserts_alert_category and the
-lookup returns an empty array, sources searches the entity's insights in the
-same window and scope (or, when the entity has no insight of that name, the
-insights the search lists for the entities connected to it). If the insights
-of that name it reads have exactly one category, it retries once with
-asserts_alert_category set to it and prints the metrics that retry returns;
-otherwise it prints the empty array.`
+lookup returns an empty array, sources reads the entity's insight timeline
+for the same window and scope. If the entries of that insight there have
+exactly one asserts_alert_category, it retries once with that label added and
+prints the metrics that retry returns; otherwise it prints the empty array.
+When the entity type is written in another case than the graph's type name
+(for example all lower case), the timeline read and the retry use the graph's
+name.`
 
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
