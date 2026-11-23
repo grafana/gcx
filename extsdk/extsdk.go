@@ -99,7 +99,7 @@ func (r *Result) Err() error {
 }
 
 // ExitError is a non-zero exit status. Return one from a [RunFunc] to exit
-// with a specific code.
+// with a specific code from 1 to 255. Any other code exits 1.
 type ExitError struct {
 	Code    int
 	Message string
@@ -279,7 +279,8 @@ func exitCode(err error) int {
 	}
 	code := 1
 	var exit *ExitError
-	if errors.As(err, &exit) {
+	// Codes outside 1-255 would wrap or read as success, so they exit 1.
+	if errors.As(err, &exit) && exit.Code >= 1 && exit.Code <= 255 {
 		code = exit.Code
 	}
 	if msg := err.Error(); msg != "" {

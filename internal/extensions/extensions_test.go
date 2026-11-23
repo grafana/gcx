@@ -377,6 +377,7 @@ func TestRun(t *testing.T) {
 	}{
 		{name: "output", args: []string{"echo", "a", "--b"}, stdout: "[a --b]\n", stderr: "to stderr\n"},
 		{name: "exit code", args: []string{"exit", "3"}, code: 3},
+		{name: "exit code out of range", args: []string{"exit", "300"}, code: 1},
 		{
 			name:   "gcx command",
 			args:   []string{"gcx", "resources", "get", "dashboards"},
