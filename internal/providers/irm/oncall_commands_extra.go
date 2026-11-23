@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
@@ -1541,7 +1542,7 @@ func (o *escalateOpts) Validate() error {
 	}
 	o.IncidentID = strings.TrimSpace(o.IncidentID)
 	if o.incidentIDSet && o.IncidentID == "" {
-		return errors.New("--incident-id must not be blank: provide an incident ID or omit the flag")
+		return &gcxerrors.UsageError{Message: "--incident-id must not be blank: provide an incident ID or omit the flag"}
 	}
 	return nil
 }
