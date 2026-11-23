@@ -58,9 +58,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations list-evidence":   {Cost: "medium", Hint: "<investigation-id> -o json; canonical panel citation index for the report (panelId -> tool + query)"},
 	"gcx assistant investigations list-messages":   {Cost: "large", Hint: "<id> [--role=user|assistant|tool] [--include-hidden] -o json; full v2 chat thread with tool calls and results"},
 	"gcx assistant investigations list-tool-calls": {Cost: "medium", Hint: "<id> [--name=<tool>] -o json; tool calls with results"},
-	"gcx assistant investigations mode":            {Cost: "small"},
-	"gcx assistant investigations pause":           {Cost: "small"},
-	"gcx assistant investigations resume":          {Cost: "small", Hint: "Restarts a paused v2 Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user asks to resume it. Example: <id>"},
+	"gcx assistant investigations mode":            {Cost: "small", Hint: "Deprecated: newer investigations reject it with HTTP 410 Gone. Example: <id> low|medium|high"},
+	"gcx assistant investigations pause":           {Cost: "small", Hint: "Deprecated: newer investigations reject it with HTTP 410 Gone; to stop an investigation use gcx assistant investigations cancel <id>"},
+	"gcx assistant investigations resume":          {Cost: "small", Hint: "Deprecated: newer investigations reject it with HTTP 410 Gone. Restarts a paused v2 Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user asks to resume it. Example: <id>"},
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
 	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
@@ -383,10 +383,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg notifications get":    {Cost: "small", Hint: "<name> | get one alert notification config by name (list-then-filter; no by-name GET on the backend)"},
 	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML from notifications get/list) | accepts an alertConfigs wrapper, one config, or a config list; exact field names required; never deletes absent remote entries"},
 	"gcx kg notifications delete": {Cost: "small"},
-	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
-	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d|tenant/<name>> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
+	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d|tenant/<name>> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d|tenant/<name>> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; a tenant-domain ref is tenant/<name>/Type/name; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; a tenant-domain ref is tenant/<name>/Type/name; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider

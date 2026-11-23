@@ -25,7 +25,7 @@ You can investigate directly or use an agent with `gcx` existing skills. Start w
 Before you begin, make sure to:
 
 - Follow [Install gcx](../../installation) if `gcx version` is unavailable.
-- Follow [Install Agent Skills](https://github.com/grafana/gcx#install-agent-skills) for your harness. Start a session that can discover the installed skills. The existing `debug-with-grafana` skill handles investigation; `setup-gcx` helps with setup.
+- Follow [Install agent skills](../../use-gcx-with-agents/#install-agent-skills) for your harness. Start a session that can discover the installed skills. The existing `debug-with-grafana` skill handles investigation; `setup-gcx` helps with setup.
 - Use a reachable Grafana instance supported by your `gcx` version, with access to the relevant datasources. A static instrumentation check alone does not provide a telemetry destination.
 - If you have no backend, [start docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm#run-the-docker-image)   for a local development sink. Setting up a sink does not authorize changing an existing application's exporter. A local proof does not establish that your production destination works.
 - Know which application or fixture you may inspect. Do not enumerate unrelated containers, environments, or services to compensate for missing context.
