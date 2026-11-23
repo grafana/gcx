@@ -13,47 +13,62 @@ keywords:
 weight: 40
 ---
 
-# Use and publish `gcx` extensions
+# `gcx` extensions
 
-Extensions add commands to `gcx` without changing it. An extension is an executable that `gcx` starts when you run `gcx ext <name>`. It reads Grafana data by asking `gcx` to run commands, so it doesn't need your credentials.
+
+`gcx` extensions are git repositories that provide additional gcx commands. `gcx` is used to fetch data from your Grafana instance, so the extension does not need to handle credentials or config. All arguments passed to `gcx ext <name>` will be forwarded to the extension.
 
 {{< admonition type="warning" >}}
-Extensions are third-party programs. They run with your permissions and can use your `gcx` credentials through the commands they run. Grafana Labs does not review or support them. Install only extensions you trust.
+Extensions are third-party programs. They run with your permissions and can use your `gcx` credentials through the commands they run. Grafana Labs does not review or support them. Only install extensions that you have reviewed and trust.
 {{< /admonition >}}
 
 ## Install and run extensions
 
-Install an extension from a git repository. `gcx` installs the latest release tag and verifies the downloaded executable against the checksum in the extension's manifest:
+Install an extension from any git repository. `gcx` installs the latest release tag and verifies the downloaded executable against the checksum in the extension's manifest:
 
 ```shell
 gcx ext install https://github.com/example/gcx-hello.git
 ```
 
-`gcx` accepts `https://`, `ssh://` and `user@host:path` git URLs and requires `git`. Run the extension with its name. `gcx` flags go before the name; every argument after it is passed to the extension:
+`gcx ext` requires git to install extensions. git URLs starting with `https://`, `ssh://` and `user@host:path` are accepted. Flags for `gcx` go before the extension name, and every argument after it is passed to the extension:
 
 ```shell
 gcx ext hello --name world
 gcx --context prod ext hello
 ```
 
-Commands the extension runs use the same context, configuration file and agent mode as the `gcx ext` invocation, unless the extension overrides them.
+By default, `gcx` commands run by the extension use the same context used when the extension is called.
 
 Manage installed extensions with these commands:
 
 ```shell
 gcx ext list
-gcx ext update          # every extension; exits 4 if any fail
+gcx ext update
 gcx ext update hello
 gcx ext uninstall hello
 ```
 
 `gcx` installs extensions under `$XDG_DATA_HOME/gcx/extensions`, which defaults to `~/.local/share/gcx/extensions`.
 
-## Publish an extension
+## Build an extension
 
 Build the extension with the [Go extension SDK](https://github.com/grafana/gcx/tree/main/extsdk). Extensions in other languages implement the SDK's gRPC protocol.
 
-Add a `gcx-extension.yaml` manifest to the root of the repository:
+While you develop it, install the extension from its local directory. `gcx` runs the executable at the manifest's `path` entry in place, so rebuilding it needs no reinstall:
+
+```shell
+go build -o bin/hello .
+gcx ext install .
+gcx ext hello
+```
+
+## Publish an extension
+
+A published extension is a git repository with a `gcx-extension.yaml` manifest at its root and a downloadable build for each OS and architecture it supports. `gcx ext install` and `gcx ext update` use the latest tag, and read the manifest at that tag. The manifest tells gcx where the relevant binaries are available.
+
+### The extension manifest
+
+Below is an example manifest, along with a descripition of what each property is for. There is guidance further down for compiling binaries for a Go program.
 
 ```yaml
 name: hello
@@ -64,12 +79,12 @@ platforms:
   - os: darwin
     arch: arm64
     url: https://github.com/example/gcx-hello/releases/download/v0.1.0/hello_darwin_arm64.tar.gz
-    sha256: <sha256 of the archive>
+    sha256: "<sha256 of the archive>"
     bin: hello
   - os: linux
     arch: amd64
     url: https://github.com/example/gcx-hello/releases/download/v0.1.0/hello_linux_amd64.tar.gz
-    sha256: <sha256 of the archive>
+    sha256: "<sha256 of the archive>"
     bin: hello
   - os: "*"
     arch: "*"
@@ -78,24 +93,57 @@ platforms:
 
 | Field | Description |
 | :- | :- |
-| `name` | The command name. Lowercase letters, digits and hyphens. |
-| `version` | The extension's semantic version. |
-| `description` | Shown by `gcx ext list`. |
-| `minGCXVersion` | Optional. The oldest `gcx` version the extension supports. |
+| `name` | The command name, made up of lowercase letters, digits and hyphens. |
+| `version` | The extension version, using semVer. |
+| `description` | A short description of the extension, shown by `gcx ext list`. |
+| `minGCXVersion` | Optional. The oldest `gcx` version supported by the extension. |
 | `platforms` | One entry per OS and architecture, using Go's `GOOS` and `GOARCH` names. |
 | `platforms[].url` | An `https://` URL of the executable, or of a `.tar.gz`, `.tgz` or `.zip` archive holding it. |
-| `platforms[].sha256` | The hex SHA-256 checksum of the file at `url`. |
+| `platforms[].sha256` | The hex SHA-256 checksum of the file at `url`. Quote it: YAML reads a checksum made only of digits as a number. |
 | `platforms[].bin` | The executable's path inside the archive. Required for archives. |
 | `platforms[].path` | An executable relative to the manifest, used only by local installs. `os` and `arch` can be `*`. |
 
-To release, upload the artifacts, update the manifest's `version`, URLs and checksums, commit it and push a semantic version tag such as `v0.1.0`. `gcx ext install` and `gcx ext update` use the highest tag that is not a pre-release.
+### Release a version
 
-## Develop an extension locally
+The extension manifest at the release tag holds the checksums of the binaries, so you need to build and upload the binaries before addign a tag. [GoReleaser](https://goreleaser.com) is useful for building for each platform at once - we use this to build `gcx`. `gcx`'s own [`.goreleaser.yaml`](https://github.com/grafana/gcx/blob/main/.goreleaser.yaml) is a good reference, if you ignore the Docker and signing sections.
 
-Install from a local directory that holds the manifest. `gcx` runs the executable at the matching `path` entry in place, so rebuilding it needs no reinstall:
+You can create a release for your extension with these steps:
 
-```shell
-go build -o bin/hello .
-gcx ext install .
-gcx ext hello
-```
+1. (Once:) Add a `.goreleaser.yaml` to the extension's repository:
+
+   ```yaml
+   version: 2
+   project_name: hello
+   builds:
+     - binary: hello
+       env: [CGO_ENABLED=0]
+       goos: [linux, darwin, windows]
+       goarch: [amd64, arm64]
+   archives:
+     - formats: [tar.gz]
+       name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+       format_overrides:
+         - goos: windows
+           formats: [zip]
+   checksum:
+     name_template: checksums.txt
+   ```
+
+1. Build the archives into `dist/` without publishing:
+
+   ```shell
+   goreleaser release --snapshot --clean
+   ```
+
+1. Add a `platforms` row to the manifest for each archive in `dist/checksums.txt`, with its release download URL and checksum. Set `bin` to `hello`, or `hello.exe` for Windows.
+
+1. Commit the manifest, then tag and upload the archives you just built:
+
+   ```shell
+   git commit -am "release v0.1.0"
+   git tag v0.1.0
+   git push origin main v0.1.0
+   gh release create v0.1.0 dist/*.tar.gz dist/*.zip
+   ```
+
+Don't rebuild between steps 2 and 4: Go embeds the commit in the binary, and rebuilding the binaries changes the checksums.

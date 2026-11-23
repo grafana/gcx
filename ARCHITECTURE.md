@@ -221,17 +221,6 @@ with the selected local installation for list/install/update/uninstall; retired
 entries remain addressable without automatic deletion or replacement installation.
 See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
 
-### Extensions (`gcx ext`)
-
-Third-party executables run as go-plugin gRPC plugins. gcx serves a generic
-callback, `Host.Execute`, which runs a gcx command in a new gcx process with the
-invoking context and configuration file, so extensions don't need to handle
-credentials. Extensions are not sandboxed: they run with the user's permissions.
-`Host.Output` carries the extension's stdout and stderr. The protocol lives in [`extsdk/proto`](extsdk/proto/extension.proto);
-the Go SDK (`extsdk/`) is a separate module that gcx does not import, and
-`internal/extensions` installs from git release tags or local directories.
-See the [extensions guide](docs/sources/guides/extensions.md).
-
 ## Design rationale
 
 Engineering proposals and historical decisions live in [RFCs](docs/rfcs/). Each record carries its own status; a proposal is not evidence of implementation.
