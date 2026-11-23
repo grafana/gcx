@@ -53,3 +53,10 @@ func TestRunRejectsTokenAsServerBeforeNetwork(t *testing.T) {
 	assert.NotContains(t, err.Error(), "SECRETVALUE")
 	assert.False(t, detected, "no detection/network call may happen")
 }
+
+// A token-like server must be refused before basic-auth credentials are
+// requested, so the user is not prompted for them first.
+func TestRunRejectsTokenAsServerBeforeBasicCredentialPrompt(t *testing.T) {
+	_, err := login.Run(context.Background(), &login.Options{Server: "glsa_SECRETVALUE", UseBasicAuth: true})
+	require.ErrorIs(t, err, login.ErrServerLooksLikeToken)
+}

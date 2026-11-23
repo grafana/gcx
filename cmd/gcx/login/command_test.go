@@ -2668,3 +2668,80 @@ func TestValidateRejectsTokenAsServer(t *testing.T) {
 		assert.NotContains(t, de.Summary+de.Details+strings.Join(de.Suggestions, " "), "SECRETVALUE")
 	}
 }
+
+func runLoginForTokenLeakTest(t *testing.T, seed *config.Config, env map[string]string, args ...string) (string, error) {
+	t.Helper()
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
+	// Set then unset so the test restores the caller's value; an empty value
+	// would count as an override and blank the saved server.
+	t.Setenv("GRAFANA_SERVER", "x")
+	t.Setenv("GRAFANA_TOKEN", "x")
+	require.NoError(t, os.Unsetenv("GRAFANA_SERVER"))
+	require.NoError(t, os.Unsetenv("GRAFANA_TOKEN"))
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if seed != nil {
+		require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), *seed))
+	}
+
+	var out bytes.Buffer
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(append(args, "--config", path, "--yes"))
+	err := cmd.ExecuteContext(t.Context())
+	return out.String(), err
+}
+
+func tokenNamedConfig() *config.Config {
+	seed := config.Config{}
+	seed.SetStack("glsa_SECRETVALUE", config.StackConfig{Grafana: &config.GrafanaConfig{
+		Server: "https://good.example.invalid", APIToken: "x", AuthMethod: "token", OrgID: 1,
+	}})
+	seed.SetContext("glsa_SECRETVALUE", true, config.Context{Stack: "glsa_SECRETVALUE"})
+	return &seed
+}
+
+// A token in GRAFANA_SERVER must be refused before the banner names a context
+// derived from it, and the error must name the source.
+func TestRunLoginTokenInEnvServerIsRefusedBeforeBanner(t *testing.T) {
+	out, err := runLoginForTokenLeakTest(t, nil, map[string]string{"GRAFANA_SERVER": "glsa_SECRETVALUE", "GRAFANA_TOKEN": "x"})
+	var de gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de)
+	assert.Contains(t, de.Summary, "GRAFANA_SERVER")
+	assert.Contains(t, de.Details, "revoke")
+	assert.NotContains(t, out+de.Summary+de.Details+strings.Join(de.Suggestions, " "), "SECRETVALUE")
+	assert.NotContains(t, out, "Creating new context")
+}
+
+// A token saved as a context's server is refused with the config source named.
+func TestRunLoginTokenInSavedServerIsRefusedAndRedacted(t *testing.T) {
+	seed := config.Config{}
+	seed.SetStack("old", config.StackConfig{Grafana: &config.GrafanaConfig{
+		Server: "glsa_SECRETVALUE", APIToken: "x", AuthMethod: "token", OrgID: 1,
+	}})
+	seed.SetContext("old", true, config.Context{Stack: "old"})
+	out, err := runLoginForTokenLeakTest(t, &seed, nil, "old")
+	var de gcxerrors.DetailedError
+	require.ErrorAs(t, err, &de)
+	assert.Contains(t, de.Summary, "grafana.server")
+	assert.NotContains(t, out+de.Summary+de.Details, "SECRETVALUE")
+}
+
+// Context names derived from a token host must not be printed by the banner.
+func TestRunLoginRedactsTokenNamedContexts(t *testing.T) {
+	out, _ := runLoginForTokenLeakTest(t, tokenNamedConfig(), nil, "newctx", "--server", "https://other.example.invalid", "--token", "x")
+	assert.NotContains(t, out, "SECRETVALUE")
+	assert.Contains(t, out, "Existing contexts")
+
+	out, _ = runLoginForTokenLeakTest(t, tokenNamedConfig(), nil, "--token", "x")
+	assert.NotContains(t, out, "SECRETVALUE")
+}

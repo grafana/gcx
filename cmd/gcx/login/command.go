@@ -124,16 +124,31 @@ const (
 	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
 )
 
-// serverLooksLikeTokenError reports a token passed as the server, never
-// echoing the value.
-func serverLooksLikeTokenError() error {
+// serverLooksLikeTokenError reports a token supplied as the server, naming
+// where the value came from and never echoing it.
+func serverLooksLikeTokenError(source string) error {
 	return gcxerrors.DetailedError{
-		Summary: "--server looks like a token",
-		Details: "The value starts with a Grafana token prefix (glsa_ or glc_), so it was not used as a server and no request was made. If it is a real token, revoke it: it may have been exposed in your shell history or terminal.",
+		Summary: source + " looks like a token",
+		Details: "The value starts with a Grafana token prefix (glsa_ or glc_), so it was not used as a server and no request was made. If it is a real token, revoke it: it may have been exposed in your shell history, environment or config file.",
 		Suggestions: []string{
 			"Pass the server URL: gcx login --server https://my-stack.grafana.net",
 			"Supply the token with --token or the GRAFANA_TOKEN environment variable",
+			"If the value came from GRAFANA_SERVER or grafana.server in your config, correct it there",
 		},
+	}
+}
+
+// loginServerSource names where requestedLoginServer took the server from.
+func loginServerSource(flagServer, contextName string, sourceCtx *config.Context) string {
+	switch {
+	case flagServer != "":
+		return "--server"
+	case strings.TrimSpace(os.Getenv("GRAFANA_SERVER")) != "":
+		return "GRAFANA_SERVER"
+	case sourceCtx != nil && sourceCtx.Grafana != nil && contextName != "":
+		return fmt.Sprintf("grafana.server of context %q", login.RedactServer(contextName))
+	default:
+		return "grafana.server"
 	}
 }
 
@@ -143,7 +158,7 @@ func serverLooksLikeTokenError() error {
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
 	if login.ServerLooksLikeToken(opts.Server) {
-		return serverLooksLikeTokenError()
+		return serverLooksLikeTokenError("--server")
 	}
 	userProvided := opts.UserSet || opts.User != ""
 	opts.User = strings.TrimSpace(opts.User)
@@ -346,6 +361,11 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN") {
 			return autoLocalFreshCredentialError(target)
 		}
+	}
+	// Refuse a token-shaped server before any banner or context mutation. The
+	// resolved server also covers GRAFANA_SERVER and the saved context.
+	if login.ServerLooksLikeToken(requestedLoginServer(flags.Server, sourceCtx)) {
+		return serverLooksLikeTokenError(loginServerSource(flags.Server, contextName, sourceCtx))
 	}
 	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
 	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
@@ -741,6 +761,9 @@ func runLoginLoop(
 			}
 		}
 		result, err := login.Run(cmd.Context(), opts)
+		if errors.Is(err, login.ErrServerLooksLikeToken) {
+			err = serverLooksLikeTokenError("the server value")
+		}
 		// Run resolves opts.Target by detection when it was not forced, and the
 		// resolution survives the sentinel retries below. It outranks anything
 		// derived from the URL: a custom domain fronting a Cloud stack is only
@@ -947,7 +970,7 @@ func runtimeOnlyDestinationEditorRecoveryError(
 	cause *login.RuntimeOnlyBearerDestinationError,
 ) error {
 	contextName, stackName, needsContextBinding := runtimeOnlyDestinationRecoveryNames(persisted, opts)
-	fields := []string{fmt.Sprintf("stack key %q: grafana.server=%q", stackName, login.RedactServer(opts.Server))}
+	fields := []string{fmt.Sprintf("stack key %q: grafana.server=%q", stackName, opts.Server)}
 	if _, ok := os.LookupEnv("GRAFANA_PROXY_ENDPOINT"); ok {
 		fields = append(fields, fmt.Sprintf("grafana.proxy-endpoint=%q", opts.RuntimeProxyEndpoint))
 	}
@@ -1958,10 +1981,10 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 			name = cfg.CurrentContext
 		}
 		fmt.Fprintf(w, "Refreshing context %q (server: %s)\n\n",
-			name, login.RedactServer(sourceCtx.Grafana.Server))
+			login.RedactServer(name), login.RedactServer(sourceCtx.Grafana.Server))
 	case contextName != "":
 		// Creating a new named context.
-		fmt.Fprintf(w, "Creating new context %q\n", contextName)
+		fmt.Fprintf(w, "Creating new context %q\n", login.RedactServer(contextName))
 		if names := existingContextNames(cfg); len(names) > 0 {
 			fmt.Fprintf(w, "Existing contexts: %s\n", strings.Join(names, ", "))
 		}
@@ -1977,7 +2000,7 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 func existingContextNames(cfg config.Config) []string {
 	names := make([]string, 0, len(cfg.Contexts))
 	for name := range cfg.Contexts {
-		names = append(names, name)
+		names = append(names, login.RedactServer(name))
 	}
 	sort.Strings(names)
 	return names

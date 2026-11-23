@@ -369,6 +369,11 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if opts.Server == "" && !opts.UseCloudInstanceSelector {
 		return Result{}, &ErrNeedInput{Fields: []string{"server"}}
 	}
+	// A token pasted where the server belongs must be refused before any
+	// network call and without echoing it.
+	if ServerLooksLikeToken(opts.Server) {
+		return Result{}, ErrServerLooksLikeToken
+	}
 	if opts.UseCloudInstanceSelector {
 		opts.UseOAuth = true
 		opts.Target = TargetCloud
@@ -376,12 +381,6 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 
 	if opts.UseBasicAuth && (strings.TrimSpace(opts.GrafanaUser) == "" || strings.TrimSpace(opts.GrafanaPassword) == "") {
 		return Result{}, &ErrNeedInput{Fields: []string{"basic-credentials"}}
-	}
-
-	// A token pasted where the server belongs must be refused before any
-	// network call and without echoing it.
-	if ServerLooksLikeToken(opts.Server) {
-		return Result{}, ErrServerLooksLikeToken
 	}
 
 	// Normalize: missing scheme → default to https. Users who meant http://
