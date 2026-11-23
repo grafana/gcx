@@ -21,10 +21,12 @@
   `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r)`
   returned catalog groups next to real ones with nothing telling them apart.
   The warning counts those rows, names their labels and says how to leave
-  them out. It is detected from returned nodes and from `labels(...)`
-  columns. A catalog label the query names itself, as a label or in a string
-  literal outside comments, is not counted, so a query that filters out one
-  catalog label is still warned about the others. Rows are unchanged.
+  them out. It is detected from returned nodes and from columns that project
+  a `labels(...)` call at any depth, with or without an alias, such as
+  `labels(a)[0]` or `coalesce(head(labels(a)), 'none')`. A catalog label the
+  query names itself, as a label or in a string literal outside comments, is
+  not counted, so a query that filters out one catalog label is still warned
+  about the others. Rows are unchanged.
 
 ## v1.8.0 (2026-11-17)
 

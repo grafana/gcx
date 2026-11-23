@@ -60,6 +60,54 @@ func TestCatalogRowsWarning(t *testing.T) {
 			want:    []string{"1 of 2 rows", "(label Schema)"},
 		},
 		{
+			name:    "unaliased column of labels in another wrapper",
+			query:   "MATCH (a) RETURN last(labels(a)), count(a) LIMIT 10",
+			columns: []string{"last(labels(a))", "count(a)"},
+			rows:    [][]string{{`"Schema"`, `1`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows", "(label Schema)"},
+		},
+		{
+			name:    "unaliased column of indexed labels inside a call with more arguments",
+			query:   "MATCH (a) RETURN coalesce(labels(a)[0], 'none'), count(a) LIMIT 10",
+			columns: []string{"coalesce(labels(a)[0], 'none')", "count(a)"},
+			rows:    [][]string{{`"EntityType"`, `1`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows", "(label EntityType)"},
+		},
+		{
+			name:    "aliased labels nested in two calls",
+			query:   "MATCH (a) RETURN coalesce(head(labels(a)), 'none') AS t, count(a) AS n LIMIT 10",
+			columns: []string{"t", "n"},
+			rows:    [][]string{{`"Env"`, `1`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows", "(label Env)"},
+		},
+		{
+			name:    "aliased list of labels",
+			query:   "MATCH (a)-[r:TYPE_A]->(b) RETURN [labels(a)[0], labels(b)[0]] AS pair, count(r) AS n LIMIT 10",
+			columns: []string{"pair", "n"},
+			rows:    [][]string{{`["Schema","Pod"]`, `1`}, {`["Pod","Pod"]`, `4`}},
+			want:    []string{"1 of 2 rows", "(label Schema)"},
+		},
+		{
+			name:    "labels of unwound path nodes",
+			query:   "MATCH p = (a)-[r]->(b) UNWIND nodes(p) AS x RETURN labels(x)[0] AS t, count(*) AS n LIMIT 10",
+			columns: []string{"t", "n"},
+			rows:    [][]string{{`"Schema"`, `1`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows", "(label Schema)"},
+		},
+		{
+			name:    "labels aliased in WITH and returned by name",
+			query:   "MATCH (a) WITH labels(a)[0] AS t, count(a) AS n WHERE n > 0 RETURN t, n LIMIT 10",
+			columns: []string{"t", "n"},
+			rows:    [][]string{{`"Schema"`, `1`}, {`"Pod"`, `4`}},
+			want:    []string{"1 of 2 rows", "(label Schema)"},
+		},
+		{
+			name:    "sizes of labels, aliased or not, are not catalog labels",
+			query:   "MATCH (a)-[r:TYPE_A]->(b) RETURN size(labels(a)) AS n, size(labels(b)), count(r) AS c LIMIT 10",
+			columns: []string{"n", "size(labels(b))", "c"},
+			rows:    [][]string{{`1`, `1`, `3`}},
+		},
+		{
 			name:    "aliased labels of a doubly nested call",
 			query:   "MATCH p = (a)-[r]->(b) RETURN DISTINCT labels(last(nodes(p)))[0] AS t LIMIT 50",
 			columns: []string{"t"},
@@ -230,6 +278,76 @@ func TestCypherNamedLabels(t *testing.T) {
 			assert.ElementsMatch(t, tt.want, got)
 		})
 	}
+}
+
+func TestCypherProjections(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		query string
+		want  []cypherProjection
+	}{
+		{
+			name:  "aliased items end at ORDER BY",
+			query: "MATCH (a) RETURN labels(a)[0] AS t, count(a) AS n ORDER BY n LIMIT 5",
+			want:  []cypherProjection{{expr: "labels(a)[0]", alias: "t"}, {expr: "count(a)", alias: "n"}},
+		},
+		{
+			name:  "DISTINCT and unaliased items",
+			query: "MATCH (a) RETURN DISTINCT head(labels(a)), a.name LIMIT 5",
+			want:  []cypherProjection{{expr: "head(labels(a))"}, {expr: "a.name"}},
+		},
+		{
+			name:  "commas inside calls, lists, maps and masked strings",
+			query: "RETURN coalesce(a.x, 'y, z') AS c, [1, 2] AS l, {k: 1, m: 2} AS m LIMIT 1",
+			want: []cypherProjection{
+				{expr: "coalesce(a.x, '    ')", alias: "c"}, {expr: "[1, 2]", alias: "l"}, {expr: "{k: 1, m: 2}", alias: "m"},
+			},
+		},
+		{
+			name:  "WITH items end at WHERE, UNWIND has one item",
+			query: "MATCH (a) WITH labels(a) AS ls, a WHERE size(ls) > 0 UNWIND ls AS l RETURN l LIMIT 5",
+			want: []cypherProjection{
+				{expr: "labels(a)", alias: "ls"}, {expr: "a"}, {expr: "ls", alias: "l"}, {expr: "l"},
+			},
+		},
+		{
+			name:  "STARTS WITH and ENDS WITH are operators",
+			query: "MATCH (a) WHERE a.name ENDS WITH 'x' RETURN a.name STARTS WITH 'y' AS f, a.name AS n LIMIT 1",
+			want:  []cypherProjection{{expr: "a.name STARTS WITH ' '", alias: "f"}, {expr: "a.name", alias: "n"}},
+		},
+		{
+			name:  "backtick alias and properties named like keywords",
+			query: "MATCH (a) RETURN a.limit AS `node type`, a.order LIMIT 1",
+			want:  []cypherProjection{{expr: "a.limit", alias: "node type"}, {expr: "a.order"}},
+		},
+		{
+			name:  "lower-case keywords",
+			query: "match (a) return labels(a)[0] as t limit 1",
+			want:  []cypherProjection{{expr: "labels(a)[0]", alias: "t"}},
+		},
+		{
+			name:  "items of a nested clause end where its braces close",
+			query: "CALL { MATCH (a) RETURN a AS x } RETURN x LIMIT 1",
+			want:  []cypherProjection{{expr: "a", alias: "x"}, {expr: "x"}},
+		},
+		{
+			name:  "no projection clause",
+			query: "MATCH (a) LIMIT 1",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, cypherProjections(maskCypherStrings(tt.query, nil)))
+		})
+	}
+}
+
+func TestMaskCypherStrings(t *testing.T) {
+	var literals []string
+	got := maskCypherStrings("WHERE a.n = 'x,y' AND b.n = \"it\\\"s\" RETURN a AS `a'b` LIMIT 1", func(literal string) {
+		literals = append(literals, literal)
+	})
+	assert.Equal(t, "WHERE a.n = '   ' AND b.n = \"     \" RETURN a AS `a'b` LIMIT 1", got)
+	assert.Equal(t, []string{"x,y", "it\\\"s"}, literals)
 }
 
 func TestStripCypherComments(t *testing.T) {
