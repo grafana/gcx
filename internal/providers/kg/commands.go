@@ -2174,13 +2174,14 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "sources [Type--Name]",
 		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
 		Long:  sourcesLong,
-		Example: `  # Metrics behind an alert-rule or change insight
+		Example: `  # Metrics behind an alert-rule or change insight (quote the insight name:
+  # insight names can contain spaces)
   gcx kg insights sources <Type>--<Name> --env <env> --namespace <namespace> \
-    --insight <insight> --since 1h
+    --insight '<insight>' --since 1h
 
   # Metrics behind an insight, with the labels from its timeline entry
   gcx kg insights sources <Type>--<Name> --env <env> --namespace <namespace> \
-    --insight <insight> --since 1h \
+    --insight '<insight>' --since 1h \
     --label <key>=<value>  # repeat for each label in the entry's timeLines[].labels`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := sourcesOpts.IO.Validate(); err != nil {

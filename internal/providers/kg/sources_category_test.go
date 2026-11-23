@@ -24,8 +24,11 @@ import (
 // request and the body of every search request.
 type sourcesFake struct {
 	mu sync.Mutex
-	// metrics returns the source-metrics answer for one request's labels.
-	metrics func(labels map[string]string) string
+	// metrics returns the source-metrics answer for one request's labels;
+	// sourceStatus, when set and non-zero for the nth (0-based) request,
+	// overrides 200 for that request.
+	metrics      func(labels map[string]string) string
+	sourceStatus func(n int) int
 	// search is the /v1/search answer; searchStatus overrides 200 when set.
 	search       string
 	searchStatus int
@@ -50,10 +53,17 @@ func (f *sourcesFake) handler(t *testing.T) http.Handler {
 				Labels map[string]string `json:"labels"`
 			}
 			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			n := len(f.sourceCalls)
 			if f.onSource != nil {
-				f.onSource(len(f.sourceCalls))
+				f.onSource(n)
 			}
 			f.sourceCalls = append(f.sourceCalls, body.Labels)
+			if f.sourceStatus != nil {
+				if status := f.sourceStatus(n); status != 0 {
+					w.WriteHeader(status)
+					return
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(f.metrics(body.Labels)))
 		case strings.HasSuffix(r.URL.Path, "/v1/search"):
@@ -129,6 +139,9 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 		metrics      func(map[string]string) string
 		search       string
 		searchStatus int
+		// sourceStatus overrides 200 for the nth (0-based) source-metrics
+		// request when it returns non-zero.
+		sourceStatus func(n int) int
 		wantMetrics  bool
 		wantSearches int
 		// wantSourceCategories lists the asserts_alert_category label of each
@@ -254,6 +267,20 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			wantSourceCategories: []string{""},
 		},
 		{
+			name:    "retry fails: the empty result is printed, exit 0",
+			args:    append([]string{"--insight", "AlertX"}, base...),
+			metrics: metricsWhenFailure(),
+			search:  searchPage(ownFailure),
+			sourceStatus: func(n int) int {
+				if n == 1 {
+					return http.StatusInternalServerError
+				}
+				return 0
+			},
+			wantSearches:         1,
+			wantSourceCategories: []string{"", "failure"},
+		},
+		{
 			name:                 "retry also empty: the empty result is printed",
 			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              func(map[string]string) string { return `[]` },
@@ -265,7 +292,7 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			fake := &sourcesFake{metrics: tc.metrics, search: tc.search, searchStatus: tc.searchStatus}
+			fake := &sourcesFake{metrics: tc.metrics, sourceStatus: tc.sourceStatus, search: tc.search, searchStatus: tc.searchStatus}
 			server := httptest.NewServer(fake.handler(t))
 			defer server.Close()
 
@@ -498,7 +525,7 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 		{"entity argument", regexp.MustCompile(`gcx kg insights sources (\S+)`), "<Type>--<Name>"},
 		{"--env", regexp.MustCompile(`--env (\S+)`), "<env>"},
 		{"--namespace", regexp.MustCompile(`--namespace (\S+)`), "<namespace>"},
-		{"--insight", regexp.MustCompile(`--insight (\S+)`), "<insight>"},
+		{"--insight", regexp.MustCompile(`--insight (\S+)`), "'<insight>'"},
 		{"--label", regexp.MustCompile(`--label (\S+)`), "<key>=<value>"},
 	}
 	for _, tc := range examples {
@@ -510,6 +537,13 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 			}
 		})
 	}
+
+	// An insight name with a space, filled in unquoted, would be cut at the
+	// space: the example quotes the placeholder and says why.
+	t.Run("Example quoting note", func(t *testing.T) {
+		assert.Contains(t, strings.Join(strings.Fields(sources.Example), " "),
+			"quote the insight name: # insight names can contain spaces")
+	})
 
 	long := strings.Join(strings.Fields(sources.Long), " ")
 	for _, phrase := range []string{
