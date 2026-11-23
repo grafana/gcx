@@ -232,8 +232,11 @@ Then confirm each Service by its exact name and read its full scope. For one
 Service, filter on every scope key it has, including `site`:
 
 ```bash
-gcx kg entities list --type Service --env <env> --namespace <namespace> --site <site> --property name=<exact-name> --since 7d
+gcx kg entities list --type Service --env <env> --namespace <namespace> --site <site> --property name=<exact-name> --since 7d --limit 0
 ```
+
+Read every page here too, as for the candidate search: a truncated result can
+make a scope look missing or ambiguous.
 
 For several names at once, use Cypher with exact names. Keep `LIMIT` at 300 or
 lower, or at the lower cap a `CYPHER_LIMIT_TOO_LARGE` error names. If a query returns as many rows as its `LIMIT`, split the name list and
@@ -391,9 +394,12 @@ query covers, and say so in the summary.
    each such link in the summary as kept, with the file of the unresolved
    resource.
 
-4. A `CloudResource` that earlier runs wrote is stale when all of its links
-   are stale. Removing a resource removes every link it has, so count all of
-   them, in both directions:
+4. Never remove a `CloudResource` only because its links are stale. Remove
+   the stale links, and keep the resource. Removing a resource removes every
+   link it has, and no query can count them all: every query covers a time
+   window, and a Service that sent no telemetry for longer than the window
+   drops out of it, with its links. Count the links that the queries can see,
+   in both directions:
 
    ```bash
    gcx kg graph query "MATCH (res:CloudResource) WHERE res.managed_by = 'gcx-map-source-code' AND res.name IN ['arn:aws:sqs:us-east-1:111122223333:orders'] OPTIONAL MATCH (res)-[r]-(x) RETURN res.name, count(r) AS links ORDER BY res.name SKIP 0 LIMIT 300" --since 30d
@@ -402,14 +408,12 @@ query covers, and say so in the summary.
    The count includes the `DEPLOYMENT_OF` link that telemetry adds from an S3
    bucket, SQS queue or DynamoDB table (Step 8), and links that other
    producers wrote. The wider window also counts links from Services that
-   were quiet for some days. Remove a resource only when its count equals the
-   number of its links in your list of stale links, and the plan does not
-   write it again. A resource with any other link stays.
-
-   The window has a limit. A Service that sent no telemetry for more than 30
-   days can drop out of the query, and its link to the resource is then not
-   counted. `entities delete` still removes that link with the resource. In
-   the summary, say this for each resource to remove.
+   were quiet for some days. When the count equals the number of the
+   resource's links in your list of stale links, and the plan does not write
+   the resource again, list it in the summary as kept with no visible links.
+   Remove it only when the user says that the resource was deleted. Then also
+   tell the user that the removal takes every link it has, also links from a
+   Service that was quiet for more than 30 days.
 
 5. Never remove a `Repository` only because this run did not scan it. Read the
    repositories that earlier runs mapped:
@@ -426,13 +430,14 @@ query covers, and say so in the summary.
 Links from a Service that sent no telemetry in the last 7 days do not show in
 these queries, so this run does not check them.
 
-Put the stale links and resources in `removals.yaml`. Show the user a short
-summary:
+Put the stale links in `removals.yaml`, and a resource only when the user
+said that it was deleted. Show the user a short summary:
 
 - the repositories and the resources
 - each link to write: Component, or Service with scope; link type; repository
   or resource; path
 - each link and resource to remove, and why
+- the resources kept with no visible links
 - the repositories that earlier runs mapped and this run did not scan
 - the images that another repository builds (Step 3)
 - the unmatched services and the unresolved resources
@@ -563,9 +568,9 @@ stops after Step 6. It keeps the plan files and writes nothing.
 A run that may write still follows every other rule. It writes only the named
 repositories and the resources and links found in them, and it lists unmatched
 services and unresolved resources in its output instead of asking about them.
-It removes stale links and resources only when its instructions also say to
-remove them. Otherwise it lists them in its output. It never removes a
-`Repository`.
+It removes stale links only when its instructions also say to remove them.
+Otherwise it lists them in its output. It never removes a `Repository` or a
+`CloudResource`.
 
 The instructions can also give the values that resolve resource ids, such as
 the account ID for each environment. Use them as the user's values in Step 4.

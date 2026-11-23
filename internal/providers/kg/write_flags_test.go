@@ -56,6 +56,14 @@ func TestParseEntityRefTokenTenantDomain(t *testing.T) {
 	assert.Equal(t, "Service", ref.Type)
 	assert.Equal(t, "checkout", ref.Name)
 
+	// The second segment names a tenant domain only when it is a valid tenant
+	// name, so a PascalCase type keeps the bare "tenant" domain.
+	ref, err = kg.ParseEntityRefToken("tenant/Service/github.com/contoso/shop")
+	require.NoError(t, err)
+	assert.Equal(t, "tenant", ref.Domain)
+	assert.Equal(t, "Service", ref.Type)
+	assert.Equal(t, "github.com/contoso/shop", ref.Name)
+
 	for _, bad := range []string{"tenant//Repository/gcx", "tenant/github/Repository/", "tenant/github//gcx"} {
 		_, err := kg.ParseEntityRefToken(bad)
 		require.Error(t, err, "expected error for %q", bad)

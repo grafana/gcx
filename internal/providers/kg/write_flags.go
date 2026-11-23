@@ -28,9 +28,14 @@ const tenantDomainPrefix = "tenant/"
 // the type and may itself contain "/" (for example github.com/contoso/shop).
 // Scope is supplied separately via --from-scope/--to-scope, so it is not part
 // of the token.
+//
+// A token that starts with "tenant/" can also name the bare "tenant" domain.
+// It names a tenant domain only when its second segment is a valid tenant
+// name (lowercase letters and digits). A type is PascalCase, so
+// tenant/Service/github.com/contoso/shop stays in the bare "tenant" domain.
 func parseEntityRefToken(token string) (EntityRef, error) {
 	parts := strings.SplitN(token, "/", 4)
-	if len(parts) == 4 && parts[0] == "tenant" && parts[1] != "" {
+	if len(parts) == 4 && parts[0] == "tenant" && reTenantDomain.MatchString(tenantDomainPrefix+parts[1]) {
 		parts = []string{tenantDomainPrefix + parts[1], parts[2], parts[3]}
 	} else {
 		parts = strings.SplitN(token, "/", 3)

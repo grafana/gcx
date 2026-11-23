@@ -187,9 +187,9 @@ scope, so `from` has no `scope`. Copy the Component name from the query result.
 
 ## removals.yaml
 
-The stale links and resources from Step 6 of the skill, in the same format as
-the link and entity files, without `properties`. It is the record of what the
-run removes. The delete commands take flags, so run one command per entry:
+The stale links from Step 6 of the skill, and the resources that the user said
+were deleted, in the same format as the link and entity files, without
+`properties`. It is the record of what the run removes. The delete commands take flags, so run one command per entry:
 
 ```yaml
 - domain: sourcecode
@@ -213,7 +213,7 @@ run removes. The delete commands take flags, so run one command per entry:
 - A link entry becomes `gcx kg relationships delete --type <type> --from
   '<domain>/<Type>/<name>' --from-scope '<key>=<value>,...' --to
   '<domain>/<Type>/<name>' --force`. The name in a reference keeps every `/`
-  after the second one, so `sourcecode/Repository/github.com/contoso/shop`
+  after the type, so `sourcecode/Repository/github.com/contoso/shop`
   names the repository `github.com/contoso/shop`.
 - A resource entry becomes `gcx kg entities delete --domain sourcecode --type
   CloudResource --name '<name>' --force`.

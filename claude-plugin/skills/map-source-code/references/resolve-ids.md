@@ -84,17 +84,20 @@ node.
 
 ## Filters
 
-Keep only values in these forms: an AWS ARN, an SQS queue URL, an Azure
-resource ID and a GCP resource name. Set the patterns once, as one extended
-regular expression:
+Keep only values in the forms of
+[Name and properties](resources.md#name-and-properties): an AWS ARN, an SQS
+queue URL, a GCS bucket URL, a GCP resource name and an Azure resource ID. Set
+the patterns once, as one extended regular expression:
 
 ```bash
-ids='arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{0,12}:[A-Za-z0-9:/._-]+|https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[A-Za-z0-9_-]+|/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[A-Za-z0-9._-]+/providers/[A-Za-z0-9./_-]+|projects/[a-z0-9-]+/(topics|subscriptions|instances)/[A-Za-z0-9._-]+'
+ids='arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{0,12}:[A-Za-z0-9:/._-]+|https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[A-Za-z0-9_-]+|gs://[a-z0-9][a-z0-9._-]*[a-z0-9]|/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[A-Za-z0-9._-]+/providers/[A-Za-z0-9./_-]+|projects/[a-z0-9-]+/(topics|subscriptions|instances)/[A-Za-z0-9._-]+'
 ```
 
 The patterns allow only the characters that the value check in
 [SKILL.md](../SKILL.md) allows. An id with other characters, for example a
 resource group name with `(` or `)`, stays unresolved. Say so in the summary.
+A Kafka topic has no pattern: its name `kafka://<cluster>/<topic>` comes from
+the code, not from a provider, so these sources do not resolve it.
 
 For a log, print only the matches:
 
