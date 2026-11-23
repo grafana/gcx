@@ -29,19 +29,21 @@ func main() {
 }
 ```
 
+The SDK gives an extension two ways to run gcx commands:
+
+- `GCX.Execute` runs any gcx command in a new gcx process and returns its stdout, stderr and exit code. 
+- `GCX.DecodeJSON` adds `--output json`, decodes stdout and returns an `*ExitError` for any non-zero exit, so it drops partial results. Use `Execute` when you want to catch partial results.
+
+Some more notes about extensions:
+
+- Commands use the same context from when the user ran `gcx ext`, so the extension doesn't need to handle credentials.
+- Authors should write the extension's own output to `os.Stdout` and `os.Stderr`. `gcx` forwards both.
+- Authors should return an `*extsdk.ExitError` to exit with a specific code.
+- The error from `GCX.Execute` is only non-nil when the command couldn't run. A command that has a non-zero exit still returns its output, because gcx exits 4 on a partial failure but prints the results that succeeded. Therefore, check `Result.ExitCode`, or call `Result.Err()` to check whether the command succeeded.
+- `Host.Execute` streams a command's output in chunks as it is written and sends its exit code as the last event, so output size isn't limited by gRPC's message size.
+- A request's stdin can be up to 64 MiB.
 
 
-- `GCX.Execute` runs any gcx command in a new gcx process and returns its stdout, stderr and exit code. A non-zero exit is not an error: gcx can report a partial failure with a complete result, so check `Result.ExitCode` or `Result.Err()`
-- `GCX.DecodeJSON` adds `--output json`, fails on a non-zero exit and decodes stdout
-- Commands use the context, configuration file and agent mode the user ran `gcx ext` with, so the extension doesn't need to handle credentials. Extensions aren't sandboxed, though: they run with the user's permissions
-- Write the extension's own output to `os.Stdout` and `os.Stderr`; gcx forwards both. Standard input is the user's terminal
-- `ctx` is cancelled when the user interrupts gcx
-- Return an `*extsdk.ExitError` to exit with a specific code
+#### Other languages
 
-gcx JSON output is the contract for `Execute` and `DecodeJSON`; use `minGCXVersion` in the manifest when an extension depends on newer output.
-
-## Protocol
-
-Extensions in other languages implement the gRPC services in [`proto/extension.proto`](proto/extension.proto) with go-plugin's handshake: magic cookie `GCX_EXTENSION=gcx-extension`, protocol version `1` and plugin name `extension`. gcx calls `Extension.Run` once and serves `Host` on the go-plugin broker ID in the request for as long as `Run` lasts. Send the extension's stdout and stderr through `Host.Output` and close that stream before `Run` returns: go-plugin's own stdio forwarding can drop output written at the end of a run. `Host.Execute` streams a command's output in chunks as it is written and sends its exit code as the last event, so output size isn't limited by gRPC's message size. A request's stdin can be up to 64 MiB.
-
-Run `./generate.sh` after changing the proto file. It regenerates the SDK's code and gcx's copy in `internal/extensions/extensionpb`; gcx does not import this module.
+We only provide an interface for Go, but extensions can in theory be written in other languages. Check the protocol definitions in [`proto/extension.proto`](proto/extension.proto).
