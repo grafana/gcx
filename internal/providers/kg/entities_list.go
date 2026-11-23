@@ -244,9 +244,9 @@ func schemaScopeDims(schema KGSchemaResult) map[string]map[string]bool {
 //   - a row whose scope carries a requested dimension with another value is
 //     dropped;
 //   - a row without the dimension is dropped when its entity type has that
-//     dimension, and kept otherwise (types without a namespace, such as
-//     nodes or clusters, are scoped by the dimensions they have). A type has
-//     the dimension when some row in results carries it or, failing that,
+//     dimension, and kept otherwise (a type that does not have the
+//     dimension is scoped by the dimensions it has). A type has the
+//     dimension when some row in results carries it or, failing that,
 //     when the window's schema (read through dims) lists it for the type;
 //     without dims, or a schema entry for the type, results alone decide;
 //   - a requested value of "none" (the KG's value for an unset dimension)

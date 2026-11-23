@@ -30,12 +30,12 @@
   property match. A value is suggested only when that search returns
   entities, and not when the search for an earlier suggested value of the
   same type and property also returned entities with this value (as a
-  backend does whose exact match ignores letter case). The suggested command keeps the
-  call's `--property`, `--insight` and window, and its scope. For inspect, it
-  is an inspect command with the found entity's full scope when the probe
-  finds one entity, and a `list --property name=<name>` command when the
-  name has several entities. When no `--from`/`--to`/`--since` was passed,
-  the error also says that the default window is the last hour.
+  backend does whose exact match ignores letter case). The suggested command
+  keeps the call's `--property`, `--insight` and window, and its scope. For
+  inspect, it is an inspect command with the found entity's full scope when
+  the probe finds one entity, and a `list --property name=<name>` command
+  when the name has several entities. When no `--from`/`--to`/`--since` was
+  passed, the error also says that the default window is the last hour.
   Behaviour change: when the window holds no entities of any type and no
   window was passed, list now exits 1 (it printed `[]`) and inspect's
   not-found error says that the default window is the last hour. With a
@@ -49,12 +49,11 @@
   dimension that its entity type has. A type has the dimension when a row of
   that type that list has read carries it or, failing that, when the window's
   schema (`gcx kg meta schema`) lists it for the type; list reads the schema
-  only in that case. Rows of a type without the dimension, such as nodes or
-  clusters for `--namespace`, are kept, and `none` matches rows without the
-  dimension. A backend that applies the scope filters the same way, so there
-  the output is unchanged.
+  only in that case. Rows of a type that does not have the dimension are
+  kept, and `none` matches rows without the dimension. A backend that
+  applies the scope filters the same way, so there the output is unchanged.
 - A bare `gcx kg entities list --insight` followed by another flag (for
-  example `--insight --type Service`) took that flag as its value, and the
+  example `--insight --type <T>`) took that flag as its value, and the
   command failed with an unrelated error: `required flag(s) "type" not set`,
   or a time-window error for `--from`. That value is now rejected with an
   error that says to use `--insight any` or `--insight key=value`.
