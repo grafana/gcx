@@ -34,12 +34,12 @@ func (p *Provider) Commands() []*cobra.Command {
 		Use:     "error-tracking",
 		Aliases: []string{"et"},
 		Short:   p.ShortDesc(),
-		Long: `Manage Grafana Error Tracking projects and the errors and events their SDKs
-send (for browser errors from Frontend Observability, use gcx frontend). Start
-with projects list, then errors list --project <id> and errors inspect <error>;
-projects use remembers a project so --project can be left out. Projects come as
-resources with their fields under spec (--json spec.id,spec.name), and every
-other list has flat items (--json id,message).`,
+		Long: `Manage Grafana Error Tracking projects, the errors and events their SDKs
+send, and heatmaps (for browser errors from Frontend Observability, use gcx
+frontend). Start with projects list, then errors list --project <id> and errors
+inspect <error>; projects use remembers a project so --project can be left out.
+Projects and heatmaps come as resources with their fields under spec (--json
+spec.id,spec.name), and every other list has flat items (--json id,message).`,
 		Example: `  # The projects and their IDs.
   gcx error-tracking projects list
 
@@ -97,6 +97,11 @@ refused before the request.`
 			newFieldsListCommand(loader), newFieldsListValuesCommand(loader)),
 		group("users", "List the Grafana users of an Error Tracking project.",
 			newUsersListCommand(loader)),
+		group("heatmaps", "Manage Error Tracking heatmaps: event counts by one custom field across a set of projects.",
+			newHeatmapsListCommand(loader), newHeatmapsGetCommand(loader),
+			newHeatmapsCreateCommand(loader), newHeatmapsUpdateCommand(loader),
+			newHeatmapsDeleteCommand(loader), newHeatmapsReportCommand(loader),
+			newHeatmapsBreakdownCommand(loader)),
 	)
 	agent.MarkExperimental(root)
 	return []*cobra.Command{root}

@@ -309,6 +309,9 @@ func TestNameHelpSaysHowNamesMatch(t *testing.T) {
 	for _, args := range [][]string{
 		{"errors", "list", "--help"},
 		{"projects", "get", "--help"},
+		{"heatmaps", "get", "--help"},
+		{"heatmaps", "create", "--help"},
+		{"heatmaps", "delete", "--help"},
 	} {
 		out, err := f.run(args...)
 		require.NoError(t, err)

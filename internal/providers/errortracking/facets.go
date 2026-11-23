@@ -122,7 +122,7 @@ carry, with how many distinct values, errors and events each has.
 
 With --since or --from/--to, only keys seen in that window are listed. The
 API returns at most 100, most events first; use fields list-values to see one
-key's values. A key is what --custom-field takes.`,
+key's values. A key is what --custom-field and heatmaps --field take.`,
 		Example: `  # Keys seen in the last day.
   gcx error-tracking fields list --project 314 --since 24h
 

@@ -52,6 +52,8 @@
   "gcx error-tracking errors assignees add",
   "gcx error-tracking errors inspect",
   "gcx error-tracking errors timeline",
+  "gcx error-tracking heatmaps breakdown",
+  "gcx error-tracking heatmaps report",
   "gcx error-tracking projects ingest-keys rotate",
   "gcx error-tracking projects timeline",
   "gcx error-tracking projects use",

@@ -3,6 +3,7 @@ package errortracking_test
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -31,6 +32,8 @@ type outputCase struct {
 	sel     []string
 	jq      []string
 	noTable bool
+	// names marks a last call that reads project names, which only the table and wide formats use.
+	names bool
 }
 
 func assertJSONSubset(t *testing.T, want, got any, path string) {
@@ -92,6 +95,10 @@ func outputFake(t *testing.T) *fakeET {
 		"GET projects/314/customFields":              `{"keys":[{"key":"browser","valueCount":1,"errorCount":1,"eventCount":9}]}`,
 		"GET projects/314/customFields/values":       `{"key":"browser","values":[{"value":"Chrome","errorCount":1,"eventCount":9,"firstSeen":"2026-11-10T10:00:00Z","lastSeen":"2026-11-17T08:15:42Z"}]}`,
 		"GET projects/314/users":                     `{"users":[{"uid":"u1","name":"Alex","login":"alex","avatarUrl":""}],"totalCount":1}`,
+		"GET heatmaps":                               `{"heatmaps":[{"id":3,"name":"By region","customFieldKey":"region","windowDays":14,"projectIds":[314],"createdAt":"2026-11-01T09:30:00Z","updatedAt":"2026-11-02T09:30:00Z"}]}`,
+		"GET heatmaps/3":                             `{"id":3,"name":"By region","customFieldKey":"region","windowDays":14,"projectIds":[314]}`,
+		"GET heatmaps/3/data":                        `{"bucket":"1d","from":"2026-11-03T00:00:00Z","to":"2026-11-17T00:00:00Z","cells":[{"bucket":"2026-11-16T00:00:00Z","value":"eu","eventCount":12}]}`,
+		"GET heatmaps/3/data/breakdown":              `{"from":"2026-11-16T00:00:00Z","to":"2026-11-17T00:00:00Z","value":"eu","projects":[{"projectId":314,"projectName":"Checkout API","eventCount":12}]}`,
 		"POST projects":                              `{"id":314,"name":"Checkout API","stats":{"dailyEvents":[]}}`,
 		"PATCH projects/314":                         `{"id":314,"name":"Checkout API","stats":{"dailyEvents":[]}}`,
 		"DELETE projects/314":                        `{"status":"deleted"}`,
@@ -103,6 +110,9 @@ func outputFake(t *testing.T) *fakeET {
 		"PATCH projects/314/errors/42/comments/7":    `{"id":"comment:7","type":"comment","createdAt":"2026-11-17T08:20:00Z","actor":"u1","comment":{"id":7,"body":"x","canEdit":true}}`,
 		"DELETE projects/314/errors/42/comments/7":   `{"status":"deleted"}`,
 		"PUT projects/314/errors/42/assignees/u1":    `{"userUid":"u1","name":"Alex"}`,
+		"POST heatmaps":                              `{"id":3,"name":"By region","customFieldKey":"region","windowDays":14,"projectIds":[314]}`,
+		"PATCH heatmaps/3":                           `{"id":3,"name":"By region","customFieldKey":"region","windowDays":30,"projectIds":[314]}`,
+		"DELETE heatmaps/3":                          `{"status":"deleted"}`,
 	} {
 		f.reply(route, http.StatusOK, body)
 	}
@@ -222,6 +232,25 @@ func outputCases() []outputCase {
 		{name: "users list", calls: []string{"GET projects/314/users"}, query: map[string]string{"limit": "51", "page": "1"}, args: with("users", "list"), exact: true,
 			json:  `{"items":[{"uid":"u1","name":"Alex","login":"alex","avatarUrl":""}]}`,
 			table: []string{"NAME", "LOGIN", "UID", "Alex", "alex", "u1"}, sel: []string{"uid", `{"items":[{"uid":"u1"}]}`}},
+		{name: "heatmaps list", names: true, calls: []string{"GET heatmaps", "GET projects"}, args: []string{"heatmaps", "list"},
+			json:  `{"items":[{"apiVersion":"error-tracking.ext.grafana.app/v0alpha1","kind":"Heatmap","metadata":{"name":"by-region-3",` + ns + `},"spec":{"id":3,"name":"By region","customFieldKey":"region","windowDays":14,"projectIds":[314]}}]}`,
+			table: []string{"NAME", "FIELD", "WINDOW", "PROJECTS", "by-region-3", "region", "14d", "Checkout API"}, wide: []string{"PROJECT IDS", "UPDATED", "2026-11-02 09:30:00Z", "CREATED", "2026-11-01 09:30:00Z"},
+			jq: []string{".items[0].spec.windowDays", "14"}},
+		{name: "heatmaps get", names: true, calls: []string{"GET heatmaps/3", "GET projects"}, args: []string{"heatmaps", "get", "3"},
+			json:  `{"kind":"Heatmap","metadata":{"name":"by-region-3"},"spec":{"id":3,"projectIds":[314]}}`,
+			table: []string{"NAME", "by-region-3", "Checkout API"}, wide: []string{"CREATED"}, jq: []string{".spec.customFieldKey", `"region"`}},
+		{name: "heatmaps report", calls: []string{"GET heatmaps/3/data"}, args: []string{"heatmaps", "report", "3"}, exact: true,
+			json:  `{"bucket":"1d","from":"2026-11-03T00:00:00Z","to":"2026-11-17T00:00:00Z","cells":[{"bucket":"2026-11-16T00:00:00Z","value":"eu","eventCount":12}]}`,
+			table: []string{"VALUE", "11-03", "11-16", "TOTAL", "eu", "12"}, jq: []string{".cells[0].value", `"eu"`}},
+		{name: "heatmaps breakdown", calls: []string{"GET heatmaps/3/data/breakdown"}, query: map[string]string{"from": "*", "to": "*", "value": "eu"}, args: []string{"heatmaps", "breakdown", "3", "--value", "eu", "--since", "1d"}, exact: true,
+			json:  `{"from":"2026-11-16T00:00:00Z","to":"2026-11-17T00:00:00Z","value":"eu","projects":[{"projectId":314,"projectName":"Checkout API","eventCount":12}]}`,
+			table: []string{"PROJECT ID", "PROJECT", "EVENTS", "314", "Checkout API", "12"}, jq: []string{".projects[0].projectId", "314"}},
+		{name: "heatmaps create", calls: []string{"POST heatmaps"}, body: `{"name":"By region","customFieldKey":"region","windowDays":14,"projectIds":[314]}`, args: []string{"heatmaps", "create", "--name", "By region", "--field", "region", "--window-days", "14", "--projects", "314"}, exact: true, noTable: true,
+			json: mutation("created", `"kind":"Heatmap","id":"3","name":"By region"`, ""), text: "Created heatmap By region (ID 3)"},
+		{name: "heatmaps update", calls: []string{"PATCH heatmaps/3"}, body: `{"windowDays":30}`, args: []string{"heatmaps", "update", "3", "--window-days", "30"}, exact: true, noTable: true,
+			json: mutation("updated", `"kind":"Heatmap","id":"3","name":"By region"`, ""), text: "Updated heatmap By region (ID 3)"},
+		{name: "heatmaps delete", calls: []string{"GET heatmaps/3", "DELETE heatmaps/3"}, args: []string{"heatmaps", "delete", "3", "--force"}, exact: true, noTable: true,
+			json: mutation("deleted", `"kind":"Heatmap","id":"3","name":"By region"`, ""), text: "Deleted heatmap By region (ID 3)"},
 	}
 }
 
@@ -236,7 +265,11 @@ func TestOutputFormats(t *testing.T) {
 				out, err := f.run(append(append([]string{}, tc.args...), args...)...)
 				require.NoError(t, err)
 				calls := f.takeCalls()
-				require.Equal(t, tc.calls, routesOf(calls), "the requests behind %v", args)
+				want := tc.calls
+				if tc.names && len(args) > 0 && !slices.Contains([]string{"table", "wide"}, args[len(args)-1]) {
+					want = want[:len(want)-1]
+				}
+				require.Equal(t, want, routesOf(calls), "the requests behind %v", args)
 				last := calls[len(calls)-1]
 				got := map[string]string{}
 				for k := range last.Query {
@@ -245,11 +278,11 @@ func TestOutputFormats(t *testing.T) {
 						got[k] = "*"
 					}
 				}
-				want := tc.query
-				if want == nil {
-					want = map[string]string{}
+				wantQuery := tc.query
+				if wantQuery == nil {
+					wantQuery = map[string]string{}
 				}
-				assert.Equal(t, want, got, "the query of %s", last.Route)
+				assert.Equal(t, wantQuery, got, "the query of %s", last.Route)
 				if tc.body != "" {
 					assert.JSONEq(t, tc.body, last.Body)
 				}

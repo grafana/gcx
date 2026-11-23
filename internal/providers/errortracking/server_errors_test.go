@@ -44,7 +44,7 @@ func byName(args []string) ([]string, bool) {
 			return out, true
 		}
 	}
-	if len(out) > 2 && out[0] == "projects" && out[2] == "314" {
+	if len(out) > 2 && (out[0] == "projects" && out[2] == "314" || out[0] == "heatmaps" && out[2] == "3") {
 		out[2] = "by name"
 		return out, true
 	}
@@ -99,6 +99,13 @@ func serverErrorCases() []serverErrorCase {
 		{args: []string{"fields", "list", "--project", "314"}, route: "GET projects/314/customFields", missing: p},
 		{args: []string{"fields", "list-values", "browser", "--project", "314"}, route: "GET projects/314/customFields/values", missing: p},
 		{args: []string{"users", "list", "--project", "314"}, route: "GET projects/314/users", missing: p, human: true},
+		{args: []string{"heatmaps", "list"}, route: "GET heatmaps"},
+		{args: []string{"heatmaps", "get", "3"}, route: "GET heatmaps/3", missing: "heatmap 3"},
+		{args: []string{"heatmaps", "create", "--name", "x", "--field", "region", "--window-days", "7", "--projects", "314"}, route: "POST heatmaps", conflict: "GET heatmaps"},
+		{args: []string{"heatmaps", "update", "3", "--window-days", "7"}, route: "PATCH heatmaps/3", missing: "heatmap 3"},
+		{args: []string{"heatmaps", "delete", "3", "--force"}, route: "DELETE heatmaps/3", missing: "heatmap 3", pre: []string{"GET heatmaps/3"}},
+		{args: []string{"heatmaps", "report", "3"}, route: "GET heatmaps/3/data", missing: "heatmap 3"},
+		{args: []string{"heatmaps", "breakdown", "3", "--value", "eu", "--since", "1d"}, route: "GET heatmaps/3/data/breakdown", missing: "heatmap 3"},
 	}
 }
 
@@ -107,7 +114,9 @@ func TestServerErrors(t *testing.T) {
 		"GET projects/314":                     `{"id":314,"name":"web","previousIngestKeyUntil":"2099-11-18T09:00:00Z","stats":{"dailyEvents":[]}}`,
 		"GET projects/314/errors/42":           `{"id":42,"status":"unresolved","history":[]}`,
 		"GET projects/314/errors/42/assignees": `{"assignees":[{"userUid":"u1"}]}`,
+		"GET heatmaps/3":                       `{"id":3,"name":"x","windowDays":7,"projectIds":[]}`,
 		"GET projects":                         `{"projects":[]}`,
+		"GET heatmaps":                         `{"heatmaps":[]}`,
 	}
 	for _, tc := range serverErrorCases() {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -165,8 +174,12 @@ func TestServerErrors(t *testing.T) {
 				t.Run("a name lookup that fails", func(t *testing.T) {
 					f := newFakeET(t)
 					f.reply("GET projects", 500, `{"error":{"code":"x","message":"server says no"}}`)
+					f.reply("GET heatmaps", 500, `{"error":{"code":"x","message":"server says no"}}`)
 					_, err := f.run(append(named, "-o", "json")...)
 					list := "GET projects"
+					if named[0] == "heatmaps" && named[2] == "by name" {
+						list = "GET heatmaps"
+					}
 					assert.Equal(t, []string{list}, routesOf(f.takeCalls()), "only the lookup is sent")
 					assert.Equal(t, gcxerrors.ExitGeneralError, exitCode(err))
 					assert.Contains(t, rendered(t, err), "server says no (HTTP 500)")
@@ -225,6 +238,7 @@ func TestServerErrors(t *testing.T) {
 func TestConfirmLookupFails(t *testing.T) {
 	f := newFakeET(t)
 	f.reply("GET projects/314", 500, `{"error":{"code":"x","message":"server says no"}}`)
+	f.reply("GET heatmaps/3", 500, `{"error":{"code":"x","message":"server says no"}}`)
 	human := func(*fakeET) { agent.SetFlag(false) }
 	t.Setenv("GCX_AUTO_APPROVE", "")
 	os.Unsetenv("GCX_AUTO_APPROVE")
@@ -232,7 +246,7 @@ func TestConfirmLookupFails(t *testing.T) {
 	cases := make([]cliCase, 0, 4)
 	for _, args := range [][]string{
 		{"projects", "delete", "314"}, {"projects", "ingest-keys", "rotate", "314"},
-		{"projects", "ingest-keys", "delete-previous", "314"},
+		{"projects", "ingest-keys", "delete-previous", "314"}, {"heatmaps", "delete", "3"},
 	} {
 		route := "GET projects/314"
 		if args[0] == "heatmaps" {
@@ -252,6 +266,10 @@ func TestTransportErrors(t *testing.T) {
 	f.runCases(t, []cliCase{
 		{name: "a facet list of the wrong shape", args: []string{"releases", "list", "--project", "314", "-o", "json"},
 			calls: []string{"GET projects/314/releases"}, err: "cannot unmarshal object", exit: gcxerrors.ExitGeneralError},
+		{name: "a heatmap project name that matches nothing", exit: gcxerrors.ExitGeneralError, args: []string{"heatmaps", "create", "--name", "x", "--field", "f", "--window-days", "7", "--projects", "nope"},
+			calls: []string{"GET projects"}, err: `no Error Tracking project has the ID or name "nope"`},
+		{name: "a new heatmap project set that matches nothing", exit: gcxerrors.ExitGeneralError, args: []string{"heatmaps", "update", "3", "--projects", "nope"},
+			calls: []string{"GET projects"}, err: `no Error Tracking project has the ID or name "nope"`},
 		{name: "a response that is not JSON", args: []string{"errors", "list", "--project", "314", "-o", "json"},
 			calls: []string{"GET projects/314/errors"}, err: "error tracking: decode projects/314/errors response", exit: gcxerrors.ExitGeneralError},
 	})

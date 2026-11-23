@@ -38,6 +38,7 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 		"GET projects/314/releases":            `{"releases":[{"release":"` + evil + `","firstSeen":"` + evil + `","lastSeen":"` + evil + `"}]}`,
 		"GET projects/314/errors":              `{"errors":[{"id":1,"status":"` + evil + `","exceptionType":"` + evil + `","message":"` + evil + `","lastRelease":"` + evil + `","lastSeen":"` + evil + `"}],"total":9,"nextCursor":"n"}`,
 		"GET projects/314/users":               `{"users":[{"uid":"a","name":"` + evil + `","login":"x"},{"uid":"b","name":"` + evil + `","login":"x"}]}`,
+		"GET heatmaps/3/data":                  `{"bucket":"1d","from":"` + evil + `","to":"` + evil + `","cells":[{"bucket":"` + evil + `","value":"` + evil + `","eventCount":1}]}`,
 	} {
 		f.reply(route, 200, body)
 	}
@@ -77,6 +78,7 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 			calls: []string{e42, e42 + "/assignees", "DELETE projects/314/errors/42/assignees/%1B%5D0%3Bowned%07%1B%5B2J%E2%80%AEevil%C2%9B"}, check: clean},
 		{name: "a declined project delete prompt", stdin: "n\n", args: []string{"projects", "delete", "314"},
 			calls: []string{p}, exit: 5, check: clean},
+		run("a heatmap grid", []string{"GET heatmaps/3/data"}, "heatmaps", "report", "3"),
 		run("projects use", []string{p}, "projects", "use", "314"),
 		{name: "no project given and none picked", args: []string{"errors", "get", "42"}, exit: 2, check: clean},
 		run("projects list names the default", []string{"GET projects"}, "projects", "list"),
