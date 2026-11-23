@@ -82,7 +82,13 @@ so there is no --limit. <error> is the error ID from errors list.`,
 			if err := c.do(ctx, http.MethodGet, path+"/customFields", nil, nil, &out); err != nil {
 				return err
 			}
-			return encodeList(cmd, c, &opts.IO, out.CustomFields, nil)
+			if err := encodeList(cmd, c, &opts.IO, out.CustomFields, nil); err != nil {
+				return err
+			}
+			if len(out.CustomFields) == 0 && !opts.IO.JSONDiscovery {
+				say(cmd.ErrOrStderr(), "No custom fields on "+opts.shown(c), "")
+			}
+			return nil
 		},
 		Annotations: map[string]string{agent.AnnotationTokenCost: "medium", agent.AnnotationLLMHint: "<error> --project 314 --json key,valueCount,saturated"},
 	}

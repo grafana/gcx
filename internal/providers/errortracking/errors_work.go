@@ -202,6 +202,8 @@ func (o *errorsUpdateOpts) target() string {
 func (o *errorsUpdateOpts) apply(ctx context.Context, c *client, project, id int64) updateOutcome {
 	out := updateOutcome{ID: id}
 	path := routePath("projects", project, "errors", id)
+	// The API has no field selector or summary route for one error, so this GET
+	// returns the full payload; update needs it for the previous status.
 	var before errorDetail
 	if out.err = c.do(ctx, http.MethodGet, path, nil, nil, &before); out.err != nil {
 		return out

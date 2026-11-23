@@ -431,7 +431,8 @@ already assigned gives changed: false with nothing sent. <user> is a UID or me. 
 				return humanOnly(err, true)
 			}
 			current := out.Assignees
-			if i := slices.IndexFunc(current, func(a assignee) bool { return a.UserUID == user.UID }); i >= 0 {
+			i := slices.IndexFunc(current, func(a assignee) bool { return a.UserUID == user.UID })
+			if i >= 0 {
 				user = usersItem{UID: current[i].UserUID, Name: current[i].Name, Login: current[i].Login}
 			}
 			who := user.UID
@@ -439,7 +440,7 @@ already assigned gives changed: false with nothing sent. <user> is a UID or me. 
 				who = fmt.Sprintf("%s, UID %s", user.shown(), user.UID)
 			}
 			method, action, verb := http.MethodPut, "assigned", "Assigned %s to %s"
-			assigned := slices.ContainsFunc(current, func(a assignee) bool { return a.UserUID == user.UID })
+			assigned := i >= 0
 			if add && assigned {
 				m := assignMutation{mutationBase: c.mutation(action, "Error", opts.id, false)}
 				m.User = user.UID
