@@ -4,19 +4,42 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEmptyListsSayWhy(t *testing.T) {
 	f := newFakeET(t)
 	for route, body := range map[string]string{
+		"GET projects/314/releases":           `{"releases":[]}`,
+		"GET projects/314/environments":       `{"environments":[]}`,
+		"GET projects/314/transactions":       `{"transactions":[]}`,
+		"GET projects/314/customFields":       `{"keys":[]}`,
 		"GET projects/314/errors/42/activity": `{"activity":[]}`,
 	} {
 		f.reply(route, 200, body)
 	}
+	const lag = "Counts can lag a minute or two behind new events; see what arrived: gcx error-tracking raw-events list --project 314"
 	f.runCases(t, []cliCase{
+		{name: "releases list", args: []string{"releases", "list", "--project", "314"}, calls: []string{"GET projects/314/releases"},
+			stderr: "hint: No releases in project 314; an event carries one when the SDK sets its release option. " + lag},
+		{name: "releases list in a window", args: []string{"releases", "list", "--project", "314", "--since", "1h"}, calls: []string{"GET projects/314/releases"},
+			stderr: "hint: No releases in project 314 in that window;"},
+		{name: "environments list", args: []string{"environments", "list", "--project", "314"}, calls: []string{"GET projects/314/environments"},
+			stderr: "hint: No environments in project 314; an event carries one when the SDK sets its environment option. " + lag},
+		{name: "transactions list", args: []string{"transactions", "list", "--project", "314"}, calls: []string{"GET projects/314/transactions"},
+			stderr: "hint: No transactions in project 314; an error carries one when the SDK names the route, job or screen. " + lag},
+		{name: "fields list", args: []string{"fields", "list", "--project", "314"}, calls: []string{"GET projects/314/customFields"},
+			stderr: "hint: No custom fields in project 314; an event carries them when the SDK sets tags or contexts. " + lag},
 		{name: "errors activity list of one type", args: []string{"errors", "activity", "list", "42", "--project", "314", "--type", "comment"},
 			calls:  []string{"GET projects/314/errors/42/activity"},
 			stderr: "hint: No comment entries yet on error 42 in project 314; comment on it: gcx error-tracking errors comments create 42 --project 314 --body <text>"},
+		{name: "JSON keeps stdout one empty list", args: []string{"releases", "list", "--project", "314", "-o", "json"},
+			calls: []string{"GET projects/314/releases"}, json: `{"items":[]}`, stderr: "No releases in project 314"},
+		{name: "field discovery says nothing", args: []string{"transactions", "list", "--project", "314", "--json", "list"}, calls: []string{"GET projects/314/transactions"},
+			check: func(t *testing.T, _ string, _ error, _ []etCall) {
+				t.Helper()
+				assert.NotContains(t, f.stderr.String(), "hint:")
+			}},
 	})
 }
 

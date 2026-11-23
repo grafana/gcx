@@ -33,6 +33,9 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 		"GET projects/314/errors/42/activity":  `{"activity":[{"id":"x","type":"` + evil + `","createdAt":"` + evil + `","actor":"` + evil + `","actorName":"` + evil + `"}]}`,
 		"GET projects/314/errors/42/assignees": `{"assignees":[{"userUid":"` + evil + `","name":"` + evil + `","login":"` + evil + `"}]}`,
 		"GET projects/314/errors/42/events/e1": `{"eventId":"` + evil + `","occurredAt":"` + evil + `","release":"` + evil + `","payload":{}}`,
+		"GET projects/314/rawEvents":           `{"rawEvents":[{"id":9,"eventId":"e","outcome":"` + evil + `","receivedAt":"` + evil + `"},{"id":8,"eventId":"e","outcome":"` + evil + `"}]}`,
+		"GET projects/314/rawEvents/9":         `{"id":9,"eventId":"` + evil + `","outcome":"` + evil + `","receivedAt":"` + evil + `","payload":"` + evil + `"}`,
+		"GET projects/314/releases":            `{"releases":[{"release":"` + evil + `","firstSeen":"` + evil + `","lastSeen":"` + evil + `"}]}`,
 		"GET projects/314/errors":              `{"errors":[{"id":1,"status":"` + evil + `","exceptionType":"` + evil + `","message":"` + evil + `","lastRelease":"` + evil + `","lastSeen":"` + evil + `"}],"total":9,"nextCursor":"n"}`,
 		"GET projects/314/users":               `{"users":[{"uid":"a","name":"` + evil + `","login":"x"},{"uid":"b","name":"` + evil + `","login":"x"}]}`,
 	} {
@@ -58,6 +61,9 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 	const list = "GET projects/314/errors"
 	f.runCases(t, []cliCase{
 		run("errors inspect", []string{e42, e42 + "/activity", e42 + "/assignees"}, "errors", "inspect", "42", "--project", "314"),
+		{name: "raw-events get by an ambiguous EVENT ID", args: []string{"raw-events", "get", "e", "--project", "314"}, calls: []string{"GET projects/314/rawEvents"},
+			exit: 2, check: clean},
+		run("releases status", []string{"GET projects/314/releases", list, list, list}, "releases", "status", "--project", "314", "--limit", "1"),
 		{name: "a batch update in text", args: []string{"errors", "update", "42", "43", "--project", "314", "--status", "resolved"},
 			calls: []string{e42, e43, "PATCH projects/314/errors/42", "PATCH projects/314/errors/43"}, anyOrd: true, exit: 4, check: clean},
 		{name: "a refused single update", args: []string{"errors", "update", "43", "--project", "314", "--status", "resolved"},
@@ -74,5 +80,12 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 		run("projects use", []string{p}, "projects", "use", "314"),
 		{name: "no project given and none picked", args: []string{"errors", "get", "42"}, exit: 2, check: clean},
 		run("projects list names the default", []string{"GET projects"}, "projects", "list"),
+		{name: "agent mode hints", setup: asAgent, args: []string{"releases", "status", "--project", "314", "--limit", "1"},
+			calls: []string{"GET projects/314/releases", list, list, list},
+			check: func(t *testing.T, _ string, _ error, _ []etCall) {
+				t.Helper()
+				assert.Contains(t, f.stderr.String(), `"class":"hint"`)
+				assertNoEscapes(t, "stderr", f.stderr.String())
+			}},
 	})
 }

@@ -311,7 +311,8 @@ func customFields(cmd *cobra.Command, fields []string, q url.Values) error {
 			return usage(cmd, "--custom-field must not be empty")
 		}
 		if !validField(f) {
-			return usage(cmd, fmt.Sprintf("--custom-field %q: use key:value, !key:value, has:key or key:[a,b]", f))
+			return usage(cmd, fmt.Sprintf("--custom-field %q: use key:value, !key:value, has:key or key:[a,b]", f),
+				"See the keys: "+et("fields", "list", "--project", projectOf(cmd)))
 		}
 		q.Add("customField", f)
 	}

@@ -512,9 +512,17 @@ safety cap must NOT use the binder — "0 means all" would be dishonest there.
 They keep a bespoke flag description that discloses the cap, and disclose the
 cap at runtime via `ListMeta.Cap` plus the cap-variant hint (below).
 `--limit 0` on a capped source means "as much as the cap allows", and the
-output must say so. The one command taking this exception is
+output must say so. The commands taking this exception are
 `agento11y review-queues list-scores`, whose cap is set by the backend export
-(not client-side) and cannot be raised by the caller. The last client-side
+(not client-side) and cannot be raised by the caller, and the
+`error-tracking` lookups `releases list`, `environments list`,
+`transactions list`, `fields list` and `fields list-values`, whose endpoints
+return at most 100 entries with no cursor or page parameter, and `users list`,
+which reads only the first page of 100 that its paged endpoint serves and
+takes `--limit` 1 to 100, so `--search` is how a caller reaches the rest.
+`releases status` takes a bespoke `--limit` (1 to 200) for the sections of a
+status card; a section that has more says so with a command that shows it, so
+the card needs no cap exception. The last client-side
 one, `irm oncall alert-groups list`, dropped its 1000-item cap in favour of a
 real cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
 raise makes the complete set unreachable, which is the defect that issue

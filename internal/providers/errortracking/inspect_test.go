@@ -1,14 +1,19 @@
 package errortracking_test
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const inspectError = `{"id":42,"projectId":314,"projectName":"Checkout API","status":"ignored","ignoredUntilEvents":110,"exceptionType":"TypeError",
@@ -159,5 +164,150 @@ func TestEventsGetFormats(t *testing.T) {
 				assert.Contains(t, rendered(t, err), "Swap them: gcx error-tracking errors events get 42 10bd72c2aa4b4c3b8e7f6a5b4c3ec0d8 --project 314")
 			}},
 		{name: "no event", args: []string{"errors", "events", "get", "42", "--project", "314"}, exit: gcxerrors.ExitUsageError, err: "accepts 2 arg(s), received 1"},
+	})
+}
+
+func TestReleasesStatus(t *testing.T) {
+	f := newFakeET(t)
+	const releases, errs = "GET projects/314/releases", "GET projects/314/errors"
+	f.reply(releases, 200, `{"releases":[{"release":"web@1.1.0","firstSeen":"2026-11-17T09:00:00Z","lastSeen":"2026-11-17T10:00:00Z","eventCount":8},
+		{"release":"web@1.0.0","firstSeen":"2026-11-10T09:00:00Z","lastSeen":"2026-11-17T08:00:00Z","eventCount":80}]}`)
+	f.handle(errs, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		switch {
+		case q.Get("regressedFrom") != "":
+			_, _ = w.Write([]byte(`{"errors":[{"id":2422,"status":"unresolved","regressed":true,"exceptionType":"RangeError","message":"bad length","eventCount":5,"lastRelease":"web@1.0.0"}]}`))
+		case q.Get("firstSeenFrom") != "":
+			_, _ = w.Write([]byte(`{"errors":[{"id":2422,"status":"unresolved","regressed":true},{"id":2486,"status":"unresolved","exceptionType":"Error","message":"payment gateway timeout","eventCount":1,"lastRelease":"web@1.0.0"}],"nextCursor":"p2"}`))
+		default:
+			_, _ = w.Write([]byte(`{"errors":[{"id":2422,"status":"unresolved","regressed":true},{"id":2367,"status":"unresolved","exceptionType":"TypeError","message":"boom","eventCount":4}],"nextCursor":"l2"}`))
+		}
+	})
+	status := func(args ...string) []string { return append([]string{"releases", "status"}, args...) }
+	all := []string{releases, errs, errs, errs}
+	newRest := "gcx error-tracking errors list --project 314 --status new --since-release web@1.1.0 --limit 0"
+	lastRest := "gcx error-tracking errors list --project 314 --status all --release web@1.1.0 --limit 0"
+
+	f.runCases(t, []cliCase{
+		{name: "one query per section, a RELEASE column, and a hint for each cut section", args: status("--project", "314", "--limit", "1"), calls: all,
+			has: []string{"Release web@1.1.0 · project 314", "first event 2026-11-17 09:00Z (", "8 events",
+				"REGRESSED since its first event (1)\nID    TYPE        MESSAGE     EVENTS  LAST SEEN  RELEASE\n2422  RangeError  bad length  5",
+				"web@1.0.0", "NEW since its first event (first 1)", "LAST SEEN IN THIS RELEASE (first 1)",
+				"first 1"},
+			hasNot: []string{"Each section is its own query"},
+			check: func(t *testing.T, out string, _ error, calls []etCall) {
+				t.Helper()
+				assert.NotContains(t, out, "each section is its own query")
+				assert.Contains(t, f.stderr.String(), "hint: each section is its own query, so an error can show in more than one; RELEASE is the error's latest release")
+				assert.Equal(t, 3, strings.Count(f.stderr.String(), "hint:"), "the legend and one hint for each cut section")
+				assert.Equal(t, map[string][]string{"status": {"regressed"}, "regressedFrom": {"2026-11-17T09:00:00Z"}, "sort": {"lastSeen"}, "limit": {"2"}}, map[string][]string(calls[1].Query))
+				assert.Equal(t, map[string][]string{"status": {"unresolved"}, "reviewed": {"false"}, "firstSeenFrom": {"2026-11-17T09:00:00Z"}, "sort": {"lastSeen"}, "limit": {"2"}}, map[string][]string(calls[2].Query))
+				assert.Equal(t, map[string][]string{"status": {"all"}, "release": {"web@1.1.0"}, "sort": {"lastSeen"}, "limit": {"2"}}, map[string][]string(calls[3].Query))
+				assert.Contains(t, f.stderr.String(), "hint: the new section was cut at --limit; see the rest: "+newRest)
+				assert.Contains(t, f.stderr.String(), "hint: the last-seen section was cut at --limit; see the rest: "+lastRest)
+				assert.Equal(t, "100", calls[0].Query.Get("limit"), "the releases lookup asks for the latest 100 it names")
+			}},
+		{name: "JSON marks each cut section and carries no continue command", args: status("web@1.1.0", "--project", "314", "--limit", "1", "-o", "json",
+			"--jq", "[.regressed.list_meta, .new.list_meta.truncated, (.new.list_meta | has(\"continue\")), .lastSeen.list_meta.truncated, (.lastSeen.list_meta | has(\"continue\")), .release.release, .project]"),
+			calls: all, json: `[null, true, false, true, false, "web@1.1.0", {"id":314}]`},
+		{name: "an error two queries return shows in both sections", args: status("--project", "314", "--limit", "5", "--jq", "[[.regressed.items[].id], [.new.items[].id], [.lastSeen.items[].id]]"),
+			calls: all, json: `[[2422], [2422, 2486], [2422, 2367]]`},
+		{name: "--limit 0 is refused before any request", args: status("--project", "314", "--limit", "0"), exit: gcxerrors.ExitUsageError, err: "invalid --limit 0: must be 1 to 200"},
+		{name: "and so is a --limit past the server's page", args: status("--project", "314", "--limit", "201"), exit: gcxerrors.ExitUsageError, err: "invalid --limit 201: must be 1 to 200"},
+		{name: "--limit 200 asks for one page of 200", args: status("--project", "314", "--limit", "200", "-o", "json"), calls: all,
+			check: func(t *testing.T, _ string, _ error, calls []etCall) {
+				t.Helper()
+				for _, c := range calls[1:] {
+					assert.Equal(t, "200", c.Query.Get("limit"))
+				}
+			}},
+		{name: "--limit names its range", args: status("--help"), has: []string{"Errors to show per section, 1 to 200"}, hasNot: []string{"0 means all", "each error shows once"}},
+		{name: "an unknown release", args: status("v9", "--project", "314"), calls: []string{releases}, exit: gcxerrors.ExitGeneralError,
+			err: `project 314 has no release "v9" among its latest 100. Counts can lag a minute or two behind new events`,
+			check: func(t *testing.T, _ string, err error, _ []etCall) {
+				t.Helper()
+				assert.Contains(t, rendered(t, err), "See what arrived: gcx error-tracking raw-events list --project 314")
+			}},
+		{name: "a project with no releases exits 0 and says so on stderr", setup: func(f *fakeET) { f.reply(releases, 200, `{"releases":[]}`) },
+			args: status("--project", "314"), calls: []string{releases},
+			stderr: "hint: Project 314 has no releases yet. Counts can lag a minute or two behind new events; see what arrived: gcx error-tracking raw-events list --project 314",
+			check: func(t *testing.T, out string, _ error, _ []etCall) {
+				t.Helper()
+				assert.Empty(t, out)
+			}},
+		{name: "and as JSON, an empty status", setup: func(f *fakeET) { f.reply(releases, 200, `{"releases":[]}`) }, args: status("--project", "314", "-o", "json"), calls: []string{releases},
+			json: `{"release":null,"project":{"id":314},"new":{"items":[]},"regressed":{"items":[]},"lastSeen":{"items":[]}}`},
+		{name: "a release without a first event is refused", setup: func(f *fakeET) {
+			f.reply(releases, 200, `{"releases":[{"release":"v0","firstSeen":""}]}`)
+		}, args: status("--project", "314"), calls: []string{releases}, exit: gcxerrors.ExitGeneralError, err: `release "v0" in project 314 has no first event yet`},
+		{name: "an empty release name", args: status(" ", "--project", "314"), exit: gcxerrors.ExitUsageError},
+	})
+}
+
+func TestReleasesStatusSectionBoundary(t *testing.T) {
+	const releases, errs = "GET projects/314/releases", "GET projects/314/errors"
+	for _, tc := range []struct {
+		name, next, title string
+		n                 int
+		cut               bool
+	}{
+		{name: "one under --limit", n: 1, title: "(1)"},
+		{name: "exactly --limit with no more", n: 2, title: "(2)"},
+		{name: "exactly --limit with more on the server", n: 2, next: "more", title: "(first 2)", cut: true},
+		{name: "one over --limit", n: 3, title: "(first 2)", cut: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeET(t)
+			f.reply(releases, 200, `{"releases":[{"release":"v1","firstSeen":"2026-11-17T09:00:00Z"}]}`)
+			f.handle(errs, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("release") == "" {
+					_, _ = w.Write([]byte(`{"errors":[]}`))
+					return
+				}
+				items := make([]string, tc.n)
+				for i := range items {
+					items[i] = fmt.Sprintf(`{"id":%d,"status":"unresolved"}`, 200+i)
+				}
+				_, _ = fmt.Fprintf(w, `{"errors":[%s],"nextCursor":%q}`, strings.Join(items, ","), tc.next)
+			})
+			out, err := f.run("releases", "status", "--project", "314", "--limit", "2")
+			require.NoError(t, err)
+			assert.Contains(t, out, "LAST SEEN IN THIS RELEASE "+tc.title)
+			json, err := f.run("releases", "status", "--project", "314", "--limit", "2", "--jq", "[.lastSeen.list_meta.truncated == true, (.lastSeen.items | length)]")
+			require.NoError(t, err)
+			assert.JSONEq(t, fmt.Sprintf("[%t, %d]", tc.cut, min(tc.n, 2)), json)
+		})
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stdout is closed") }
+
+func TestReleasesStatusTableWriteFailureExitsNonZero(t *testing.T) {
+	f := newFakeET(t)
+	f.reply("GET projects/314/releases", 200, `{"releases":[{"release":"v1","firstSeen":"2026-11-17T09:00:00Z"}]}`)
+	f.reply("GET projects/314", 200, `{"id":314,"name":"web","stats":{"dailyEvents":[]}}`)
+	f.reply("GET projects/314/errors", 200, `{"errors":[{"id":1,"status":"unresolved"}]}`)
+	cmd := root.Command("test")
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"error-tracking", "--config", f.cfg, "releases", "status", "--project", "314"})
+	err := cmd.ExecuteContext(t.Context())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stdout is closed")
+	assert.NotEqual(t, 0, exitCode(err))
+}
+
+func TestReleasesStatusSectionWithoutErrorsIsAnEmptyList(t *testing.T) {
+	f := newFakeET(t)
+	f.reply("GET projects/314/releases", 200, `{"releases":[{"release":"v1","firstSeen":"2026-11-17T09:00:00Z"}]}`)
+	f.reply("GET projects/314/errors", 200, `{}`)
+	f.runCases(t, []cliCase{
+		{name: "a section the server returns no errors field for is [] in JSON", args: []string{"releases", "status", "--project", "314", "--jq", "[.regressed.items, .new.items, .lastSeen.items]", "-o", "json"},
+			calls: []string{"GET projects/314/releases", "GET projects/314/errors", "GET projects/314/errors", "GET projects/314/errors"}, json: `[[], [], []]`},
+		{name: "and in YAML", args: []string{"releases", "status", "--project", "314", "-o", "yaml"},
+			calls: []string{"GET projects/314/releases", "GET projects/314/errors", "GET projects/314/errors", "GET projects/314/errors"},
+			has:   []string{"items: []"}, hasNot: []string{"items: null"}},
 	})
 }

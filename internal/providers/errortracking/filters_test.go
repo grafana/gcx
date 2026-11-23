@@ -12,6 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func sinceOnly(t *testing.T, _ string, _ error, calls []etCall) {
+	t.Helper()
+	assert.NotEmpty(t, calls[0].Query.Get("from"))
+	assert.NotContains(t, calls[0].Query, "to", "--since without --to sends no to")
+}
+
 func TestFilters(t *testing.T) {
 	f := newFakeET(t)
 	const someErrors = `{"errors":[{"id":1,"status":"unresolved"}],"total":1}`
@@ -19,6 +25,9 @@ func TestFilters(t *testing.T) {
 	f.reply("GET projects/314/timeline", 200, `{"bucket":"5m","buckets":[]}`)
 	f.reply("GET projects/314/errors/42/timeline", 200, `{"bucket":"15m","buckets":[]}`)
 	f.reply("GET projects/314/errors/42/events", 200, `{"events":[]}`)
+	f.reply("GET projects/314/customFields/values", 200, `{"key":"browser","values":[]}`)
+	f.reply("GET projects/314/customFields", 200, `{"keys":[]}`)
+	f.reply("GET projects/314/environments", 200, `{"environments":[]}`)
 	f.reply("GET projects/314/releases", 200, `{"releases":[{"release":"v1.2.3","firstSeen":"2026-11-16T08:00:00Z","lastSeen":"2026-11-16T09:00:00Z","eventCount":3}]}`)
 
 	const from, to = "2026-11-16T00:00:00Z", "2026-11-17T00:00:00Z"
@@ -101,10 +110,33 @@ func TestFilters(t *testing.T) {
 			calls: []string{"GET projects/314/errors"}, query: map[string][]string{"status": {"unresolved"}, "reviewed": {"false"}, "firstSeenFrom": {from}, "sort": {"lastSeen"}, "limit": {"50"}}},
 		{name: "regressed takes --since-release", args: list("--status", "regressed", "--since-release", "v1.2.3", "-o", "json"),
 			calls: []string{"GET projects/314/releases", "GET projects/314/errors"}, query: map[string][]string{"status": {"regressed"}, "regressedFrom": {"2026-11-16T08:00:00Z"}, "sort": {"lastSeen"}, "limit": {"50"}}},
+		{name: "an unknown --since-release", args: list("--status", "new", "--since-release", "v9"),
+			calls: []string{"GET projects/314/releases"}, exit: gcxerrors.ExitGeneralError, err: `project 314 has no release "v9" among its latest 100. Counts can lag a minute or two behind new events`,
+			check: func(t *testing.T, _ string, err error, _ []etCall) {
+				t.Helper()
+				assert.Contains(t, rendered(t, err), "See what arrived: gcx error-tracking raw-events list --project 314")
+				assert.NotContains(t, rendered(t, err), "no event carried one")
+			}},
+		{name: "an empty list says to widen the filters", setup: func(f *fakeET) { f.reply("GET projects/314/errors", 200, `{"errors":[]}`) },
+			args: list("--search", "zzzz"), calls: []string{"GET projects/314/errors"},
+			stderr: "hint: No errors match; widen the filters or --since, or see every state with --status all. Counts can lag a minute or two behind new events"},
+		{name: "an empty list under --status all does not suggest --status all", setup: func(f *fakeET) { f.reply("GET projects/314/errors", 200, `{"errors":[]}`) },
+			args: list("--status", "all", "--search", "zzzz"), calls: []string{"GET projects/314/errors"},
+			stderr: "hint: No errors match; widen the filters or --since. Counts can lag a minute or two behind new events"},
 		{name: "an empty list in JSON keeps stdout one value", setup: func(f *fakeET) { f.reply("GET projects/314/errors", 200, `{"errors":[]}`) },
 			args: list("-o", "json"), calls: []string{"GET projects/314/errors"}, json: `{"items":[]}`},
 		{name: "events list custom field", args: []string{"errors", "events", "list", "42", "--project", "314", "--custom-field", "!browser:Chrome", "-o", "json"},
 			calls: []string{"GET projects/314/errors/42/events"}, query: map[string][]string{"limit": {"50"}, "customField": {"!browser:Chrome"}}},
+		{name: "fields list-values window", args: append([]string{"fields", "list-values", "browser", "--project", "314", "-o", "json"}, window()...),
+			calls: []string{"GET projects/314/customFields/values"}, query: map[string][]string{"key": {"browser"}, "from": {from}, "to": {to}, "limit": {"100"}}},
+		{name: "fields list-values --since leaves the window open", args: []string{"fields", "list-values", "browser", "--project", "314", "--since", "1h", "-o", "json"},
+			calls: []string{"GET projects/314/customFields/values"}, check: sinceOnly},
+		{name: "fields list --since leaves the window open", args: []string{"fields", "list", "--project", "314", "--since", "1h", "-o", "json"},
+			calls: []string{"GET projects/314/customFields"}, check: sinceOnly},
+		{name: "environments list window", args: append([]string{"environments", "list", "--project", "314", "-o", "json"}, window()...),
+			calls: []string{"GET projects/314/environments"}, query: map[string][]string{"from": {from}, "to": {to}, "limit": {"100"}}},
+		{name: "releases list window", args: append([]string{"releases", "list", "--project", "314", "-o", "json"}, window()...),
+			calls: []string{"GET projects/314/releases"}, query: map[string][]string{"from": {from}, "to": {to}, "limit": {"100"}}},
 		{name: "events list window", args: append([]string{"errors", "events", "list", "42", "--project", "314", "-o", "json"}, window()...),
 			calls: []string{"GET projects/314/errors/42/events"}, query: map[string][]string{"limit": {"50"}, "from": {from}, "to": {to}}},
 	}, usageCases(func(args ...string) []string { return args },

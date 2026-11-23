@@ -55,6 +55,7 @@
   "gcx error-tracking projects ingest-keys rotate",
   "gcx error-tracking projects timeline",
   "gcx error-tracking projects use",
+  "gcx error-tracking releases status",
   "gcx frontend apps apply-sourcemap",
   "gcx instrumentation check",
   "gcx instrumentation clusters apps configure",

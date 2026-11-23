@@ -61,6 +61,10 @@ func argHelp(cmd *cobra.Command, name string, args []string) string {
 		return et("errors", "list", "--project", project)
 	case "<comment>":
 		return et("errors", "activity", "list", errID, "--project", project, "--type", "comment")
+	case "<raw-event>":
+		return et("raw-events", "list", "--project", project)
+	case "<user>":
+		return et("users", "list", "--project", project)
 	}
 	return cmd.CommandPath() + " --help"
 }
