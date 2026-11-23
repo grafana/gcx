@@ -133,7 +133,12 @@ type datasourceReadError struct {
 
 func (e *datasourceReadError) Error() string {
 	parts := make([]string, 0, len(e.failures)+1)
-	parts = append(parts, fmt.Sprintf("%d datasource(s) could not be read", len(e.failures)))
+	if len(e.failures) > 0 {
+		parts = append(parts, fmt.Sprintf("%d datasource(s) could not be read", len(e.failures)))
+	}
+	if e.skipped > 0 && len(e.failures) == 0 {
+		parts = append(parts, fmt.Sprintf("%d datasource(s) deleted during the pull were skipped", e.skipped))
+	}
 	for _, f := range e.failures {
 		parts = append(parts, f.Err.Error())
 	}

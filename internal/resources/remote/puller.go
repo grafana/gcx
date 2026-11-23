@@ -130,6 +130,11 @@ type PullRequest struct {
 
 	// IdentityOnlyDelete uses optional identity selection before configuration reads.
 	IdentityOnlyDelete bool
+
+	// CompleteListing asks adapters that implement PullLister for complete
+	// objects when listing a whole resource type. Only exports such as
+	// `resources pull` need it, because it can cost one read per object.
+	CompleteListing bool
 }
 
 // Pull pulls resources from Grafana.
@@ -262,7 +267,7 @@ func (p *Puller) pullFilter(ctx, invocationCtx context.Context, req PullRequest,
 	switch filt.Type {
 	case resources.FilterTypeAll:
 		list := p.client.List
-		if lister, ok := p.client.(PullLister); ok {
+		if lister, ok := p.client.(PullLister); ok && req.CompleteListing {
 			list = lister.ListForPull
 		}
 		res, err := list(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})

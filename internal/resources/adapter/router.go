@@ -189,10 +189,13 @@ func (r *ResourceClientRouter) ListForPull(
 	if err != nil {
 		return nil, err
 	}
+	if a == nil {
+		return r.dynamic.List(ctx, desc, opts)
+	}
 	if lister, ok := a.(PullLister); ok {
 		return lister.ListForPull(ctx, opts)
 	}
-	return r.List(ctx, desc, opts)
+	return a.List(ctx, opts)
 }
 
 // Delete implements remote.DeleteClient.

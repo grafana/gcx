@@ -449,3 +449,61 @@ func TestRouterPreflightSkipsEmptyFailedSelections(t *testing.T) {
 		})
 	}
 }
+
+// pullListingAdapter is an adapter that also implements PullLister.
+type pullListingAdapter struct {
+	*countingAdapter
+
+	listForPullCalled atomic.Int32
+	result            *unstructured.UnstructuredList
+}
+
+func (a *pullListingAdapter) ListForPull(context.Context, metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	a.listForPullCalled.Add(1)
+	return a.result, nil
+}
+
+func routerFor(a adapter.ResourceAdapter, dyn *mockDynamicClient) *adapter.ResourceClientRouter {
+	return adapter.NewResourceClientRouter(dyn, map[schema.GroupVersionKind]adapter.Factory{
+		sloGVK: func(context.Context) (adapter.ResourceAdapter, error) { return a, nil },
+	})
+}
+
+// TestRouterListForPullUsesPullLister verifies an adapter that implements
+// PullLister serves ListForPull, and List is not called.
+func TestRouterListForPullUsesPullLister(t *testing.T) {
+	full := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{{Object: map[string]any{"full": true}}}}
+	a := &pullListingAdapter{countingAdapter: newSLOAdapter(), result: full}
+	dyn := &mockDynamicClient{}
+
+	got, err := routerFor(a, dyn).ListForPull(context.Background(), sloDescriptor, metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Same(t, full, got)
+	require.Equal(t, int32(1), a.listForPullCalled.Load())
+	require.Equal(t, int32(0), a.listCalled.Load(), "adapter List should NOT be called")
+	require.Equal(t, 0, dyn.listCalled)
+}
+
+// TestRouterListForPullFallsBackToAdapterList verifies an adapter without
+// PullLister is listed with its plain List.
+func TestRouterListForPullFallsBackToAdapterList(t *testing.T) {
+	a := newSLOAdapter()
+	dyn := &mockDynamicClient{}
+
+	_, err := routerFor(a, dyn).ListForPull(context.Background(), sloDescriptor, metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int32(1), a.listCalled.Load())
+	require.Equal(t, 0, dyn.listCalled)
+}
+
+// TestRouterListForPullFallsBackToDynamicClient verifies resource types with
+// no adapter are listed through the dynamic client.
+func TestRouterListForPullFallsBackToDynamicClient(t *testing.T) {
+	a := newSLOAdapter()
+	dyn := &mockDynamicClient{}
+
+	_, err := routerFor(a, dyn).ListForPull(context.Background(), dashboardDescriptor, metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Equal(t, int32(0), a.listCalled.Load())
+	require.Equal(t, 1, dyn.listCalled)
+}

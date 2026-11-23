@@ -102,3 +102,19 @@ func TestListForPullKeepsGoingAfterIndividualFailures(t *testing.T) {
 	assert.Contains(t, partial.ReadFailures()[0].Err.Error(), `"b"`)
 	assert.Equal(t, 1, partial.SkippedReads(), "a datasource deleted since the list is skipped")
 }
+
+func TestListForPullSkippedOnlyErrorOmitsFailureCount(t *testing.T) {
+	tr := &summaryTransport{
+		full: map[string]*dsclient.Datasource{"a": newFull("a"), "c": newFull("c")},
+		getErrs: map[string]error{
+			"c": dsclient.NewAPIError("get datasource", "c", http.StatusNotFound, nil),
+		},
+	}
+	lister, ok := provds.NewAdapterForTest(tr, "default").(adapter.PullLister)
+	require.True(t, ok)
+
+	_, err := lister.ListForPull(t.Context(), metav1.ListOptions{})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "0 datasource(s)")
+	assert.Contains(t, err.Error(), "1 datasource(s) deleted during the pull were skipped")
+}

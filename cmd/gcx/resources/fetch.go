@@ -23,6 +23,9 @@ type FetchRequest struct {
 	// Set to 1 for field discovery (--json ?) to avoid full list operations.
 	Limit              int64
 	IdentityOnlyDelete bool
+	// CompleteListing makes whole-type fetches read objects in full. Only
+	// `resources pull` sets it.
+	CompleteListing bool
 }
 
 type FetchResponse struct {
@@ -90,6 +93,7 @@ func fetchResources(ctx context.Context, opts FetchRequest, args []string, valid
 		Limit:              opts.Limit,
 		IdentityOnlyDelete: opts.IdentityOnlyDelete,
 		ExcludeReadOnly:    opts.ExcludeReadOnly,
+		CompleteListing:    opts.CompleteListing,
 	}
 
 	summary, err := pull.Pull(ctx, req)

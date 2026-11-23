@@ -8,6 +8,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -189,19 +190,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			res, err := FetchResources(ctx, FetchRequest{
-				ExcludeReadOnly: opts.SkipReadOnly,
-				Config:          cfg,
-				Warn:            cmd.ErrOrStderr(),
-				// Strip server fields from the resources.
-				// This includes fields like `resourceVersion`, `uid`, etc.
-				Processors: []remote.Processor{
-					&process.ServerFieldsStripper{},
-					adapter.PullFieldsStripper{},
-				},
-				ExcludeManaged: !opts.IncludeManaged,
-				StopOnError:    opts.OnError.StopOnError(),
-			}, args)
+			res, err := FetchResources(ctx, opts.fetchRequest(cfg, cmd.ErrOrStderr()), args)
 			if err != nil {
 				return err
 			}
@@ -337,4 +326,23 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// fetchRequest builds the fetch for a pull. Only a pull needs datasources in
+// full; get, delete and edit keep the cheap listing.
+func (opts *pullOpts) fetchRequest(cfg config.NamespacedRESTConfig, warn io.Writer) FetchRequest {
+	return FetchRequest{
+		ExcludeReadOnly: opts.SkipReadOnly,
+		Config:          cfg,
+		Warn:            warn,
+		// Strip server fields from the resources.
+		// This includes fields like `resourceVersion`, `uid`, etc.
+		Processors: []remote.Processor{
+			&process.ServerFieldsStripper{},
+			adapter.PullFieldsStripper{},
+		},
+		ExcludeManaged:  !opts.IncludeManaged,
+		StopOnError:     opts.OnError.StopOnError(),
+		CompleteListing: true,
+	}
 }

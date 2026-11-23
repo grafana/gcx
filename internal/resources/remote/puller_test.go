@@ -567,8 +567,29 @@ func TestPullUsesPullListerWhenAvailable(t *testing.T) {
 	}
 	puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
 	var dest resources.Resources
-	_, err := puller.Pull(t.Context(), remote.PullRequest{Resources: &dest})
+	_, err := puller.Pull(t.Context(), remote.PullRequest{Resources: &dest, CompleteListing: true})
 	require.NoError(t, err)
 	require.Equal(t, 1, dest.Len())
 	require.Equal(t, "full", dest.AsList()[0].Name())
+}
+
+func TestPullIgnoresPullListerWithoutCompleteListing(t *testing.T) {
+	desc := dashboardDescriptor()
+	summary := makeUnstructuredDashboard("summary")
+	summary.SetGroupVersionKind(desc.GroupVersionKind())
+	full := makeUnstructuredDashboard("full")
+	full.SetGroupVersionKind(desc.GroupVersionKind())
+
+	client := &listForPullClient{
+		mockPullClient: mockPullClient{partialLists: map[string]*unstructured.UnstructuredList{
+			desc.Plural: {Items: []unstructured.Unstructured{summary}},
+		}},
+		pullList: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{full}},
+	}
+	puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+	var dest resources.Resources
+	_, err := puller.Pull(t.Context(), remote.PullRequest{Resources: &dest})
+	require.NoError(t, err)
+	require.Equal(t, 1, dest.Len())
+	require.Equal(t, "summary", dest.AsList()[0].Name())
 }
