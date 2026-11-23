@@ -2,7 +2,10 @@ package changereview
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -68,8 +71,8 @@ func (c *Client) EditChecks(ctx context.Context, edit func([]Check) ([]Check, er
 
 // saveRequest is the write shape: descriptions are read-only.
 type saveRequest struct {
-	ExpectedRevision string       `json:"expectedRevision"`
-	Checks           []savedCheck `json:"checks"`
+	ExpectedRevision string                       `json:"expectedRevision"`
+	Checks           []map[string]json.RawMessage `json:"checks"`
 }
 
 type savedCheck struct {
@@ -85,17 +88,13 @@ type savedCheck struct {
 }
 
 func (c *Client) saveChecks(ctx context.Context, revision string, checks []Check) (*Checks, error) {
-	body := saveRequest{ExpectedRevision: revision, Checks: make([]savedCheck, 0, len(checks))}
+	body := saveRequest{ExpectedRevision: revision, Checks: make([]map[string]json.RawMessage, 0, len(checks))}
 	for _, check := range checks {
-		paths := check.Paths
-		if paths == nil {
-			paths = []string{}
+		wire, err := savedFields(check)
+		if err != nil {
+			return nil, err
 		}
-		body.Checks = append(body.Checks, savedCheck{
-			ID: check.ID, BuiltIn: check.BuiltIn, Name: check.Name, Instructions: check.Instructions,
-			Enabled: check.Enabled, Blocking: check.Blocking, Paths: paths,
-			RepositoryOverrides: check.RepositoryOverrides, AppliesTo: check.AppliesTo,
-		})
+		body.Checks = append(body.Checks, wire)
 	}
 	saved, err := assistanthttp.DoEnvelopeRequest[Checks](c.base, ctx, http.MethodPut, checksPath, body, "save change review checks")
 	if err != nil {
@@ -105,6 +104,29 @@ func (c *Client) saveChecks(ctx context.Context, revision string, checks []Check
 		return nil, classify(err, writePermission)
 	}
 	return saved, nil
+}
+
+// savedFields is the check as a save sends it: the modelled fields, then the
+// fields the read returned that gcx does not model.
+func savedFields(check Check) (map[string]json.RawMessage, error) {
+	paths := check.Paths
+	if paths == nil {
+		paths = []string{}
+	}
+	data, err := json.Marshal(savedCheck{
+		ID: check.ID, BuiltIn: check.BuiltIn, Name: check.Name, Instructions: check.Instructions,
+		Enabled: check.Enabled, Blocking: check.Blocking, Paths: paths,
+		RepositoryOverrides: check.RepositoryOverrides, AppliesTo: check.AppliesTo,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode change review check %q: %w", check.ID, err)
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return nil, fmt.Errorf("encode change review check %q: %w", check.ID, err)
+	}
+	maps.Copy(wire, check.extra)
+	return wire, nil
 }
 
 // Stats summarizes the published reviews in a window.
@@ -147,13 +169,16 @@ func (q StatsQuery) encode(params url.Values) string {
 }
 
 // classify separates a stack without change review checks, which answers 403
-// on checks and 404 on statistics, from a caller without permission.
+// on checks and 404 on statistics, from a caller without permission. Only the
+// server's own "not enabled" answers qualify: an unknown check ID returns an
+// empty list, and any other 404 (such as a plugin without these routes) is
+// reported as it is.
 func classify(err error, permission string) error {
 	status, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
 	if !ok {
 		return err
 	}
-	notEnabled := status.Status == http.StatusNotFound ||
+	notEnabled := (status.Status == http.StatusNotFound && strings.Contains(status.ServerMessage, "change review analytics not found")) ||
 		(status.Status == http.StatusForbidden && strings.Contains(status.ServerMessage, "not enabled for this stack"))
 	if notEnabled {
 		return &gcxerrors.DetailedError{

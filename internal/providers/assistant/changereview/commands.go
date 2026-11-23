@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,7 +53,9 @@ requests, and see how they perform.
 
 Checks are stack-wide: built-in checks ship with change review and can be
 tuned or turned off; custom checks carry your own instructions. Saves are
-guarded by a revision, so a concurrent edit in Grafana is never overwritten.`,
+guarded by a revision: when another save lands while a command runs, the
+command applies its change to the latest checks if that save changed other
+checks, and fails without saving if it changed the same check.`,
 		Example: `  gcx assistant change-review checks list
   gcx assistant change-review stats --since 7d`,
 	}
@@ -317,11 +320,13 @@ type editFlags struct {
 	AppliesTo    []string
 }
 
-func (f *editFlags) bind(flags *pflag.FlagSet) {
+// bind registers the flags. enabledDefault is what create assumes; update
+// reads --enabled only when it is set, so it shows no default.
+func (f *editFlags) bind(flags *pflag.FlagSet, enabledDefault bool) {
 	flags.StringVarP(&f.File, "filename", "f", "", "Read the check from a YAML or JSON file (- for stdin); flags override its fields")
 	flags.StringVar(&f.Name, "name", "", "Name shown on findings (custom checks only)")
 	flags.StringVar(&f.Instructions, "instructions", "", "What the reviewer should look for; on a built-in check, added to its own guidance")
-	flags.BoolVar(&f.Enabled, "enabled", true, "Run the check; --enabled=false turns it off")
+	flags.BoolVar(&f.Enabled, "enabled", enabledDefault, "Run the check; --enabled=false turns it off")
 	flags.BoolVar(&f.Blocking, "blocking", false, "Fail the GitHub Check on a confirmed finding; otherwise findings are advisory")
 	flags.StringArrayVar(&f.Paths, "path", nil, "File pattern the pull request must change for the check to run (repeatable; ** matches directories); --path '' runs it on every pull request")
 	flags.StringSliceVar(&f.AppliesTo, "applies-to", nil, "Reviews that apply a custom check: plan, code, pr (comma-separated; default pr)")
@@ -336,6 +341,11 @@ func (f *editFlags) input(cmd *cobra.Command) (checkInput, error) {
 	if f.File != "" {
 		if err := providers.ReadFileOrStdin(f.File, cmd.InOrStdin(), &in); err != nil {
 			return in, err
+		}
+		if in.AppliesTo != nil {
+			if stage, ok := invalidStage(*in.AppliesTo); !ok {
+				return in, usageError(cmd, "invalid appliesTo %q in %s: use plan, code, or pr", stage, f.File)
+			}
 		}
 	}
 	flags := cmd.Flags()
@@ -361,16 +371,28 @@ func (f *editFlags) input(cmd *cobra.Command) (checkInput, error) {
 		in.Paths = &paths
 	}
 	if flags.Changed("applies-to") {
+		if stage, ok := invalidStage(f.AppliesTo); !ok {
+			return in, usageError(cmd, "invalid --applies-to %q: use plan, code, or pr, for example --applies-to pr", stage)
+		}
 		in.AppliesTo = &f.AppliesTo
 	}
-	if in.AppliesTo != nil {
-		for _, stage := range *in.AppliesTo {
-			if !slices.Contains([]string{"plan", "code", "pr"}, stage) {
-				return in, usageError(cmd, "invalid --applies-to %q: use plan, code, or pr, for example --applies-to pr", stage)
-			}
+	return in, nil
+}
+
+// invalidStage returns the first value that is not a review stage.
+func invalidStage(stages []string) (string, bool) {
+	for _, stage := range stages {
+		if !slices.Contains([]string{"plan", "code", "pr"}, stage) {
+			return stage, false
 		}
 	}
-	return in, nil
+	return "", true
+}
+
+// empty reports whether in changes nothing.
+func (in checkInput) empty() bool {
+	return in.Name == nil && in.Instructions == nil && in.Enabled == nil && in.Blocking == nil &&
+		in.Paths == nil && in.RepositoryOverrides == nil && in.AppliesTo == nil
 }
 
 // apply writes the set fields of in onto check.
@@ -431,10 +453,10 @@ type mutationOpts struct {
 	Edit editFlags
 }
 
-func (o *mutationOpts) setup(flags *pflag.FlagSet) {
+func (o *mutationOpts) setup(flags *pflag.FlagSet, enabledDefault bool) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
-	o.Edit.bind(flags)
+	o.Edit.bind(flags, enabledDefault)
 }
 
 func (o *mutationOpts) Validate() error { return o.IO.Validate() }
@@ -494,7 +516,7 @@ save; reviews already running keep the checks they started with.`,
 		},
 	}
 	markExperimental(cmd)
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), true)
 	return cmd
 }
 
@@ -504,7 +526,8 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "update CHECK",
 		Short: "Update a change review check.",
 		Long: `Update a built-in or custom change review check. Only the fields set by flags
-or present in the file change; the rest keep their values.
+or present in the file change; the rest keep their values. An update that
+changes nothing saves nothing and reports changed: false.
 
 The revision guard covers the moment of the save, not the time since a file
 was exported: a file from get carries every field, so saving it later
@@ -533,12 +556,16 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 			if in.ID != "" && in.ID != id {
 				return usageError(cmd, "the file describes check %q, not %q; check IDs cannot be changed", in.ID, id)
 			}
+			if in.empty() {
+				return usageError(cmd, "nothing to update: set a flag such as --enabled=false or --blocking, or pass -f with the fields to change")
+			}
 			c, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
+			guard := &targetGuard{id: id}
 			saved, err := c.EditChecks(cmd.Context(), func(checks []client.Check) ([]client.Check, error) {
-				index, err := findCheck(checks, id)
+				index, err := guard.find(checks)
 				if err != nil {
 					return nil, err
 				}
@@ -546,8 +573,16 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 				if next[index], err = in.apply(cmd, next[index]); err != nil {
 					return nil, err
 				}
+				if reflect.DeepEqual(next[index], checks[index]) {
+					return nil, errUnchanged
+				}
 				return next, nil
 			})
+			if errors.Is(err, errUnchanged) {
+				result := newMutationResult("updated", *guard.seen)
+				result.Changed = new(false)
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
+			}
 			if err != nil {
 				return saveError(err)
 			}
@@ -555,11 +590,13 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), newMutationResult("updated", saved.Checks[index]))
+			result := newMutationResult("updated", saved.Checks[index])
+			result.Changed = new(true)
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	markExperimental(cmd)
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), false)
 	return cmd
 }
 
@@ -600,6 +637,24 @@ In agent mode, deletion requires --force or an enabled GCX_AUTO_APPROVE.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			c, err := newClient(cmd, loader)
+			if err != nil {
+				return err
+			}
+			// Check the target before asking, so a prompt is never answered
+			// for a check that cannot be deleted.
+			current, err := c.ListChecks(cmd.Context())
+			if err != nil {
+				return err
+			}
+			guard := &targetGuard{id: id}
+			index, err := guard.find(current.Checks)
+			if err != nil {
+				return err
+			}
+			if err := deletable(current.Checks[index]); err != nil {
+				return err
+			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete change review check %q?", id))
 			if err != nil {
@@ -613,22 +668,13 @@ In agent mode, deletion requires --force or an enabled GCX_AUTO_APPROVE.`,
 					ExitCode: &exitCancelled,
 				}
 			}
-			c, err := newClient(cmd, loader)
-			if err != nil {
-				return err
-			}
+			// The guard holds the check as confirmed: if another save changes
+			// it before this one lands, nothing is deleted.
 			var deleted client.Check
 			_, err = c.EditChecks(cmd.Context(), func(checks []client.Check) ([]client.Check, error) {
-				index, err := findCheck(checks, id)
+				index, err := guard.find(checks)
 				if err != nil {
 					return nil, err
-				}
-				if checks[index].BuiltIn {
-					return nil, &gcxerrors.DetailedError{
-						Summary:     "Built-in checks cannot be deleted",
-						Details:     fmt.Sprintf("%q ships with change review.", id),
-						Suggestions: []string{"Turn it off instead: gcx assistant change-review checks update " + id + " --enabled=false"},
-					}
 				}
 				deleted = checks[index]
 				return slices.Delete(slices.Clone(checks), index, index+1), nil
@@ -644,6 +690,42 @@ In agent mode, deletion requires --force or an enabled GCX_AUTO_APPROVE.`,
 	return cmd
 }
 
+// targetGuard keeps a retried edit from overwriting a concurrent change to the
+// check it edits. The edit was decided against the first read, so after a
+// conflict it is applied again only when that check is still as first read;
+// otherwise the command fails, as the Assistant settings editor does.
+type targetGuard struct {
+	id   string
+	seen *client.Check
+}
+
+func (g *targetGuard) find(checks []client.Check) (int, error) {
+	index, err := findCheck(checks, g.id)
+	if err != nil {
+		return -1, err
+	}
+	if g.seen == nil {
+		seen := checks[index]
+		g.seen = &seen
+		return index, nil
+	}
+	if !reflect.DeepEqual(*g.seen, checks[index]) {
+		return -1, &gcxerrors.DetailedError{
+			Summary: "Change review check changed while saving",
+			Details: fmt.Sprintf("Another save changed %q while this command was saving; nothing was saved, so that change is kept.", g.id),
+			Parent:  client.ErrConflict,
+			Suggestions: []string{
+				"Review the current check: gcx assistant change-review checks get " + g.id,
+				"Then re-run the command",
+			},
+		}
+	}
+	return index, nil
+}
+
+// errUnchanged stops an edit that would save the checks as they are.
+var errUnchanged = errors.New("change review check unchanged")
+
 func saveError(err error) error {
 	if errors.Is(err, client.ErrConflict) {
 		return &gcxerrors.DetailedError{
@@ -654,6 +736,18 @@ func saveError(err error) error {
 		}
 	}
 	return err
+}
+
+// deletable rejects deleting a built-in check.
+func deletable(check client.Check) error {
+	if !check.BuiltIn {
+		return nil
+	}
+	return &gcxerrors.DetailedError{
+		Summary:     "Built-in checks cannot be deleted",
+		Details:     fmt.Sprintf("%q ships with change review.", check.ID),
+		Suggestions: []string{"Turn it off instead: gcx assistant change-review checks update " + check.ID + " --enabled=false"},
+	}
 }
 
 // ---- time window (stats, list-pull-requests) ----

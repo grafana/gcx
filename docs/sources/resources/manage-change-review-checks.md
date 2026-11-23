@@ -67,7 +67,7 @@ gcx assistant change-review checks delete CHECK_ID
 
 The check ID comes from its name, with a number added when another check already uses that ID. Replace `CHECK_ID` with the `id` that `create` returns. Built-in checks can't be deleted. To stop one from running, use `update CHECK --enabled=false`.
 
-Saves are guarded by a revision. If someone else saves the checks while a command is saving, `gcx` applies your change to the latest checks rather than overwriting theirs.
+Saves are guarded by a revision. If someone else saves the checks while a command is saving, `gcx` applies your change to the latest checks when they changed a different check. When they changed the same check, the command fails without saving, so their change is kept; review the check with `get` and run the command again. An `update` that changes nothing saves nothing.
 
 ## See how checks perform
 

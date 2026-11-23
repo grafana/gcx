@@ -2,7 +2,10 @@
 // the checks it runs on GitHub pull requests and how those checks perform.
 package changereview
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Check is one change review check as the Assistant API serves it.
 type Check struct {
@@ -16,6 +19,39 @@ type Check struct {
 	Paths               []string                 `json:"paths"`
 	RepositoryOverrides map[string]CheckOverride `json:"repositoryOverrides,omitempty"`
 	AppliesTo           []string                 `json:"appliesTo,omitempty"`
+
+	// extra holds the fields gcx does not model, so a save sends them back
+	// unchanged instead of dropping them from every check.
+	extra map[string]json.RawMessage
+}
+
+// checkFields are the fields Check models. description is read-only, so it is
+// never sent back either.
+var checkFields = map[string]bool{ //nolint:gochecknoglobals // constant lookup table
+	"id": true, "builtIn": true, "name": true, "description": true, "instructions": true,
+	"enabled": true, "blocking": true, "paths": true, "repositoryOverrides": true, "appliesTo": true,
+}
+
+// UnmarshalJSON decodes a check and keeps the fields it does not model.
+func (c *Check) UnmarshalJSON(data []byte) error {
+	type plain Check
+	if err := json.Unmarshal(data, (*plain)(c)); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	c.extra = nil
+	for key, value := range fields {
+		if !checkFields[key] {
+			if c.extra == nil {
+				c.extra = map[string]json.RawMessage{}
+			}
+			c.extra[key] = value
+		}
+	}
+	return nil
 }
 
 // CheckOverride changes a check on one repository; unset fields keep the

@@ -31,8 +31,10 @@ type fakeChecks struct {
 	revision  int
 	checks    []client.Check
 	conflicts int // PUTs to refuse with 409 before accepting one
-	puts      []map[string]any
-	requests  []string
+	// concurrent runs on each refused PUT, as the other save that won.
+	concurrent func(checks []client.Check)
+	puts       []map[string]any
+	requests   []string
 }
 
 func (f *fakeChecks) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +62,9 @@ func (f *fakeChecks) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.conflicts > 0 || body.ExpectedRevision != strconv.Itoa(f.revision) {
 			f.conflicts--
 			f.revision++ // someone else saved
+			if f.concurrent != nil {
+				f.concurrent(f.checks)
+			}
 			w.WriteHeader(http.StatusConflict)
 			_, _ = w.Write([]byte(`{"message":"Change review checks changed; reload and try again"}`))
 			return
@@ -290,6 +295,7 @@ func TestStatsSendsWindowAndRepository(t *testing.T) {
 func TestStatsNotEnabled(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"change review analytics not found: 12345"}`))
 	}))
 	t.Cleanup(server.Close)
 
@@ -401,7 +407,7 @@ func TestGetTrimsCheckID(t *testing.T) {
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 
-	out, err := run(t, newGetCommand(loaderFor(t, server)), " security ")
+	out, err := run(t, newGetCommand(loaderFor(t, server)), " security ", "-o", "yaml")
 	require.NoError(t, err)
 	assert.Contains(t, out, "id: security")
 }
@@ -469,4 +475,116 @@ func TestListPullRequestsCompleteHasNoListMeta(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, out, "list_meta")
 	assert.Contains(t, out, `"pullRequests": []`)
+}
+
+func TestRetryRefusesToOverwriteConcurrentChangeToTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		concurrent func([]client.Check)
+		wantErr    bool
+	}{
+		{name: "same check changed", concurrent: func(c []client.Check) { c[1].Blocking = true }, wantErr: true},
+		{name: "other check changed", concurrent: func(c []client.Check) { c[0].Enabled = false }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeChecks{checks: builtIns(), conflicts: 1, concurrent: tc.concurrent}
+			server := httptest.NewServer(fake)
+			t.Cleanup(server.Close)
+
+			_, err := run(t, newUpdateCommand(loaderFor(t, server)), "performance", "--instructions", "Mine.")
+			if tc.wantErr {
+				require.ErrorIs(t, err, client.ErrConflict)
+				assert.Contains(t, err.Error(), "changed while saving")
+				assert.Len(t, fake.puts, 1, "no retry after the target changed")
+				assert.True(t, fake.checks[1].Blocking, "the concurrent change is kept")
+				assert.Empty(t, fake.checks[1].Instructions)
+				return
+			}
+			require.NoError(t, err)
+			assert.Len(t, fake.puts, 2)
+			assert.Equal(t, "Mine.", fake.checks[1].Instructions)
+			assert.False(t, fake.checks[0].Enabled, "the concurrent change to another check is kept")
+		})
+	}
+}
+
+func TestDeleteRefusesWhenTargetChangedAfterConfirm(t *testing.T) {
+	fake := &fakeChecks{
+		checks:     append(builtIns(), client.Check{ID: "migrations", Name: "Migrations", Instructions: "x", Enabled: true}),
+		conflicts:  1,
+		concurrent: func(c []client.Check) { c[2].Instructions = "edited" },
+	}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+
+	_, err := run(t, newDeleteCommand(loaderFor(t, server)), "migrations", "--force")
+	require.ErrorIs(t, err, client.ErrConflict)
+	assert.Len(t, fake.checks, 3, "nothing was deleted")
+}
+
+func TestUpdateWithNothingToChange(t *testing.T) {
+	fake := &fakeChecks{checks: builtIns()}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+
+	_, err := run(t, newUpdateCommand(loaderFor(t, server)), "performance")
+	var usage *gcxerrors.UsageError
+	require.ErrorAs(t, err, &usage)
+	assert.Contains(t, err.Error(), "nothing to update")
+
+	out, err := run(t, newUpdateCommand(loaderFor(t, server)), "performance", "--enabled", "-o", "json")
+	require.NoError(t, err, "already enabled")
+	var result mutationResult
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.NotNil(t, result.Changed)
+	assert.False(t, *result.Changed)
+	assert.Empty(t, fake.puts, "an update that changes nothing saves nothing")
+
+	out, err = run(t, newUpdateCommand(loaderFor(t, server)), "performance", "--blocking", "-o", "json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(out), &result))
+	require.NotNil(t, result.Changed)
+	assert.True(t, *result.Changed)
+}
+
+func TestDeleteChecksTargetBeforePrompting(t *testing.T) {
+	fake := &fakeChecks{checks: builtIns()}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	t.Setenv("GCX_AUTO_APPROVE", "")
+
+	for _, id := range []string{"security", "missing"} {
+		cmd := newDeleteCommand(loaderFor(t, server))
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		var errOut bytes.Buffer
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&errOut)
+		cmd.SetIn(strings.NewReader("y\n"))
+		cmd.SetArgs([]string{id})
+		err := cmd.ExecuteContext(t.Context())
+		require.Error(t, err)
+		assert.NotContains(t, errOut.String(), "Delete change review check", "%s: no prompt for a check that cannot be deleted", id)
+	}
+	assert.Empty(t, fake.puts)
+}
+
+func TestUpdateHelpShowsNoEnabledDefault(t *testing.T) {
+	assert.Equal(t, "false", newUpdateCommand(nil).Flags().Lookup("enabled").DefValue)
+	assert.Equal(t, "true", newCreateCommand(nil).Flags().Lookup("enabled").DefValue)
+}
+
+func TestInvalidAppliesToNamesItsSource(t *testing.T) {
+	fake := &fakeChecks{checks: append(builtIns(), client.Check{ID: "migrations", Name: "Migrations", Instructions: "x", Enabled: true})}
+	server := httptest.NewServer(fake)
+	t.Cleanup(server.Close)
+	file := filepath.Join(t.TempDir(), "check.yaml")
+	require.NoError(t, os.WriteFile(file, []byte("appliesTo: [deploy]\n"), 0o600))
+
+	_, err := run(t, newUpdateCommand(loaderFor(t, server)), "migrations", "-f", file)
+	require.ErrorContains(t, err, "invalid appliesTo \"deploy\" in "+file)
+	assert.NotContains(t, err.Error(), "--applies-to")
+
+	_, err = run(t, newUpdateCommand(loaderFor(t, server)), "migrations", "--applies-to", "deploy")
+	require.ErrorContains(t, err, "invalid --applies-to \"deploy\"")
 }

@@ -1,6 +1,7 @@
 package changereview_test
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -69,4 +70,38 @@ func TestStatsKeepsFractionalSeconds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-14T12:00:00.1Z", query.Get("from"))
 	assert.Equal(t, "2026-11-14T12:00:00.9Z", query.Get("to"))
+}
+
+func TestEditChecksKeepsUnmodelledFields(t *testing.T) {
+	var saved string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			body, _ := io.ReadAll(r.Body)
+			saved = string(body)
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"revision":"1","checks":[` +
+			`{"id":"a","builtIn":true,"name":"A","description":"read-only","instructions":"","enabled":true,"blocking":false,"paths":[],"severity":"high","future":{"x":1}}]}}`))
+	}))
+	t.Cleanup(server.Close)
+	base, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+	require.NoError(t, err)
+
+	_, err = changereview.NewClient(base).EditChecks(t.Context(), func(checks []changereview.Check) ([]changereview.Check, error) {
+		checks[0].Blocking = true
+		return checks, nil
+	})
+	require.NoError(t, err)
+	assert.Contains(t, saved, `"severity":"high"`)
+	assert.Contains(t, saved, `"future":{"x":1}`)
+	assert.Contains(t, saved, `"blocking":true`)
+	assert.NotContains(t, saved, "description", "read-only fields are not sent")
+}
+
+func TestNotFoundIsNotEnabledOnlyForTheFeatureAnswer(t *testing.T) {
+	_, err := newClient(t, http.StatusNotFound, `{"message":"change review analytics not found: 12345"}`).Stats(t.Context(), changereview.StatsQuery{})
+	require.ErrorContains(t, err, "not enabled")
+
+	_, err = newClient(t, http.StatusNotFound, `404 page not found`).Stats(t.Context(), changereview.StatsQuery{})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "not enabled")
 }
