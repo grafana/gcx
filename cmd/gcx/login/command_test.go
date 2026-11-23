@@ -2160,7 +2160,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 				"Verify access anytime with: gcx config check",
 				"authenticated for the Grafana API",
 				"requires a Cloud Access Policy (CAP) token.",
-				"grafana.com/docs/grafana-cloud/security-and-account-management",
+				"grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access",
 				"gcx login --context stack --cloud-token",
 			},
 		},
