@@ -12,7 +12,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=jdxcode/mise:2026.10.8@sha256:b720f506c21a6bf5f733a3b1cd04361617ac461a597e44f513aa3976dcd71e57 /usr/local/bin/mise /usr/local/bin/mise
+COPY --from=jdxcode/mise:2026.11.10@sha256:80aa2afb17ba760cabe74ac90771ca2d1470773d514cc2bb79c69c8d3f92f150 /usr/local/bin/mise /usr/local/bin/mise
 
 WORKDIR /src
 
