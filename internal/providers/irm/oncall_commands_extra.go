@@ -1533,16 +1533,22 @@ func (o *escalateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Team, "team", "", "Team ID")
 	flags.StringSliceVar(&o.UserIDs, "user-ids", nil, "User IDs (comma-separated)")
 	flags.BoolVar(&o.Important, "important", false, "Mark as important")
-	flags.StringVar(&o.IncidentID, "incident-id", "", "Incident ID to associate with the page")
+	flags.StringVar(&o.IncidentID, "incident-id", "", "Incident ID to associate with the page (optional, must not be blank when set)")
 }
 
 func (o *escalateOpts) Validate() error {
-	if o.Title == "" {
-		return errors.New("--title is required")
+	if strings.TrimSpace(o.Title) == "" {
+		return &gcxerrors.UsageError{
+			Message:     `--title is required and must not be blank. Provide a title, for example --title "Database outage".`,
+			Suggestions: []string{"See examples: gcx irm oncall escalate --help"},
+		}
 	}
 	o.IncidentID = strings.TrimSpace(o.IncidentID)
 	if o.incidentIDSet && o.IncidentID == "" {
-		return &gcxerrors.UsageError{Message: "--incident-id must not be blank: provide an incident ID or omit the flag"}
+		return &gcxerrors.UsageError{
+			Message:     "--incident-id must not be blank: provide an incident ID or omit the flag to page without linking an incident",
+			Suggestions: []string{"Find incident IDs: gcx irm incidents list"},
+		}
 	}
 	return nil
 }
