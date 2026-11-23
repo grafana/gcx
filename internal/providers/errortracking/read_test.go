@@ -73,6 +73,27 @@ func TestProjects(t *testing.T) {
 	})
 }
 
+func TestProjectByName(t *testing.T) {
+	f := newFakeET(t)
+	f.reply("GET projects", 200, `{"projects":[
+ {"id":314,"name":"Checkout API","stats":{"dailyEvents":[]}},
+ {"id":5,"name":"api-2","stats":{"dailyEvents":[]}},
+ {"id":6,"name":"Twin","stats":{"dailyEvents":[]}},
+ {"id":7,"name":"twin","stats":{"dailyEvents":[]}}]}`)
+	f.reply("GET projects/314", 200, `{"id":314,"name":"Checkout API","stats":{"dailyEvents":[]}}`)
+
+	f.runCases(t, []cliCase{
+		{name: "a name finds its project", args: []string{"projects", "get", "Checkout API", "--json", "spec.id"},
+			calls: []string{"GET projects", "GET projects/314"}, json: `{"spec.id":314}`},
+		{name: "the name-ID finds its project", args: []string{"projects", "get", "checkout-api-314", "--json", "spec.id"},
+			calls: []string{"GET projects", "GET projects/314"}, json: `{"spec.id":314}`},
+		{name: "two projects with one name ask for an ID", args: []string{"projects", "get", "twin"},
+			calls: []string{"GET projects"}, exit: gcxerrors.ExitUsageError, err: "Pass one of these project IDs instead: 6, 7"},
+		{name: "a renamed project's old name-ID points to the ID", args: []string{"projects", "get", "checkout-api-5"},
+			calls: []string{"GET projects"}, exit: gcxerrors.ExitGeneralError, err: "Use the ID: gcx error-tracking projects get 5"},
+	})
+}
+
 func TestForbidden(t *testing.T) {
 	f := newFakeET(t)
 	f.reply("GET projects", http.StatusForbidden, `{"error":{"code":"forbidden","message":"You cannot read projects in this stack."}}`)
