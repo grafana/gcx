@@ -63,6 +63,8 @@ func TestMissingRequiredFlagsSayWhat(t *testing.T) {
 		return cliCase{name: name, args: args, exit: gcxerrors.ExitUsageError, err: `required flag(s) "` + flag + `" not set`}
 	}
 	f.runCases(t, []cliCase{
+		missing("sourcemaps upsert --release", []string{"sourcemaps", "upsert", "--project", "314", "-f", "x.map"}, "release"),
+		missing("sourcemaps upsert -f", []string{"sourcemaps", "upsert", "--project", "314", "--release", "v1"}, "filename"),
 		missing("projects create --name", []string{"projects", "create"}, "name"),
 		missing("comments create --body", []string{"errors", "comments", "create", "42", "--project", "314"}, "body"),
 		missing("comments update --body", []string{"errors", "comments", "update", "42", "7", "--project", "314"}, "body"),

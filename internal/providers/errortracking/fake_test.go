@@ -281,6 +281,11 @@ func replaced(base []string, pairs ...string) []string {
 
 func shell(argv ...string) string { return cmdio.ShellCommand(argv) }
 
+func shellWithDir(argv ...string) string {
+	const slot = "gcx-slot-dir"
+	return strings.NewReplacer("'"+slot+"'", "<dir>", slot, "<dir>").Replace(shell(append(argv, slot)...))
+}
+
 func routesOf(calls []etCall) []string {
 	out := make([]string, len(calls))
 	for i, c := range calls {

@@ -411,6 +411,8 @@ func TestHelpMarksRequiredFlags(t *testing.T) {
 			}
 		}},
 		{name: "update", args: []string{"heatmaps", "update", "--help"}, hasNot: []string{"(required)"}},
+		{name: "sourcemaps upsert names both Cloud scopes", args: []string{"sourcemaps", "upsert", "--help"},
+			has: []string{"sourcemaps:write scope", "stacks:read to look up the stack and confirm its address"}},
 		{name: "--status help says what new and regressed send", args: []string{"errors", "list", "--help"},
 			has: []string{"regressed (resolved errors that came back)", "new (unresolved, first seen since the window start and not reviewed)"}},
 		{name: "--project names no auto-pick", args: []string{"errors", "list", "--help"}, has: []string{"then the stack's default (projects use)\n"}, hasNot: []string{"only project"}},
