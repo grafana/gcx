@@ -21,9 +21,9 @@ const (
 	traceConfigPath   = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/trace"
 	profileConfigPath = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v2/config/profile"
 
-	logConfigsBody     = `{"logDrilldownConfigs":[{"name":"cfg-a","match":[],"entityPropertyToLogLabelMapping":{"pod":"pod"}}]}`
-	traceConfigsBody   = `{"traceDrilldownConfigs":[{"name":"cfg-a","match":[],"entityPropertyToTraceLabelMapping":{"service":"service.name"}}]}`
-	profileConfigsBody = `{"profileDrilldownConfigs":[{"name":"cfg-a","match":[],"entityPropertyToProfileLabelMapping":{"service":"service_name"}}]}`
+	logConfigsBody     = `{"logDrilldownConfigs":[{"name":"cfg-a","match":[],"entityPropertyToLogLabelMapping":{"prop_a":"label_a"}}]}`
+	traceConfigsBody   = `{"traceDrilldownConfigs":[{"name":"cfg-a","match":[],"entityPropertyToTraceLabelMapping":{"prop_a":"label.a"}}]}`
+	profileConfigsBody = `{"profileDrilldownConfigs":[{"name":"cfg-a","match":[],"entityPropertyToProfileLabelMapping":{"prop_a":"label_a"}}]}`
 )
 
 // configAnswer is one way the drill-down config endpoints can answer.

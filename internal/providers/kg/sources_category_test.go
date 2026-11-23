@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -75,7 +76,7 @@ func (f *sourcesFake) handler(t *testing.T) http.Handler {
 	})
 }
 
-const ruleMetrics = `[{"metricName":"kube_x_replicas","labels":[{"label":"namespace","op":"=","value":"ns1"}]}]`
+const ruleMetrics = `[{"metricName":"metric_x","labels":[{"label":"namespace","op":"=","value":"ns1"}]}]`
 
 // metricsWhenFailure answers like the backend for an alert-rule insight of
 // category failure: the rule's metrics only when that category label is sent.
@@ -92,24 +93,24 @@ func searchPage(entities ...string) string {
 	return `{"data":{"entities":[` + strings.Join(entities, ",") + `],"pageNum":0,"lastPage":true}}`
 }
 
-const svcOwnFailure = `{"name":"svc-a","type":"Service","scope":{"env":"prod-x","namespace":"ns1"},
- "assertion":{"assertions":[{"assertionName":"KubeX","category":"failure","entityType":"Service"},
-                            {"assertionName":"Deployment Updated","category":"amend","entityType":"Service"}]}}`
+const ownFailure = `{"name":"name-a","type":"TypeA","scope":{"env":"prod-x","namespace":"ns1"},
+ "assertion":{"assertions":[{"assertionName":"AlertX","category":"failure","entityType":"TypeA"},
+                            {"assertionName":"OtherChange","category":"amend","entityType":"TypeA"}]}}`
 
-const svcConnectedFailure = `{"name":"svc-a","type":"Service","scope":{"env":"prod-x","namespace":"ns1"},
- "assertion":{"assertions":[{"assertionName":"Deployment Updated","category":"amend","entityType":"Service"}]},
- "connectedAssertion":{"assertions":[{"assertionName":"KubeX","category":"failure","entityType":"Pod"}]}}`
+const connectedFailure = `{"name":"name-a","type":"TypeA","scope":{"env":"prod-x","namespace":"ns1"},
+ "assertion":{"assertions":[{"assertionName":"OtherChange","category":"amend","entityType":"TypeA"}]},
+ "connectedAssertion":{"assertions":[{"assertionName":"AlertX","category":"failure","entityType":"TypeB"}]}}`
 
-// svcOwnAndConnectedDisagree has the insight on the entity itself (failure)
+// ownAndConnectedDisagree has the insight on the entity itself (failure)
 // and on a connected entity under another category (error): the entity's own
 // category wins.
-const svcOwnAndConnectedDisagree = `{"name":"svc-a","type":"Service","scope":{"env":"prod-x","namespace":"ns1"},
- "assertion":{"assertions":[{"assertionName":"KubeX","category":"failure","entityType":"Service"}]},
- "connectedAssertion":{"assertions":[{"assertionName":"KubeX","category":"error","entityType":"Pod"}]}}`
+const ownAndConnectedDisagree = `{"name":"name-a","type":"TypeA","scope":{"env":"prod-x","namespace":"ns1"},
+ "assertion":{"assertions":[{"assertionName":"AlertX","category":"failure","entityType":"TypeA"}]},
+ "connectedAssertion":{"assertions":[{"assertionName":"AlertX","category":"error","entityType":"TypeB"}]}}`
 
-// podSameName has the entity's name and the insight, but another type.
-const podSameName = `{"name":"svc-a","type":"Pod","entityType":"Pod","scope":{"env":"prod-x","namespace":"ns1"},
- "assertion":{"assertions":[{"assertionName":"KubeX","category":"failure","entityType":"Pod"}]}}`
+// otherTypeSameName has the entity's name and the insight, but another type.
+const otherTypeSameName = `{"name":"name-a","type":"TypeB","entityType":"TypeB","scope":{"env":"prod-x","namespace":"ns1"},
+ "assertion":{"assertions":[{"assertionName":"AlertX","category":"failure","entityType":"TypeB"}]}}`
 
 const (
 	hintOwn       = "added asserts_alert_category=failure, the insight's category on this entity"
@@ -120,7 +121,7 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 	forceNoColor(t)
 	pinHumanMode(t)
 
-	base := []string{"sources", "Service--svc-a", "--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T01:00:00Z"}
+	base := []string{"sources", "TypeA--name-a", "--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T01:00:00Z"}
 
 	tests := []struct {
 		name         string
@@ -138,18 +139,18 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 	}{
 		{
 			name:                 "first lookup returns metrics: no search, no retry",
-			args:                 append([]string{"--insight", "ErrorRatioBreach"}, base...),
+			args:                 append([]string{"--insight", "AlertY"}, base...),
 			metrics:              func(map[string]string) string { return ruleMetrics },
-			search:               searchPage(svcOwnFailure),
+			search:               searchPage(ownFailure),
 			wantMetrics:          true,
 			wantSearches:         0,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:                 "empty lookup, own insight has one category: retried with it",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(svcOwnFailure),
+			search:               searchPage(ownFailure),
 			wantMetrics:          true,
 			wantSearches:         1,
 			wantSourceCategories: []string{"", "failure"},
@@ -157,9 +158,9 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 		},
 		{
 			name:                 "empty lookup, insight only on a connected entity: its category is used",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(svcConnectedFailure),
+			search:               searchPage(connectedFailure),
 			wantMetrics:          true,
 			wantSearches:         1,
 			wantSourceCategories: []string{"", "failure"},
@@ -167,9 +168,9 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 		},
 		{
 			name:                 "own and connected insights disagree: the entity's own category is used",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(svcOwnAndConnectedDisagree),
+			search:               searchPage(ownAndConnectedDisagree),
 			wantMetrics:          true,
 			wantSearches:         1,
 			wantSourceCategories: []string{"", "failure"},
@@ -177,37 +178,37 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 		},
 		{
 			name:    "own insight has two categories, connected has one: no retry",
-			args:    append([]string{"--insight", "KubeX"}, base...),
+			args:    append([]string{"--insight", "AlertX"}, base...),
 			metrics: metricsWhenFailure(),
-			search: searchPage(`{"name":"svc-a","type":"Service",
- "assertion":{"assertions":[{"assertionName":"KubeX","category":"error"},{"assertionName":"KubeX","category":"saturation"}]},
- "connectedAssertion":{"assertions":[{"assertionName":"KubeX","category":"failure"}]}}`),
+			search: searchPage(`{"name":"name-a","type":"TypeA",
+ "assertion":{"assertions":[{"assertionName":"AlertX","category":"error"},{"assertionName":"AlertX","category":"saturation"}]},
+ "connectedAssertion":{"assertions":[{"assertionName":"AlertX","category":"failure"}]}}`),
 			wantSearches:         1,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:    "own insight has no category, connected has one: no retry",
-			args:    append([]string{"--insight", "KubeX"}, base...),
+			args:    append([]string{"--insight", "AlertX"}, base...),
 			metrics: metricsWhenFailure(),
-			search: searchPage(`{"name":"svc-a","type":"Service",
- "assertion":{"assertions":[{"assertionName":"KubeX"}]},
- "connectedAssertion":{"assertions":[{"assertionName":"KubeX","category":"failure"}]}}`),
+			search: searchPage(`{"name":"name-a","type":"TypeA",
+ "assertion":{"assertions":[{"assertionName":"AlertX"}]},
+ "connectedAssertion":{"assertions":[{"assertionName":"AlertX","category":"failure"}]}}`),
 			wantSearches:         1,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:                 "same name, other entity type: no retry",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(podSameName),
+			search:               searchPage(otherTypeSameName),
 			wantSearches:         1,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:                 "category passed by hand: no search",
-			args:                 append([]string{"--insight", "KubeX", "--label", "asserts_alert_category=amend"}, base...),
+			args:                 append([]string{"--insight", "AlertX", "--label", "asserts_alert_category=amend"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(svcOwnFailure),
+			search:               searchPage(ownFailure),
 			wantSearches:         0,
 			wantSourceCategories: []string{"amend"},
 		},
@@ -215,7 +216,7 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			name:                 "no alertname: no search",
 			args:                 base,
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(svcOwnFailure),
+			search:               searchPage(ownFailure),
 			wantSearches:         0,
 			wantSourceCategories: []string{""},
 		},
@@ -223,30 +224,30 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			name:                 "insight name not on the entity: no retry",
 			args:                 append([]string{"--insight", "OtherAlert"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(svcOwnFailure),
+			search:               searchPage(ownFailure),
 			wantSearches:         1,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:    "insight name with two categories: no retry",
-			args:    append([]string{"--insight", "KubeX"}, base...),
+			args:    append([]string{"--insight", "AlertX"}, base...),
 			metrics: metricsWhenFailure(),
-			search: searchPage(`{"name":"svc-a","type":"Service","assertion":{"assertions":[
-				{"assertionName":"KubeX","category":"failure"},{"assertionName":"KubeX","category":"error"}]}}`),
+			search: searchPage(`{"name":"name-a","type":"TypeA","assertion":{"assertions":[
+				{"assertionName":"AlertX","category":"failure"},{"assertionName":"AlertX","category":"error"}]}}`),
 			wantSearches:         1,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:                 "another entity's insight is not used",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              metricsWhenFailure(),
-			search:               searchPage(strings.Replace(svcOwnFailure, `"name":"svc-a"`, `"name":"svc-b"`, 1)),
+			search:               searchPage(strings.Replace(ownFailure, `"name":"name-a"`, `"name":"name-b"`, 1)),
 			wantSearches:         1,
 			wantSourceCategories: []string{""},
 		},
 		{
 			name:                 "search fails: the empty result is printed, exit 0",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              metricsWhenFailure(),
 			searchStatus:         http.StatusInternalServerError,
 			wantSearches:         1,
@@ -254,9 +255,9 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 		},
 		{
 			name:                 "retry also empty: the empty result is printed",
-			args:                 append([]string{"--insight", "KubeX"}, base...),
+			args:                 append([]string{"--insight", "AlertX"}, base...),
 			metrics:              func(map[string]string) string { return `[]` },
-			search:               searchPage(svcOwnFailure),
+			search:               searchPage(ownFailure),
 			wantSearches:         1,
 			wantSourceCategories: []string{"", "failure"},
 		},
@@ -277,7 +278,7 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(stdout), &got), "stdout: %s", stdout)
 			if tc.wantMetrics {
 				require.Len(t, got, 1)
-				assert.Equal(t, "kube_x_replicas", got[0]["metricName"])
+				assert.Equal(t, "metric_x", got[0]["metricName"])
 			} else {
 				assert.Empty(t, got)
 			}
@@ -302,14 +303,14 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 func TestInsightsSources_CategoryFillKeepsLabels(t *testing.T) {
 	forceNoColor(t)
 	pinHumanMode(t)
-	fake := &sourcesFake{metrics: metricsWhenFailure(), search: searchPage(svcOwnFailure)}
+	fake := &sourcesFake{metrics: metricsWhenFailure(), search: searchPage(ownFailure)}
 	server := httptest.NewServer(fake.handler(t))
 	defer server.Close()
 
 	_, _, err := runKgCommand(t,
 		func() *cobra.Command { return kg.NewInsightsCommand(writeLoaderFor(server)) },
 		[]string{"sources", "-f", "-"},
-		"startTime: 1\nendTime: 2\nlabels:\n  alertname: KubeX\n  asserts_entity_type: Service\n  asserts_entity_name: svc-a\n  namespace: ns1\n  statefulset: svc-a\n")
+		"startTime: 1\nendTime: 2\nlabels:\n  alertname: AlertX\n  asserts_entity_type: TypeA\n  asserts_entity_name: name-a\n  namespace: ns1\n  extra_label: v\n")
 	require.NoError(t, err)
 	require.Len(t, fake.sourceCalls, 2)
 	want := maps.Clone(fake.sourceCalls[0])
@@ -350,11 +351,11 @@ func TestInsightsSources_CategoryFillSearchRequest(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			fake := &sourcesFake{metrics: metricsWhenFailure(), search: searchPage(svcOwnFailure)}
+			fake := &sourcesFake{metrics: metricsWhenFailure(), search: searchPage(ownFailure)}
 			server := httptest.NewServer(fake.handler(t))
 			defer server.Close()
 
-			args := append([]string{"sources", "Service--svc-a", "--insight", "KubeX"}, window...)
+			args := append([]string{"sources", "TypeA--name-a", "--insight", "AlertX"}, window...)
 			args = append(args, tc.scopeArgs...)
 			_, _, err := runKgCommand(t,
 				func() *cobra.Command { return kg.NewInsightsCommand(writeLoaderFor(server)) },
@@ -381,7 +382,7 @@ func TestInsightsSources_CategoryFillSearchRequest(t *testing.T) {
 			require.Len(t, filters, 1)
 			f, ok := filters[0].(map[string]any)
 			require.True(t, ok)
-			assert.Equal(t, "Service", f["entityType"])
+			assert.Equal(t, "TypeA", f["entityType"])
 			assert.Equal(t, true, f["havingAssertion"], "havingAssertion")
 			assert.Equal(t, true, f["havingPropagatedAssertions"], "havingPropagatedAssertions")
 			matchers, ok := f["propertyMatchers"].([]any)
@@ -391,7 +392,7 @@ func TestInsightsSources_CategoryFillSearchRequest(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, "name", m["name"])
 			assert.Equal(t, "=", m["op"])
-			assert.Equal(t, "svc-a", m["value"])
+			assert.Equal(t, "name-a", m["value"])
 		})
 	}
 }
@@ -411,12 +412,12 @@ func TestInsightsSources_CategoryFillCancelled(t *testing.T) {
 	}{
 		{
 			name:   "cancelled during the search",
-			search: searchPage(strings.Replace(svcOwnFailure, `"KubeX"`, `"OtherAlert"`, 1)),
+			search: searchPage(strings.Replace(ownFailure, `"AlertX"`, `"OtherAlert"`, 1)),
 			cancel: func(f *sourcesFake, cancel context.CancelFunc) { f.onSearch = cancel },
 		},
 		{
 			name:   "cancelled during the retry",
-			search: searchPage(svcOwnFailure),
+			search: searchPage(ownFailure),
 			cancel: func(f *sourcesFake, cancel context.CancelFunc) {
 				f.onSource = func(n int) {
 					if n == 1 {
@@ -441,7 +442,7 @@ func TestInsightsSources_CategoryFillCancelled(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			cmd.SetOut(&stdout)
 			cmd.SetErr(&stderr)
-			cmd.SetArgs([]string{"sources", "Service--svc-a", "--insight", "KubeX",
+			cmd.SetArgs([]string{"sources", "TypeA--name-a", "--insight", "AlertX",
 				"--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T01:00:00Z"})
 			err := cmd.ExecuteContext(ctx)
 
@@ -475,6 +476,49 @@ func TestInsightsSources_HelpEmptyArray(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.phrase, func(t *testing.T) {
 			assert.Equal(t, tc.want, strings.Contains(long, tc.phrase), "Long: %s", long)
+		})
+	}
+}
+
+// The sources help shows the command's shape with placeholders and states the
+// label rule generically: the entity, the insight and every label come from
+// what the graph reports for the reader's entity, not from names in the help.
+func TestInsightsSources_HelpPlaceholders(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	cmd := kg.NewInsightsCommand(writeLoaderFor(server))
+	sources, _, err := cmd.Find([]string{"sources"})
+	require.NoError(t, err)
+
+	examples := []struct {
+		name string
+		re   *regexp.Regexp
+		want string
+	}{
+		{"entity argument", regexp.MustCompile(`gcx kg insights sources (\S+)`), "<Type>--<Name>"},
+		{"--env", regexp.MustCompile(`--env (\S+)`), "<env>"},
+		{"--namespace", regexp.MustCompile(`--namespace (\S+)`), "<namespace>"},
+		{"--insight", regexp.MustCompile(`--insight (\S+)`), "<insight>"},
+		{"--label", regexp.MustCompile(`--label (\S+)`), "<key>=<value>"},
+	}
+	for _, tc := range examples {
+		t.Run("Example "+tc.name, func(t *testing.T) {
+			matches := tc.re.FindAllStringSubmatch(sources.Example, -1)
+			require.NotEmpty(t, matches, "Example: %s", sources.Example)
+			for _, m := range matches {
+				assert.Equal(t, tc.want, m[1], "Example: %s", sources.Example)
+			}
+		})
+	}
+
+	long := strings.Join(strings.Fields(sources.Long), " ")
+	for _, phrase := range []string{
+		"copy every label of the insight's timeline entry in 'gcx kg entities inspect' (timeLines[].labels) with --label",
+		"For alert-rule and change insights also pass asserts_alert_category=<the entry's category>",
+		"the insights the search lists for the entities connected to it",
+	} {
+		t.Run("Long "+phrase, func(t *testing.T) {
+			assert.Contains(t, long, phrase)
 		})
 	}
 }
