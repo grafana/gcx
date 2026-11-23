@@ -406,6 +406,11 @@ query covers, and say so in the summary.
    number of its links in your list of stale links, and the plan does not
    write it again. A resource with any other link stays.
 
+   The window has a limit. A Service that sent no telemetry for more than 30
+   days can drop out of the query, and its link to the resource is then not
+   counted. `entities delete` still removes that link with the resource. In
+   the summary, say this for each resource to remove.
+
 5. Never remove a `Repository` only because this run did not scan it. Read the
    repositories that earlier runs mapped:
 
@@ -483,9 +488,13 @@ gcx kg entities delete --domain sourcecode --type CloudResource --name 'arn:aws:
 
 `--from-scope` takes the Service's scope exactly as it is in the graph. Leave
 out a key that the Service does not have, and leave out `--from-scope` for a
-Component. A 404 means that the link or the resource is already gone. A 403
-that says it is not API-origin means that telemetry made it: do not remove it,
-and say so.
+Component. A 404 can mean that the link or the resource is already gone. It
+can also mean that the ref or the scope does not match, for example a missing
+`site`: the stale link then stays in the graph. After a 404, run the Step 8
+query for that link type, or for a resource the count query from Step 6 item 4.
+Report it as removed only when it does not appear. Otherwise report a ref or
+scope mismatch. A 403 that says it is not API-origin means that telemetry made
+it: do not remove it, and say so.
 
 ## Step 8: Check the result
 

@@ -75,8 +75,8 @@ value in the instructions of repeated runs, as for a value that the user gives.
 | AWS APIs | The ARN of one named resource | `aws rds describe-db-instances --db-instance-identifier '<identifier>' --query 'DBInstances[0].DBInstanceArn' --output text` |
 | Azure resource groups | The resource IDs in one group | `az resource list --resource-group '<group>' --query '[].id' -o tsv` |
 | GCP projects | The full names of one kind in one project | `gcloud pubsub topics list --project '<project>' --format='value(name)'` |
-| Pulumi stacks | The stack outputs | `pulumi stack output --json --stack '<stack>'`, never with `--show-secrets` |
-| CI deployment logs | Ids that the deploy job printed | `gh run view '<run-id>' --log`, through the filter below |
+| Pulumi stacks | The ids that the stack outputs | see below |
+| CI deployment logs | Ids that the deploy job printed | see below |
 
 For the Knowledge Graph, use the exact name. The telemetry node gives only the
 id: you still write a `CloudResource` and link to it, never to the telemetry
@@ -84,25 +84,38 @@ node.
 
 ## Filters
 
-Keep only values in these forms:
+Keep only values in these forms: an AWS ARN, an SQS queue URL, an Azure
+resource ID and a GCP resource name. Set the patterns once, as one extended
+regular expression:
 
-| Kind | Pattern |
-|---|---|
-| AWS ARN | `arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{0,12}:[A-Za-z0-9:/._-]+` |
-| SQS queue URL | `https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[A-Za-z0-9_-]+` |
-| Azure resource ID | `/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[A-Za-z0-9._()-]+/providers/[A-Za-z0-9./_-]+` |
-| GCP resource name | `projects/[a-z0-9-]+/(topics\|subscriptions\|instances)/[A-Za-z0-9._-]+` |
+```bash
+ids='arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{0,12}:[A-Za-z0-9:/._-]+|https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[A-Za-z0-9_-]+|/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[A-Za-z0-9._-]+/providers/[A-Za-z0-9./_-]+|projects/[a-z0-9-]+/(topics|subscriptions|instances)/[A-Za-z0-9._-]+'
+```
+
+The patterns allow only the characters that the value check in
+[SKILL.md](../SKILL.md) allows. An id with other characters, for example a
+resource group name with `(` or `)`, stays unresolved. Say so in the summary.
 
 For a log, print only the matches:
 
 ```bash
-gh run view '<run-id>' --log | grep -E -o 'arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]{0,12}:[A-Za-z0-9:/._-]+' | sort -u
+gh run view '<run-id>' --log | grep -E -o "$ids" | sort -u
 ```
 
-For Terraform outputs, skip the sensitive ones and keep only id-shaped strings:
+For Terraform outputs, skip the sensitive ones and keep only the values that
+are ids from start to end:
 
 ```bash
-terraform -chdir='<dir>' output -json | jq -r 'to_entries[] | select(.value.sensitive | not) | .key as $k | .value.value | strings | select(test("^(arn:|/subscriptions/|projects/|https://sqs\\.)")) | "\($k)=\(.)"'
+terraform -chdir='<dir>' output -json | jq -r --arg re "^(${ids})\$" 'to_entries[] | select(.value.sensitive | not) | .key as $k | .value.value | strings | select(test($re)) | "\($k)=\(.)"'
+```
+
+For Pulumi outputs, use the same filter, and never use `--show-secrets`.
+Pulumi then prints a secret output as `[secret]`, and the filter drops it.
+Other outputs can hold kubeconfigs, endpoints or connection strings, so never
+print the whole output set:
+
+```bash
+pulumi stack output --json --stack '<stack>' | jq -r --arg re "^(${ids})\$" 'to_entries[] | .key as $k | .value | strings | select(test($re)) | "\($k)=\(.)"'
 ```
 
 An output that is a list or a map is skipped. That is acceptable: the
