@@ -130,9 +130,12 @@ func insightCategoryForSources(ctx context.Context, client *Client, req SourceMe
 // entityTimeline reads the insight timeline of one entity, matched by type
 // and exact name, over the request's window and scope (POST
 // /v1/search/assertions) and returns the labels of its entries that carry an
-// alertname and name no other entity. found is false when the answer has no
-// timeline for that entity. The request sets no havingAssertion filter: that
-// filter is applied by the entity search, which can leave out an entity whose
+// alertname. found is false when the answer has no timeline for that entity.
+// Every such entry of that entity's timeline is returned, also one whose
+// labels name a related entity: an insight raised on a related entity can be
+// listed on this entity's timeline, and 'kg entities inspect' lists it among
+// this entity's timeLines. The request sets no havingAssertion filter: that filter
+// is applied by the entity search, which can leave out an entity whose
 // insight only touches the window's start although the entity's timeline for
 // that window lists the insight.
 func entityTimeline(ctx context.Context, client *Client, req SourceMetricsRequest, entityType, name string, sc *ScopeCriteria) ([]map[string]string, bool, error) {
@@ -160,17 +163,7 @@ func entityTimeline(ctx context.Context, client *Client, req SourceMetricsReques
 			entries = appendTimelineEntries(entries, node)
 		}
 	}
-	kept := entries[:0]
-	for _, l := range entries {
-		if v := l["asserts_entity_name"]; v != "" && v != name {
-			continue
-		}
-		if v := l[entityTypeLabel]; v != "" && !strings.EqualFold(v, entityType) {
-			continue
-		}
-		kept = append(kept, l)
-	}
-	return kept, found, nil
+	return entries, found, nil
 }
 
 // appendTimelineEntries appends the string labels of every node of an

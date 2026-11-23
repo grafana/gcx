@@ -373,12 +373,26 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
-			name:    "entry that names another entity is not used",
+			// An insight raised on a related entity sits on the entity's own
+			// timeline with labels that name the related entity.
+			name:    "entry on the entity's timeline that names another entity: retried with its category",
 			args:    base,
 			metrics: metricsWhenFailure(),
 			timelines: map[string]string{"TypeA": nameATimeline(
-				group(entry("TypeA", "name-b", "AlertX", "failure")),
-				group(entry("TypeB", "name-a", "AlertX", "failure")))},
+				group(group(entry("TypeB", "name-b", "AlertX", "failure"))))},
+			wantMetrics:          true,
+			wantTimelineTypes:    []string{"TypeA"},
+			wantSourceCategories: []string{"", "failure"},
+			wantSourceTypes:      []string{"TypeA", "TypeA"},
+			wantHint:             hintTimeline,
+		},
+		{
+			name:    "entries of the insight on the entity and on another entity with two categories: no retry",
+			args:    base,
+			metrics: metricsWhenFailure(),
+			timelines: map[string]string{"TypeA": nameATimeline(
+				group(entry("TypeA", "name-a", "AlertX", "failure")),
+				group(entry("TypeB", "name-b", "AlertX", "error")))},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{""},
 			wantSourceTypes:      []string{"TypeA"},
