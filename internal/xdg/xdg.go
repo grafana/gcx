@@ -1,6 +1,6 @@
 // Package xdg implements the subset of the XDG Base Directory Specification
-// used by gcx (config home, state home, system config dirs). It replaces the
-// github.com/adrg/xdg dependency.
+// used by gcx (config home, state home, data home, system config dirs). It
+// replaces the github.com/adrg/xdg dependency.
 package xdg
 
 import (
@@ -29,6 +29,18 @@ func StateHome() string {
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, ".local", "state")
+	}
+	return ""
+}
+
+// DataHome returns the XDG data home directory.
+// Reads $XDG_DATA_HOME at call time; defaults to $HOME/.local/share.
+func DataHome() string {
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
+		return v
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".local", "share")
 	}
 	return ""
 }
