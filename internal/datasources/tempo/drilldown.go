@@ -34,8 +34,20 @@ func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
 // comparisons — anything else (||, nested spansets, pipeline stages,
 // unscoped intrinsics, >=/<=, ...) returns ok=false so the caller can fall
 // back to the plain Explore link instead of showing an inaccurate Drilldown
-// link.
+// link. The link opens the rate metric on the trace list. TracesExceptionsURL
+// is the same link opened on the Exceptions tab.
 func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
+	return tracesDrilldownURL(host, datasourceUID, expr, start, end, "rate", "traceList")
+}
+
+// TracesExceptionsURL builds a Traces Drilldown link that opens the Exceptions
+// tab (var-metric=errors, actionView=exceptions). It accepts the same flat
+// filters as TracesDrilldownURL.
+func TracesExceptionsURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
+	return tracesDrilldownURL(host, datasourceUID, expr, start, end, "errors", "exceptions")
+}
+
+func tracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time, metric, actionView string) (string, bool) {
 	if host == "" || datasourceUID == "" || expr == "" {
 		return "", false
 	}
@@ -57,8 +69,8 @@ func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) 
 		"from":              {strconv.FormatInt(start.UnixMilli(), 10)},
 		"to":                {strconv.FormatInt(end.UnixMilli(), 10)},
 		"var-primarySignal": {"true"},
-		"var-metric":        {"rate"},
-		"actionView":        {"traceList"},
+		"var-metric":        {metric},
+		"actionView":        {actionView},
 	}
 	for _, f := range filters {
 		encoded, ok := encodeTraceQLFilter(f)
