@@ -8,10 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 // statsMaxSearchPages bounds how many search pages `kg stats` reads per
@@ -19,55 +16,31 @@ import (
 // insights.incompleteTypes. It is a variable so tests can lower it.
 var statsMaxSearchPages = 50 //nolint:gochecknoglobals // Overridden only by tests.
 
-// statsSearchConcurrency bounds how many entity types `kg stats` searches at
-// once.
-const statsSearchConcurrency = 10
-
 // searchInsightCarriers returns, for every given entity type, the entities
-// that carry an active insight in the window. It follows each type's search
-// pages until the last one, up to statsMaxSearchPages, and keeps one row per
-// entity when a later page repeats a row. The second result lists, sorted,
-// the types whose rows could not all be read: more pages than the bound, a
-// server-side result limit, or a server error (which is also reported on
-// errOut, as before). Any other error fails the whole search.
+// that carry an active insight in the window. It searches one type at a
+// time: the search API is rate limited, and searching several types at once
+// can exceed that limit. It follows each type's search pages until the last
+// one, up to statsMaxSearchPages, and keeps one row per entity when a later
+// page repeats a row. The second result lists, sorted, the types whose rows
+// could not all be read: more pages than the bound, a server-side result
+// limit, or a server error (which is also reported on errOut, as before). Any
+// other error fails the whole search.
 func searchInsightCarriers(ctx context.Context, errOut io.Writer, client *Client, entityTypes []string, sc *ScopeCriteria, startMs, endMs int64) ([]SearchResult, []string, error) {
 	if startMs == 0 && endMs == 0 {
 		now := time.Now().UnixMilli()
 		startMs = now - 3600000
 		endMs = now
 	}
-	rowsByType := make([][]SearchResult, len(entityTypes))
-	complete := make([]bool, len(entityTypes))
-	var errMu sync.Mutex
-	warn := func(msg string) {
-		errMu.Lock()
-		defer errMu.Unlock()
-		fmt.Fprint(errOut, msg)
-	}
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(statsSearchConcurrency)
-	for i, et := range entityTypes {
-		g.Go(func() error {
-			rows, done, err := searchTypePages(gCtx, client, et, sc, startMs, endMs, warn)
-			if err != nil {
-				return err
-			}
-			rowsByType[i] = rows
-			complete[i] = done
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return nil, nil, err
-	}
-
 	all := []SearchResult{}
 	var incomplete []string
-	for i, rows := range rowsByType {
+	for _, et := range entityTypes {
+		rows, done, err := searchTypePages(ctx, errOut, client, et, sc, startMs, endMs)
+		if err != nil {
+			return nil, nil, err
+		}
 		all = append(all, rows...)
-		if !complete[i] {
-			incomplete = append(incomplete, entityTypes[i])
+		if !done {
+			incomplete = append(incomplete, et)
 		}
 	}
 	sort.Strings(incomplete)
@@ -78,7 +51,7 @@ func searchInsightCarriers(ctx context.Context, errOut io.Writer, client *Client
 // page. It reports false when the rows are incomplete: the page bound was
 // reached, the server said it hit its result limit, or a page failed with a
 // server error.
-func searchTypePages(ctx context.Context, client *Client, entityType string, sc *ScopeCriteria, startMs, endMs int64, warn func(string)) ([]SearchResult, bool, error) {
+func searchTypePages(ctx context.Context, errOut io.Writer, client *Client, entityType string, sc *ScopeCriteria, startMs, endMs int64) ([]SearchResult, bool, error) {
 	seen := map[string]bool{}
 	var rows []SearchResult
 	for pageNum := range statsMaxSearchPages {
@@ -98,9 +71,9 @@ func searchTypePages(ctx context.Context, client *Client, entityType string, sc 
 				return nil, false, fmt.Errorf("search entity type %s: %w", entityType, err)
 			}
 			if pageNum == 0 {
-				warn(fmt.Sprintf("warning: skipping entity type %q — server error: %v\n", entityType, apiErr))
+				fmt.Fprintf(errOut, "warning: skipping entity type %q — server error: %v\n", entityType, apiErr)
 			} else {
-				warn(fmt.Sprintf("warning: entity type %q: page %d failed — server error: %v; its insight counts are incomplete\n", entityType, pageNum, apiErr))
+				fmt.Fprintf(errOut, "warning: entity type %q: page %d failed — server error: %v; its insight counts are incomplete\n", entityType, pageNum, apiErr)
 			}
 			return rows, false, nil
 		}

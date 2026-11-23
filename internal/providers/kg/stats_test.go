@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/kg"
@@ -285,6 +286,10 @@ type statsFake struct {
 
 	mu       sync.Mutex
 	searched map[string]bool
+	// inFlight and maxInFlight count the insight searches being answered
+	// at the same time; held is set once the first one has been held back.
+	inFlight, maxInFlight int
+	held                  bool
 }
 
 func (f *statsFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -339,7 +344,21 @@ func (f *statsFake) servePage(w http.ResponseWriter, entityType string, pageNum 
 		f.searched = map[string]bool{}
 	}
 	f.searched[entityType] = true
+	f.inFlight++
+	f.maxInFlight = max(f.maxInFlight, f.inFlight)
+	hold := !f.held
+	f.held = true
 	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.inFlight--
+		f.mu.Unlock()
+	}()
+	if hold {
+		// Hold the first search back long enough for a search sent at the
+		// same time to arrive while it is still being answered.
+		time.Sleep(50 * time.Millisecond)
+	}
 	pages := f.pages[entityType]
 	if pageNum >= len(pages) {
 		_, _ = fmt.Fprint(w, `{"data":{"entities":[],"lastPage":true}}`)
@@ -367,6 +386,14 @@ func (f *statsFake) searchedTypes() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// maxConcurrentSearches returns the largest number of insight searches the
+// fake answered at the same time.
+func (f *statsFake) maxConcurrentSearches() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.maxInFlight
 }
 
 // statsOutput is the part of the `kg stats` JSON output TestStatsCommand
@@ -532,6 +559,7 @@ func TestStatsCommand(t *testing.T) {
 			loader := &kg.FakeWriteLoader{Cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}}
 			args := append([]string{"--from", "1757000000", "--to", "1757003600"}, tt.args...)
 			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewSummaryCommand(loader) }, args, "")
+			assert.Equal(t, 1, fake.maxConcurrentSearches(), "entity types are searched one at a time")
 			require.NoError(t, err)
 			if tt.wantStderr != "" {
 				assert.Contains(t, stderr, tt.wantStderr)
