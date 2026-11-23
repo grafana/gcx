@@ -78,8 +78,9 @@ func hasMorePages(p SearchPage) bool {
 // for each type it follows the backend's pages until the backend reports the
 // last page, limit matching entities are collected (limit <= 0 means no
 // limit) or maxPages pages are read. A row that an earlier page returned is
-// skipped, a hint says how many were skipped for the type, and only rows that
-// pass s.keep count against limit. A failure on
+// skipped, a hint says how many were skipped for the type before the rows
+// that are printed ended, and only rows that pass s.keep count against limit.
+// A failure on
 // the first page of a type is handled as searchByTypes does; a failure on a
 // later page aborts the listing, since the rows read so far would be an
 // incomplete answer.
@@ -99,6 +100,10 @@ func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Clie
 		// again on a later page, and a repeat is skipped and counted.
 		seen := map[string]bool{}
 		repeats := 0
+		// rawKeys[i] is raw[i]'s key, and repeatsBefore[i] is how many
+		// repeats were read before raw[i].
+		var rawKeys []string
+		var repeatsBefore []int
 		for pageNum := 0; ; pageNum++ {
 			if pageNum == maxPages {
 				msg := fmt.Sprintf("stopped after %d backend pages for type %q — the list is incomplete; narrow with --property/--namespace, or count with 'gcx kg graph query'", maxPages, et)
@@ -127,6 +132,8 @@ func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Clie
 					repeats++
 				} else {
 					raw = append(raw, r)
+					rawKeys = append(rawKeys, k)
+					repeatsBefore = append(repeatsBefore, repeats)
 				}
 				pageKeys = append(pageKeys, k)
 			}
@@ -138,12 +145,43 @@ func searchByTypesAllPages(ctx context.Context, cmd *cobra.Command, client *Clie
 				break
 			}
 		}
-		if repeats > 0 {
-			cmdio.EmitHint(cmd.ErrOrStderr(), repeatedRowsHint(et, repeats), "")
+		if n := repeatsBeforeLimit(kept, rawKeys, repeatsBefore, repeats, limit, len(all)); n > 0 {
+			cmdio.EmitHint(cmd.ErrOrStderr(), repeatedRowsHint(et, n), "")
 		}
 		all = append(all, kept...)
 	}
 	return all, nil
+}
+
+// repeatsBeforeLimit returns how many of one type's repeats can have changed
+// the rows list prints. While the list stays under limit (limit <= 0 means no
+// limit) that is every repeat. Once the type's rows reach limit, only the
+// first limit-before of its kept rows are printed, and a repeat read after
+// the last of them is not counted. kept is the part of the type's unique rows
+// that passed the filter, in the same order; rawKeys and repeatsBefore are
+// those rows' keys and the repeats read before each of them.
+func repeatsBeforeLimit(kept []SearchResult, rawKeys []string, repeatsBefore []int, repeats int, limit int64, before int) int {
+	if limit <= 0 || int64(before+len(kept)) < limit {
+		return repeats
+	}
+	room := int(limit) - before
+	if room <= 0 {
+		return 0
+	}
+	// kept is in raw's order, so matching its rows in turn finds the raw
+	// position of the last printed row, even when two rows share a key.
+	pos := -1
+	for _, r := range kept[:room] {
+		k := rowKey(r)
+		pos++
+		for pos < len(rawKeys) && rawKeys[pos] != k {
+			pos++
+		}
+		if pos == len(rawKeys) {
+			return repeats
+		}
+	}
+	return repeatsBefore[pos]
 }
 
 // repeatedRowsHint is the hint list prints when later backend pages for

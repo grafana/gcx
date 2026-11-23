@@ -7,8 +7,9 @@
   filtered client-side (as `--insight` does), and the hint printed at that
   cap says that passing `--limit` reads up to 50. A row that an earlier page
   returned is skipped, so it is not listed twice, and a hint on stderr says
-  how many rows of the type were skipped: pages that repeat rows can leave out
-  others, so the list can fall short of the true count. A failed page after
+  how many rows of the type were skipped before the last row it prints: pages
+  that repeat rows can leave out others, so the list can fall short of the
+  true count. A failed page after
   the first now ends the command with an error that names the type and the
   page, instead of printing a partial list. `--page N` still returns that one
   backend page.

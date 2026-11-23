@@ -841,6 +841,17 @@ func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
 			wantHint: "dropped 1 row of",
 		},
 		{
+			name: "a repeat read after the last printed row is not counted", limit: 4,
+			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(1, "a"), withID(3, "c"), withID(4, "d"), withID(2, "b")},
+			wantNames: []string{"a", "b", "c", "d"}, wantPages: 3,
+			wantHint: `dropped 1 row of type "Gizmo" that a later backend page repeated`,
+		},
+		{
+			name: "no hint when every repeat comes after the last printed row", limit: 3,
+			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(3, "c"), withID(1, "a")},
+			wantNames: []string{"a", "b", "c"}, wantPages: 2,
+		},
+		{
 			name: "by type, name and scope without an id", limit: 0,
 			rows:      []SearchResult{scoped("a", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns2")},
 			wantNames: []string{"a", "b", "b"}, wantPages: 2,
