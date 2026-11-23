@@ -14,7 +14,7 @@ keywords:
   - dashboards
   - resources
   - diagnostics
-weight: 80
+weight: 8
 ---
 
 # `gcx` user guides
@@ -22,3 +22,5 @@ weight: 80
 Refer to the following documents to learn about specific workflows to use `gcx`:
 
 {{< section withDescriptions="true" depth="5" >}}
+
+

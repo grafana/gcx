@@ -221,7 +221,7 @@ For Grafana connections, we record the authentication category selected, such as
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled
-Find out more at https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics/
+Find out more at https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/anonymous-usage-statistics/
 `
 
 	require.Equal(t, pinnedRevision, noticeRevision,

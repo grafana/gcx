@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 )
@@ -36,7 +37,7 @@ func cloudTokenHint(server string) string {
 		"Recommended scopes: stacks:read (required — resolves your stack). Then add per product:\n" +
 		"  metrics:write, logs:write, traces:write — Synthetic Monitoring\n" +
 		"  stacks:write — create or update stacks\n" +
-		"Docs: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies\n" +
+		"Docs: " + docs.HumanURL(docs.AccessPolicies) + "\n" +
 		"Press Enter to skip (Cloud management features will be unavailable)."
 }
 
