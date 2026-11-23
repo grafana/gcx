@@ -59,10 +59,11 @@ func sourceMetricsWithCategoryFill(cmd *cobra.Command, client *Client, req Sourc
 // request's window and the scope labels it carries (env, namespace, site).
 // The entity's own insights are used first; when none of them has that name,
 // the insights the search reports on its connected entities are used (an
-// alert raised on a Service's pods is listed there for the Service), and the
-// second result is true. It returns "" (no retry) when the labels already
-// carry a category, lack an alertname or entity, the search fails, or the
-// search finds no category or more than one category for that insight name.
+// insight raised on a connected entity is listed in the search result's
+// connectedAssertion), and the second result is true. It returns "" (no
+// retry) when the labels already carry a category, lack an alertname or
+// entity, the search fails, or the search finds no category or more than one
+// category for that insight name.
 func insightCategoryForSources(ctx context.Context, client *Client, req SourceMetricsRequest) (string, bool) {
 	labels := req.Labels
 	if labels[alertCategoryLabel] != "" {

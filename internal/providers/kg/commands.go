@@ -2055,25 +2055,24 @@ insight on an entity.
 
 The server finds the insight's rule by the label set it is sent: --insight
 sets alertname, the entity sets asserts_entity_type and asserts_entity_name,
-the scope flags set env, namespace and site, and --label adds the rest,
-usually copied from 'gcx kg entities inspect' timeLines[].labels. Rules key on
-different labels. For example, request insights such as ErrorRatioBreach need
-asserts_request_type and asserts_error_type, saturation insights need
-asserts_resource_type, and alert-rule and change insights need
-asserts_alert_category, which inspect shows as the timeline entry's category
-field, not among its labels. An empty array means that nothing matched the
-labels sent in that window: the same labels can return metrics for one window
-and an empty array for another, so check that --from/--to (or --since) covers
-the insight before changing labels. The output lists each metric's name and
-label matchers, not the rule's expression or threshold. When the timeline
-entry's labels include grafana_rule_uid, 'gcx alert rules get <uid>' shows
-that alert rule, including its query.
+the scope flags set env, namespace and site, and --label adds the rest. Rules
+key on different labels, so copy every label of the insight's timeline entry
+in 'gcx kg entities inspect' (timeLines[].labels) with --label. For alert-rule
+and change insights also pass asserts_alert_category=<the entry's category>:
+inspect shows it as the timeline entry's category field, not among its
+labels. An empty array means that nothing matched the labels sent in that
+window: the same labels can return metrics for one window and an empty array
+for another, so check that --from/--to (or --since) covers the insight before
+changing labels. The output lists each metric's name and label matchers, not
+the rule's expression or threshold. When the timeline entry's labels include
+grafana_rule_uid, 'gcx alert rules get <uid>' shows that alert rule,
+including its query.
 
 When the labels have an alertname but no asserts_alert_category and the
 lookup returns an empty array, sources searches the entity's insights in the
-same window and scope (or, when the entity has none of that name, the
-insights listed for its connected entities, such as a Service's pods). If that
-insight name has exactly one category there, it retries once with
+same window and scope (or, when the entity has no insight of that name, the
+insights the search lists for the entities connected to it). If the insights
+of that name it reads have exactly one category, it retries once with
 asserts_alert_category set to it and prints the metrics that retry returns;
 otherwise it prints the empty array.`
 
@@ -2175,14 +2174,14 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "sources [Type--Name]",
 		Short: "List the underlying metrics (name + label matchers) that source a specific insight.",
 		Long:  sourcesLong,
-		Example: `  # Metrics behind a Kubernetes alert or change insight
-  gcx kg insights sources Service--svc-a --env prod-x --namespace ns1 \
-    --insight "Deployment Updated" --since 1h
+		Example: `  # Metrics behind an alert-rule or change insight
+  gcx kg insights sources <Type>--<Name> --env <env> --namespace <namespace> \
+    --insight <insight> --since 1h
 
-  # Metrics behind a request insight, with the labels from its timeline entry
-  gcx kg insights sources Service--svc-a --env prod-x --namespace ns1 \
-    --insight ErrorRatioBreach --since 1h \
-    --label asserts_request_type=inbound --label asserts_error_type=server_errors`,
+  # Metrics behind an insight, with the labels from its timeline entry
+  gcx kg insights sources <Type>--<Name> --env <env> --namespace <namespace> \
+    --insight <insight> --since 1h \
+    --label <key>=<value>  # repeat for each label in the entry's timeLines[].labels`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := sourcesOpts.IO.Validate(); err != nil {
 				return err
