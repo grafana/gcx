@@ -83,6 +83,8 @@ func (a *ownedHookAdapter) Delete(_ context.Context, name string, opts metav1.De
 	if len(opts.DryRun) > 0 {
 		return adapter.ErrDryRunUnverified
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.deleted = append(a.deleted, name)
 	return nil
 }

@@ -17,8 +17,7 @@ import (
 )
 
 // defaultMaxConcurrentGetRequests bounds the per-name fan-out in GetMultiple by
-// default, matching the fan-out cap used elsewhere in the resources pipeline
-// (adapter router, puller). Override via WithMaxConcurrentGetRequests.
+// default. Override via WithMaxConcurrentGetRequests.
 const defaultMaxConcurrentGetRequests = shared.DefaultMaxConcurrency
 
 // NamespacedClient is a dynamic client with a namespace and a discovery registry.

@@ -21,8 +21,7 @@ import (
 )
 
 // defaultMaxConcurrentListRequests bounds the per-resource-type fan-out in Pull
-// (one List/Get per filter) by default, matching the fan-out cap used elsewhere
-// in the resources pipeline. Override via WithMaxConcurrentListRequests.
+// (one List/Get per filter) by default. Override via WithMaxConcurrentListRequests.
 const defaultMaxConcurrentListRequests = shared.DefaultMaxConcurrency
 
 // PullClient is a client that can pull resources from Grafana.

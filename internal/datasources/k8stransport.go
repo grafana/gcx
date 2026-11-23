@@ -17,8 +17,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// maxConcurrentGroupFetches bounds the per-plugin-group fan-out in listAll,
-// matching the fan-out cap used elsewhere in the resources pipeline.
+// maxConcurrentGroupFetches bounds the per-plugin-group fan-out in listAll.
 const maxConcurrentGroupFetches = shared.DefaultMaxConcurrency
 
 // errK8sNotServed signals that the app-platform datasource API did not serve a
