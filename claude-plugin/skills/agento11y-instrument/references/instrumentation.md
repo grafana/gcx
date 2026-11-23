@@ -79,13 +79,20 @@ metrics.setGlobalMeterProvider(mp);
 
 ## Instrumentation preference order
 
-Use the highest-level option that exists for the app's language; do not assume symmetry.
+If the app already emits OpenTelemetry GenAI spans for a model call, do not add the SDK for that
+call (SKILL.md Step 2, `otel`); follow the public guide
+[Instrument agents with OpenTelemetry](https://grafana.com/docs/grafana-cloud/observe-and-act/agent-observability/get-started/opentelemetry/)
+instead.
+
+Otherwise, use the highest-level option that exists for the app's language; do not assume symmetry.
 
 1. **Provider wrapper** — wrap the LLM client (OpenAI / Anthropic / Gemini). Least code, captures
    model/tokens/cost automatically. (`go-providers/*`, `python-providers/*`, JS subpath providers.)
 2. **Framework adapter** — if the app uses a supported framework (LangGraph, LangChain,
    OpenAI Agents, LlamaIndex, Google ADK, Strands, Vercel AI SDK, and more — Python has the most,
-   JS fewer, Go only google-adk). The adapter captures generations and workflow steps from callbacks.
+   JS fewer, Go only google-adk). The adapter captures generations from callbacks. The LangGraph
+   and LangChain adapters also capture workflow steps when their workflow-step option is on
+   (`capture_workflow_steps=True` / `captureWorkflowSteps: true`); Strands does it by default.
 3. **Hand-instrumentation** — the core SDK (`start_generation` / `StartGeneration` /
    `startGeneration`) around each model call, when no wrapper/adapter fits.
 

@@ -1,4 +1,6 @@
 ---
+aliases:
+  - ../guides/manage-assistant-watchers/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/manage-assistant-watchers/
 title: Manage Assistant Watchers
 description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, configure notifications, save reusable manifests, control monitoring, inspect run history, restore definition versions, and delete Watchers in Grafana Cloud.
 labels:

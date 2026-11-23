@@ -512,9 +512,11 @@ safety cap must NOT use the binder — "0 means all" would be dishonest there.
 They keep a bespoke flag description that discloses the cap, and disclose the
 cap at runtime via `ListMeta.Cap` plus the cap-variant hint (below).
 `--limit 0` on a capped source means "as much as the cap allows", and the
-output must say so. No command currently takes this exception: the last one,
-`irm oncall alert-groups list`, dropped its 1000-item cap in favour of a real
-cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
+output must say so. The one command taking this exception is
+`agento11y review-queues list-scores`, whose cap is set by the backend export
+(not client-side) and cannot be raised by the caller. The last client-side
+one, `irm oncall alert-groups list`, dropped its 1000-item cap in favour of a
+real cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
 raise makes the complete set unreachable, which is the defect that issue
 reported.
 
