@@ -216,6 +216,13 @@ func doRequest(ctx context.Context, cfg config.NamespacedRESTConfig, method, pat
 }
 
 func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) error {
+	// A server-sent event stream may never end, so pass it through as it
+	// arrives instead of reading it whole.
+	if resp.StatusCode < 400 && isEventStream(resp) {
+		_, err := io.Copy(cmd.OutOrStdout(), resp.Body)
+		return err
+	}
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
@@ -262,14 +269,15 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 }
 
 // isHTMLResponse reports whether the response Content-Type indicates HTML.
-func isHTMLResponse(resp *http.Response) bool {
+func isHTMLResponse(resp *http.Response) bool { return hasMediaType(resp, "text/html") }
+
+func isEventStream(resp *http.Response) bool { return hasMediaType(resp, "text/event-stream") }
+
+func hasMediaType(resp *http.Response, want string) bool {
 	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		return false
-	}
 	// Strip parameters like `; charset=utf-8`.
 	if i := strings.IndexByte(ct, ';'); i >= 0 {
 		ct = ct[:i]
 	}
-	return strings.EqualFold(strings.TrimSpace(ct), "text/html")
+	return strings.EqualFold(strings.TrimSpace(ct), want)
 }

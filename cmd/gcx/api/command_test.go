@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
@@ -444,4 +445,35 @@ func TestApiOpts_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// chanWriter signals each write, so a test can see output before EOF.
+type chanWriter chan string
+
+func (c chanWriter) Write(p []byte) (int, error) { c <- string(p); return len(p), nil }
+
+func TestOutputResponse_EventStreamWrittenAsItArrives(t *testing.T) {
+	setAgentMode(t, false)
+	opts := boundAPIOpts(t)
+	body, w := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream; charset=utf-8"}},
+		Body:       body,
+	}
+	out := make(chanWriter, 4)
+	cmd := &cobra.Command{}
+	cmd.SetOut(out)
+	done := make(chan error, 1)
+	go func() { done <- outputResponse(cmd, opts, resp) }()
+
+	_, _ = w.Write([]byte("data: {\"sequence\":1}\n\n"))
+	select {
+	case got := <-out:
+		require.Equal(t, "data: {\"sequence\":1}\n\n", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("event not written before the stream ended")
+	}
+	require.NoError(t, w.Close())
+	require.NoError(t, <-done)
 }
