@@ -1907,9 +1907,11 @@ Pick the read verb by what you start with:
              '--property name=<name>'. Cheap — use this for plain lookups.
              It returns at most --limit entities (default 50); when it
              stops there, only a hint on stderr says so. --limit 0 follows
-             the backend's pages, up to 50 per type, and pages can leave out
-             rows at their boundaries: for an exact count or a complete
-             list, use 'gcx kg graph query' with count() or DISTINCT.
+             the backend's pages, up to 50 per type; pages can leave out
+             rows at their boundaries, and when they repeat rows, a hint
+             says how many. For an exact count, use 'gcx kg graph query'
+             with count(); for a complete list, page through it with
+             ORDER BY, SKIP and LIMIT.
   correlate  You have a firing alert (its labels) but not the entity → find
              which entity the alert hangs off. The "I have an alert, which
              entity is it?" entry point.
@@ -1949,9 +1951,10 @@ snapshot of its current insights. Filter to a single entity with
 It returns at most --limit entities (default 50); when the limit cuts the
 list short, the rows carry no marker and only a hint on stderr says so.
 --limit 0 follows the backend's pages, up to 50 per type. The backend can
-leave out some rows at page boundaries (list drops the rows a later page
-repeats), so the row count can fall short of the true count: for an exact
-count or a complete list, use 'gcx kg graph query' with count() or DISTINCT.
+leave out some rows at page boundaries, so the row count can fall short of
+the true count; list drops the rows a later page repeats, and a hint on
+stderr says how many. For an exact count, use 'gcx kg graph query' with
+count(); for a complete list, page through it with ORDER BY, SKIP and LIMIT.
 
 For an entity's full insight timeline or related entities for root-cause
 analysis, use 'gcx kg entities inspect' instead.`,

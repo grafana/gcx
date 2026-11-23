@@ -806,11 +806,12 @@ func TestSearchByTypesAllPagesFirstPageServerError(t *testing.T) {
 }
 
 // TestSearchByTypesAllPagesSkipsRepeats covers a backend whose pages overlap:
-// a row that an earlier page returned is skipped and does not count against
-// the limit.
+// a row that an earlier page returned is skipped, does not count against the
+// limit, and is counted in a hint.
 func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
+	const typ = "Gizmo"
 	withID := func(id int, name string) SearchResult {
-		return SearchResult{ID: id, Name: name, Type: "Service"}
+		return SearchResult{ID: id, Name: name, Type: typ}
 	}
 	tests := []struct {
 		name      string
@@ -818,21 +819,32 @@ func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
 		limit     int64
 		wantNames []string
 		wantPages int
+		// wantHint is the repeated-rows hint; "" wants none.
+		wantHint string
 	}{
 		{
 			name: "by id", limit: 0,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(2, "b"), withID(3, "c")},
 			wantNames: []string{"a", "b", "c"}, wantPages: 2,
+			wantHint: `dropped 1 row of type "Gizmo" that a later backend page repeated`,
+		},
+		{
+			name: "repeats on several pages are added up", limit: 0,
+			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(2, "b"), withID(1, "a"), withID(3, "c"), withID(2, "b")},
+			wantNames: []string{"a", "b", "c"}, wantPages: 3,
+			wantHint: `dropped 3 rows of type "Gizmo" that a later backend page repeated`,
 		},
 		{
 			name: "a repeat does not count against the limit", limit: 3,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(2, "b"), withID(3, "c"), withID(4, "d")},
 			wantNames: []string{"a", "b", "c"}, wantPages: 2,
+			wantHint: "dropped 1 row of",
 		},
 		{
 			name: "by type, name and scope without an id", limit: 0,
 			rows:      []SearchResult{scoped("a", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns2")},
 			wantNames: []string{"a", "b", "b"}, wantPages: 2,
+			wantHint: "dropped 1 row of",
 		},
 		{
 			name: "rows with the same name and another id are kept", limit: 0,
@@ -842,12 +854,22 @@ func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &fakeKG{entities: map[string][]SearchResult{"Service": tt.rows}, pageSize: 2}
+			f := &fakeKG{entities: map[string][]SearchResult{typ: tt.rows}, pageSize: 2}
 			client := newFakeClient(t, f)
-			got, err := searchByTypesAllPages(t.Context(), &cobra.Command{}, client, []string{"Service"}, typeSearch{startMs: 1000, endMs: 2000}, tt.limit, maxListPages)
+			var stderr bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetErr(&stderr)
+			got, err := searchByTypesAllPages(t.Context(), cmd, client, []string{typ}, typeSearch{startMs: 1000, endMs: 2000}, tt.limit, maxListPages)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantNames, names(got))
 			assert.Len(t, f.searchReq, tt.wantPages)
+			if tt.wantHint == "" {
+				assert.NotContains(t, stderr.String(), "dropped")
+				return
+			}
+			assert.Contains(t, stderr.String(), tt.wantHint)
+			assert.Contains(t, stderr.String(), "results may be incomplete")
+			assert.Contains(t, stderr.String(), "for an exact count use 'gcx kg graph query' with count()")
 		})
 	}
 }

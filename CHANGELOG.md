@@ -6,9 +6,11 @@
   list reads at most 10 pages per type, which matters only when rows are
   filtered client-side (as `--insight` does), and the hint printed at that
   cap says that passing `--limit` reads up to 50. A row that an earlier page
-  returned is skipped, so it is not listed twice. A failed page after the
-  first now ends the command with an error that names the type and the page,
-  instead of printing a partial list. `--page N` still returns that one
+  returned is skipped, so it is not listed twice, and a hint on stderr says
+  how many rows of the type were skipped: pages that repeat rows can leave out
+  others, so the list can fall short of the true count. A failed page after
+  the first now ends the command with an error that names the type and the
+  page, instead of printing a partial list. `--page N` still returns that one
   backend page.
 - `gcx kg entities list --type` and `gcx kg entities inspect` now check the
   entity type when the lookup finds nothing; a lookup that finds entities
@@ -65,12 +67,14 @@
 - `gcx kg entities --help` and `gcx kg entities list --help` now say that list
   stops at `--limit` (default 50), with only a hint on stderr when it does, that
   `--limit 0` follows the backend's pages up to 50 per type, and that the
-  pages can leave out rows at their boundaries. For an exact count or a
-  complete list they point to `gcx kg graph query` with `count()` or
-  `DISTINCT`. The hint that list prints when it reaches `--limit` no longer
-  says that `--limit 0` returns all: it says how far `--limit 0` reads and
-  points to `gcx kg graph query` for an exact count. The `gcx kg --help`
-  overview names `entities list --type <T>` instead of a bare `entities`.
+  pages can leave out rows at their boundaries, with a hint that says how
+  many rows they repeated. For an exact count they point to
+  `gcx kg graph query` with `count()`, and for a complete list to paging
+  through it with `ORDER BY`, `SKIP` and `LIMIT`. The hint that list prints
+  when it reaches `--limit` no longer says that `--limit 0` returns all: it
+  says how far `--limit 0` reads and points to `gcx kg graph query` for an
+  exact count. The `gcx kg --help` overview names `entities list --type <T>`
+  instead of a bare `entities`.
 
 ## v1.8.0 (2026-11-17)
 
