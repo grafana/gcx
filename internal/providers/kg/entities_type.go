@@ -171,9 +171,9 @@ type typeAlternative struct {
 
 // command renders the command that returns the entities the probe found.
 // For inspect it is an inspect command only when the probe found exactly one
-// entity: inspect needs an entity's full scope and fails on a name that
-// several entities share, so for those it is the list command that returns
-// them all with their scopes.
+// entity (a.scope is set): inspect needs an entity's full scope and fails on
+// a name that several entities share, so otherwise it is the list command
+// that returns the entities with their scopes.
 func (a typeAlternative) command(c typeCheck, window string) string {
 	var parts []string
 	flags := c.flags
@@ -238,22 +238,20 @@ const (
 // as the caller's search is, under each schema type that has entities in the
 // window, most entities first, up to maxTypeProbes types. When the caller
 // gave a name, a type whose rows pass is a match for it. Among those rows, a
-// string property other than name and the row's scope dimensions whose value
-// equals the type name, ignoring letter case, is a candidate property match,
-// kept with its value as stored; the values more rows hold come first. Up to
-// maxValueProbes candidates are each confirmed by the same search with the
-// property match added, so a suggested command returns the rows its probe
-// found, and a candidate is left out when an earlier one's search returned
-// its value. Property matches come first; a name match is left out for a
-// type that has one.
+// string property whose value equals the type name, ignoring letter case, is
+// a candidate property match, kept with its value as stored, when the
+// window's schema lists the property for the row's type and it is not name
+// or a scope dimension (see valueProperties); the values more rows hold come
+// first. Up to maxValueProbes candidates are each confirmed by the same
+// search with the property match added, so a suggested command returns the
+// rows its probe found, and a candidate is left out when an earlier one's
+// search returned its value. Property matches come first; a name match is
+// left out for a type that has one.
 func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaResult, present []string, entityType string, c typeCheck) []typeAlternative {
-	inSchema := make(map[string]bool, len(schema.EntityTypes))
-	for _, et := range schema.EntityTypes {
-		inSchema[et.Type] = true
-	}
+	props := valueProperties(schema)
 	var typeProbes []typeAlternative
 	for _, t := range present {
-		if !inSchema[t] {
+		if _, inSchema := props[t]; !inSchema {
 			continue // not an entity type of the schema, such as a catalog record
 		}
 		if len(typeProbes) == maxTypeProbes {
@@ -272,7 +270,7 @@ func probeTypeAlternatives(ctx context.Context, client *Client, schema KGSchemaR
 		if c.name != "" {
 			nameHits = append(nameHits, r.alternative(c, typeAlternative{entityType: t}))
 		}
-		for _, pv := range propertyValuesEqualFold(r.rows, want) {
+		for _, pv := range propertyValuesEqualFold(r.rows, want, props[t]) {
 			valueProbes = append(valueProbes, typeAlternative{entityType: t, property: pv[0], value: pv[1]})
 		}
 	}
@@ -326,7 +324,8 @@ type probeResult struct {
 }
 
 // alternative returns a with the scope of the one entity an inspect probe
-// found, when it found exactly one.
+// found, when it found exactly one: one row and no further backend page,
+// since a further page can hold more entities with the name.
 func (r probeResult) alternative(c typeCheck, a typeAlternative) typeAlternative {
 	if c.verb == "inspect" && len(r.rows) == 1 && !r.more {
 		a.scope = r.rows[0].Scope
@@ -360,13 +359,35 @@ func runProbes(ctx context.Context, client *Client, c typeCheck, probes []typeAl
 	return out
 }
 
+// valueProperties maps each schema type to the properties whose values can
+// suggest a property match for an unknown type: those the schema lists for
+// the type, other than name and the type's scope dimensions. Rows can carry
+// properties the schema does not list; those are left out.
+func valueProperties(schema KGSchemaResult) map[string]map[string]bool {
+	dims := schemaScopeDims(schema)
+	out := make(map[string]map[string]bool, len(schema.EntityTypes))
+	for _, et := range schema.EntityTypes {
+		ps := out[et.Type]
+		if ps == nil {
+			ps = map[string]bool{}
+			out[et.Type] = ps
+		}
+		for _, p := range et.Properties {
+			if p != "name" && !dims[et.Type][p] {
+				ps[p] = true
+			}
+		}
+	}
+	return out
+}
+
 // propertyValuesEqualFold returns the distinct [property, value] pairs of
-// rows whose value is a string equal to want ignoring letter case, the pairs
-// that more rows hold first, then sorted by property and value. The value is
-// kept as stored. Name and each row's scope dimensions are left out, and so
-// is a pair that '--property property=value' would not parse back to that
-// exact match.
-func propertyValuesEqualFold(rows []SearchResult, want string) [][2]string {
+// rows, for the properties in props, whose value is a string equal to want
+// ignoring letter case, the pairs that more rows hold first, then sorted by
+// property and value. The value is kept as stored. Each row's scope
+// dimensions are left out, and so is a pair that '--property property=value'
+// would not parse back to that exact match.
+func propertyValuesEqualFold(rows []SearchResult, want string, props map[string]bool) [][2]string {
 	if want == "" {
 		return nil
 	}
@@ -375,7 +396,7 @@ func propertyValuesEqualFold(rows []SearchResult, want string) [][2]string {
 	for _, r := range rows {
 		for k, v := range r.Properties {
 			s, ok := v.(string)
-			if !ok || k == "name" || !strings.EqualFold(s, want) {
+			if !ok || !props[k] || !strings.EqualFold(s, want) {
 				continue
 			}
 			if _, isScope := r.Scope[k]; isScope {

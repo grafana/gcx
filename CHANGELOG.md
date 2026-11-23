@@ -22,20 +22,21 @@
   scope), first backend page only, under each of up to 12 schema types that
   have entities in the window, most entities first. They suggest the given
   name under a type whose search returns it, and
-  `--property <property>=<value>` for a property of the returned entities,
-  other than name and their scope dimensions, whose value equals the type
-  name ignoring letter case. The value is written as stored. Up to 12 such
-  values are checked, in type order and, within a type, the values that more
-  of its returned entities hold first, each with the same search plus that
-  property match. A value is suggested only when that search returns
-  entities, and not when the search for an earlier suggested value of the
-  same type and property also returned entities with this value (as a
-  backend does whose exact match ignores letter case). The suggested command
-  keeps the call's `--property`, `--insight` and window, and its scope. For
-  inspect, it is an inspect command with the found entity's full scope when
-  the probe finds one entity, and a `list --property name=<name>` command
-  when the name has several entities. When no `--from`/`--to`/`--since` was
-  passed, the error also says that the default window is the last hour.
+  `--property <property>=<value>` for a property of the returned entities that
+  the window's schema lists for their type, other than name and the scope
+  dimensions, whose value equals the type name ignoring letter case. The value
+  is written as stored. Up to 12 such values are checked, in type order and,
+  within a type, the values that more of its returned entities hold first,
+  each with the same search plus that property match. A value is suggested
+  only when that search returns entities, and not when the search for an
+  earlier suggested value of the same type and property also returned entities
+  with this value (as a backend does whose exact match ignores letter case).
+  The suggested command keeps the call's `--property`, `--insight` and window,
+  and its scope. For inspect, it is an inspect command with the found entity's
+  full scope when the probe's search returns one entity and no further page,
+  and otherwise (as when the name has several entities) a
+  `list --property name=<name>` command. When no `--from`/`--to`/`--since`
+  was passed, the error also says that the default window is the last hour.
   Behaviour change: when the window holds no entities of any type and no
   window was passed, list now exits 1 (it printed `[]`) and inspect's
   not-found error says that the default window is the last hour. With a

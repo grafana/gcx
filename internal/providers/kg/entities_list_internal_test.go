@@ -533,26 +533,45 @@ func TestProbeTypeAlternativesSkipsEmptyTypes(t *testing.T) {
 }
 
 // TestCheckEntityTypeSkipsNameAndScope covers a row that holds the type name
-// in its name, in a scope dimension that its properties repeat, and in one
-// other property: only the other property is suggested.
+// in a property that is not a candidate for a property match: name, a scope
+// dimension, or a property that the window's schema does not list for the
+// row's type. Only a property the schema lists is suggested.
 func TestCheckEntityTypeSkipsNameAndScope(t *testing.T) {
-	f := &fakeKG{
-		counts: map[string]int64{"Service": 1},
-		schema: map[string][]string{"Service": {"name", "namespace", "label", "size"}},
-		entities: map[string][]SearchResult{"Service": {{
-			Name: "gadget", Type: "Service",
-			Scope:      map[string]string{"namespace": "gadget"},
-			Properties: map[string]any{"name": "gadget", "namespace": "gadget", "size": 3, "label": "GADGET"},
-		}}},
+	const window = " --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z"
+	schemaPointer := "Run 'gcx kg meta schema" + window + "' for each type's properties"
+	tests := []struct {
+		name  string
+		scope map[string]string
+		props map[string]any
+		want  []string
+	}{
+		{
+			name:  "a property the schema lists is suggested",
+			props: map[string]any{"label": "GADGET", "size": 3},
+			want:  []string{"These return matching entities: gcx kg entities list --type Service --property label=GADGET" + window},
+		},
+		{name: "name", props: map[string]any{"name": "gadget"}},
+		{name: "a scope dimension the row carries", scope: map[string]string{"namespace": "gadget"}, props: map[string]any{"namespace": "gadget"}},
+		{name: "a scope dimension of the type that the row does not carry", props: map[string]any{"namespace": "gadget"}},
+		{name: "a property the schema does not list", props: map[string]any{"unlisted": "gadget"}},
+		{name: "a property the schema lists for another type only", props: map[string]any{"color": "gadget"}},
 	}
-	client := newFakeClient(t, f)
-	_, err := checkEntityType(t.Context(), client, "Gadget", typeCheck{verb: "list", search: typeSearch{startMs: 1000, endMs: 2000}, windowGiven: true})
-	var de gcxerrors.DetailedError
-	require.ErrorAs(t, err, &de)
-	assert.Equal(t, []string{
-		"These return matching entities: gcx kg entities list --type Service --property label=GADGET --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z",
-		"Run 'gcx kg meta schema --from 1970-01-01T00:00:01Z --to 1970-01-01T00:00:02Z' for each type's properties",
-	}, de.Suggestions)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeKG{
+				counts: map[string]int64{"Service": 1, "Pod": 0},
+				schema: map[string][]string{"Service": {"name", "namespace", "label", "size"}, "Pod": {"name", "color"}},
+				entities: map[string][]SearchResult{"Service": {{
+					Name: "gadget", Type: "Service", Scope: tt.scope, Properties: tt.props,
+				}}},
+			}
+			client := newFakeClient(t, f)
+			_, err := checkEntityType(t.Context(), client, "Gadget", typeCheck{verb: "list", search: typeSearch{startMs: 1000, endMs: 2000}, windowGiven: true})
+			var de gcxerrors.DetailedError
+			require.ErrorAs(t, err, &de)
+			assert.Equal(t, append(tt.want, schemaPointer), de.Suggestions)
+		})
+	}
 }
 
 // TestCheckEntityTypeConfirmsPropertyMatch covers the search that confirms a
@@ -623,13 +642,22 @@ func TestPropertyValuesEqualFold(t *testing.T) {
 		name string
 		rows []SearchResult
 		want string
-		out  [][2]string
+		// props are the candidate properties; nil means every property the
+		// rows carry.
+		props []string
+		out   [][2]string
 	}{
 		{name: "the value is kept as stored", rows: []SearchResult{row(nil, map[string]any{"class": "gadget"})}, want: "Gadget", out: [][2]string{{"class", "gadget"}}},
 		{name: "a typed value in lower case", rows: []SearchResult{row(nil, map[string]any{"class": "Gadget"})}, want: "gadget", out: [][2]string{{"class", "Gadget"}}},
 		{name: "another value does not match", rows: []SearchResult{row(nil, map[string]any{"class": "gadgets"})}, want: "Gadget"},
 		{name: "a value that is not a string", rows: []SearchResult{row(nil, map[string]any{"count": 7})}, want: "7"},
-		{name: "name is left out", rows: []SearchResult{row(nil, map[string]any{"name": "gadget"})}, want: "Gadget"},
+		{
+			name:  "a property outside props is left out",
+			rows:  []SearchResult{row(nil, map[string]any{"class": "gadget", "group": "gadget"})},
+			want:  "Gadget",
+			props: []string{"class"},
+			out:   [][2]string{{"class", "gadget"}},
+		},
 		{name: "a scope dimension of the row is left out", rows: []SearchResult{row(map[string]string{"zone": "gadget"}, map[string]any{"zone": "gadget"})}, want: "Gadget"},
 		{
 			name: "pairs are distinct, one per stored case, more rows first",
@@ -647,7 +675,51 @@ func TestPropertyValuesEqualFold(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.out, propertyValuesEqualFold(tt.rows, tt.want))
+			props := map[string]bool{}
+			for _, p := range tt.props {
+				props[p] = true
+			}
+			if tt.props == nil {
+				for _, r := range tt.rows {
+					for k := range r.Properties {
+						props[k] = true
+					}
+				}
+			}
+			assert.Equal(t, tt.out, propertyValuesEqualFold(tt.rows, tt.want, props))
+		})
+	}
+}
+
+func TestValueProperties(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema map[string][]string
+		want   map[string]map[string]bool
+	}{
+		{
+			name:   "name and the scope dimensions are left out",
+			schema: map[string][]string{"Service": {"name", "env", "namespace", "site", "class"}},
+			want:   map[string]map[string]bool{"Service": {"class": true}},
+		},
+		{
+			name:   "each type keeps its own properties",
+			schema: map[string][]string{"Service": {"name", "class"}, "Pod": {"name", "color"}},
+			want:   map[string]map[string]bool{"Service": {"class": true}, "Pod": {"color": true}},
+		},
+		{
+			name:   "a type with no other property is still listed",
+			schema: map[string][]string{"Volume": {"name"}},
+			want:   map[string]map[string]bool{"Volume": {}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var schema KGSchemaResult
+			for typ, props := range tt.schema {
+				schema.EntityTypes = append(schema.EntityTypes, EntityTypeSchema{Type: typ, Properties: props})
+			}
+			assert.Equal(t, tt.want, valueProperties(schema))
 		})
 	}
 }
