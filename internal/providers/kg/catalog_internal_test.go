@@ -15,8 +15,8 @@ func TestIsCatalogRecordType(t *testing.T) {
 		{typ: "EntityType", want: true},
 		{typ: "Env", want: true},
 		{typ: "Schema", want: true},
-		{typ: "Service"},
-		{typ: "Pod"},
+		{typ: "TypeA"},
+		{typ: "TypeB"},
 		{typ: "account"},
 		{typ: ""},
 	} {
@@ -29,7 +29,7 @@ func TestIsCatalogRecordType(t *testing.T) {
 func TestProcessGraphSchemaLeavesOutCatalogRecordTypes(t *testing.T) {
 	id := func(n int64) *int64 { return &n }
 	var resp GraphSchemaResponse
-	for i, name := range []string{"Service", "Account", "EntityType", "Env", "Schema", "Pod"} {
+	for i, name := range []string{"TypeA", "Account", "EntityType", "Env", "Schema", "TypeB"} {
 		resp.Data.Entities = append(resp.Data.Entities, GraphSchemaEntity{ID: id(int64(i + 1)), Name: name})
 	}
 	resp.Data.Edges = []GraphSchemaEdge{{Source: 1, Destination: 6, Type: "TYPE_A"}}
@@ -40,6 +40,6 @@ func TestProcessGraphSchemaLeavesOutCatalogRecordTypes(t *testing.T) {
 	for _, et := range got.EntityTypes {
 		types = append(types, et.Type)
 	}
-	assert.Equal(t, []string{"Pod", "Service"}, types)
-	assert.Equal(t, []string{"Service --TYPE_A--> Pod"}, got.Relationships)
+	assert.Equal(t, []string{"TypeA", "TypeB"}, types)
+	assert.Equal(t, []string{"TypeA --TYPE_A--> TypeB"}, got.Relationships)
 }

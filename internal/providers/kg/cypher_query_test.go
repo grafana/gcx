@@ -79,7 +79,7 @@ func TestGraphQueryCommandOutput(t *testing.T) {
 }
 
 func TestGraphQueryCommandCatalogWarning(t *testing.T) {
-	const catalogResult = `{"columns":["from_type","to_type","n"],"rows":[["Schema","Schema",1],["Service","Pod",5]],"stats":{"rowCount":2,"columnCount":3,"elapsedMs":1}}`
+	const catalogResult = `{"columns":["from_type","to_type","n"],"rows":[["Schema","Schema",1],["TypeA","TypeB",5]],"stats":{"rowCount":2,"columnCount":3,"elapsedMs":1}}`
 	for _, tt := range []struct {
 		name       string
 		query      string
