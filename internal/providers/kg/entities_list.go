@@ -155,7 +155,7 @@ func repeatedRowsHint(entityType string, n int) string {
 	if n == 1 {
 		rows = "row"
 	}
-	return fmt.Sprintf("the backend pages read for type %q repeated %d %s from earlier pages, and each row is listed once — results may be incomplete, since pages that repeat rows can leave out others; for an exact count use 'gcx kg graph query' with count()", entityType, n, rows)
+	return fmt.Sprintf("the backend pages read for type %q returned %d %s that an earlier page had already returned, and list skipped those repeats — results may be incomplete, since pages that repeat rows can leave out others; for an exact count use 'gcx kg graph query' with count()", entityType, n, rows)
 }
 
 // listPageError reports a failed backend page after the first: the listing

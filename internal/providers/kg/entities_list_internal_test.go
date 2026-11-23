@@ -826,37 +826,37 @@ func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
 			name: "by id", limit: 0,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(2, "b"), withID(3, "c")},
 			wantNames: []string{"a", "b", "c"}, wantPages: 2,
-			wantHint: `the backend pages read for type "Gizmo" repeated 1 row from earlier pages, and each row is listed once`,
+			wantHint: `the backend pages read for type "Gizmo" returned 1 row that an earlier page had already returned, and list skipped those repeats`,
 		},
 		{
 			name: "repeats on several pages are added up", limit: 0,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(2, "b"), withID(1, "a"), withID(3, "c"), withID(2, "b")},
 			wantNames: []string{"a", "b", "c"}, wantPages: 3,
-			wantHint: `the backend pages read for type "Gizmo" repeated 3 rows from earlier pages, and each row is listed once`,
+			wantHint: `the backend pages read for type "Gizmo" returned 3 rows that an earlier page had already returned, and list skipped those repeats`,
 		},
 		{
 			name: "a repeat does not count against the limit", limit: 3,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(2, "b"), withID(3, "c"), withID(4, "d")},
 			wantNames: []string{"a", "b", "c"}, wantPages: 2,
-			wantHint: "repeated 1 row from earlier pages",
+			wantHint: "returned 1 row that an earlier page had already returned",
 		},
 		{
 			name: "repeats on every page read are counted, past the limit cut too", limit: 4,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(1, "a"), withID(3, "c"), withID(4, "d"), withID(2, "b")},
 			wantNames: []string{"a", "b", "c", "d"}, wantPages: 3,
-			wantHint: `the backend pages read for type "Gizmo" repeated 2 rows from earlier pages, and each row is listed once`,
+			wantHint: `the backend pages read for type "Gizmo" returned 2 rows that an earlier page had already returned, and list skipped those repeats`,
 		},
 		{
 			name: "a repeat read after the last row within the limit is counted", limit: 3,
 			rows:      []SearchResult{withID(1, "a"), withID(2, "b"), withID(3, "c"), withID(1, "a")},
 			wantNames: []string{"a", "b", "c"}, wantPages: 2,
-			wantHint: `the backend pages read for type "Gizmo" repeated 1 row from earlier pages, and each row is listed once`,
+			wantHint: `the backend pages read for type "Gizmo" returned 1 row that an earlier page had already returned, and list skipped those repeats`,
 		},
 		{
 			name: "by type, name and scope without an id", limit: 0,
 			rows:      []SearchResult{scoped("a", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns2")},
 			wantNames: []string{"a", "b", "b"}, wantPages: 2,
-			wantHint: "repeated 1 row from earlier pages",
+			wantHint: "returned 1 row that an earlier page had already returned",
 		},
 		{
 			name: "rows with the same name and another id are kept", limit: 0,
@@ -876,7 +876,7 @@ func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
 			assert.Equal(t, tt.wantNames, names(got))
 			assert.Len(t, f.searchReq, tt.wantPages)
 			if tt.wantHint == "" {
-				assert.NotContains(t, stderr.String(), "repeated")
+				assert.NotContains(t, stderr.String(), "already returned")
 				return
 			}
 			assert.Contains(t, stderr.String(), tt.wantHint)
