@@ -477,9 +477,11 @@ func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test", nil)
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer resp.Body.Close()
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -510,9 +512,11 @@ func TestNewNamespacedRESTConfig_NoHeadersAddsNothing(t *testing.T) {
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test", nil)
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer resp.Body.Close()
 
 	if got != "" {
 		t.Fatalf("expected no X-Tenant header without configured headers, got %q", got)
@@ -548,9 +552,11 @@ func TestNewNamespacedRESTConfig_PayloadDumpShowsCustomHeaders(t *testing.T) {
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/test", nil)
-	if _, err := client.Do(req); err != nil {
+	resp, err := client.Do(req)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	defer resp.Body.Close()
 
 	want := "X-Tenant: " + tenant
 	if !strings.Contains(logged.String(), want) {
