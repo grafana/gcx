@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsGraphRecordType(t *testing.T) {
+func TestIsCatalogRecordType(t *testing.T) {
 	for _, tt := range []struct {
 		typ  string
 		want bool
@@ -21,7 +21,7 @@ func TestIsGraphRecordType(t *testing.T) {
 		{typ: ""},
 	} {
 		t.Run(tt.typ, func(t *testing.T) {
-			assert.Equal(t, tt.want, isGraphRecordType(tt.typ))
+			assert.Equal(t, tt.want, isCatalogRecordType(tt.typ))
 		})
 	}
 }

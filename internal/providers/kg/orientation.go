@@ -62,7 +62,7 @@ const (
 // existing entity-count and metric-check responses in DiagnoseResult.
 type EntityOverview struct {
 	// Total entities across all types, EXCLUDING catalog meta types
-	// (see isGraphRecordType). Those types describe the catalog itself,
+	// (see isCatalogRecordType). Those types describe the catalog itself,
 	// not the user's workloads, and inflate the count without informational
 	// value.
 	Total int64 `json:"total"`
@@ -297,7 +297,7 @@ func buildEntityOverview(in OrientationInput) EntityOverview {
 		TracedServiceCount: in.TracesTargetInfoSeries,
 	}
 	for t, n := range in.EntityCounts {
-		if isGraphRecordType(t) {
+		if isCatalogRecordType(t) {
 			continue
 		}
 		out.ByType[t] = n

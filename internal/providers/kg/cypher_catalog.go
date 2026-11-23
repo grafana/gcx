@@ -23,7 +23,7 @@ var (
 )
 
 // catalogRowsWarning returns a warning when rows of resp hold the graph's own
-// catalog records (see isGraphRecordType), or "" when none do. A catalog label
+// catalog records (see isCatalogRecordType), or "" when none do. A catalog label
 // the query names itself, as a label or inside a string literal (see
 // cypherNamedLabels), is wanted or filtered out by the query, so rows that
 // carry only such labels are not counted; rows with other catalog labels
@@ -52,7 +52,7 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 				continue
 			}
 			add := func(label string) {
-				if isGraphRecordType(label) && !named[label] {
+				if isCatalogRecordType(label) && !named[label] {
 					found[label] = true
 					inRow = true
 				}
@@ -103,7 +103,7 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 func cypherNamedLabels(query string) map[string]bool {
 	named := map[string]bool{}
 	addWord := func(word string) {
-		if word = strings.Trim(word, "`"); isGraphRecordType(word) {
+		if word = strings.Trim(word, "`"); isCatalogRecordType(word) {
 			named[word] = true
 		}
 	}
