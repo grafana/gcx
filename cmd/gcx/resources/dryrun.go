@@ -171,11 +171,12 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 	return result
 }
 
-// mutationSummaryCodec is the human "text" codec for BatchMutation values:
-// it renders exactly the one-line "N resources <verb>, M errors" summary
-// push and delete have always printed (style picked from the counts, skipped
-// note added when the guard skipped any), so default human stdout stays
-// byte-identical to the pre-codec output.
+// mutationSummaryCodec is the human "text" codec for BatchMutation values.
+// For a dry run it first prints one "would create/update kind/name" line per
+// planned resource. It then prints the one-line "N resources <verb>, M errors"
+// summary push and delete have always printed (style picked from the counts,
+// skipped note added when the guard skipped any). Outside a dry run there are
+// no planned lines, so stdout is byte-identical to the pre-codec output.
 type mutationSummaryCodec struct{}
 
 func (c *mutationSummaryCodec) Format() format.Format { return "text" }
@@ -195,7 +196,7 @@ func (c *mutationSummaryCodec) Encode(w io.Writer, value any) error {
 		if name == "" {
 			name = plan.Requested.Name
 		}
-		fmt.Fprintf(w, "would %s %s/%s\n", strings.TrimSuffix(plan.Action, "d"), plan.Target.Kind, name)
+		fmt.Fprintf(w, "would %s %s/%s\n", plannedVerb(plan.Action), plan.Target.Kind, name)
 	}
 
 	skipped := result.Summary.Skipped
@@ -239,4 +240,17 @@ func formatSkipReasons(reasons map[string]int) string {
 		parts = append(parts, fmt.Sprintf("%d %s: %s", reasons[reason], unit, reason))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// plannedVerb maps a planned action to the verb of its "would ..." line. An
+// action without an entry is printed as recorded.
+func plannedVerb(action string) string {
+	switch action {
+	case "created":
+		return "create"
+	case "updated":
+		return "update"
+	default:
+		return action
+	}
 }

@@ -5,10 +5,12 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // plannedClient behaves like a guarded client: Get serves `existing` by name
@@ -115,4 +117,55 @@ func TestPusher_DryRun_NilAppliedDoesNotPanic(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, summary.Planned(), 1)
 	require.Equal(t, "created", summary.Planned()[0].Action)
+}
+
+// plannedListClient adds List so the pusher can match by natural key.
+type plannedListClient struct {
+	plannedClient
+
+	remote []unstructured.Unstructured
+}
+
+func (c plannedListClient) List(context.Context, resources.Descriptor, metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{Items: c.remote}, nil
+}
+
+// A resource whose name is unknown remotely but whose natural key matches is a
+// planned update, and the planned target is the remote name, not the requested one.
+func TestPusher_DryRun_PlannedNaturalKeyMatchUsesRemoteName(t *testing.T) {
+	const group = "plannednk.test.grafana.app"
+	gvk := schema.GroupVersionKind{Group: group, Version: "v1", Kind: "PlannedThing"}
+	adapter.RegisterNaturalKey(gvk, adapter.SpecFieldKey("name"))
+
+	desc := resources.Descriptor{
+		GroupVersion: gvk.GroupVersion(),
+		Kind:         gvk.Kind,
+		Singular:     "plannedthing",
+		Plural:       "plannedthings",
+	}
+	thing := func(name string) map[string]any {
+		return map[string]any{
+			"apiVersion": group + "/v1",
+			"kind":       gvk.Kind,
+			"metadata":   map[string]any{"name": name, "namespace": "default"},
+			"spec":       map[string]any{"name": "My Resource"},
+		}
+	}
+	remoteObj := unstructured.Unstructured{Object: thing("remote-uuid")}
+	local := resources.MustFromObject(thing("local-uuid"), resources.SourceInfo{Path: "local.json"})
+
+	pusher := NewPusher(plannedListClient{remote: []unstructured.Unstructured{remoteObj}}, fixedRegistry{descs: resources.Descriptors{desc}})
+	summary, err := pusher.Push(t.Context(), PushRequest{
+		Resources:      resources.NewResources(local),
+		MaxConcurrency: 1,
+		DryRun:         true,
+		IncludeManaged: true,
+	})
+	require.NoError(t, err)
+
+	planned := summary.Planned()
+	require.Len(t, planned, 1)
+	require.Equal(t, "updated", planned[0].Action)
+	require.Equal(t, "local-uuid", planned[0].RequestedName)
+	require.Equal(t, "remote-uuid", planned[0].Name)
 }

@@ -26,3 +26,9 @@ func TestBatchMutation_DryRunPlanned(t *testing.T) {
 	require.Contains(t, out.String(), "would update FaroApp/checkout-42\n")
 	require.Contains(t, out.String(), "would create FaroApp/new\n")
 }
+
+func TestPlannedVerb(t *testing.T) {
+	require.Equal(t, "create", plannedVerb("created"))
+	require.Equal(t, "update", plannedVerb("updated"))
+	require.Equal(t, "replaced", plannedVerb("replaced"), "an unmapped action is printed as recorded")
+}
