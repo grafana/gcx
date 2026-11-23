@@ -32,6 +32,12 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Print a Grafana Explore share link for the query
   gcx traces query '{ span.http.status_code >= 500 }' --share-link
 
+  # Print a Grafana Traces Drilldown link for the query
+  gcx traces query '{ span.http.status_code = 500 }' --drilldown-link
+
+  # Print a Traces Drilldown Exceptions tab link
+  gcx traces query '{ resource.service.name = "checkout" }' --since 1h --drilldown-link --drilldown-view exceptions
+
   # Output as JSON
   gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json`,
 			},

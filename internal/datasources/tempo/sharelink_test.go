@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/datasources/tempo"
@@ -196,6 +197,39 @@ current-context: default
 		require.NoError(t, err)
 		assert.NotContains(t, stderr, "Traces Drilldown link:")
 		assert.Contains(t, stderr, "Explore link: ")
+	})
+
+	t.Run("prints an exceptions tab link", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--drilldown-link", "--drilldown-view", "exceptions", "--since", "1h", "-o", "json", `{ resource.service.name = "adaptive-profiles-api" }`})
+		require.NoError(t, err)
+		assert.Contains(t, stderr, "Traces Drilldown link: ")
+		assert.Contains(t, stderr, "actionView=exceptions")
+		assert.Contains(t, stderr, "var-metric=errors")
+		assert.Contains(t, stderr, "resource.service.name")
+	})
+
+	t.Run("exceptions view falls back to explore for an unsupported expression", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--drilldown-link", "--drilldown-view", "exceptions", "--since", "1h", "-o", "json", `{ span.http.status_code >= 500 }`})
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "actionView=exceptions")
+		assert.Equal(t, 1, strings.Count(stderr, "Explore link: "))
+	})
+
+	t.Run("exceptions view refuses a link without a time range and says why", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--drilldown-link", "--drilldown-view", "exceptions", "-o", "json", `{ resource.service.name = "checkout" }`})
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "actionView=exceptions")
+		assert.Contains(t, stderr, "Traces Drilldown links require --since or --from/--to")
+	})
+
+	t.Run("rejects an unknown drilldown view before searching", func(t *testing.T) {
+		_, _, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--drilldown-view", "breakdown", `{ resource.service.name = "checkout" }`})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid --drilldown-view")
 	})
 
 	t.Run("refuses a link without a time range and says why", func(t *testing.T) {
