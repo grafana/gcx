@@ -168,6 +168,18 @@ func TestCatalogRowsWarning(t *testing.T) {
 			wantNot: []string{"Schema"},
 		},
 		{
+			name:    "a catalog label compared through a list predicate variable over labels names it",
+			query:   "MATCH (a) WHERE any(l IN labels(a) WHERE l = 'Env') RETURN labels(a)[0] AS t LIMIT 5",
+			columns: []string{"t"},
+			rows:    [][]string{{`"Env"`}},
+		},
+		{
+			name:    "catalog labels in a list predicate's list compared with labels name them",
+			query:   "MATCH (a) WHERE any(l IN ['Schema', 'Env'] WHERE l IN labels(a)) RETURN labels(a)[0] AS t LIMIT 5",
+			columns: []string{"t"},
+			rows:    [][]string{{`"Schema"`}, {`"Env"`}},
+		},
+		{
 			name:    "an alias equal to a catalog label does not name it",
 			query:   "MATCH (n) RETURN labels(n)[0] AS EntityType, count(n) AS c ORDER BY EntityType LIMIT 50",
 			columns: []string{"EntityType", "c"},
@@ -464,6 +476,16 @@ func TestCypherNamedLabels(t *testing.T) {
 		{name: "property comparison before a WITH clause", query: "MATCH (a) WHERE a.name = 'Schema' WITH labels(a)[0] AS t RETURN t LIMIT 1"},
 		{name: "CASE WHEN on labels", query: "MATCH (a) RETURN CASE WHEN labels(a)[0] = 'Schema' THEN 'x' ELSE 'y' END AS k LIMIT 1", want: []string{"Schema"}},
 		{name: "default value of coalesce", query: "MATCH (a) RETURN coalesce(labels(a)[0], 'Env') AS t LIMIT 1"},
+		{name: "list predicate variable over labels", query: "MATCH (a) WHERE any(l IN labels(a) WHERE l = 'Schema') RETURN a LIMIT 1", want: []string{"Schema"}},
+		{name: "list predicate variable over a WITH alias of labels", query: "MATCH (a) WITH a, labels(a) AS ls WHERE none(l IN ls WHERE l IN ['Env', 'Account']) RETURN a LIMIT 1", want: []string{"Env", "Account"}},
+		{name: "backtick list predicate variable with lower-case in and where", query: "MATCH (a) WHERE SINGLE(`v` in labels(a) where `v` = 'Env') RETURN a LIMIT 1", want: []string{"Env"}},
+		{name: "strings of a list predicate's list compared with labels", query: "MATCH (a) WHERE all(l IN ['Env', 'Schema'] WHERE NOT l IN labels(a)) RETURN a LIMIT 1", want: []string{"Env", "Schema"}},
+		{name: "property comparison inside a list predicate over labels", query: "MATCH (a) WHERE any(l IN labels(a) WHERE l = 'Schema' OR a.name = 'Env') RETURN a LIMIT 1", want: []string{"Schema"}},
+		{name: "string next to a list predicate over labels", query: "MATCH (a) WHERE any(l IN labels(a) WHERE l = 'Schema') OR a.name = 'Env' RETURN a LIMIT 1", want: []string{"Schema"}},
+		{name: "list predicate variable outside its call", query: "MATCH (a)-[r]->(l) WHERE any(l IN labels(a) WHERE l = 'Schema') AND l.name = 'Env' RETURN a LIMIT 1", want: []string{"Schema"}},
+		{name: "list predicate variable over property keys", query: "MATCH (a) WHERE any(x IN keys(a) WHERE x = 'Schema') RETURN a LIMIT 1"},
+		{name: "strings of a list predicate's list compared with a property", query: "MATCH (a) WHERE any(x IN ['Env'] WHERE x = a.name) RETURN a LIMIT 1"},
+		{name: "list predicate variable hides a WITH alias of labels", query: "MATCH (a) WITH a, labels(a)[0] AS l WHERE any(l IN keys(a) WHERE l = 'Env') RETURN a LIMIT 1"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, labelAliases := cypherLabelAliases(maskCypherStrings(tt.query, nil))
@@ -565,6 +587,35 @@ func TestCypherPredicate(t *testing.T) {
 			start := strings.Index(tt.query, tt.operand)
 			require.GreaterOrEqual(t, start, 0)
 			assert.Equal(t, tt.want, cypherPredicate(tt.query, start, start+len(tt.operand)))
+		})
+	}
+}
+
+func TestCypherListPredicateAt(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		masked    string // the first ( in it is the one read
+		ok        bool
+		variable  string
+		list      string
+		predicate string
+	}{
+		{name: "any with WHERE", masked: "WHERE any(l IN labels(a) WHERE l = 1) RETURN a", ok: true, variable: "l", list: " labels(a) ", predicate: " l = 1"},
+		{name: "backtick variable with lower-case in and where", masked: "WHERE SINGLE(`v` in ls where `v` = 1)", ok: true, variable: "v", list: " ls ", predicate: " `v` = 1"},
+		{name: "a list right after IN", masked: "WHERE none(x IN[' '] WHERE x = 1)", ok: true, variable: "x", list: "[' '] ", predicate: " x = 1"},
+		{name: "no WHERE", masked: "WHERE all(x IN ls)", ok: true, variable: "x", list: " ls"},
+		{name: "another function", masked: "RETURN coalesce(x IN ls) AS c"},
+		{name: "no variable", masked: "WHERE any(labels(a))"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			call, ok := cypherListPredicateAt(tt.masked, strings.IndexByte(tt.masked, '('))
+			require.Equal(t, tt.ok, ok)
+			if !ok {
+				return
+			}
+			assert.Equal(t, tt.variable, call.variable)
+			assert.Equal(t, tt.list, tt.masked[call.list[0]:call.list[1]])
+			assert.Equal(t, tt.predicate, tt.masked[call.predicate[0]:call.predicate[1]])
 		})
 	}
 }

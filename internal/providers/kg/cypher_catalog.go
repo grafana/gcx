@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -22,6 +23,9 @@ var (
 	cypherLabelsCall = regexp.MustCompile(`(?i)\blabels\s*\(`)
 	// cypherName matches a whole plain or backtick-quoted name.
 	cypherName = regexp.MustCompile("^(?:`([^`]*)`|([A-Za-z_][A-Za-z0-9_]*))$")
+	// cypherListBinding matches the variable and IN that open the arguments
+	// of a list predicate, as in any(x IN list WHERE predicate).
+	cypherListBinding = regexp.MustCompile("^\\s*(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\\s+(?i:IN)\\b")
 )
 
 // catalogRowsWarning returns a warning when rows of resp hold the graph's own
@@ -116,7 +120,9 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 // counts when the predicate around it (see cypherPredicate) holds such an
 // expression, so a string in a property filter such as n.name <> 'X' does not
 // name a label. Aliases, variables and property keys that equal a catalog
-// label do not name it either.
+// label do not name it either. A string inside a list predicate can also be
+// compared through its variable (see cypherListScope), as in
+// any(l IN labels(n) WHERE l = 'X') or any(l IN ['X'] WHERE l IN labels(n)).
 func cypherNamedLabels(query string, labelAliases map[string]bool) map[string]bool {
 	named := map[string]bool{}
 	addWord := func(word string) {
@@ -130,11 +136,12 @@ func cypherNamedLabels(query string, labelAliases map[string]bool) map[string]bo
 	rest := maskCypherStrings(query, func(start, end int) {
 		literals = append(literals, [2]int{start, end})
 	})
-	isLabelAlias := func(name string) bool { return labelAliases[name] }
 	for _, literal := range literals {
 		// The operand is the literal with its quotes.
-		predicate := cypherPredicate(rest, literal[0]-1, min(literal[1]+1, len(rest)))
-		if cypherLabelsCall.MatchString(predicate) || cypherRefersTo(predicate, isLabelAlias) {
+		quote := literal[0] - 1
+		predicate := cypherPredicate(rest, quote, min(literal[1]+1, len(rest)))
+		isLabelAlias, listCompared := cypherListScope(rest, quote, labelAliases)
+		if listCompared || cypherHoldsLabels(predicate, isLabelAlias) {
 			for _, word := range cypherWord.FindAllString(query[literal[0]:literal[1]], -1) {
 				addWord(word)
 			}
@@ -161,6 +168,93 @@ func cypherNamedLabels(query string, labelAliases map[string]bool) map[string]bo
 		i = end - 1
 	}
 	return named
+}
+
+// cypherHoldsLabels reports whether masked, a part of a query whose string
+// literals are masked (see maskCypherStrings), holds a labels(...) call or
+// refers to a name for which isLabelAlias reports true (see cypherRefersTo).
+func cypherHoldsLabels(masked string, isLabelAlias func(string) bool) bool {
+	return cypherLabelsCall.MatchString(masked) || cypherRefersTo(masked, isLabelAlias)
+}
+
+// cypherListPredicate is a list predicate, a call of any, all, none or single
+// such as any(x IN list WHERE predicate), as offsets into the masked query.
+type cypherListPredicate struct {
+	variable        string // the variable, without backticks
+	list, predicate [2]int // where the list and the predicate after WHERE are
+}
+
+// cypherListPredicateAt returns the list predicate whose arguments the
+// parenthesis at offset open of masked opens, and true, or false when it
+// opens none. masked is a query without comments whose string literals are
+// masked (see maskCypherStrings).
+func cypherListPredicateAt(masked string, open int) (cypherListPredicate, bool) {
+	if masked[open] != '(' {
+		return cypherListPredicate{}, false
+	}
+	switch cypherWordBefore(masked, open) {
+	case "ANY", "ALL", "NONE", "SINGLE":
+	default:
+		return cypherListPredicate{}, false
+	}
+	closing := cypherCloseAfter(masked, open+1)
+	if closing < 0 {
+		return cypherListPredicate{}, false
+	}
+	m := cypherListBinding.FindStringSubmatchIndex(masked[open+1 : closing])
+	if m == nil {
+		return cypherListPredicate{}, false
+	}
+	listStart := open + 1 + m[1]
+	listEnd := min(cypherPredicateEnd(masked, listStart), closing)
+	call := cypherListPredicate{
+		variable:  strings.Trim(masked[open+1+m[2]:open+1+m[3]], "`"),
+		list:      [2]int{listStart, listEnd},
+		predicate: [2]int{closing, closing},
+	}
+	if listEnd+len("WHERE") <= closing && strings.EqualFold(masked[listEnd:listEnd+len("WHERE")], "WHERE") {
+		call.predicate[0] = listEnd + len("WHERE")
+	}
+	return call, true
+}
+
+// cypherListScope returns, for the operand at offset at of masked (see
+// cypherListPredicateAt), which names stand for labels(...) output there, and
+// whether the operand is compared with such output through the variable of a
+// list predicate. A name stands for it when it is an alias in labelAliases
+// or the variable of a list predicate around the operand whose list holds
+// such output (see cypherHoldsLabels), as l does in any(l IN labels(n) WHERE
+// ...); a variable hides an alias or outer variable of the same name. An
+// operand in the list of a list predicate is compared with labels(...) output
+// when the predicate after WHERE holds it, as 'X' is in any(l IN ['X'] WHERE
+// l IN labels(n)).
+func cypherListScope(masked string, at int, labelAliases map[string]bool) (func(string) bool, bool) {
+	var calls []cypherListPredicate
+	for open := cypherOpenBefore(masked, at); open >= 0; open = cypherOpenBefore(masked, open) {
+		if call, ok := cypherListPredicateAt(masked, open); ok {
+			calls = append(calls, call)
+		}
+	}
+	variables := map[string]bool{}
+	isLabelAlias := func(name string) bool {
+		if over, ok := variables[name]; ok {
+			return over
+		}
+		return labelAliases[name]
+	}
+	compared := false
+	// From the outermost list predicate in, so an inner variable hides an
+	// outer one.
+	for _, call := range slices.Backward(calls) {
+		switch {
+		case at >= call.predicate[0] && at < call.predicate[1]:
+			variables[call.variable] = cypherHoldsLabels(masked[call.list[0]:call.list[1]], isLabelAlias)
+		case at >= call.list[0] && at < call.list[1]:
+			isOther := func(name string) bool { return name != call.variable && isLabelAlias(name) }
+			compared = cypherHoldsLabels(masked[call.predicate[0]:call.predicate[1]], isOther)
+		}
+	}
+	return isLabelAlias, compared
 }
 
 // cypherPredicate returns the text of the predicate that holds the operand
@@ -420,7 +514,7 @@ func cypherLabelShape(expr string, aliases map[string]*labelShape) *labelShape {
 		return &labelShape{keys: keys}
 	}
 	isLabelAlias := func(name string) bool { return aliases[name] != nil }
-	if cypherLabelsCall.MatchString(expr) || cypherRefersTo(expr, isLabelAlias) {
+	if cypherHoldsLabels(expr, isLabelAlias) {
 		return &labelShape{whole: true}
 	}
 	return nil

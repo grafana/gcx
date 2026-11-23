@@ -34,10 +34,11 @@
   `MATCH (a) WITH labels(a) AS ls, count(a) AS c RETURN ls[0] AS type, c LIMIT 50`.
   A catalog label the query names itself is not counted: as a label in a
   pattern or a label predicate, or in a string compared with a `labels(...)`
-  expression or an alias of one, outside comments. A string compared with a
-  property, as in `n.name <> '<label>'`, does not name a label, and a query
-  that filters out one catalog label is still warned about the others. Rows
-  are unchanged.
+  expression or an alias of one, also through the variable of a list
+  predicate, as in `any(l IN labels(n) WHERE l = '<label>')`, outside
+  comments. A string compared with a property, as in `n.name <> '<label>'`,
+  does not name a label, and a query that filters out one catalog label is
+  still warned about the others. Rows are unchanged.
 - `gcx kg graph query --json list` now prints the response fields, `warnings`
   included, without running the query. The command's help now says that its
   default output is a table, or the agents format (JSON) in agent mode; it
