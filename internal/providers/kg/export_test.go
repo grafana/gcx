@@ -275,3 +275,16 @@ type InsightGroup = insightGroup
 func SummarizeInsights(results []SearchResult) InsightsSummary {
 	return summarizeInsights(results)
 }
+
+// NewSummaryCommand exposes the `kg stats` command for testing.
+func NewSummaryCommand(loader RESTConfigLoader) *cobra.Command {
+	return newSummaryCommand(loader)
+}
+
+// SetStatsMaxSearchPages lowers the per-type page bound of the `kg stats`
+// insight search for a test and returns a function that restores it.
+func SetStatsMaxSearchPages(n int) func() {
+	old := statsMaxSearchPages
+	statsMaxSearchPages = n
+	return func() { statsMaxSearchPages = old }
+}

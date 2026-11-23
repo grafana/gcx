@@ -1,15 +1,23 @@
 ## Unreleased
 
-- `gcx kg stats` now breaks active insights down by category
-  (`insights.byCategory`: failure, error, anomaly, saturation, amend), each
-  with its own total and per-name counts, from the records it already reads.
-  The existing `total`, `bySeverity` and `byName` keys are unchanged.
 - `gcx kg stats` no longer counts the graph's own catalog records (Account,
-  EntityType, Env and Schema) as entities. They inflated `entities.total` and
-  showed up as kinds in `entities.byType`, so `kg stats` disagreed with
-  `kg meta schema`. They are now listed separately under `entities.internal`,
-  which is omitted when there are none, and the diagnose entity overview leaves
-  out Account records too.
+  EntityType, Env and Schema) as entities, so `entities.total` is smaller than
+  before and `entities.byType` no longer lists those four types. They inflated
+  the total and made `kg stats` disagree with `kg meta schema`. They are now
+  listed separately under `entities.internal`, which is omitted when there are
+  none. Scripts that relied on the old total can add `entities.internal.total`.
+  The diagnose entity overview leaves out Account records too.
+- `gcx kg stats` now breaks active insights down by category
+  (`insights.byCategory`, for example failure, error, anomaly, saturation and
+  amend; insights without a category count under `unknown`), each with its own
+  total and per-name counts. The existing `total`, `bySeverity` and `byName`
+  keys are unchanged.
+- `gcx kg stats` now counts the insights of every entity that carries one. It
+  used to read only the first page of search results per entity type, so on
+  large graphs `insights.total`, `bySeverity` and `byName` were too low. It now
+  reads up to 50 pages per type and lists any type it could not read in full
+  (more pages than that, a server-side result limit, or a server error) in
+  `insights.incompleteTypes`. `--type` still limits only the insight counts.
 
 ## v1.8.0 (2026-11-17)
 

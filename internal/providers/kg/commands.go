@@ -2622,21 +2622,28 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stats",
 		Short: "Show entity counts by type and active-insight counts by category, severity, and insight name.",
-		Long: `Show entity counts by type and active-insight counts by category, severity, and
+		Long: fmt.Sprintf(`Show entity counts by type and active-insight counts by category, severity, and
 insight name, for the requested window (the last hour by default; pass --from/--to
 for older data).
 
-entities.total and entities.byType count only the entities the graph observed in
-your telemetry. Records the graph keeps about itself (its schema catalog and its
-account and environment records) are not part of that total; they are listed
-separately under entities.internal.
+entities.total and entities.byType leave out the graph's catalog records, which
+are listed separately under entities.internal. Insights on those records still
+count in the insight totals.
 
-insights.byCategory splits insights.total by category (failure, error, anomaly,
-saturation, amend), each with its own total and byName. amend insights record
-changes such as deployments or config updates; like every category they are
-active insights and count in insights.total. Read the categories here instead of
-listing entities; use 'kg entities list --insight' only to see which entities
-carry them.`,
+--type limits only the insight counts; the entity counts always cover every
+type.
+
+insights.byCategory splits insights.total by the insights' categories (for
+example failure, error, anomaly, saturation and amend; insights without one count
+under unknown), each with its own total and byName. Every active insight counts
+in exactly one category, so the byCategory totals add up to insights.total.
+
+The insight counts cover every entity that carries an active insight in the
+window: stats reads up to %d pages of search results per entity type. A type
+whose results could not all be read (more pages than that, a server-side result
+limit, or a server error) is listed in insights.incompleteTypes. Read the
+categories here instead of listing entities; use 'kg entities list --insight'
+only to see which entities carry them.`, statsMaxSearchPages),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -2662,30 +2669,36 @@ carry them.`,
 				return err
 			}
 			entities := summarizeEntityCounts(counts)
-			var entityTypes []string
-			for t, cnt := range counts {
-				if cnt > 0 {
+			// Every counted type is searched for insights, catalog types
+			// included: catalog records can carry active insights of their
+			// own.
+			entityTypes := make([]string, 0, len(counts))
+			for t, n := range counts {
+				if n > 0 {
 					entityTypes = append(entityTypes, t)
 				}
 			}
+			sort.Strings(entityTypes)
 			if summaryEntityType != "" {
 				entityTypes = []string{summaryEntityType}
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, false, summaryScope.scopeCriteria(), startMs, endMs, 0, nil)
+			results, incomplete, err := searchInsightCarriers(cmd.Context(), cmd.ErrOrStderr(), client, entityTypes, summaryScope.scopeCriteria(), startMs, endMs)
 			if err != nil {
 				return err
 			}
+			insights := summarizeInsights(results)
+			insights.IncompleteTypes = incomplete
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), struct {
 				Entities entitiesSummary `json:"entities" yaml:"entities"`
 				Insights insightsSummary `json:"insights" yaml:"insights"`
 			}{
 				Entities: entities,
-				Insights: summarizeInsights(results),
+				Insights: insights,
 			})
 		},
 	}
 	summaryScope.register(cmd)
-	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit to a specific entity type")
+	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit the insight counts to one entity type (entity counts always cover every type)")
 	ioOpts.setup(cmd.Flags())
 	return cmd
 }
@@ -2697,9 +2710,8 @@ type entityCount struct {
 }
 
 // entitiesSummary is the entities block of `kg stats`. Total and ByType
-// count observed entities only; the graph's own catalog records are kept
-// out of them and reported under Internal, so a reader does not mistake
-// them for telemetry.
+// leave out the graph's catalog records (see isMetaEntityType), which are
+// reported under Internal.
 type entitiesSummary struct {
 	Total    int64            `json:"total" yaml:"total"`
 	ByType   map[string]int64 `json:"byType" yaml:"byType"`
@@ -2735,12 +2747,15 @@ type insightGroup struct {
 	ByName map[string]int `json:"byName" yaml:"byName"`
 }
 
-// insightsSummary is the insights block of `kg stats`.
+// insightsSummary is the insights block of `kg stats`. IncompleteTypes
+// lists the entity types whose insight-carrying entities could not all be
+// read, so their insights are undercounted.
 type insightsSummary struct {
-	Total      int                     `json:"total" yaml:"total"`
-	ByCategory map[string]insightGroup `json:"byCategory" yaml:"byCategory"`
-	BySeverity map[string]int          `json:"bySeverity" yaml:"bySeverity"`
-	ByName     map[string]int          `json:"byName" yaml:"byName"`
+	Total           int                     `json:"total" yaml:"total"`
+	ByCategory      map[string]insightGroup `json:"byCategory" yaml:"byCategory"`
+	BySeverity      map[string]int          `json:"bySeverity" yaml:"bySeverity"`
+	ByName          map[string]int          `json:"byName" yaml:"byName"`
+	IncompleteTypes []string                `json:"incompleteTypes,omitempty" yaml:"incompleteTypes,omitempty"`
 }
 
 // summarizeInsights counts the active insights on the given entities by
