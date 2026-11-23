@@ -646,8 +646,8 @@ func TestEscalateCommand_IncidentRequest(t *testing.T) {
 		},
 		{
 			name: "incident user page",
-			args: []string{"--user-ids", "U123", "--incident-id", "INC-123"},
-			want: map[string]any{"title": "Database outage", "users": []any{map[string]any{"id": "U123", "important": false}}, "incident_id": "INC-123"},
+			args: []string{"--user-ids", "U123", "--incident-id", "4"},
+			want: map[string]any{"title": "Database outage", "users": []any{map[string]any{"id": "U123", "important": false}}, "incident_id": "4"},
 		},
 		{
 			name: "trimmed opaque ID and important users",
@@ -656,13 +656,13 @@ func TestEscalateCommand_IncidentRequest(t *testing.T) {
 		},
 		{
 			name: "incident team page",
-			args: []string{"--team", "T123", "--incident-id", "INC-123"},
-			want: map[string]any{"title": "Database outage", "team": "T123", "incident_id": "INC-123"},
+			args: []string{"--team", "T123", "--incident-id", "4"},
+			want: map[string]any{"title": "Database outage", "team": "T123", "incident_id": "4"},
 		},
 		{
 			name: "important incident team page",
-			args: []string{"--team", "T123", "--important", "--incident-id", "INC-123"},
-			want: map[string]any{"title": "Database outage", "team": "T123", "important_team_escalation": true, "incident_id": "INC-123"},
+			args: []string{"--team", "T123", "--important", "--incident-id", "4"},
+			want: map[string]any{"title": "Database outage", "team": "T123", "important_team_escalation": true, "incident_id": "4"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -716,8 +716,8 @@ func TestEscalateCommand_InvalidInputBeforeClientLoading(t *testing.T) {
 		{"empty incident ID", []string{"--title", "Page", "--incident-id="}, "--incident-id must not be blank"},
 		{"whitespace incident ID", []string{"--title", "Page", "--incident-id", " \t\n "}, "--incident-id must not be blank"},
 		{"missing incident value", []string{"--title", "Page", "--incident-id"}, "flag needs an argument"},
-		{"missing title", []string{"--incident-id", "INC-123"}, "--title is required"},
-		{"stray positional", []string{"--title", "Page", "--incident-id", "INC-123", "unexpected"}, "unknown command"},
+		{"missing title", []string{"--incident-id", "4"}, "--title is required"},
+		{"stray positional", []string{"--title", "Page", "--incident-id", "4", "unexpected"}, "unknown command"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// A nil loader makes any attempted client loading fail the test.
@@ -751,7 +751,7 @@ func TestEscalateCommand_IncidentBackendFailure(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SilenceUsage = true
-	cmd.SetArgs([]string{"--title", "Page", "--user-ids", "U123", "--incident-id", "INC-123", "-o", "json"})
+	cmd.SetArgs([]string{"--title", "Page", "--user-ids", "U123", "--incident-id", "4", "-o", "json"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected backend error")
 	}
