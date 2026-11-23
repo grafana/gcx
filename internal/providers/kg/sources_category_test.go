@@ -772,7 +772,8 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 		"copy every label of the insight's timeline entry in 'gcx kg entities inspect' (timeLines[].labels) with --label",
 		"For alert-rule and change insights also pass asserts_alert_category=<the entry's category>",
 		"sources reads the entity's insight timeline for the same window and scope",
-		"the timeline read and the retry use the graph's name",
+		"When the timeline read finds no entity, sources looks up the entity type names of that window and scope",
+		"it repeats the timeline read with that name and sends it in the retry",
 	} {
 		t.Run("Long "+phrase, func(t *testing.T) {
 			assert.Contains(t, long, phrase)

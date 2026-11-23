@@ -2073,9 +2073,10 @@ lookup returns an empty array, sources reads the entity's insight timeline
 for the same window and scope. If the entries of that insight there have
 exactly one asserts_alert_category, it retries once with that label added and
 prints the metrics that retry returns; otherwise it prints the empty array.
-When the entity type is written in another case than the graph's type name
-(for example all lower case), the timeline read and the retry use the graph's
-name.`
+When the timeline read finds no entity, sources looks up the entity type
+names of that window and scope; if exactly one of them is the given type
+written in another case (for example the given type is all lower case), it
+repeats the timeline read with that name and sends it in the retry.`
 
 func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
