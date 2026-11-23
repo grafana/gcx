@@ -18,11 +18,12 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 		EntityCounts: map[string]int64{
 			"Service":    10,
 			"Pod":        50,
-			"EntityType": 18, // meta — excluded
-			"Schema":     30, // meta — excluded
-			"Env":        3,  // meta — excluded
-			"Account":    1,  // meta — excluded
+			"EntityType": 18, // meta (the schema does not list it) — excluded
+			"Schema":     30, // meta (the schema does not list it) — excluded
+			"Env":        3,  // meta (record type) — excluded
+			"Account":    1,  // meta (record type) — excluded
 		},
+		SchemaTypes:            map[string]bool{"Service": true, "Pod": true},
 		TracesTargetInfoSeries: 4,
 	}
 
@@ -38,6 +39,17 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 	assert.NotContains(t, overview.ByType, "Account")
 	assert.Contains(t, overview.ByType, "Service")
 	assert.Contains(t, overview.ByType, "Pod")
+}
+
+func TestBuildEntityOverview_WithoutSchemaExcludesOnlyRecordTypes(t *testing.T) {
+	in := kg.OrientationInput{
+		EntityCounts: map[string]int64{"Service": 10, "RecordTypeA": 5, "Env": 3, "Account": 1},
+	}
+
+	overview := kg.BuildEntityOverview(in)
+
+	assert.Equal(t, int64(15), overview.Total, "without the schema only the record types are left out")
+	assert.Equal(t, map[string]int64{"Service": 10, "RecordTypeA": 5}, overview.ByType)
 }
 
 func TestBuildScopeSummary(t *testing.T) {
@@ -307,6 +319,7 @@ func TestComputeOrientation_HealthyUnscoped(t *testing.T) {
 	in := kg.OrientationInput{
 		StackEnabled:                  true,
 		EntityCounts:                  map[string]int64{"Service": 100, "Pod": 200, "EntityType": 18, "Schema": 30, "Env": 3},
+		SchemaTypes:                   map[string]bool{"Service": true, "Pod": true},
 		Scopes:                        map[string][]string{"env": {"prod"}, "namespace": {"team-a", "team-b"}},
 		TracesTargetInfoSeries:        20,
 		AssertsRelationCallsSeries:    20,

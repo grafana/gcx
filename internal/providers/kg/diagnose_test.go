@@ -71,6 +71,61 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 	assert.Equal(t, 0, result.Summary.Warned)
 }
 
+func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
+	const prefix = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1"
+	tests := []struct {
+		name        string
+		schemaOK    bool
+		wantTotal   int64
+		wantNotType []string
+	}{
+		{
+			name:        "types the schema does not list and record types are left out",
+			schemaOK:    true,
+			wantTotal:   30,
+			wantNotType: []string{"RecordTypeA", "Account", "Env"},
+		},
+		{
+			name:        "without the schema only the record types are left out",
+			wantTotal:   34,
+			wantNotType: []string{"Account", "Env"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case prefix + "/entity_type/count":
+					writeJSON(w, map[string]int64{"Service": 10, "Pod": 20, "RecordTypeA": 4, "Account": 1, "Env": 2})
+				case prefix + "/search":
+					if !tt.schemaOK {
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					_, _ = io.WriteString(w, `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"},{"id":4,"name":"Env"}]}}`)
+				default:
+					http.NotFound(w, r)
+				}
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			scope := kg.NewTestScopeFlags("", "", "")
+			result := kg.RunDiagnose(t.Context(), newTestClient(t, server), &scope, nil, "")
+
+			require.NotNil(t, result.Orientation)
+			overview := result.Orientation.EntityOverview
+			assert.Equal(t, tt.wantTotal, overview.Total)
+			for _, typ := range tt.wantNotType {
+				assert.NotContains(t, overview.ByType, typ)
+			}
+			assert.Contains(t, overview.ByType, "Service")
+			assert.Contains(t, overview.ByType, "Pod")
+		})
+	}
+}
+
 func TestRunDiagnose_StackDisabled(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

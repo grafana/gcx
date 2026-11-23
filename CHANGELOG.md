@@ -1,12 +1,17 @@
 ## Unreleased
 
-- `gcx kg stats` no longer counts the graph's own catalog records (Account,
-  EntityType, Env and Schema) as entities, so `entities.total` is smaller than
-  before and `entities.byType` no longer lists those four types. They inflated
-  the total and made `kg stats` disagree with `kg meta schema`. They are now
-  listed separately under `entities.internal`, which is omitted when there are
-  none. Scripts that relied on the old total can add `entities.internal.total`.
-  The diagnose entity overview leaves out Account records too.
+- `gcx kg stats` no longer counts the graph's own catalog records as entities:
+  `entities.total` and `entities.byType` now leave out every counted type that
+  `kg meta schema` does not list for the same window (for example Account,
+  EntityType, Env and Schema), so `entities.total` is smaller than before. These
+  types inflated the total and showed up in `entities.byType` although
+  `kg meta schema` does not list them. They are now listed separately under
+  `entities.internal`, which is omitted when there are none. Scripts that relied
+  on the old total can add `entities.internal.total`. To tell them apart,
+  `kg stats` now also reads the schema for its window, and fails if it cannot.
+- The `gcx kg diagnose` entity overview uses the same rule, so it now leaves out
+  Account records too. It reads the schema for the last hour to do so; when the
+  schema cannot be read, it leaves out only the account and environment records.
 - `gcx kg stats` now breaks active insights down by category
   (`insights.byCategory`, for example failure, error, anomaly, saturation and
   amend; insights without a category count under `unknown`), each with its own

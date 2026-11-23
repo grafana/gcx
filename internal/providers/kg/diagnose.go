@@ -379,6 +379,23 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		return nil
 	})
 
+	// Schema types for the entity overview, which uses them to leave the
+	// graph's catalog records out of its total (see isCatalogType). Best
+	// effort and not a check of its own: without the schema the overview
+	// leaves out only the account and environment record types.
+	g.Go(func() error {
+		now := time.Now()
+		schemaResp, err := client.FetchGraphSchema(ctx, now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli())
+		if err != nil {
+			return nil //nolint:nilerr // Best effort: the overview falls back to isGraphRecordType.
+		}
+		listed := listedSchemaTypes(schemaResp)
+		mu.Lock()
+		orientationInput.SchemaTypes = listed
+		mu.Unlock()
+		return nil
+	})
+
 	// Check 3: Scope values.
 	g.Go(func() error {
 		c, scopes := checkScopeValues(ctx, client)

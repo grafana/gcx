@@ -18,61 +18,123 @@ import (
 )
 
 func TestSummarizeEntityCounts(t *testing.T) {
+	listed := map[string]bool{"Service": true, "Pod": true}
 	tests := []struct {
 		name   string
 		counts map[string]int64
+		listed map[string]bool
 		want   kg.EntitiesSummary
 	}{
 		{
 			name:   "no entities",
 			counts: map[string]int64{},
+			listed: listed,
 			want:   kg.EntitiesSummary{ByType: map[string]int64{}},
 		},
 		{
-			name:   "observed entities only",
+			name:   "types the schema lists are counted",
 			counts: map[string]int64{"Service": 3, "Pod": 7},
+			listed: listed,
 			want:   kg.EntitiesSummary{Total: 10, ByType: map[string]int64{"Service": 3, "Pod": 7}},
 		},
 		{
-			name: "catalog records are split out of the total",
+			name: "types the schema does not list and record types are split out of the total",
 			counts: map[string]int64{
 				"Service": 3, "Pod": 7,
-				"Account": 2, "EntityType": 3, "Env": 4, "Schema": 5,
+				"RecordTypeA": 3, "RecordTypeB": 5, "Account": 2, "Env": 4,
 			},
+			listed: listed,
 			want: kg.EntitiesSummary{
 				Total:  10,
 				ByType: map[string]int64{"Service": 3, "Pod": 7},
 				Internal: &kg.EntityCount{
 					Total:  14,
-					ByType: map[string]int64{"Account": 2, "EntityType": 3, "Env": 4, "Schema": 5},
+					ByType: map[string]int64{"RecordTypeA": 3, "RecordTypeB": 5, "Account": 2, "Env": 4},
 				},
 			},
 		},
 		{
-			name:   "only catalog records leaves an empty observed total",
-			counts: map[string]int64{"Account": 2, "EntityType": 3, "Schema": 5},
+			name:   "only catalog records leaves an empty total",
+			counts: map[string]int64{"RecordTypeA": 3, "Account": 2},
+			listed: listed,
 			want: kg.EntitiesSummary{
 				ByType: map[string]int64{},
 				Internal: &kg.EntityCount{
-					Total:  10,
-					ByType: map[string]int64{"Account": 2, "EntityType": 3, "Schema": 5},
+					Total:  5,
+					ByType: map[string]int64{"RecordTypeA": 3, "Account": 2},
 				},
 			},
 		},
 		{
 			name:   "zero counts are dropped",
-			counts: map[string]int64{"Service": 0, "Pod": 2, "Schema": 0},
+			counts: map[string]int64{"Service": 0, "Pod": 2, "RecordTypeA": 0},
+			listed: listed,
 			want:   kg.EntitiesSummary{Total: 2, ByType: map[string]int64{"Pod": 2}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, kg.SummarizeEntityCounts(tt.counts))
+			assert.Equal(t, tt.want, kg.SummarizeEntityCounts(tt.counts, tt.listed))
+		})
+	}
+}
+
+func TestIsCatalogType(t *testing.T) {
+	listed := map[string]bool{"Service": true}
+	tests := []struct {
+		name   string
+		typ    string
+		listed map[string]bool
+		want   bool
+	}{
+		{name: "a type the schema lists", typ: "Service", listed: listed, want: false},
+		{name: "a type the schema does not list", typ: "RecordTypeA", listed: listed, want: true},
+		{name: "account records", typ: "Account", listed: listed, want: true},
+		{name: "environment records", typ: "Env", listed: listed, want: true},
+		{name: "a record type even when listed", typ: "Env", listed: map[string]bool{"Env": true}, want: true},
+		{name: "without the schema an unknown type is not a catalog type", typ: "RecordTypeA", listed: nil, want: false},
+		{name: "without the schema record types still are", typ: "Account", listed: nil, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, kg.IsCatalogType(tt.typ, tt.listed))
+		})
+	}
+}
+
+func TestListedSchemaTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want map[string]bool
+	}{
+		{
+			name: "lists the schema's types except the record types",
+			body: `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"},{"id":4,"name":"Env"}]}}`,
+			want: map[string]bool{"Service": true, "Pod": true},
+		},
+		{
+			name: "an unnamed type is listed as Unknown, as kg meta schema shows it",
+			body: `{"data":{"entities":[{"id":1,"name":""}]}}`,
+			want: map[string]bool{"Unknown": true},
+		},
+		{
+			name: "an empty schema lists nothing",
+			body: `{"data":{"entities":[]}}`,
+			want: map[string]bool{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var resp kg.GraphSchemaResponse
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &resp))
+			assert.Equal(t, tt.want, kg.ListedSchemaTypes(resp))
 		})
 	}
 }
 
 func TestEntitiesSummary_JSONOmitsEmptyInternal(t *testing.T) {
+	listed := map[string]bool{"Pod": true}
 	tests := []struct {
 		name   string
 		counts map[string]int64
@@ -85,13 +147,13 @@ func TestEntitiesSummary_JSONOmitsEmptyInternal(t *testing.T) {
 		},
 		{
 			name:   "with catalog records",
-			counts: map[string]int64{"Pod": 2, "Schema": 5},
-			want:   `{"total":2,"byType":{"Pod":2},"internal":{"total":5,"byType":{"Schema":5}}}`,
+			counts: map[string]int64{"Pod": 2, "RecordTypeA": 5},
+			want:   `{"total":2,"byType":{"Pod":2},"internal":{"total":5,"byType":{"RecordTypeA":5}}}`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, err := json.Marshal(kg.SummarizeEntityCounts(tt.counts))
+			b, err := json.Marshal(kg.SummarizeEntityCounts(tt.counts, listed))
 			require.NoError(t, err)
 			assert.JSONEq(t, tt.want, string(b))
 		})
@@ -192,7 +254,10 @@ func statsInsight(name, category string) map[string]any {
 
 func TestStatsCommand(t *testing.T) {
 	const prefix = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1"
-	counts := map[string]int64{"Service": 3, "Pod": 2, "Account": 2, "Schema": 5}
+	counts := map[string]int64{"Service": 3, "Pod": 2, "Account": 2, "RecordTypeA": 5}
+	// The schema lists Account like any type; RecordTypeA, which it does not
+	// list, is a catalog type only because of that.
+	schema := `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"}],"edges":[]}}`
 	errInsight := statsInsight("ErrorRatioBreach", "error")
 	amend := statsInsight("InsightB", "amend")
 	podPage := statsPage{entities: []map[string]any{statsEntity("Pod", "pod-1", errInsight)}, last: true}
@@ -207,6 +272,8 @@ func TestStatsCommand(t *testing.T) {
 		wantByCategory map[string]float64
 		wantIncomplete []any
 		wantStderr     string
+		schemaStatus   int // non-zero: the schema request fails with this HTTP status
+		wantErr        string
 	}{
 		{
 			name: "follows pages, counts a repeated row once, counts insights on catalog records",
@@ -218,7 +285,7 @@ func TestStatsCommand(t *testing.T) {
 				"Pod":     {podPage},
 				"Account": {{entities: []map[string]any{statsEntity("Account", "tenant", statsInsight("InsightD", "failure"))}, last: true}},
 			},
-			wantSearched:   []string{"Account", "Pod", "Schema", "Service"},
+			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
 			wantInsights:   5,
 			wantByCategory: map[string]float64{"error": 3, "amend": 1, "failure": 1},
 		},
@@ -233,7 +300,7 @@ func TestStatsCommand(t *testing.T) {
 				},
 				"Pod": {podPage},
 			},
-			wantSearched:   []string{"Account", "Pod", "Schema", "Service"},
+			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
 			wantInsights:   3,
 			wantByCategory: map[string]float64{"error": 3},
 			wantIncomplete: []any{"Service"},
@@ -247,7 +314,7 @@ func TestStatsCommand(t *testing.T) {
 				},
 				"Pod": {podPage},
 			},
-			wantSearched:   []string{"Account", "Pod", "Schema", "Service"},
+			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"error": 2},
 			wantIncomplete: []any{"Service"},
@@ -259,10 +326,15 @@ func TestStatsCommand(t *testing.T) {
 				"Service": {{entities: []map[string]any{statsEntity("Service", "svc-a", amend)}, last: true, limitHit: true}},
 				"Pod":     {podPage},
 			},
-			wantSearched:   []string{"Account", "Pod", "Schema", "Service"},
+			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"amend": 1, "error": 1},
 			wantIncomplete: []any{"Service"},
+		},
+		{
+			name:         "a schema that cannot be read fails the command",
+			schemaStatus: http.StatusInternalServerError,
+			wantErr:      "fetch schema",
 		},
 		{
 			name: "--type limits the insight search but not the entity counts",
@@ -289,12 +361,25 @@ func TestStatsCommand(t *testing.T) {
 					_ = json.NewEncoder(w).Encode(counts)
 				case prefix + "/search":
 					var req struct {
+						DefinitionID   int `json:"definitionId"`
 						FilterCriteria []struct {
 							EntityType string `json:"entityType"`
 						} `json:"filterCriteria"`
 						PageNum int `json:"pageNum"`
 					}
-					if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&req)) || !assert.Len(t, req.FilterCriteria, 1) {
+					if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&req)) {
+						return
+					}
+					if req.DefinitionID != 0 {
+						if tt.schemaStatus != 0 {
+							w.WriteHeader(tt.schemaStatus)
+							_, _ = fmt.Fprint(w, `{"message":"boom"}`)
+							return
+						}
+						_, _ = fmt.Fprint(w, schema)
+						return
+					}
+					if !assert.Len(t, req.FilterCriteria, 1) {
 						return
 					}
 					et := req.FilterCriteria[0].EntityType
@@ -324,6 +409,11 @@ func TestStatsCommand(t *testing.T) {
 			loader := &kg.FakeWriteLoader{Cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}}
 			args := append([]string{"--from", "1757000000", "--to", "1757003600"}, tt.args...)
 			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewSummaryCommand(loader) }, args, "")
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
 			require.NoError(t, err)
 			if tt.wantStderr != "" {
 				assert.Contains(t, stderr, tt.wantStderr)
@@ -346,7 +436,7 @@ func TestStatsCommand(t *testing.T) {
 				} `json:"insights"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(out), &got), out)
-			assert.InDelta(t, 5, got.Entities.Total, 0, "entities.total counts observed types only, whatever --type is")
+			assert.InDelta(t, 5, got.Entities.Total, 0, "entities.total leaves out the catalog records, whatever --type is")
 			assert.Equal(t, map[string]float64{"Service": 3, "Pod": 2}, got.Entities.ByType)
 			assert.InDelta(t, 7, got.Entities.Internal.Total, 0)
 			assert.InDelta(t, tt.wantInsights, got.Insights.Total, 0)

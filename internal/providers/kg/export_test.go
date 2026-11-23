@@ -82,8 +82,18 @@ type EntitiesSummary = entitiesSummary
 type EntityCount = entityCount
 
 // SummarizeEntityCounts wraps the unexported summarizeEntityCounts for testing.
-func SummarizeEntityCounts(counts map[string]int64) EntitiesSummary {
-	return summarizeEntityCounts(counts)
+func SummarizeEntityCounts(counts map[string]int64, listed map[string]bool) EntitiesSummary {
+	return summarizeEntityCounts(counts, listed)
+}
+
+// ListedSchemaTypes wraps the unexported listedSchemaTypes for testing.
+func ListedSchemaTypes(resp GraphSchemaResponse) map[string]bool {
+	return listedSchemaTypes(resp)
+}
+
+// IsCatalogType wraps the unexported isCatalogType for testing.
+func IsCatalogType(t string, listed map[string]bool) bool {
+	return isCatalogType(t, listed)
 }
 
 // BuildEntityOverview wraps the unexported buildEntityOverview function for testing.

@@ -2626,9 +2626,10 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 insight name, for the requested window (the last hour by default; pass --from/--to
 for older data).
 
-entities.total and entities.byType leave out the graph's catalog records, which
-are listed separately under entities.internal. Insights on those records still
-count in the insight totals.
+entities.total and entities.byType leave out the graph's catalog records: the
+counted types that 'kg meta schema' does not list for the same window. They are
+listed separately under entities.internal, and insights on them still count in
+the insight totals.
 
 --type limits only the insight counts; the entity counts always cover every
 type.
@@ -2664,11 +2665,30 @@ only to see which entities carry them.`, statsMaxSearchPages),
 				return err
 			}
 
-			counts, err := client.CountEntityTypes(cmd.Context(), startMs, endMs, summaryScope.scopeCriteria())
-			if err != nil {
+			// The schema for the same window tells which counted types are
+			// the graph's catalog records (see isCatalogType).
+			var (
+				counts map[string]int64
+				listed map[string]bool
+			)
+			g, gCtx := errgroup.WithContext(cmd.Context())
+			g.Go(func() error {
+				var countErr error
+				counts, countErr = client.CountEntityTypes(gCtx, startMs, endMs, summaryScope.scopeCriteria())
+				return countErr
+			})
+			g.Go(func() error {
+				schemaResp, schemaErr := client.FetchGraphSchema(gCtx, startMs, endMs)
+				if schemaErr != nil {
+					return schemaErr
+				}
+				listed = listedSchemaTypes(schemaResp)
+				return nil
+			})
+			if err := g.Wait(); err != nil {
 				return err
 			}
-			entities := summarizeEntityCounts(counts)
+			entities := summarizeEntityCounts(counts, listed)
 			// Every counted type is searched for insights, catalog types
 			// included: catalog records can carry active insights of their
 			// own.
@@ -2710,7 +2730,7 @@ type entityCount struct {
 }
 
 // entitiesSummary is the entities block of `kg stats`. Total and ByType
-// leave out the graph's catalog records (see isMetaEntityType), which are
+// leave out the graph's catalog records (see isCatalogType), which are
 // reported under Internal.
 type entitiesSummary struct {
 	Total    int64            `json:"total" yaml:"total"`
@@ -2718,16 +2738,17 @@ type entitiesSummary struct {
 	Internal *entityCount     `json:"internal,omitempty" yaml:"internal,omitempty"`
 }
 
-// summarizeEntityCounts splits per-type entity counts into observed
-// entities and the graph's own catalog records (see isMetaEntityType).
-// Types with a zero count are dropped.
-func summarizeEntityCounts(counts map[string]int64) entitiesSummary {
+// summarizeEntityCounts splits per-type entity counts into the graph's own
+// catalog records (see isCatalogType; listed is the set of types the schema
+// lists for the same window) and every other type. Types with a zero count
+// are dropped.
+func summarizeEntityCounts(counts map[string]int64, listed map[string]bool) entitiesSummary {
 	out := entitiesSummary{ByType: map[string]int64{}}
 	for t, n := range counts {
 		if n <= 0 {
 			continue
 		}
-		if isMetaEntityType(t) {
+		if isCatalogType(t, listed) {
 			if out.Internal == nil {
 				out.Internal = &entityCount{ByType: map[string]int64{}}
 			}
@@ -3169,8 +3190,9 @@ func AlertCorrelateTable() cmdio.Table[GraphEntity] {
 // ---------------------------------------------------------------------------
 
 // processGraphSchema converts a raw GraphSchemaResponse into a KGSchemaResult.
+// It leaves out the graph's account and environment record types (see
+// isGraphRecordType).
 func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
-	ignoredTypes := map[string]bool{"Account": true, "Env": true}
 	ignoredProps := map[string]bool{"Discovered": true, "Updated": true, "labelsForName": true}
 
 	idToName := make(map[int64]string)
@@ -3181,7 +3203,7 @@ func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 		if name == "" {
 			name = "Unknown"
 		}
-		if ignoredTypes[name] {
+		if isGraphRecordType(name) {
 			continue
 		}
 		if e.ID != nil {
