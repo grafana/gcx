@@ -55,6 +55,8 @@ func TestDefaultProject(t *testing.T) {
 	f.reply("GET projects/2/errors", 200, oneError)
 	f.reply("GET projects/7/errors", 200, oneError)
 	f.reply("GET projects/999/errors", 404, `{"error":{"code":"not_found","message":"not found"}}`)
+	f.reply("GET projects/314/errors/42", 200, errorFixture)
+	f.reply("PATCH projects/314/errors/42", 200, `{"id":42,"status":"resolved","history":[]}`)
 	list := []string{"errors", "list", "--json", "id"}
 	silent := func(t *testing.T, _ string, _ error, _ []etCall) {
 		t.Helper()
@@ -114,6 +116,8 @@ func TestDefaultProject(t *testing.T) {
 			calls: []string{"GET projects/314/errors"}, check: silent},
 		{name: "an agent takes the config quietly", setup: both(onlyProject, withConfig("314"), asAgent), args: list,
 			calls: []string{"GET projects/314/errors"}, check: silent},
+		{name: "a write command takes the default too", setup: withConfig("314"),
+			args: []string{"errors", "update", "42", "--status", "resolved"}, calls: []string{"GET projects/314/errors/42", "PATCH projects/314/errors/42"}, check: silent},
 		{name: "a cut list pins the default in its continuation", setup: both(withConfig("314"), func(f *fakeET) {
 			withArgv(f.t, "gcx", "error-tracking", "errors", "list", "--limit", "1")
 			f.reply("GET projects/314/errors", 200, `{"errors":[{"id":1},{"id":2}],"total":2}`)
@@ -128,6 +132,8 @@ func TestDefaultProject(t *testing.T) {
 			calls: []string{"GET projects"}, check: silent},
 		{name: "projects use help says which JSON each form gives", args: []string{"projects", "use", "--help"},
 			has: []string{"With no\nargument the JSON is the default's own shape"}},
+		{name: "an empty --step is refused before any request", args: []string{"errors", "timeline", "42", "--project", "314", "--step", ""},
+			exit: gcxerrors.ExitUsageError, err: "--step must not be empty"},
 		{name: "projects timeline too", args: []string{"projects", "timeline", "314", "--step", " "},
 			exit: gcxerrors.ExitUsageError, err: "--step must not be empty"},
 	})

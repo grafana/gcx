@@ -36,15 +36,18 @@ func (p *Provider) Commands() []*cobra.Command {
 		Short:   p.ShortDesc(),
 		Long: `Manage Grafana Error Tracking projects and the errors and events their SDKs
 send (for browser errors from Frontend Observability, use gcx frontend). Start
-with projects list, then errors list --project <id>; projects use remembers a
-project so --project can be left out. Projects come as resources with their
-fields under spec (--json spec.id,spec.name), and every other list has flat
-items (--json id,message).`,
+with projects list, then errors list --project <id> and errors inspect <error>;
+projects use remembers a project so --project can be left out. Projects come as
+resources with their fields under spec (--json spec.id,spec.name), and every
+other list has flat items (--json id,message).`,
 		Example: `  # The projects and their IDs.
   gcx error-tracking projects list
 
   # One project's unresolved errors.
   gcx error-tracking errors list --project 314
+
+  # One error with its stack trace, activity and assignees.
+  gcx error-tracking errors inspect 42 --project 314
 
   # Remember the project, then leave --project out.
   gcx et projects use 314
@@ -54,14 +57,25 @@ items (--json id,message).`,
 
 	errorsCmd := group("errors", "Find, read and triage the errors of an Error Tracking project.",
 		newErrorsListCommand(loader), newErrorsGetCommand(loader),
+		newErrorsUpdateCommand(loader), newErrorsTimelineCommand(loader),
+		newErrorsInspectCommand(loader),
 		group("events", "Read the events an error received.",
-			newErrorsListEventsCommand(loader), newErrorsGetEventCommand(loader)))
+			newErrorsListEventsCommand(loader), newErrorsGetEventCommand(loader)),
+		group("fields", "List the custom fields an error's events carry.",
+			newErrorsListFieldsCommand(loader)),
+		group("activity", "Read what happened to an error: status changes and comments.",
+			newErrorsListActivityCommand(loader)),
+		group("comments", "Comment on an error, and edit or delete your comments.",
+			newCommentCommand(loader, "create"), newCommentCommand(loader, "update"), newCommentCommand(loader, "delete")),
+		group("assignees", "List, add and remove the users assigned to an error"+needsLogin+".",
+			newErrorsListAssigneesCommand(loader), newErrorsAssigneeCommand(loader, true), newErrorsAssigneeCommand(loader, false)))
 	errorsCmd.Aliases = []string{"error"}
 	errorsCmd.Long = errorsCmd.Short + `
 
-The errors list flags --mine, --assigned and --assignee need a signed-in
-Grafana user (gcx login); a glsa_ service account token is refused before
-the request.`
+errors assignees list, add and delete, errors update --reviewed and the
+errors list flags --mine, --assigned and --assignee need a signed-in Grafana
+user (gcx login); a glsa_ service account token is refused before the
+request.`
 
 	root.AddCommand(
 		group("projects", "Manage Error Tracking projects.",

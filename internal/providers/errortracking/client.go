@@ -159,6 +159,7 @@ func (c *client) missing(path string) error {
 		"projects": {"project", "gcx error-tracking projects list"},
 		"errors":   {"error", "gcx error-tracking errors list --project {project}"},
 		"events":   {"event", "gcx error-tracking errors events list {error} --project {project}"},
+		"comments": {"comment", "gcx error-tracking errors activity list {error} --project {project} --type comment"},
 	}
 	segs := strings.Split(path, "/")
 	var what []string
@@ -279,6 +280,22 @@ func statusError(resp *http.Response, body []byte) error {
 		}
 	}
 	return err
+}
+
+func badRequest(err error, suggestion string) error {
+	status, ok := errors.AsType[*gcxerrors.HTTPStatusError](err)
+	if !ok || status.Status != http.StatusBadRequest {
+		return err
+	}
+	details := fmt.Sprintf("%s (HTTP %d)", status.ServerMessage, status.Status)
+	if status.ServerMessage == "" {
+		details = fmt.Sprintf("the server rejected the request (HTTP %d)", status.Status)
+	}
+	return &gcxerrors.DetailedError{
+		Summary:     gcxerrors.SummaryAPIError,
+		Details:     details,
+		Suggestions: []string{suggestion},
+	}
 }
 
 func routePath(segments ...any) string {

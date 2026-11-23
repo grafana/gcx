@@ -17,6 +17,7 @@ func TestFilters(t *testing.T) {
 	const someErrors = `{"errors":[{"id":1,"status":"unresolved"}],"total":1}`
 	f.reply("GET projects/314/errors", 200, someErrors)
 	f.reply("GET projects/314/timeline", 200, `{"bucket":"5m","buckets":[]}`)
+	f.reply("GET projects/314/errors/42/timeline", 200, `{"bucket":"15m","buckets":[]}`)
 	f.reply("GET projects/314/errors/42/events", 200, `{"events":[]}`)
 	f.reply("GET projects/314/releases", 200, `{"releases":[{"release":"v1.2.3","firstSeen":"2026-11-16T08:00:00Z","lastSeen":"2026-11-16T09:00:00Z","eventCount":3}]}`)
 
@@ -89,6 +90,13 @@ func TestFilters(t *testing.T) {
 			f.reply("GET projects/314/releases", 200, `{"releases":[{"release":"v0","firstSeen":""}]}`)
 		}, args: list("--status", "new", "--since-release", "v0"), calls: []string{"GET projects/314/releases"}, exit: gcxerrors.ExitGeneralError,
 			err: `release "v0" in project 314 has no first event yet, so there is no window to start from`},
+		{name: "re-ignoring an ignored error that the API refuses reports nothing changed", setup: func(f *fakeET) {
+			f.reply("GET projects/314/errors/42", 200, `{"id":42,"status":"ignored","history":[]}`)
+			f.reply("PATCH projects/314/errors/42", 409, `{"error":{"code":"invalid_transition","message":"cannot move an error from ignored to ignored","currentStatus":"ignored"}}`)
+		}, args: []string{"errors", "update", "42", "--project", "314", "--status", "ignored", "--more-events", "5"},
+			calls: []string{"GET projects/314/errors/42", "PATCH projects/314/errors/42"}, has: []string{"Ignored 0 of 1 errors in project 314; 1 was already ignored", "ignored (no change)"}},
+		{name: "errors timeline bucket", args: append([]string{"errors", "timeline", "42", "--project", "314", "--step", "15m", "-o", "json"}, window()...),
+			calls: []string{"GET projects/314/errors/42/timeline"}, query: map[string][]string{"from": {from}, "to": {to}, "bucket": {"15m"}}},
 		{name: "new takes --from and runs to now", args: list("--status", "new", "--from", from, "-o", "json"),
 			calls: []string{"GET projects/314/errors"}, query: map[string][]string{"status": {"unresolved"}, "reviewed": {"false"}, "firstSeenFrom": {from}, "sort": {"lastSeen"}, "limit": {"50"}}},
 		{name: "regressed takes --since-release", args: list("--status", "regressed", "--since-release", "v1.2.3", "-o", "json"),
@@ -123,6 +131,7 @@ func TestFilters(t *testing.T) {
 		[]string{"projects", "timeline", "314", "--status", "new"},
 		[]string{"projects", "timeline", "314", "--search", ""},
 		[]string{"projects", "timeline", "314", "--custom-field", " "},
+		[]string{"errors", "timeline", "42", "--project", "314", "--step", "1w"},
 		[]string{"errors", "events", "list", "42", "--project", "314", "--custom-field", ""},
 		list("--custom-field", "region"),
 		list("--custom-field", "region:[eu"),

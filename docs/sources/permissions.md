@@ -156,7 +156,8 @@ To learn more about roles and permissions for Database Observability, refer to [
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Filter errors by assignee (`gcx error-tracking errors list --assignee`, `--assigned` or `--mine`) | Signed-in Grafana user. `gcx` refuses a `glsa_` service account token before it sends the request. |
+| Review errors and change their assignees (`gcx error-tracking errors update --reviewed`, `errors assignees add`, `errors assignees delete`) | Signed-in Grafana user with the Editor or Admin basic role. `gcx` refuses a `glsa_` service account token before it sends the request. |
+| List assignees or filter by them (`gcx error-tracking errors assignees list`, `errors list --assignee`, `--assigned` or `--mine`) | Signed-in Grafana user. `gcx` refuses a `glsa_` service account token before it sends the request. |
 
 ### Fleet Management
 
