@@ -3,6 +3,7 @@ package kg
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -18,7 +21,8 @@ import (
 const testWindow = "--from=2026-01-01T00:00:00Z --to=2026-01-01T01:00:00Z"
 
 // runEntities runs 'gcx kg entities <args>' against f and returns stdout,
-// stderr and the error.
+// stderr and the error. os.Args is pinned to the same invocation, since
+// list reads it to tell how a flag value was passed.
 func runEntities(t *testing.T, f *fakeKG, args string) (string, string, error) {
 	t.Helper()
 	server := httptest.NewServer(f.handler(t))
@@ -30,6 +34,7 @@ func runEntities(t *testing.T, f *fakeKG, args string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
+	testutils.PinArgv(t, append([]string{"gcx", "kg", "entities"}, strings.Fields(args)...)...)
 	cmd.SetArgs(strings.Fields(args))
 	err := cmd.Execute()
 	return stdout.String(), stderr.String(), err
@@ -71,6 +76,9 @@ func TestEntitiesListCommand(t *testing.T) {
 		wantErr         string
 		wantSuggestions []string
 		wantCountCalls  int
+		// wantNoErr must not be in the error; wantUsage wants a usage error.
+		wantNoErr string
+		wantUsage bool
 		// wantStderr and wantNoStderr are checked against stderr.
 		wantStderr   string
 		wantNoStderr string
@@ -146,14 +154,36 @@ func TestEntitiesListCommand(t *testing.T) {
 			wantCountCalls: 1,
 		},
 		{
-			name:    "a bare --insight before --type",
-			args:    "list --insight --type Service " + testWindow,
-			wantErr: "use --insight any",
+			name:      "a bare --insight before --type",
+			args:      "list --insight --type Gizmo " + testWindow,
+			wantErr:   `--insight needs a value, but it took the next argument "--type" as its value; use --insight any`,
+			wantUsage: true,
 		},
 		{
-			name:    "a bare --insight before the window",
-			args:    "list --type Service --insight --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
-			wantErr: "use --insight any",
+			name:      "a bare --insight before the window",
+			args:      "list --type Gizmo --insight --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
+			wantErr:   `took the next argument "--from" as its value`,
+			wantUsage: true,
+		},
+		{
+			name:      "a bare --insight before a shorthand flag",
+			args:      "list --type Gizmo --insight -o json " + testWindow,
+			wantErr:   `took the next argument "-o" as its value`,
+			wantUsage: true,
+		},
+		{
+			name:      "a flag-looking value given with =",
+			args:      "list --type Gizmo --insight=--type " + testWindow,
+			wantErr:   `--insight "--type": a predicate cannot start with "-"; use --insight any`,
+			wantNoErr: "took the next",
+			wantUsage: true,
+		},
+		{
+			name:      "a dash value given with =",
+			args:      "list --type Gizmo --insight=-x " + testWindow,
+			wantErr:   `--insight "-x": a predicate cannot start with "-"`,
+			wantNoErr: "took the next",
+			wantUsage: true,
 		},
 		{
 			name:    "an unknown type with a name suggests the command with the caller's flags",
@@ -225,6 +255,11 @@ func TestEntitiesListCommand(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+				if tt.wantNoErr != "" {
+					assert.NotContains(t, err.Error(), tt.wantNoErr)
+				}
+				var usage *gcxerrors.UsageError
+				assert.Equal(t, tt.wantUsage, errors.As(err, &usage), "usage error")
 				var de gcxerrors.DetailedError
 				if tt.wantSuggestions != nil {
 					require.ErrorAs(t, err, &de)
@@ -237,6 +272,75 @@ func TestEntitiesListCommand(t *testing.T) {
 				assert.Equal(t, tt.wantNames, names(got))
 			}
 			assert.Equal(t, tt.wantCountCalls, f.countCalls)
+		})
+	}
+}
+
+// TestRejectFlagLikeInsight covers how a --insight value that starts with "-"
+// is reported, by how argv passed it.
+func TestRejectFlagLikeInsight(t *testing.T) {
+	const tookNext = "took the next argument"
+	tests := []struct {
+		name    string
+		values  []string
+		argv    []string
+		wantErr string // "" wants no error
+		wantNot string
+	}{
+		{name: "no value", argv: []string{"list"}},
+		{name: "a predicate", values: []string{"any"}, argv: []string{"list", "--insight", "any"}},
+		{
+			name:    "the argument after a bare --insight",
+			values:  []string{"--type"},
+			argv:    []string{"list", "--insight", "--type", "Gizmo"},
+			wantErr: `--insight needs a value, but it took the next argument "--type" as its value`,
+		},
+		{
+			name:    "a later value after a bare --insight",
+			values:  []string{"any", "-o"},
+			argv:    []string{"list", "--insight", "any", "--insight", "-o", "json"},
+			wantErr: `took the next argument "-o"`,
+		},
+		{
+			name:    "a value given with =",
+			values:  []string{"--type"},
+			argv:    []string{"list", "--insight=--type"},
+			wantErr: `--insight "--type": a predicate cannot start with "-"`,
+			wantNot: tookNext,
+		},
+		{
+			name:    "a pair after -- is not a flag",
+			values:  []string{"-x"},
+			argv:    []string{"list", "--insight=-x", "--", "--insight", "-x"},
+			wantErr: `--insight "-x": a predicate cannot start with "-"`,
+			wantNot: tookNext,
+		},
+		{
+			name:    "argv without the value",
+			values:  []string{"-x"},
+			wantErr: `--insight "-x": a predicate cannot start with "-"`,
+			wantNot: tookNext,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "entities"}
+			cmd := &cobra.Command{Use: "list"}
+			parent.AddCommand(cmd)
+			err := rejectFlagLikeInsight(cmd, tt.values, tt.argv)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			var usage *gcxerrors.UsageError
+			require.ErrorAs(t, err, &usage)
+			assert.Contains(t, usage.Message, tt.wantErr)
+			assert.Contains(t, usage.Message, "use --insight any to match any insight, or --insight key=value")
+			if tt.wantNot != "" {
+				assert.NotContains(t, usage.Message, tt.wantNot)
+			}
+			assert.Equal(t, "entities list", usage.Expected)
+			assert.Equal(t, []string{"Run 'entities list --help' for full usage and examples"}, usage.Suggestions)
 		})
 	}
 }

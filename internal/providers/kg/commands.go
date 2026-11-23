@@ -300,7 +300,7 @@ func parseInsightFlag(s string) (insightMatcher, error) {
 		return insightMatcher{}, nil
 	}
 	if strings.HasPrefix(s, "-") {
-		return insightMatcher{}, fmt.Errorf("--insight needs a value but took the next flag %q as its value; use --insight any to match any insight, or --insight key=value", s)
+		return insightMatcher{}, fmt.Errorf("--insight %q: a predicate cannot start with \"-\"; use --insight any to match any insight, or --insight key=value", s)
 	}
 	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
 		m := insightMatcher{Key: strings.ToLower(name), Op: "CONTAINS", Value: value}
@@ -1965,14 +1965,8 @@ analysis, use 'gcx kg entities inspect' instead.`,
 		// check, which would otherwise report the swallowed flag (for example
 		// --type) as missing, and before RunE, where the leftover value would
 		// surface as an unrelated time-window error.
-		PreRunE: func(_ *cobra.Command, _ []string) error {
-			for _, raw := range listInsightRaw {
-				if strings.HasPrefix(raw, "-") {
-					_, err := parseInsightFlag(raw)
-					return err
-				}
-			}
-			return nil
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			return rejectFlagLikeInsight(cmd, listInsightRaw, os.Args[1:])
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
@@ -2099,6 +2093,38 @@ func parseListFilters(propertyRaw, insightRaw []string) ([]PropertyMatcher, stri
 		insightMatchers = append(insightMatchers, im)
 	}
 	return propertyFilters, nameFilter, insightMatchers, nil
+}
+
+// rejectFlagLikeInsight returns a usage error for the first --insight value
+// that starts with "-". argv is the invocation's arguments: when the value is
+// the argument after a bare --insight, the error says that --insight took it
+// as its value; otherwise (as with --insight=<value>) it names the value.
+func rejectFlagLikeInsight(cmd *cobra.Command, insightRaw, argv []string) error {
+	for _, raw := range insightRaw {
+		if !strings.HasPrefix(raw, "-") {
+			continue
+		}
+		if followsBareFlag(argv, "--insight", raw) {
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--insight needs a value, but it took the next argument %q as its value; use --insight any to match any insight, or --insight key=value", raw), nil)
+		}
+		_, err := parseInsightFlag(raw)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
+	}
+	return nil
+}
+
+// followsBareFlag reports whether value is the argument right after flag
+// given without "=<value>" in argv, before any "--".
+func followsBareFlag(argv []string, flag, value string) bool {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--" {
+			return false
+		}
+		if argv[i] == flag && argv[i+1] == value {
+			return true
+		}
+	}
+	return false
 }
 
 // listSuggestionFlags renders the caller's filters for a suggested list command.

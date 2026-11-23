@@ -56,8 +56,12 @@
 - A bare `gcx kg entities list --insight` followed by another flag (for
   example `--insight --type <T>`) took that flag as its value, and the
   command failed with an unrelated error: `required flag(s) "type" not set`,
-  or a time-window error for `--from`. That value is now rejected with an
-  error that says to use `--insight any` or `--insight key=value`.
+  or a time-window error for `--from`. That value is now rejected as a usage
+  error (exit code 2) that says `--insight` took the next argument as its
+  value, and to use `--insight any` or `--insight key=value`. A value that
+  starts with `-` and is attached with `=` (as in `--insight=-x`) is now a
+  usage error too (it exited 1); that error names the value and says that a
+  predicate cannot start with `-`.
 - `gcx kg entities --help` and `gcx kg entities list --help` now say that list
   stops at `--limit` (default 50), with only a hint on stderr when it does, that
   `--limit 0` follows the backend's pages up to 50 per type, and that the
