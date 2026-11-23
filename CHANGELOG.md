@@ -6,6 +6,12 @@
   unbounded paths as refused but did not give the maximum, so a query such as
   `[:TYPE*1..6]` was refused with `CYPHER_UNBOUNDED_PATH` before the user
   narrowed it.
+- The `gcx kg graph query` examples and the pattern in its Scope paragraph now
+  write entity types, relationship types and properties as placeholders
+  (`<Type>`, `<TypeA>`, `<TypeB>`, `<REL>`, `<prop1>`, `<prop2>`), and the
+  help says they stand for what `gcx kg meta schema` lists. The examples used
+  to name specific types, relationship types and properties that not every
+  stack has, and a copied query matched nothing there without an error.
 - `gcx kg graph query` now adds a `warnings` entry to its `-o json` and
   `-o yaml` output, and writes the same warning to stderr in every format,
   when returned rows hold the graph's own catalog records: nodes labeled

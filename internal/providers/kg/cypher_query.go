@@ -69,21 +69,23 @@ comprehensions. A variable-length relationship needs an upper bound of at most
 5 hops, so [:TYPE*1..5] is the longest (CYPHER_UNBOUNDED_PATH otherwise); name
 the nodes of a path with nodes(p)[i], as in the last example.
 
-Scope. Match an entity on name, type (node label, e.g. :Service) and scope
+Scope. Match an entity on name, type (node label, e.g. :<Type>) and scope
 (env, site, namespace) together. Scope is stack-specific: relabel rules decide
 which label feeds each dimension (often cluster becomes env), and not every
 type carries all three. Discover values with 'gcx kg meta scopes', over the same
 window and once per window; never guess them. A dimension that scopes lists only
 as "none" is unset: leave it out rather than filling it with another
 dimension's value. Scope values are plain node properties, e.g.
-'MATCH (s:Service {name: "<name>", env: "<env>"}) RETURN s.name AS name, s.namespace AS namespace LIMIT 5'.
+'MATCH (e:<Type> {name: "<name>", env: "<env>"}) RETURN e.name AS name, e.namespace AS namespace LIMIT 5'.
 
 Schema. Read it once per window, before writing queries:
 'gcx kg meta schema --from <start> --to <end> -o text' prints each entity type
 with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
 with the same flags also prints scopes, metrics, logs, traces and profiles).
 Use only the labels, properties, relationship types and directions it lists.
-Types, properties and relationships differ between stacks and windows. A
+In this help, <Type>, <TypeA> and <TypeB> stand for entity types, <REL> for a
+relationship type and <prop1> and <prop2> for properties that it lists. Types,
+properties and relationships differ between stacks and windows. A
 relationship is stored in the direction the schema lists; the undirected form
 '(a)-[r:TYPE]-(b)' matches it from either end, so one query returns both
 directions, and startNode(r)/endNode(r) return its stored ends.
@@ -103,17 +105,17 @@ names. With no scope flag, inspect looks the entity up by type and name and
 uses the entity that lookup returns, which can be a same-named entity in
 another scope. Only when the lookup finds nothing does it search by name, and
 if several entities match, it fails with one command per candidate.`,
-		Example: `  # Project two properties of one Volume, matched on name and scope
-  gcx kg graph query "MATCH (v:Volume {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN v.storageclass AS storageclass, v.capacity_bytes AS capacity_bytes LIMIT 5" --from <start> --to <end>
+		Example: `  # Project two properties of one entity, matched on type, name and scope
+  gcx kg graph query "MATCH (e:<Type> {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN e.<prop1> AS <prop1>, e.<prop2> AS <prop2> LIMIT 5" --from <start> --to <end>
 
-  # Count an env's Nodes per zone and instance type, 50 groups per page (the next page is SKIP 50)
-  gcx kg graph query "MATCH (n:Node {env: '<env>'}) RETURN n.zone AS zone, n.instance_type AS instance_type, count(n) AS nodes ORDER BY zone, instance_type SKIP 0 LIMIT 50" --from <start> --to <end>
+  # Count an env's entities of one type per pair of property values, 50 groups per page (the next page is SKIP 50)
+  gcx kg graph query "MATCH (e:<Type> {env: '<env>'}) RETURN e.<prop1> AS <prop1>, e.<prop2> AS <prop2>, count(e) AS n ORDER BY <prop1>, <prop2> SKIP 0 LIMIT 50" --from <start> --to <end>
 
-  # List the entity types at each end of the HOSTS edges that touch an env's Nodes, in stored direction
-  gcx kg graph query "MATCH (n:Node {env: '<env>'})-[r:HOSTS]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
+  # List the entity types at each end of the <REL> relationships that touch an env's entities of one type, in stored direction
+  gcx kg graph query "MATCH (e:<Type> {env: '<env>'})-[r:<REL>]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
 
-  # Name the hops of HOSTS paths up to 5 long (the longest allowed) from an env's cluster to one ServiceInstance; hops past a path's length are null
-  gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..5]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4, nodes(p)[5].name AS hop5 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
+  # Name the hops of <REL> paths up to 5 long (the longest allowed) from an env's <TypeA> entities to one <TypeB> entity; hops past a path's length are null
+  gcx kg graph query "MATCH p = (a:<TypeA> {env: '<env>'})-[:<REL>*1..5]->(b:<TypeB> {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4, nodes(p)[5].name AS hop5 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.query = args[0]

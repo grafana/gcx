@@ -307,3 +307,16 @@ func TestGraphQueryHelpPathBounds(t *testing.T) {
 		assert.LessOrEqual(t, upper, 5, "%s exceeds the hop maximum", b[0])
 	}
 }
+
+func TestGraphQueryHelpUsesPlaceholderTypes(t *testing.T) {
+	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+	// A label or relationship type right after the variable of a node or
+	// relationship pattern, as in (e:<Type> or [:<REL>*1..5].
+	types := regexp.MustCompile(`[(\[]\s*[A-Za-z_]*\s*:\s*([A-Za-z_<][A-Za-z0-9_<>]*)`).FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
+	require.NotEmpty(t, types, "help should show patterns with a label or relationship type")
+	for _, m := range types {
+		got := m[1]
+		assert.True(t, strings.HasPrefix(got, "<") && strings.HasSuffix(got, ">") || got == "TYPE",
+			"%q names a type; help patterns use placeholders filled from 'gcx kg meta schema'", m[0])
+	}
+}
