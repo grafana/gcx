@@ -16,12 +16,13 @@ import (
 func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 	in := kg.OrientationInput{
 		EntityCounts: map[string]int64{
-			"Service":    10,
-			"Pod":        50,
-			"EntityType": 18, // meta (the schema does not list it) — excluded
-			"Schema":     30, // meta (the schema does not list it) — excluded
-			"Env":        3,  // meta (record type) — excluded
-			"Account":    1,  // meta (record type) — excluded
+			"Service":     10,
+			"Pod":         50,
+			"EntityType":  18, // catalog record type — excluded
+			"Schema":      30, // catalog record type — excluded
+			"Env":         3,  // catalog record type — excluded
+			"Account":     1,  // catalog record type — excluded
+			"RecordTypeA": 5,  // the schema does not list it — excluded
 		},
 		SchemaTypes:            map[string]bool{"Service": true, "Pod": true},
 		TracesTargetInfoSeries: 4,
@@ -30,25 +31,29 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 	overview := kg.BuildEntityOverview(in)
 
 	assert.Equal(t, int64(60), overview.Total,
-		"Total should exclude meta types (10 + 50, not 10+50+18+30+3+1)")
+		"Total should exclude catalog types (10 + 50, not 10+50+18+30+3+1+5)")
 	assert.Equal(t, int64(10), overview.TotalServiceCount)
 	assert.Equal(t, int64(4), overview.TracedServiceCount)
 	assert.NotContains(t, overview.ByType, "EntityType")
 	assert.NotContains(t, overview.ByType, "Schema")
 	assert.NotContains(t, overview.ByType, "Env")
 	assert.NotContains(t, overview.ByType, "Account")
+	assert.NotContains(t, overview.ByType, "RecordTypeA")
 	assert.Contains(t, overview.ByType, "Service")
 	assert.Contains(t, overview.ByType, "Pod")
 }
 
-func TestBuildEntityOverview_WithoutSchemaExcludesOnlyRecordTypes(t *testing.T) {
+func TestBuildEntityOverview_WithoutSchemaExcludesOnlyCatalogRecordTypes(t *testing.T) {
 	in := kg.OrientationInput{
-		EntityCounts: map[string]int64{"Service": 10, "RecordTypeA": 5, "Env": 3, "Account": 1},
+		EntityCounts: map[string]int64{
+			"Service": 10, "RecordTypeA": 5,
+			"Account": 1, "EntityType": 18, "Env": 3, "Schema": 30,
+		},
 	}
 
 	overview := kg.BuildEntityOverview(in)
 
-	assert.Equal(t, int64(15), overview.Total, "without the schema only the record types are left out")
+	assert.Equal(t, int64(15), overview.Total, "without the schema only the catalog record types are left out")
 	assert.Equal(t, map[string]int64{"Service": 10, "RecordTypeA": 5}, overview.ByType)
 }
 

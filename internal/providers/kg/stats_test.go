@@ -71,6 +71,22 @@ func TestSummarizeEntityCounts(t *testing.T) {
 			listed: listed,
 			want:   kg.EntitiesSummary{Total: 2, ByType: map[string]int64{"Pod": 2}},
 		},
+		{
+			name: "without the schema only the catalog record types are split out",
+			counts: map[string]int64{
+				"Service": 3, "RecordTypeA": 5,
+				"Account": 2, "EntityType": 6, "Env": 4, "Schema": 8,
+			},
+			listed: nil,
+			want: kg.EntitiesSummary{
+				Total:  8,
+				ByType: map[string]int64{"Service": 3, "RecordTypeA": 5},
+				Internal: &kg.EntityCount{
+					Total:  20,
+					ByType: map[string]int64{"Account": 2, "EntityType": 6, "Env": 4, "Schema": 8},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,9 +107,13 @@ func TestIsCatalogType(t *testing.T) {
 		{name: "a type the schema does not list", typ: "RecordTypeA", listed: listed, want: true},
 		{name: "account records", typ: "Account", listed: listed, want: true},
 		{name: "environment records", typ: "Env", listed: listed, want: true},
-		{name: "a record type even when listed", typ: "Env", listed: map[string]bool{"Env": true}, want: true},
+		{name: "a catalog record type even when listed", typ: "Env", listed: map[string]bool{"Env": true}, want: true},
 		{name: "without the schema an unknown type is not a catalog type", typ: "RecordTypeA", listed: nil, want: false},
-		{name: "without the schema record types still are", typ: "Account", listed: nil, want: true},
+		{name: "without the schema a listed type is not a catalog type", typ: "Service", listed: nil, want: false},
+		{name: "without the schema account records still are", typ: "Account", listed: nil, want: true},
+		{name: "without the schema entity-type records still are", typ: "EntityType", listed: nil, want: true},
+		{name: "without the schema environment records still are", typ: "Env", listed: nil, want: true},
+		{name: "without the schema the Schema records still are", typ: "Schema", listed: nil, want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -109,8 +129,8 @@ func TestListedSchemaTypes(t *testing.T) {
 		want map[string]bool
 	}{
 		{
-			name: "lists the schema's types except the record types",
-			body: `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"},{"id":4,"name":"Env"}]}}`,
+			name: "lists the schema's types except the catalog record types",
+			body: `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"},{"id":4,"name":"Env"},{"id":5,"name":"EntityType"},{"id":6,"name":"Schema"}]}}`,
 			want: map[string]bool{"Service": true, "Pod": true},
 		},
 		{
@@ -252,28 +272,155 @@ func statsInsight(name, category string) map[string]any {
 	return map[string]any{"assertionName": name, "category": category, "severity": "warning"}
 }
 
-func TestStatsCommand(t *testing.T) {
+// statsFake is the API a TestStatsCommand case runs against. It answers
+// the schema request with schema only for the fromMs..toMs window, and with
+// an empty schema for any other window.
+type statsFake struct {
+	t            *testing.T
+	counts       map[string]int64
+	schema       string
+	fromMs, toMs int64
+	schemaStatus int // non-zero: the schema request fails with this HTTP status
+	pages        map[string][]statsPage
+
+	mu       sync.Mutex
+	searched map[string]bool
+}
+
+func (f *statsFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const prefix = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1"
-	counts := map[string]int64{"Service": 3, "Pod": 2, "Account": 2, "RecordTypeA": 5}
+	switch r.URL.Path {
+	case prefix + "/entity_type/count":
+		writeJSON(w, f.counts)
+	case prefix + "/search":
+		var req struct {
+			DefinitionID int `json:"definitionId"`
+			TimeCriteria struct {
+				Start int64 `json:"start"`
+				End   int64 `json:"end"`
+			} `json:"timeCriteria"`
+			FilterCriteria []struct {
+				EntityType string `json:"entityType"`
+			} `json:"filterCriteria"`
+			PageNum int `json:"pageNum"`
+		}
+		if !assert.NoError(f.t, json.NewDecoder(r.Body).Decode(&req)) {
+			return
+		}
+		if req.DefinitionID != 0 {
+			f.serveSchema(w, req.TimeCriteria.Start, req.TimeCriteria.End)
+			return
+		}
+		if !assert.Len(f.t, req.FilterCriteria, 1) {
+			return
+		}
+		f.servePage(w, req.FilterCriteria[0].EntityType, req.PageNum)
+	default:
+		f.t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func (f *statsFake) serveSchema(w http.ResponseWriter, startMs, endMs int64) {
+	switch {
+	case f.schemaStatus != 0:
+		w.WriteHeader(f.schemaStatus)
+		_, _ = fmt.Fprint(w, `{"message":"boom"}`)
+	case startMs != f.fromMs || endMs != f.toMs:
+		_, _ = fmt.Fprint(w, `{"data":{"entities":[],"edges":[]}}`)
+	default:
+		_, _ = fmt.Fprint(w, f.schema)
+	}
+}
+
+func (f *statsFake) servePage(w http.ResponseWriter, entityType string, pageNum int) {
+	f.mu.Lock()
+	if f.searched == nil {
+		f.searched = map[string]bool{}
+	}
+	f.searched[entityType] = true
+	f.mu.Unlock()
+	pages := f.pages[entityType]
+	if pageNum >= len(pages) {
+		_, _ = fmt.Fprint(w, `{"data":{"entities":[],"lastPage":true}}`)
+		return
+	}
+	p := pages[pageNum]
+	if p.status != 0 {
+		w.WriteHeader(p.status)
+		_, _ = fmt.Fprint(w, `{"message":"boom"}`)
+		return
+	}
+	writeJSON(w, map[string]any{"data": map[string]any{
+		"entities": p.entities, "pageNum": pageNum, "lastPage": p.last, "searchResultsMaxLimitHit": p.limitHit,
+	}})
+}
+
+// searchedTypes returns, sorted, the entity types the insight search asked
+// for.
+func (f *statsFake) searchedTypes() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.searched))
+	for et := range f.searched {
+		out = append(out, et)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// statsOutput is the part of the `kg stats` JSON output TestStatsCommand
+// checks.
+type statsOutput struct {
+	Entities struct {
+		Total    float64            `json:"total"`
+		ByType   map[string]float64 `json:"byType"`
+		Internal struct {
+			Total float64 `json:"total"`
+		} `json:"internal"`
+	} `json:"entities"`
+	Insights struct {
+		Total      float64 `json:"total"`
+		ByCategory map[string]struct {
+			Total float64 `json:"total"`
+		} `json:"byCategory"`
+		IncompleteTypes []any `json:"incompleteTypes"`
+	} `json:"insights"`
+}
+
+func TestStatsCommand(t *testing.T) {
+	// The window every case passes with --from/--to, in milliseconds.
+	const fromMs, toMs = 1757000000000, 1757003600000
+	counts := map[string]int64{"Service": 3, "Pod": 2, "Account": 2, "EntityType": 1, "RecordTypeA": 5}
 	// The schema lists Account like any type; RecordTypeA, which it does not
-	// list, is a catalog type only because of that.
+	// list, is a catalog type only because of that. The fake answers with it
+	// only for the --from/--to window and with an empty schema otherwise.
 	schema := `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"}],"edges":[]}}`
 	errInsight := statsInsight("ErrorRatioBreach", "error")
 	amend := statsInsight("InsightB", "amend")
 	podPage := statsPage{entities: []map[string]any{statsEntity("Pod", "pod-1", errInsight)}, last: true}
+	allTypes := []string{"Account", "EntityType", "Pod", "RecordTypeA", "Service"}
+
+	// wantEntities is the entities block of the output.
+	type wantEntities struct {
+		total    float64
+		byType   map[string]float64
+		internal float64
+	}
+	withSchema := wantEntities{total: 5, byType: map[string]float64{"Service": 3, "Pod": 2}, internal: 8}
 
 	tests := []struct {
 		name           string
 		args           []string
 		maxPages       int
 		pages          map[string][]statsPage
+		schemaStatus   int           // non-zero: the schema request fails with this HTTP status
+		wantEntities   *wantEntities // nil: withSchema
 		wantSearched   []string
 		wantInsights   float64
 		wantByCategory map[string]float64
 		wantIncomplete []any
 		wantStderr     string
-		schemaStatus   int // non-zero: the schema request fails with this HTTP status
-		wantErr        string
 	}{
 		{
 			name: "follows pages, counts a repeated row once, counts insights on catalog records",
@@ -285,7 +432,7 @@ func TestStatsCommand(t *testing.T) {
 				"Pod":     {podPage},
 				"Account": {{entities: []map[string]any{statsEntity("Account", "tenant", statsInsight("InsightD", "failure"))}, last: true}},
 			},
-			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
+			wantSearched:   allTypes,
 			wantInsights:   5,
 			wantByCategory: map[string]float64{"error": 3, "amend": 1, "failure": 1},
 		},
@@ -300,10 +447,22 @@ func TestStatsCommand(t *testing.T) {
 				},
 				"Pod": {podPage},
 			},
-			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
+			wantSearched:   allTypes,
 			wantInsights:   3,
 			wantByCategory: map[string]float64{"error": 3},
 			wantIncomplete: []any{"Service"},
+		},
+		{
+			name: "a server error on the first page skips the type and marks it",
+			pages: map[string][]statsPage{
+				"Service": {{status: http.StatusInternalServerError}},
+				"Pod":     {podPage},
+			},
+			wantSearched:   allTypes,
+			wantInsights:   1,
+			wantByCategory: map[string]float64{"error": 1},
+			wantIncomplete: []any{"Service"},
+			wantStderr:     `skipping entity type "Service"`,
 		},
 		{
 			name: "a server error on a later page keeps the earlier rows and marks the type",
@@ -314,7 +473,7 @@ func TestStatsCommand(t *testing.T) {
 				},
 				"Pod": {podPage},
 			},
-			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
+			wantSearched:   allTypes,
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"error": 2},
 			wantIncomplete: []any{"Service"},
@@ -326,15 +485,26 @@ func TestStatsCommand(t *testing.T) {
 				"Service": {{entities: []map[string]any{statsEntity("Service", "svc-a", amend)}, last: true, limitHit: true}},
 				"Pod":     {podPage},
 			},
-			wantSearched:   []string{"Account", "Pod", "RecordTypeA", "Service"},
+			wantSearched:   allTypes,
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"amend": 1, "error": 1},
 			wantIncomplete: []any{"Service"},
 		},
 		{
-			name:         "a schema that cannot be read fails the command",
+			name:         "a schema that cannot be read leaves out only the catalog record types",
 			schemaStatus: http.StatusInternalServerError,
-			wantErr:      "fetch schema",
+			pages: map[string][]statsPage{
+				"Pod": {podPage},
+			},
+			wantEntities: &wantEntities{
+				total:    10,
+				byType:   map[string]float64{"Service": 3, "Pod": 2, "RecordTypeA": 5},
+				internal: 3,
+			},
+			wantSearched:   allTypes,
+			wantInsights:   1,
+			wantByCategory: map[string]float64{"error": 1},
+			wantStderr:     "could not read the graph schema",
 		},
 		{
 			name: "--type limits the insight search but not the entity counts",
@@ -353,92 +523,29 @@ func TestStatsCommand(t *testing.T) {
 			if tt.maxPages > 0 {
 				defer kg.SetStatsMaxSearchPages(tt.maxPages)()
 			}
-			var mu sync.Mutex
-			searched := map[string]bool{}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case prefix + "/entity_type/count":
-					_ = json.NewEncoder(w).Encode(counts)
-				case prefix + "/search":
-					var req struct {
-						DefinitionID   int `json:"definitionId"`
-						FilterCriteria []struct {
-							EntityType string `json:"entityType"`
-						} `json:"filterCriteria"`
-						PageNum int `json:"pageNum"`
-					}
-					if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&req)) {
-						return
-					}
-					if req.DefinitionID != 0 {
-						if tt.schemaStatus != 0 {
-							w.WriteHeader(tt.schemaStatus)
-							_, _ = fmt.Fprint(w, `{"message":"boom"}`)
-							return
-						}
-						_, _ = fmt.Fprint(w, schema)
-						return
-					}
-					if !assert.Len(t, req.FilterCriteria, 1) {
-						return
-					}
-					et := req.FilterCriteria[0].EntityType
-					mu.Lock()
-					searched[et] = true
-					mu.Unlock()
-					pages := tt.pages[et]
-					if req.PageNum >= len(pages) {
-						_, _ = fmt.Fprint(w, `{"data":{"entities":[],"lastPage":true}}`)
-						return
-					}
-					p := pages[req.PageNum]
-					if p.status != 0 {
-						w.WriteHeader(p.status)
-						_, _ = fmt.Fprint(w, `{"message":"boom"}`)
-						return
-					}
-					_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
-						"entities": p.entities, "pageNum": req.PageNum, "lastPage": p.last, "searchResultsMaxLimitHit": p.limitHit,
-					}})
-				default:
-					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
-					w.WriteHeader(http.StatusNotFound)
-				}
-			}))
+			fake := &statsFake{
+				t: t, counts: counts, schema: schema, fromMs: fromMs, toMs: toMs,
+				schemaStatus: tt.schemaStatus, pages: tt.pages,
+			}
+			server := httptest.NewServer(fake)
 			defer server.Close()
 			loader := &kg.FakeWriteLoader{Cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}}
 			args := append([]string{"--from", "1757000000", "--to", "1757003600"}, tt.args...)
 			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewSummaryCommand(loader) }, args, "")
-			if tt.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantErr)
-				return
-			}
 			require.NoError(t, err)
 			if tt.wantStderr != "" {
 				assert.Contains(t, stderr, tt.wantStderr)
 			}
 
-			var got struct {
-				Entities struct {
-					Total    float64            `json:"total"`
-					ByType   map[string]float64 `json:"byType"`
-					Internal struct {
-						Total float64 `json:"total"`
-					} `json:"internal"`
-				} `json:"entities"`
-				Insights struct {
-					Total      float64 `json:"total"`
-					ByCategory map[string]struct {
-						Total float64 `json:"total"`
-					} `json:"byCategory"`
-					IncompleteTypes []any `json:"incompleteTypes"`
-				} `json:"insights"`
-			}
+			var got statsOutput
 			require.NoError(t, json.Unmarshal([]byte(out), &got), out)
-			assert.InDelta(t, 5, got.Entities.Total, 0, "entities.total leaves out the catalog records, whatever --type is")
-			assert.Equal(t, map[string]float64{"Service": 3, "Pod": 2}, got.Entities.ByType)
-			assert.InDelta(t, 7, got.Entities.Internal.Total, 0)
+			want := withSchema
+			if tt.wantEntities != nil {
+				want = *tt.wantEntities
+			}
+			assert.InDelta(t, want.total, got.Entities.Total, 0, "entities.total leaves out the catalog records, whatever --type is")
+			assert.Equal(t, want.byType, got.Entities.ByType, "entities.byType holds the types the schema lists for the --from/--to window")
+			assert.InDelta(t, want.internal, got.Entities.Internal.Total, 0)
 			assert.InDelta(t, tt.wantInsights, got.Insights.Total, 0)
 			gotCats := map[string]float64{}
 			for k, v := range got.Insights.ByCategory {
@@ -446,12 +553,7 @@ func TestStatsCommand(t *testing.T) {
 			}
 			assert.Equal(t, tt.wantByCategory, gotCats)
 			assert.Equal(t, tt.wantIncomplete, got.Insights.IncompleteTypes)
-			gotSearched := make([]string, 0, len(searched))
-			for et := range searched {
-				gotSearched = append(gotSearched, et)
-			}
-			sort.Strings(gotSearched)
-			assert.Equal(t, tt.wantSearched, gotSearched)
+			assert.Equal(t, tt.wantSearched, fake.searchedTypes())
 		})
 	}
 }

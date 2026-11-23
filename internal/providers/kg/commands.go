@@ -2629,7 +2629,9 @@ for older data).
 entities.total and entities.byType leave out the graph's catalog records: the
 counted types that 'kg meta schema' does not list for the same window. They are
 listed separately under entities.internal, and insights on them still count in
-the insight totals.
+the insight totals. If the schema cannot be read, stats warns on stderr and
+leaves out only the graph's catalog record types (Account, EntityType, Env and
+Schema).
 
 --type limits only the insight counts; the entity counts always cover every
 type.
@@ -2639,12 +2641,12 @@ example failure, error, anomaly, saturation and amend; insights without one coun
 under unknown), each with its own total and byName. Every active insight counts
 in exactly one category, so the byCategory totals add up to insights.total.
 
-The insight counts cover every entity that carries an active insight in the
-window: stats reads up to %d pages of search results per entity type. A type
-whose results could not all be read (more pages than that, a server-side result
-limit, or a server error) is listed in insights.incompleteTypes. Read the
-categories here instead of listing entities; use 'kg entities list --insight'
-only to see which entities carry them.`, statsMaxSearchPages),
+stats follows each entity type's search pages while the server reports more,
+up to %d pages per type. insights.incompleteTypes lists every type whose
+insight-carrying entities it could not read in full (the server's result limit,
+more pages than that, or a server error); insights on the entities it did not
+read are not counted. Read the categories here instead of listing entities; use
+'kg entities list --insight' only to see which entities carry them.`, statsMaxSearchPages),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -2666,10 +2668,13 @@ only to see which entities carry them.`, statsMaxSearchPages),
 			}
 
 			// The schema for the same window tells which counted types are
-			// the graph's catalog records (see isCatalogType).
+			// the graph's catalog records (see isCatalogType). Reading it is
+			// best effort: without it, only the catalog record types are
+			// left out of the entity totals.
 			var (
-				counts map[string]int64
-				listed map[string]bool
+				counts    map[string]int64
+				listed    map[string]bool
+				schemaErr error
 			)
 			g, gCtx := errgroup.WithContext(cmd.Context())
 			g.Go(func() error {
@@ -2678,15 +2683,19 @@ only to see which entities carry them.`, statsMaxSearchPages),
 				return countErr
 			})
 			g.Go(func() error {
-				schemaResp, schemaErr := client.FetchGraphSchema(gCtx, startMs, endMs)
-				if schemaErr != nil {
-					return schemaErr
+				schemaResp, err := client.FetchGraphSchema(gCtx, startMs, endMs)
+				if err != nil {
+					schemaErr = err
+					return nil //nolint:nilerr // Best effort: reported below, and the split falls back to isCatalogRecordType.
 				}
 				listed = listedSchemaTypes(schemaResp)
 				return nil
 			})
 			if err := g.Wait(); err != nil {
 				return err
+			}
+			if schemaErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not read the graph schema (%v); entities.total leaves out only the graph's catalog record types\n", schemaErr)
 			}
 			entities := summarizeEntityCounts(counts, listed)
 			// Every counted type is searched for insights, catalog types
@@ -3190,8 +3199,7 @@ func AlertCorrelateTable() cmdio.Table[GraphEntity] {
 // ---------------------------------------------------------------------------
 
 // processGraphSchema converts a raw GraphSchemaResponse into a KGSchemaResult.
-// It leaves out the graph's account and environment record types (see
-// isGraphRecordType).
+// It leaves out the graph's catalog record types (see isCatalogRecordType).
 func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 	ignoredProps := map[string]bool{"Discovered": true, "Updated": true, "labelsForName": true}
 
@@ -3203,7 +3211,7 @@ func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 		if name == "" {
 			name = "Unknown"
 		}
-		if isGraphRecordType(name) {
+		if isCatalogRecordType(name) {
 			continue
 		}
 		if e.ID != nil {

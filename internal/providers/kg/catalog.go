@@ -5,19 +5,23 @@ package kg
 // the diagnose entity overview count these catalog records apart, and
 // `kg meta schema` does not list their types.
 //
-// Most catalog types can be read from the graph: the schema does not list the
-// types of the records that describe the schema itself, so a counted type that
-// the schema does not list is a catalog type. The graph's account and
-// environment records are the exception: the schema lists their types like
-// any other, and the API marks them in no other way, so isGraphRecordType
-// names them. It is the package's only list of catalog type names.
+// A counted type is a catalog type when the schema for the same window does
+// not list it: the schema does not list the types of the records that
+// describe the schema itself. The graph's account and environment records
+// are the exception: the schema lists their types like any other, and the
+// API marks them in no other way. isCatalogRecordType names the graph's
+// catalog record types, which covers those two and keeps every catalog
+// record type out of the totals when the schema cannot be read. It is the
+// package's only list of catalog type names.
 
-// isGraphRecordType reports whether t is the type of the graph's account or
-// environment records. processGraphSchema leaves these types out of
-// `kg meta schema`, and isCatalogType counts them as catalog types.
-func isGraphRecordType(t string) bool {
+// isCatalogRecordType reports whether t is one of the graph's own catalog
+// record types: its account, entity-type, environment and schema records.
+// processGraphSchema leaves these types out of `kg meta schema`, and
+// isCatalogType counts them as catalog types whether or not the schema
+// could be read.
+func isCatalogRecordType(t string) bool {
 	switch t {
-	case "Account", "Env":
+	case "Account", "EntityType", "Env", "Schema":
 		return true
 	default:
 		return false
@@ -36,12 +40,12 @@ func listedSchemaTypes(resp GraphSchemaResponse) map[string]bool {
 }
 
 // isCatalogType reports whether a counted entity type holds the graph's own
-// catalog records: a type that listed (the types `kg meta schema` lists for
-// the same window, see listedSchemaTypes) does not contain. Account and
-// environment record types are catalog types either way. A nil listed means
-// the schema could not be read; then only those two are.
+// catalog records: a catalog record type (see isCatalogRecordType), or a
+// type that listed (the types `kg meta schema` lists for the same window,
+// see listedSchemaTypes) does not contain. A nil listed means the schema
+// could not be read; then only the catalog record types are.
 func isCatalogType(t string, listed map[string]bool) bool {
-	if isGraphRecordType(t) {
+	if isCatalogRecordType(t) {
 		return true
 	}
 	return listed != nil && !listed[t]

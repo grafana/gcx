@@ -369,9 +369,14 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 		return nil
 	})
 
+	// The entity counts and the schema the overview tells catalog records
+	// apart with are read for the same window, the last hour.
+	countsEnd := time.Now()
+	countsStartMs, countsEndMs := countsEnd.Add(-1*time.Hour).UnixMilli(), countsEnd.UnixMilli()
+
 	// Check 2: Entity counts.
 	g.Go(func() error {
-		c, counts := checkEntityCounts(ctx, client)
+		c, counts := checkEntityCounts(ctx, client, countsStartMs, countsEndMs)
 		mu.Lock()
 		result.Checks = append(result.Checks, c)
 		orientationInput.EntityCounts = counts
@@ -382,12 +387,11 @@ func runDiagnose(ctx context.Context, client *Client, scope *scopeFlags, promCli
 	// Schema types for the entity overview, which uses them to leave the
 	// graph's catalog records out of its total (see isCatalogType). Best
 	// effort and not a check of its own: without the schema the overview
-	// leaves out only the account and environment record types.
+	// leaves out only the catalog record types (see isCatalogRecordType).
 	g.Go(func() error {
-		now := time.Now()
-		schemaResp, err := client.FetchGraphSchema(ctx, now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli())
+		schemaResp, err := client.FetchGraphSchema(ctx, countsStartMs, countsEndMs)
 		if err != nil {
-			return nil //nolint:nilerr // Best effort: the overview falls back to isGraphRecordType.
+			return nil //nolint:nilerr // Best effort: the overview falls back to isCatalogRecordType.
 		}
 		listed := listedSchemaTypes(schemaResp)
 		mu.Lock()
@@ -636,11 +640,11 @@ func checkStackStatus(ctx context.Context, client *Client) ([]CheckResult, bool)
 }
 
 // checkEntityCounts returns the user-facing check result plus the raw
-// per-type count map so the Orientation block can compute entity totals
-// without a second API call. counts is nil on API error.
-func checkEntityCounts(ctx context.Context, client *Client) (CheckResult, map[string]int64) {
-	now := time.Now()
-	counts, err := client.CountEntityTypes(ctx, now.Add(-1*time.Hour).UnixMilli(), now.UnixMilli(), nil)
+// per-type count map for the given window, so the Orientation block can
+// compute entity totals without a second API call. counts is nil on API
+// error.
+func checkEntityCounts(ctx context.Context, client *Client, startMs, endMs int64) (CheckResult, map[string]int64) {
+	counts, err := client.CountEntityTypes(ctx, startMs, endMs, nil)
 	if err != nil {
 		return CheckResult{
 			Name:           "Entity counts",

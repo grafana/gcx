@@ -73,6 +73,10 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 
 func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
 	const prefix = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1"
+	type window struct {
+		Start int64 `json:"start"`
+		End   int64 `json:"end"`
+	}
 	tests := []struct {
 		name        string
 		schemaOK    bool
@@ -80,25 +84,44 @@ func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
 		wantNotType []string
 	}{
 		{
-			name:        "types the schema does not list and record types are left out",
+			name:        "types the schema does not list and catalog record types are left out",
 			schemaOK:    true,
 			wantTotal:   30,
-			wantNotType: []string{"RecordTypeA", "Account", "Env"},
+			wantNotType: []string{"RecordTypeA", "EntityType", "Account", "Env"},
 		},
 		{
-			name:        "without the schema only the record types are left out",
+			name:        "without the schema only the catalog record types are left out",
 			wantTotal:   34,
-			wantNotType: []string{"Account", "Env"},
+			wantNotType: []string{"EntityType", "Account", "Env"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var (
+				mu                        sync.Mutex
+				countWindow, schemaWindow window
+			)
+			readWindow := func(r *http.Request) window {
+				var req struct {
+					TimeCriteria window `json:"timeCriteria"`
+				}
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+				return req.TimeCriteria
+			}
 			mux := http.NewServeMux()
 			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case prefix + "/entity_type/count":
-					writeJSON(w, map[string]int64{"Service": 10, "Pod": 20, "RecordTypeA": 4, "Account": 1, "Env": 2})
+					w0 := readWindow(r)
+					mu.Lock()
+					countWindow = w0
+					mu.Unlock()
+					writeJSON(w, map[string]int64{"Service": 10, "Pod": 20, "RecordTypeA": 4, "EntityType": 3, "Account": 1, "Env": 2})
 				case prefix + "/search":
+					w0 := readWindow(r)
+					mu.Lock()
+					schemaWindow = w0
+					mu.Unlock()
 					if !tt.schemaOK {
 						w.WriteHeader(http.StatusInternalServerError)
 						return
@@ -122,6 +145,8 @@ func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
 			}
 			assert.Contains(t, overview.ByType, "Service")
 			assert.Contains(t, overview.ByType, "Pod")
+			assert.Equal(t, countWindow, schemaWindow, "the schema is read for the same window as the entity counts")
+			assert.Equal(t, int64(3600000), countWindow.End-countWindow.Start, "the entity counts cover the last hour")
 		})
 	}
 }
