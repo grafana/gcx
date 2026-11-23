@@ -54,6 +54,12 @@ var _ Codec = (*YAMLCodec)(nil)
 // YAMLCodec is a Codec that encodes and decodes resources to and from YAML.
 type YAMLCodec struct {
 	BytesAsBase64 bool
+
+	// PromoteExponentFloats decodes unquoted exponent-only numbers such as
+	// 1e-07 as floats instead of strings. It is meant for unstructured
+	// resource manifests, matching kubectl; typed decoders keep go-yaml's
+	// YAML 1.1 behaviour so values like 1e10 or a short SHA stay strings.
+	PromoteExponentFloats bool
 }
 
 // NewYAMLCodec returns a new YAMLCodec.
@@ -123,7 +129,7 @@ func (c *YAMLCodec) Decode(src io.Reader, value any) error {
 	}
 
 	tokens := lexer.Tokenize(string(data))
-	if !promoteExponentFloats(tokens) {
+	if !c.PromoteExponentFloats || !promoteExponentFloats(tokens) {
 		return yaml.NewDecoder(bytes.NewReader(data), opts...).Decode(value)
 	}
 
@@ -157,6 +163,11 @@ func promoteExponentFloats(tokens token.Tokens) bool {
 
 	for _, tk := range tokens {
 		if tk.Type != token.StringType || !exponentFloat.MatchString(tk.Value) {
+			continue
+		}
+
+		// Content of a | or > block scalar is text, not a number.
+		if tk.Prev != nil && (tk.Prev.Type == token.LiteralType || tk.Prev.Type == token.FoldedType) {
 			continue
 		}
 

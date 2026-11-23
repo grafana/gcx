@@ -344,7 +344,7 @@ func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) {
 	case "json":
 		return reader.Decoders[format.JSON], nil
 	case "yaml", "yml":
-		return reader.Decoders[format.YAML], nil
+		return withExponentFloats(reader.Decoders[format.YAML]), nil
 	default:
 		return nil, UnrecognisedFormatError{Format: input}
 	}
@@ -364,4 +364,18 @@ func (reader *FSReader) notifyErrorListeners(err error, path string) {
 type readResult struct {
 	Object resources.Resource
 	Path   string
+}
+
+// withExponentFloats returns a copy of a YAML codec that decodes exponent-only
+// numbers (1e-07) as floats, as resource manifests expect. Other codecs are
+// returned unchanged.
+func withExponentFloats(codec format.Codec) format.Codec {
+	if yamlCodec, ok := codec.(*format.YAMLCodec); ok {
+		clone := *yamlCodec
+		clone.PromoteExponentFloats = true
+
+		return &clone
+	}
+
+	return codec
 }
