@@ -14,7 +14,8 @@
   scope. A lookup that returns metrics the first time sends no extra request.
   The help now says to copy every label of the timeline entry with `--label`
   and, for alert-rule and change insights, to pass the entry's category as
-  `asserts_alert_category`.
+  `asserts_alert_category`; its examples pass the timeline entry's labels,
+  and the alert-rule and change example also the category.
   It also says that the same labels can return an empty array for a window
   that does not cover the insight, that the output lists metrics and label
   matchers, not the rule's expression or threshold, and that

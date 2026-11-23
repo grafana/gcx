@@ -713,6 +713,8 @@ func TestInsightsSources_HelpEmptyArray(t *testing.T) {
 // The sources help shows the command's shape with placeholders and states the
 // label rule generically: the entity, the insight and every label come from
 // what the graph reports for the reader's entity, not from names in the help.
+// Every example follows the rule it states: it passes the timeline entry's
+// labels, and the alert-rule and change example also passes the category.
 func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
@@ -723,20 +725,37 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 	examples := []struct {
 		name string
 		re   *regexp.Regexp
-		want string
+		want []string
 	}{
-		{"entity argument", regexp.MustCompile(`gcx kg insights sources (\S+)`), "<Type>--<Name>"},
-		{"--env", regexp.MustCompile(`--env (\S+)`), "<env>"},
-		{"--namespace", regexp.MustCompile(`--namespace (\S+)`), "<namespace>"},
-		{"--insight", regexp.MustCompile(`--insight (\S+)`), "'<insight>'"},
-		{"--label", regexp.MustCompile(`--label (\S+)`), "<key>=<value>"},
+		{"entity argument", regexp.MustCompile(`gcx kg insights sources (\S+)`), []string{"<Type>--<Name>"}},
+		{"--env", regexp.MustCompile(`--env (\S+)`), []string{"<env>"}},
+		{"--namespace", regexp.MustCompile(`--namespace (\S+)`), []string{"<namespace>"}},
+		{"--insight", regexp.MustCompile(`--insight (\S+)`), []string{"'<insight>'"}},
+		{"--label", regexp.MustCompile(`--label (\S+)`), []string{"<key>=<value>", "asserts_alert_category=<category>"}},
 	}
 	for _, tc := range examples {
 		t.Run("Example "+tc.name, func(t *testing.T) {
 			matches := tc.re.FindAllStringSubmatch(sources.Example, -1)
 			require.NotEmpty(t, matches, "Example: %s", sources.Example)
 			for _, m := range matches {
-				assert.Equal(t, tc.want, m[1], "Example: %s", sources.Example)
+				assert.Contains(t, tc.want, m[1], "Example: %s", sources.Example)
+			}
+		})
+	}
+
+	// Each example is a comment followed by one command; every command
+	// passes the timeline entry's labels, and the alert-rule and change
+	// example passes the category as well.
+	blocks := strings.Split(strings.TrimSpace(sources.Example), "\n\n")
+	require.Len(t, blocks, 2, "Example: %s", sources.Example)
+	for i, b := range blocks {
+		flat := strings.Join(strings.Fields(b), " ")
+		t.Run("Example labels "+[]string{"first", "second"}[i], func(t *testing.T) {
+			assert.Contains(t, flat, "--label <key>=<value> # repeat for each label in the entry's timeLines[].labels", "Example: %s", b)
+			if strings.Contains(flat, "alert-rule or change insight") {
+				assert.Contains(t, flat, "--label asserts_alert_category=<category>", "Example: %s", b)
+			} else {
+				assert.NotContains(t, flat, "asserts_alert_category", "Example: %s", b)
 			}
 		})
 	}
@@ -745,7 +764,7 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 	// space: the example quotes the placeholder and says why.
 	t.Run("Example quoting note", func(t *testing.T) {
 		assert.Contains(t, strings.Join(strings.Fields(sources.Example), " "),
-			"quote the insight name: # insight names can contain spaces")
+			"(quote the insight name: insight names can contain spaces)")
 	})
 
 	long := strings.Join(strings.Fields(sources.Long), " ")
