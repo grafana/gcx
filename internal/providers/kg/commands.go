@@ -3076,8 +3076,9 @@ func AlertCorrelateTable() cmdio.Table[GraphEntity] {
 // ---------------------------------------------------------------------------
 
 // processGraphSchema converts a raw GraphSchemaResponse into a KGSchemaResult.
+// It leaves out the types of the graph's catalog records (see
+// isGraphRecordType).
 func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
-	ignoredTypes := map[string]bool{"Account": true, "Env": true}
 	ignoredProps := map[string]bool{"Discovered": true, "Updated": true, "labelsForName": true}
 
 	idToName := make(map[int64]string)
@@ -3088,7 +3089,7 @@ func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 		if name == "" {
 			name = "Unknown"
 		}
-		if ignoredTypes[name] {
+		if isGraphRecordType(name) {
 			continue
 		}
 		if e.ID != nil {

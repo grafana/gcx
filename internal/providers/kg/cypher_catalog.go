@@ -23,7 +23,7 @@ var (
 )
 
 // catalogRowsWarning returns a warning when rows of resp hold the graph's own
-// catalog records (see isMetaEntityType), or "" when none do. A catalog label
+// catalog records (see isGraphRecordType), or "" when none do. A catalog label
 // the query names itself, as a label or inside a string literal (see
 // cypherNamedLabels), is wanted or filtered out by the query, so rows that
 // carry only such labels are not counted; rows with other catalog labels
@@ -52,7 +52,7 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 				continue
 			}
 			add := func(label string) {
-				if isMetaEntityType(label) && !named[label] {
+				if isGraphRecordType(label) && !named[label] {
 					found[label] = true
 					inRow = true
 				}
@@ -89,9 +89,9 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 	if rows == 1 {
 		verb = "holds"
 	}
-	return fmt.Sprintf("%d of %d %s %s the graph's own catalog records (%s %s), which describe its entity types, "+
-		"the relationship types between them and its env values, not observed entities; a node pattern without "+
-		"a label matches them too. A label on each node, or WHERE %s on an unlabeled node n, leaves them out.",
+	return fmt.Sprintf("%d of %d %s %s the graph's own catalog records (%s %s), not observed entities; "+
+		"a node pattern without a label matches them too. A label on each node, or WHERE %s on an unlabeled "+
+		"node n, leaves them out.",
 		rows, len(resp.Rows), rowNoun, verb, noun, strings.Join(labels, ", "), strings.Join(filters, " AND "))
 }
 
@@ -103,7 +103,7 @@ func catalogRowsWarning(query string, resp *CypherQueryResponse) string {
 func cypherNamedLabels(query string) map[string]bool {
 	named := map[string]bool{}
 	addWord := func(word string) {
-		if word = strings.Trim(word, "`"); isMetaEntityType(word) {
+		if word = strings.Trim(word, "`"); isGraphRecordType(word) {
 			named[word] = true
 		}
 	}

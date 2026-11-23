@@ -33,10 +33,9 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Short: "Run a read-only Cypher query and return its columns and rows.",
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
 The response has columns, rows and stats (rowCount, columnCount, elapsedMs),
-plus warnings when gcx finds rows that hold the graph's own catalog records,
-which describe entity types, relationship types and env values rather than
-observed entities. Warnings are part of -o json and -o yaml output and are
-written to stderr in every format.
+plus warnings when gcx finds rows that hold the graph's own catalog records
+rather than observed entities. Warnings are part of -o json and -o yaml output
+and are written to stderr in every format.
 Each row is an array aligned with columns, values keep their JSON shape, and
 node/relationship refs are local to one response. Output is a table by
 default, or -o json or -o yaml; unlike kg meta, there is no -o text.

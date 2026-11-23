@@ -62,7 +62,7 @@ const (
 // existing entity-count and metric-check responses in DiagnoseResult.
 type EntityOverview struct {
 	// Total entities across all types, EXCLUDING catalog meta types
-	// (EntityType, Schema, Env). Those types describe the catalog itself,
+	// (see isGraphRecordType). Those types describe the catalog itself,
 	// not the user's workloads, and inflate the count without informational
 	// value.
 	Total int64 `json:"total"`
@@ -191,19 +191,6 @@ const (
 // Detection
 // ---------------------------------------------------------------------------
 
-// isMetaEntityType reports whether the given entity type is a catalog-level
-// type that describes the Entity Graph schema itself rather than user
-// workloads. These inflate entity counts without informational value; the
-// EntityOverview excludes them.
-func isMetaEntityType(t string) bool {
-	switch t {
-	case "EntityType", "Schema", "Env":
-		return true
-	default:
-		return false
-	}
-}
-
 // OrientationInput is the raw data the detectors need. It is populated by
 // runDiagnose from the same API responses that drive the per-check table,
 // then passed to computeOrientation. Separating the input from the
@@ -310,7 +297,7 @@ func buildEntityOverview(in OrientationInput) EntityOverview {
 		TracedServiceCount: in.TracesTargetInfoSeries,
 	}
 	for t, n := range in.EntityCounts {
-		if isMetaEntityType(t) {
+		if isGraphRecordType(t) {
 			continue
 		}
 		out.ByType[t] = n

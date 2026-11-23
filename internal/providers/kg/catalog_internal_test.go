@@ -1,0 +1,45 @@
+package kg
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestIsGraphRecordType(t *testing.T) {
+	for _, tt := range []struct {
+		typ  string
+		want bool
+	}{
+		{typ: "Account", want: true},
+		{typ: "EntityType", want: true},
+		{typ: "Env", want: true},
+		{typ: "Schema", want: true},
+		{typ: "Service"},
+		{typ: "Pod"},
+		{typ: "account"},
+		{typ: ""},
+	} {
+		t.Run(tt.typ, func(t *testing.T) {
+			assert.Equal(t, tt.want, isGraphRecordType(tt.typ))
+		})
+	}
+}
+
+func TestProcessGraphSchemaLeavesOutCatalogRecordTypes(t *testing.T) {
+	id := func(n int64) *int64 { return &n }
+	var resp GraphSchemaResponse
+	for i, name := range []string{"Service", "Account", "EntityType", "Env", "Schema", "Pod"} {
+		resp.Data.Entities = append(resp.Data.Entities, GraphSchemaEntity{ID: id(int64(i + 1)), Name: name})
+	}
+	resp.Data.Edges = []GraphSchemaEdge{{Source: 1, Destination: 6, Type: "TYPE_A"}}
+
+	got := processGraphSchema(resp)
+
+	types := make([]string, 0, len(got.EntityTypes))
+	for _, et := range got.EntityTypes {
+		types = append(types, et.Type)
+	}
+	assert.Equal(t, []string{"Pod", "Service"}, types)
+	assert.Equal(t, []string{"Service --TYPE_A--> Pod"}, got.Relationships)
+}

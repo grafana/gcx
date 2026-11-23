@@ -15,10 +15,9 @@
 - `gcx kg graph query` now adds a `warnings` entry to its `-o json` and
   `-o yaml` output, and writes the same warning to stderr in every format,
   when returned rows hold the graph's own catalog records: nodes labeled
-  `Schema`, `EntityType` or `Env`, which describe entity types, the
-  relationship types between them and env values, not observed entities. A
-  node pattern without a label matches them too, so a query such as
-  `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r)`
+  `Account`, `EntityType`, `Env` or `Schema`, which are not observed entities.
+  A node pattern without a label matches them too, so a query such as
+  `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r) LIMIT 100`
   returned catalog groups next to real ones with nothing telling them apart.
   The warning counts those rows, names their labels and says how to leave
   them out. It is detected from returned nodes and from columns that project
@@ -27,6 +26,11 @@
   query names itself, as a label or in a string literal outside comments, is
   not counted, so a query that filters out one catalog label is still warned
   about the others. Rows are unchanged.
+- The `gcx kg diagnose` entity overview now also leaves `Account` records out
+  of its entity total and per-type counts, as it already did `EntityType`,
+  `Env` and `Schema` records. `gcx kg meta schema`, `gcx kg graph query` and
+  the diagnose overview now share one list of the graph's catalog record
+  types.
 
 ## v1.8.0 (2026-11-17)
 
