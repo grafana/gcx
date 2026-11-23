@@ -19,7 +19,7 @@ import (
 )
 
 func TestSummarizeEntityCounts(t *testing.T) {
-	listed := map[string]bool{"Service": true, "Pod": true}
+	listed := map[string]bool{"TypeX": true, "TypeY": true}
 	tests := []struct {
 		name   string
 		counts map[string]int64
@@ -34,20 +34,20 @@ func TestSummarizeEntityCounts(t *testing.T) {
 		},
 		{
 			name:   "types the schema lists are counted",
-			counts: map[string]int64{"Service": 3, "Pod": 7},
+			counts: map[string]int64{"TypeX": 3, "TypeY": 7},
 			listed: listed,
-			want:   kg.EntitiesSummary{Total: 10, ByType: map[string]int64{"Service": 3, "Pod": 7}},
+			want:   kg.EntitiesSummary{Total: 10, ByType: map[string]int64{"TypeX": 3, "TypeY": 7}},
 		},
 		{
 			name: "types the schema does not list and record types are split out of the total",
 			counts: map[string]int64{
-				"Service": 3, "Pod": 7,
+				"TypeX": 3, "TypeY": 7,
 				"RecordTypeA": 3, "RecordTypeB": 5, "Account": 2, "Env": 4,
 			},
 			listed: listed,
 			want: kg.EntitiesSummary{
 				Total:  10,
-				ByType: map[string]int64{"Service": 3, "Pod": 7},
+				ByType: map[string]int64{"TypeX": 3, "TypeY": 7},
 				Internal: &kg.EntityCount{
 					Total:  14,
 					ByType: map[string]int64{"RecordTypeA": 3, "RecordTypeB": 5, "Account": 2, "Env": 4},
@@ -68,20 +68,20 @@ func TestSummarizeEntityCounts(t *testing.T) {
 		},
 		{
 			name:   "zero counts are dropped",
-			counts: map[string]int64{"Service": 0, "Pod": 2, "RecordTypeA": 0},
+			counts: map[string]int64{"TypeX": 0, "TypeY": 2, "RecordTypeA": 0},
 			listed: listed,
-			want:   kg.EntitiesSummary{Total: 2, ByType: map[string]int64{"Pod": 2}},
+			want:   kg.EntitiesSummary{Total: 2, ByType: map[string]int64{"TypeY": 2}},
 		},
 		{
 			name: "without the schema only the catalog record types are split out",
 			counts: map[string]int64{
-				"Service": 3, "RecordTypeA": 5,
+				"TypeX": 3, "RecordTypeA": 5,
 				"Account": 2, "EntityType": 6, "Env": 4, "Schema": 8,
 			},
 			listed: nil,
 			want: kg.EntitiesSummary{
 				Total:  8,
-				ByType: map[string]int64{"Service": 3, "RecordTypeA": 5},
+				ByType: map[string]int64{"TypeX": 3, "RecordTypeA": 5},
 				Internal: &kg.EntityCount{
 					Total:  20,
 					ByType: map[string]int64{"Account": 2, "EntityType": 6, "Env": 4, "Schema": 8},
@@ -97,20 +97,20 @@ func TestSummarizeEntityCounts(t *testing.T) {
 }
 
 func TestIsCatalogType(t *testing.T) {
-	listed := map[string]bool{"Service": true}
+	listed := map[string]bool{"TypeX": true}
 	tests := []struct {
 		name   string
 		typ    string
 		listed map[string]bool
 		want   bool
 	}{
-		{name: "a type the schema lists", typ: "Service", listed: listed, want: false},
+		{name: "a type the schema lists", typ: "TypeX", listed: listed, want: false},
 		{name: "a type the schema does not list", typ: "RecordTypeA", listed: listed, want: true},
 		{name: "account records", typ: "Account", listed: listed, want: true},
 		{name: "environment records", typ: "Env", listed: listed, want: true},
 		{name: "a catalog record type even when listed", typ: "Env", listed: map[string]bool{"Env": true}, want: true},
 		{name: "without the schema an unknown type is not a catalog type", typ: "RecordTypeA", listed: nil, want: false},
-		{name: "without the schema a listed type is not a catalog type", typ: "Service", listed: nil, want: false},
+		{name: "without the schema a listed type is not a catalog type", typ: "TypeX", listed: nil, want: false},
 		{name: "without the schema account records still are", typ: "Account", listed: nil, want: true},
 		{name: "without the schema entity-type records still are", typ: "EntityType", listed: nil, want: true},
 		{name: "without the schema environment records still are", typ: "Env", listed: nil, want: true},
@@ -131,8 +131,8 @@ func TestListedSchemaTypes(t *testing.T) {
 	}{
 		{
 			name: "lists the schema's types except the catalog record types",
-			body: `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"},{"id":4,"name":"Env"},{"id":5,"name":"EntityType"},{"id":6,"name":"Schema"}]}}`,
-			want: map[string]bool{"Service": true, "Pod": true},
+			body: `{"data":{"entities":[{"id":1,"name":"TypeX"},{"id":2,"name":"TypeY"},{"id":3,"name":"Account"},{"id":4,"name":"Env"},{"id":5,"name":"EntityType"},{"id":6,"name":"Schema"}]}}`,
+			want: map[string]bool{"TypeX": true, "TypeY": true},
 		},
 		{
 			name: "an unnamed type is listed as Unknown, as kg meta schema shows it",
@@ -155,7 +155,7 @@ func TestListedSchemaTypes(t *testing.T) {
 }
 
 func TestEntitiesSummary_JSONOmitsEmptyInternal(t *testing.T) {
-	listed := map[string]bool{"Pod": true}
+	listed := map[string]bool{"TypeY": true}
 	tests := []struct {
 		name   string
 		counts map[string]int64
@@ -163,13 +163,13 @@ func TestEntitiesSummary_JSONOmitsEmptyInternal(t *testing.T) {
 	}{
 		{
 			name:   "no catalog records",
-			counts: map[string]int64{"Pod": 2},
-			want:   `{"total":2,"byType":{"Pod":2}}`,
+			counts: map[string]int64{"TypeY": 2},
+			want:   `{"total":2,"byType":{"TypeY":2}}`,
 		},
 		{
 			name:   "with catalog records",
-			counts: map[string]int64{"Pod": 2, "RecordTypeA": 5},
-			want:   `{"total":2,"byType":{"Pod":2},"internal":{"total":5,"byType":{"RecordTypeA":5}}}`,
+			counts: map[string]int64{"TypeY": 2, "RecordTypeA": 5},
+			want:   `{"total":2,"byType":{"TypeY":2},"internal":{"total":5,"byType":{"RecordTypeA":5}}}`,
 		},
 	}
 	for _, tt := range tests {
@@ -204,30 +204,30 @@ func TestSummarizeInsights(t *testing.T) {
 			name: "grouped by category with per-category names",
 			results: []kg.SearchResult{
 				insightResult(
-					map[string]any{"assertionName": "ErrorRatioBreach", "category": "error", "severity": "critical"},
+					map[string]any{"assertionName": "InsightA", "category": "error", "severity": "critical"},
 					map[string]any{"assertionName": "InsightB", "category": "amend", "severity": "info"},
 				),
 				insightResult(
-					map[string]any{"assertionName": "ErrorRatioBreach", "category": "error", "severity": "critical"},
+					map[string]any{"assertionName": "InsightA", "category": "error", "severity": "critical"},
 					map[string]any{"assertionName": "InsightC", "category": "anomaly", "severity": "warning"},
 				),
 			},
 			want: kg.InsightsSummary{
 				Total: 4,
 				ByCategory: map[string]kg.InsightGroup{
-					"error":   {Total: 2, ByName: map[string]int{"ErrorRatioBreach": 2}},
+					"error":   {Total: 2, ByName: map[string]int{"InsightA": 2}},
 					"amend":   {Total: 1, ByName: map[string]int{"InsightB": 1}},
 					"anomaly": {Total: 1, ByName: map[string]int{"InsightC": 1}},
 				},
 				BySeverity: map[string]int{"CRITICAL": 2, "INFO": 1, "WARNING": 1},
-				ByName:     map[string]int{"ErrorRatioBreach": 2, "InsightB": 1, "InsightC": 1},
+				ByName:     map[string]int{"InsightA": 2, "InsightB": 1, "InsightC": 1},
 			},
 		},
 		{
 			name: "category case is normalised and missing fields count as unknown",
 			results: []kg.SearchResult{
 				insightResult(
-					map[string]any{"assertionName": "Saturated", "category": "Saturation", "severity": "warning"},
+					map[string]any{"assertionName": "InsightE", "category": "Saturation", "severity": "warning"},
 					map[string]any{},
 					"not an insight",
 				),
@@ -235,11 +235,11 @@ func TestSummarizeInsights(t *testing.T) {
 			want: kg.InsightsSummary{
 				Total: 2,
 				ByCategory: map[string]kg.InsightGroup{
-					"saturation": {Total: 1, ByName: map[string]int{"Saturated": 1}},
+					"saturation": {Total: 1, ByName: map[string]int{"InsightE": 1}},
 					"unknown":    {Total: 1, ByName: map[string]int{"UNKNOWN": 1}},
 				},
 				BySeverity: map[string]int{"WARNING": 1, "UNKNOWN": 1},
-				ByName:     map[string]int{"Saturated": 1, "UNKNOWN": 1},
+				ByName:     map[string]int{"InsightE": 1, "UNKNOWN": 1},
 			},
 		},
 	}
@@ -264,7 +264,7 @@ func statsEntity(typ, name string, insights ...map[string]any) map[string]any {
 		list[i] = a
 	}
 	return map[string]any{
-		"name": name, "type": typ, "scope": map[string]any{"env": "prod"},
+		"name": name, "type": typ, "scope": map[string]any{"env": "env-a"},
 		"assertion": map[string]any{"assertions": list},
 	}
 }
@@ -418,15 +418,15 @@ type statsOutput struct {
 func TestStatsCommand(t *testing.T) {
 	// The window every case passes with --from/--to, in milliseconds.
 	const fromMs, toMs = 1757000000000, 1757003600000
-	counts := map[string]int64{"Service": 3, "Pod": 2, "Account": 2, "EntityType": 1, "RecordTypeA": 5}
+	counts := map[string]int64{"TypeX": 3, "TypeY": 2, "Account": 2, "EntityType": 1, "RecordTypeA": 5}
 	// The schema lists Account like any type; RecordTypeA, which it does not
 	// list, is a catalog type only because of that. The fake answers with it
 	// only for the --from/--to window and with an empty schema otherwise.
-	schema := `{"data":{"entities":[{"id":1,"name":"Service"},{"id":2,"name":"Pod"},{"id":3,"name":"Account"}],"edges":[]}}`
-	errInsight := statsInsight("ErrorRatioBreach", "error")
+	schema := `{"data":{"entities":[{"id":1,"name":"TypeX"},{"id":2,"name":"TypeY"},{"id":3,"name":"Account"}],"edges":[]}}`
+	errInsight := statsInsight("InsightA", "error")
 	amend := statsInsight("InsightB", "amend")
-	podPage := statsPage{entities: []map[string]any{statsEntity("Pod", "pod-1", errInsight)}, last: true}
-	allTypes := []string{"Account", "EntityType", "Pod", "RecordTypeA", "Service"}
+	yPage := statsPage{entities: []map[string]any{statsEntity("TypeY", "y-1", errInsight)}, last: true}
+	allTypes := []string{"Account", "EntityType", "RecordTypeA", "TypeX", "TypeY"}
 
 	// wantEntities is the entities block of the output.
 	type wantEntities struct {
@@ -434,7 +434,7 @@ func TestStatsCommand(t *testing.T) {
 		byType   map[string]float64
 		internal float64
 	}
-	withSchema := wantEntities{total: 5, byType: map[string]float64{"Service": 3, "Pod": 2}, internal: 8}
+	withSchema := wantEntities{total: 5, byType: map[string]float64{"TypeX": 3, "TypeY": 2}, internal: 8}
 
 	tests := []struct {
 		name           string
@@ -453,12 +453,12 @@ func TestStatsCommand(t *testing.T) {
 		{
 			name: "follows pages, counts a repeated row once, counts insights on catalog records",
 			pages: map[string][]statsPage{
-				"Service": {
-					{entities: []map[string]any{statsEntity("Service", "svc-a", errInsight), statsEntity("Service", "svc-b", amend)}},
-					{entities: []map[string]any{statsEntity("Service", "svc-b", amend), statsEntity("Service", "svc-c", errInsight)}, last: true},
+				"TypeX": {
+					{entities: []map[string]any{statsEntity("TypeX", "x-1", errInsight), statsEntity("TypeX", "x-2", amend)}},
+					{entities: []map[string]any{statsEntity("TypeX", "x-2", amend), statsEntity("TypeX", "x-3", errInsight)}, last: true},
 				},
-				"Pod":     {podPage},
-				"Account": {{entities: []map[string]any{statsEntity("Account", "tenant", statsInsight("InsightD", "failure"))}, last: true}},
+				"TypeY":   {yPage},
+				"Account": {{entities: []map[string]any{statsEntity("Account", "record-1", statsInsight("InsightD", "failure"))}, last: true}},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   5,
@@ -468,100 +468,100 @@ func TestStatsCommand(t *testing.T) {
 			name:     "a type past the page bound is listed as incomplete",
 			maxPages: 2,
 			pages: map[string][]statsPage{
-				"Service": {
-					{entities: []map[string]any{statsEntity("Service", "svc-a", errInsight)}},
-					{entities: []map[string]any{statsEntity("Service", "svc-b", errInsight)}},
-					{entities: []map[string]any{statsEntity("Service", "svc-c", errInsight)}, last: true},
+				"TypeX": {
+					{entities: []map[string]any{statsEntity("TypeX", "x-1", errInsight)}},
+					{entities: []map[string]any{statsEntity("TypeX", "x-2", errInsight)}},
+					{entities: []map[string]any{statsEntity("TypeX", "x-3", errInsight)}, last: true},
 				},
-				"Pod": {podPage},
+				"TypeY": {yPage},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   3,
 			wantByCategory: map[string]float64{"error": 3},
-			wantIncomplete: []any{"Service"},
+			wantIncomplete: []any{"TypeX"},
 		},
 		{
 			name: "a server error on the first page skips the type and marks it",
 			pages: map[string][]statsPage{
-				"Service": {{status: http.StatusInternalServerError}},
-				"Pod":     {podPage},
+				"TypeX": {{status: http.StatusInternalServerError}},
+				"TypeY": {yPage},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   1,
 			wantByCategory: map[string]float64{"error": 1},
-			wantIncomplete: []any{"Service"},
-			wantStderr:     `skipping entity type "Service"`,
+			wantIncomplete: []any{"TypeX"},
+			wantStderr:     `skipping entity type "TypeX"`,
 		},
 		{
 			name: "a server error on a later page keeps the earlier rows and marks the type",
 			pages: map[string][]statsPage{
-				"Service": {
-					{entities: []map[string]any{statsEntity("Service", "svc-a", errInsight)}},
+				"TypeX": {
+					{entities: []map[string]any{statsEntity("TypeX", "x-1", errInsight)}},
 					{status: http.StatusInternalServerError},
 				},
-				"Pod": {podPage},
+				"TypeY": {yPage},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"error": 2},
-			wantIncomplete: []any{"Service"},
-			wantStderr:     `entity type "Service": page 1 failed`,
+			wantIncomplete: []any{"TypeX"},
+			wantStderr:     `entity type "TypeX": page 1 failed`,
 		},
 		{
 			name: "a rate limit on the first page skips the type and marks it",
 			pages: map[string][]statsPage{
-				"Service": {{status: http.StatusTooManyRequests}},
-				"Pod":     {podPage},
+				"TypeX": {{status: http.StatusTooManyRequests}},
+				"TypeY": {yPage},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   1,
 			wantByCategory: map[string]float64{"error": 1},
-			wantIncomplete: []any{"Service"},
-			wantStderr:     `skipping entity type "Service" — rate limited`,
+			wantIncomplete: []any{"TypeX"},
+			wantStderr:     `skipping entity type "TypeX" — rate limited`,
 		},
 		{
 			name: "a rate limit on a later page keeps the earlier rows and marks the type",
 			pages: map[string][]statsPage{
-				"Service": {
-					{entities: []map[string]any{statsEntity("Service", "svc-a", errInsight)}},
+				"TypeX": {
+					{entities: []map[string]any{statsEntity("TypeX", "x-1", errInsight)}},
 					{status: http.StatusTooManyRequests},
 				},
-				"Pod": {podPage},
+				"TypeY": {yPage},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"error": 2},
-			wantIncomplete: []any{"Service"},
-			wantStderr:     `entity type "Service": page 1 failed — rate limited`,
+			wantIncomplete: []any{"TypeX"},
+			wantStderr:     `entity type "TypeX": page 1 failed — rate limited`,
 		},
 		{
 			name: "any other client error fails the command",
 			pages: map[string][]statsPage{
-				"Service": {{status: http.StatusBadRequest}},
-				"Pod":     {podPage},
+				"TypeX": {{status: http.StatusBadRequest}},
+				"TypeY": {yPage},
 			},
-			wantErr: "search entity type Service",
+			wantErr: "search entity type TypeX",
 		},
 		{
 			name: "a server-side result limit marks the type",
 			pages: map[string][]statsPage{
-				"Service": {{entities: []map[string]any{statsEntity("Service", "svc-a", amend)}, last: true, limitHit: true}},
-				"Pod":     {podPage},
+				"TypeX": {{entities: []map[string]any{statsEntity("TypeX", "x-1", amend)}, last: true, limitHit: true}},
+				"TypeY": {yPage},
 			},
 			wantSearched:   allTypes,
 			wantInsights:   2,
 			wantByCategory: map[string]float64{"amend": 1, "error": 1},
-			wantIncomplete: []any{"Service"},
+			wantIncomplete: []any{"TypeX"},
 		},
 		{
 			name:         "a schema that cannot be read leaves out only the catalog record types",
 			schemaStatus: http.StatusInternalServerError,
 			pages: map[string][]statsPage{
-				"Pod": {podPage},
+				"TypeY": {yPage},
 			},
 			wantEntities: &wantEntities{
 				total:    10,
-				byType:   map[string]float64{"Service": 3, "Pod": 2, "RecordTypeA": 5},
+				byType:   map[string]float64{"TypeX": 3, "TypeY": 2, "RecordTypeA": 5},
 				internal: 3,
 			},
 			wantSearched:   allTypes,
@@ -571,11 +571,11 @@ func TestStatsCommand(t *testing.T) {
 		},
 		{
 			name: "--type limits the insight search but not the entity counts",
-			args: []string{"--type", "Pod"},
+			args: []string{"--type", "TypeY"},
 			pages: map[string][]statsPage{
-				"Pod": {podPage},
+				"TypeY": {yPage},
 			},
-			wantSearched:   []string{"Pod"},
+			wantSearched:   []string{"TypeY"},
 			wantInsights:   1,
 			wantByCategory: map[string]float64{"error": 1},
 		},
