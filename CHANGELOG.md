@@ -70,11 +70,14 @@
   pages can leave out rows at their boundaries, with a hint that says how
   many rows they repeated. For an exact count they point to
   `gcx kg graph query` with `count()`, and for a complete list to paging
-  through it with `ORDER BY`, `SKIP` and `LIMIT`. The hint that list prints
-  when it reaches `--limit` no longer says that `--limit 0` returns all: it
-  says how far `--limit 0` reads and points to `gcx kg graph query` for an
-  exact count. The `gcx kg --help` overview names `entities list --type <T>`
-  instead of a bare `entities`.
+  through it with `SKIP` and `LIMIT`, ordered by keys that are unique per
+  row, since with ties in the `ORDER BY` keys pages can repeat rows and leave
+  out others. `gcx kg entities list --help` also says that entities can share
+  a name and scope, and that a `count()` grouped by the keys shows any that
+  repeat. The hint that list prints when it reaches `--limit` no longer says
+  that `--limit 0` returns all: it says how far `--limit 0` reads and points
+  to `gcx kg graph query` for an exact count. The `gcx kg --help` overview
+  names `entities list --type <T>` instead of a bare `entities`.
 
 ## v1.8.0 (2026-11-17)
 

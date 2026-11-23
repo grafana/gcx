@@ -1910,8 +1910,10 @@ Pick the read verb by what you start with:
              the backend's pages, up to 50 per type; pages can leave out
              rows at their boundaries, and when they repeat rows, a hint
              says how many. For an exact count, use 'gcx kg graph query'
-             with count(); for a complete list, page through it with
-             ORDER BY, SKIP and LIMIT.
+             with count(); for a complete list, page through it with SKIP
+             and LIMIT, ordered by keys that are unique per row (with ties
+             in the ORDER BY keys, pages can repeat rows and leave out
+             others).
   correlate  You have a firing alert (its labels) but not the entity → find
              which entity the alert hangs off. The "I have an alert, which
              entity is it?" entry point.
@@ -1954,7 +1956,10 @@ list short, the rows carry no marker and only a hint on stderr says so.
 leave out some rows at page boundaries, so the row count can fall short of
 the true count; list drops the rows a later page repeats, and a hint on
 stderr says how many. For an exact count, use 'gcx kg graph query' with
-count(); for a complete list, page through it with ORDER BY, SKIP and LIMIT.
+count(); for a complete list, page through it with SKIP and LIMIT, ordered
+by keys that are unique per row. With ties in the ORDER BY keys, pages can
+repeat some rows and leave out others. Entities can share a name and scope,
+so check the keys first: a count() grouped by them shows any that repeat.
 
 For an entity's full insight timeline or related entities for root-cause
 analysis, use 'gcx kg entities inspect' instead.`,
