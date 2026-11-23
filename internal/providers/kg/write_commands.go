@@ -90,7 +90,7 @@ With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,
 and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
-  gcx kg entities upsert --domain tenant/github --type Repository --name gcx
+  gcx kg entities upsert --domain tenant/github --type Repository --name my-repo
   gcx kg entities upsert -f entity.yaml`,
 		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, _ []string) error {
