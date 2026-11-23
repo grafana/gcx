@@ -462,6 +462,23 @@ func (l *ConfigLoader) LoadProviderConfig(ctx context.Context, providerName stri
 	return providerCfg, namespace, nil
 }
 
+// LoadFileProviderConfig loads the provider-specific config map as saved in the
+// config file, without GRAFANA_PROVIDER_<NAME>_<KEY> env var overrides. It
+// returns an empty map when no config file or context holds one. Use it to read
+// back what SaveProviderConfig wrote; use LoadProviderConfig for the effective
+// values.
+func (l *ConfigLoader) LoadFileProviderConfig(ctx context.Context, providerName string) (map[string]string, error) {
+	loaded, err := config.LoadLayered(ctx, l.resolvedConfigFile(ctx), contextSelectionOverride(l.resolvedContextName(ctx)))
+	if err != nil {
+		return nil, err
+	}
+	curCtx := loaded.GetCurrentContext()
+	if curCtx == nil {
+		return map[string]string{}, nil
+	}
+	return curCtx.Providers[providerName], nil
+}
+
 // LoadDirectProviderSnapshot loads one provider's direct-API destination and
 // every credential it may use from one immutable layered-config snapshot. The
 // trust checks run before the snapshot (and therefore any credential) is

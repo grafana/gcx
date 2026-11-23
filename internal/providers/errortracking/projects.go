@@ -107,6 +107,13 @@ func storedDefault(ctx context.Context, loader *providers.ConfigLoader) (string,
 	return strings.TrimSpace(cfg["project"]), err
 }
 
+// fileDefault reads the default project as saved in the config file, ignoring
+// the environment override that storedDefault applies.
+func fileDefault(ctx context.Context, loader *providers.ConfigLoader) (string, error) {
+	cfg, err := loader.LoadFileProviderConfig(ctx, providerName)
+	return strings.TrimSpace(cfg["project"]), err
+}
+
 func newProjectsListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &projectsListOpts{}
 	cmd := &cobra.Command{
@@ -298,14 +305,17 @@ func saveDefault(cmd *cobra.Command, loader *providers.ConfigLoader, opts *proje
 	if err := loader.SaveProviderConfig(ctx, providerName, "project", value); err != nil {
 		return "", saved, err
 	}
-	after, err := storedDefault(ctx, loader)
+	inFile, err := fileDefault(ctx, loader)
 	if err != nil {
 		return "", saved, err
 	}
-	if after == "" && value != "" {
-		return "", saved, configError(fmt.Sprintf("the default project reads as empty after saving %q: no gcx config file took it, or %s is set to empty in this environment", value, projectEnv),
-			"Create a context first: gcx login",
-			"Or unset "+projectEnv)
+	if inFile != value {
+		return "", saved, configError(fmt.Sprintf("the default project reads as %q in the config file after saving %q: no gcx config file took it", inFile, value),
+			"Create a context first: gcx login")
+	}
+	after, err := storedDefault(ctx, loader)
+	if err != nil {
+		return "", saved, err
 	}
 	if after != value {
 		cmdio.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("%s=%s wins over the stack's saved default, so commands here use project %s; unset it to use what projects use saves",
@@ -354,7 +364,7 @@ override. ` + noDryRun,
 			before := ""
 			if write {
 				var err error
-				if before, err = storedDefault(ctx, loader); err != nil {
+				if before, err = fileDefault(ctx, loader); err != nil {
 					return err
 				}
 				if value, saved, err = saveDefault(cmd, loader, opts); err != nil {
