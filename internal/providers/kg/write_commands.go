@@ -61,7 +61,7 @@ func (o *entityCreateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
-	flags.StringVar(&o.domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required; 'kg' is reserved)")
+	flags.StringVar(&o.domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required; 'kg' is reserved)")
 	flags.StringVar(&o.entityType, "type", "", "Entity type (identifier; required)")
 	flags.StringVar(&o.name, "name", "", "Entity name (required)")
 	flags.StringToStringVar(&o.scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; identity-significant)")
@@ -90,6 +90,7 @@ With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,
 and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
+  gcx kg entities upsert --domain tenant/github --type Repository --name my-repo
   gcx kg entities upsert -f entity.yaml`,
 		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -307,7 +308,7 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 				cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: et, Name: n}))
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required)")
+	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required)")
 	cmd.Flags().StringVar(&entityType, "type", "", "Entity type (or use positional Type--Name)")
 	cmd.Flags().StringVar(&name, "name", "", "Entity name (or use positional Type--Name)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
@@ -408,11 +409,11 @@ func (o *relCreateOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
-	flags.StringVar(&o.domain, "domain", "", "Writable domain slug for the edge — a specific application domain such as 'irm' (required)")
+	flags.StringVar(&o.domain, "domain", "", "Writable domain slug for the edge — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required)")
 	flags.StringVar(&o.relType, "type", "", "Relationship type (identifier; required)")
-	flags.StringVar(&o.from, "from", "", "Source entity ref as domain/Type/name (required)")
+	flags.StringVar(&o.from, "from", "", "Source entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	flags.StringToStringVar(&o.fromScope, "from-scope", nil, "Scope for --from as key=value (repeatable or comma-separated)")
-	flags.StringVar(&o.to, "to", "", "Target entity ref as domain/Type/name (required)")
+	flags.StringVar(&o.to, "to", "", "Target entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	flags.StringToStringVar(&o.toScope, "to-scope", nil, "Scope for --to as key=value (repeatable or comma-separated)")
 	flags.StringToStringVar(&o.property, "property", nil, "Property as key=value (repeatable or comma-separated)")
 	flags.StringVar(&o.ttl, "ttl", "", "Time-to-live duration (e.g. 1h, 7d); omitted = never expire")
@@ -655,9 +656,9 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 		},
 	}
 	cmd.Flags().StringVar(&relType, "type", "", "Relationship type (identifier; required)")
-	cmd.Flags().StringVar(&from, "from", "", "Source entity ref as domain/Type/name (required)")
+	cmd.Flags().StringVar(&from, "from", "", "Source entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	cmd.Flags().StringToStringVar(&fromScope, "from-scope", nil, "Scope for --from as key=value (repeatable or comma-separated)")
-	cmd.Flags().StringVar(&to, "to", "", "Target entity ref as domain/Type/name (required)")
+	cmd.Flags().StringVar(&to, "to", "", "Target entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	cmd.Flags().StringToStringVar(&toScope, "to-scope", nil, "Scope for --to as key=value (repeatable or comma-separated)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
 	ioOpts.RegisterCustomCodec("text", singleMutationText(func(w io.Writer, m cmdio.SingleMutation) {

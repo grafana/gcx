@@ -12,14 +12,27 @@ import (
 var (
 	reIdentifier = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 	reDomain     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	// reTenantDomain matches the domain of a schema the stack publishes itself
+	// (a tenant KgSchema), which the KG API addresses as tenant/<name>. The name
+	// grammar is narrower than a slug and mirrors the API's: a lowercase letter,
+	// then lowercase letters and digits.
+	reTenantDomain = regexp.MustCompile(`^tenant/[a-z][a-z0-9]*$`)
 )
 
-// parseEntityRefToken parses a compact "domain/Type/name" ref token. Scope is
-// supplied separately via --from-scope/--to-scope, so it is not part of the token.
+// tenantDomainPrefix starts every tenant domain.
+const tenantDomainPrefix = "tenant/"
+
+// parseEntityRefToken parses a compact "domain/Type/name" ref token. A tenant
+// domain contains a slash of its own, so its token is tenant/<name>/Type/name.
+// Scope is supplied separately via --from-scope/--to-scope, so it is not part
+// of the token.
 func parseEntityRefToken(token string) (EntityRef, error) {
 	parts := strings.Split(token, "/")
+	if len(parts) == 4 && parts[0] == "tenant" && parts[1] != "" {
+		parts = []string{tenantDomainPrefix + parts[1], parts[2], parts[3]}
+	}
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return EntityRef{}, fmt.Errorf("invalid ref %q: expected domain/Type/name (e.g. myapp/Service/checkout)", token)
+		return EntityRef{}, fmt.Errorf("invalid ref %q: expected domain/Type/name (e.g. myapp/Service/checkout, or tenant/myapp/Service/checkout for a tenant domain)", token)
 	}
 	return EntityRef{Domain: parts[0], Type: parts[1], Name: parts[2]}, nil
 }
@@ -58,11 +71,16 @@ func validateIdentifier(s, field string) error {
 	return nil
 }
 
+// validateDomain accepts a lowercase k8s-style slug, or a tenant domain
+// (tenant/<name>) for a schema the stack publishes itself.
 func validateDomain(d string) error {
-	if !reDomain.MatchString(d) {
-		return fmt.Errorf("domain %q must be a lowercase k8s-style slug", d)
+	if reDomain.MatchString(d) || reTenantDomain.MatchString(d) {
+		return nil
 	}
-	return nil
+	if strings.HasPrefix(d, tenantDomainPrefix) {
+		return fmt.Errorf("tenant domain %q must be tenant/ followed by a lowercase letter and then lowercase letters or digits", d)
+	}
+	return fmt.Errorf("domain %q must be a lowercase k8s-style slug", d)
 }
 
 func validateWritableDomain(d string) error {
