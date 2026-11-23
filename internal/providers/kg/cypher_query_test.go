@@ -308,15 +308,69 @@ func TestGraphQueryHelpPathBounds(t *testing.T) {
 	}
 }
 
-func TestGraphQueryHelpUsesPlaceholderTypes(t *testing.T) {
+func TestGraphQueryHelpUsesPlaceholders(t *testing.T) {
 	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
-	// A label or relationship type right after the variable of a node or
-	// relationship pattern, as in (e:<Type> or [:<REL>*1..5].
-	types := regexp.MustCompile(`[(\[]\s*[A-Za-z_]*\s*:\s*([A-Za-z_<][A-Za-z0-9_<>]*)`).FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
-	require.NotEmpty(t, types, "help should show patterns with a label or relationship type")
-	for _, m := range types {
-		got := m[1]
-		assert.True(t, strings.HasPrefix(got, "<") && strings.HasSuffix(got, ">") || got == "TYPE",
-			"%q names a type; help patterns use placeholders filled from 'gcx kg meta schema'", m[0])
+	// A plain, backtick-quoted or angle-bracket name.
+	const name = "`[^`]*`|<[^>]*>|[A-Za-z_][A-Za-z0-9_]*"
+	nameAt := regexp.MustCompile(`^\s*(` + name + `)`)
+	placeholder := regexp.MustCompile(`^<[A-Za-z0-9]+>$`)
+	// TYPE is the help's generic relationship type in its syntax notes.
+	isType := func(s string) bool { return placeholder.MatchString(s) || s == "TYPE" }
+	// The name and scope keys gcx itself matches on.
+	isProperty := func(s string) bool {
+		switch s {
+		case "name", "env", "site", "namespace":
+			return true
+		}
+		return placeholder.MatchString(s)
 	}
+
+	t.Run("pattern labels", func(t *testing.T) {
+		// The labels after the colon of a node or relationship pattern, with
+		// or without a variable, as in (e:<Type>, (n1:<Type>, [:<REL>*1..5]
+		// or (a:<TypeA>|<TypeB>.
+		pattern := regexp.MustCompile(`[(\[]\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*((?:` + name + `)(?:\s*[|&:]\s*(?:` + name + `))*)`)
+		matches := pattern.FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
+		require.NotEmpty(t, matches, "help should show patterns with a label or relationship type")
+		for _, m := range matches {
+			for _, label := range regexp.MustCompile(name).FindAllString(m[1], -1) {
+				assert.True(t, isType(label), "%q names a type; help patterns use placeholders filled from 'gcx kg meta schema'", m[0])
+			}
+		}
+	})
+
+	t.Run("queries", func(t *testing.T) {
+		examples := regexp.MustCompile(`"(MATCH [^"]*)"`).FindAllStringSubmatch(cmd.Example, -1)
+		inLong := regexp.MustCompile(`'(MATCH [^']*)'`).FindAllStringSubmatch(cmd.Long, -1)
+		queries := make([]string, 0, len(examples)+len(inLong))
+		for _, m := range append(examples, inLong...) {
+			queries = append(queries, m[1])
+		}
+		require.GreaterOrEqual(t, len(queries), 5, "the four examples and the Scope paragraph's query")
+		for _, query := range queries {
+			masked := regexp.MustCompile(`'[^']*'|"[^"]*"`).ReplaceAllString(query, "''")
+			// Outside a map, a colon starts a label: in a pattern or a
+			// predicate such as WHERE x:<Type>. Inside one, it ends a key.
+			depth := 0
+			for i, c := range masked {
+				switch c {
+				case '{':
+					depth++
+				case '}':
+					depth--
+				case ':':
+					if depth == 0 {
+						m := nameAt.FindStringSubmatch(masked[i+1:])
+						require.NotNil(t, m, "no label after the colon at %d in %q", i, query)
+						assert.True(t, isType(m[1]), "%q names the type %s; use a placeholder", query, m[1])
+					}
+				}
+			}
+			keys := regexp.MustCompile(`[{,]\s*(`+name+`)\s*:`).FindAllStringSubmatch(masked, -1)
+			accesses := regexp.MustCompile(`[A-Za-z0-9_)\]]\s*\.\s*(`+name+`)`).FindAllStringSubmatch(masked, -1)
+			for _, m := range append(keys, accesses...) {
+				assert.True(t, isProperty(m[1]), "%q names the property %s; use a placeholder", query, m[1])
+			}
+		}
+	})
 }

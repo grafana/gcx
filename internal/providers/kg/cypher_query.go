@@ -83,11 +83,13 @@ with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
 with the same flags also prints scopes, metrics, logs, traces and profiles).
 Use only the labels, properties, relationship types and directions it lists.
 In this help, <Type>, <TypeA> and <TypeB> stand for entity types, <REL> for a
-relationship type and <prop1> and <prop2> for properties that it lists. Types,
-properties and relationships differ between stacks and windows. A
-relationship is stored in the direction the schema lists; the undirected form
-'(a)-[r:TYPE]-(b)' matches it from either end, so one query returns both
-directions, and startNode(r)/endNode(r) return its stored ends.
+relationship type and <prop1> and <prop2> for properties that it lists. The
+examples also match on scope keys (env, namespace): keep only the keys that
+the schema lists for the type you fill in, since a key the type lacks matches
+nothing. Types, properties and relationships differ between stacks and
+windows. A relationship is stored in the direction the schema lists; the
+undirected form '(a)-[r:TYPE]-(b)' matches it from either end, so one query
+returns both directions, and startNode(r)/endNode(r) return its stored ends.
 
 Queries are not checked against the schema. A label, property, relationship
 type, direction or scope value that does not exist matches nothing, and a

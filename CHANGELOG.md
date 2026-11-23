@@ -9,7 +9,9 @@
 - The `gcx kg graph query` examples and the pattern in its Scope paragraph now
   write entity types, relationship types and properties as placeholders
   (`<Type>`, `<TypeA>`, `<TypeB>`, `<REL>`, `<prop1>`, `<prop2>`), and the
-  help says they stand for what `gcx kg meta schema` lists. The examples used
+  help says they stand for what `gcx kg meta schema` lists. It also says to
+  keep only the scope keys (`env`, `namespace`) the schema lists for the type
+  filled in, since a key the type lacks matches nothing. The examples used
   to name specific types, relationship types and properties that not every
   stack has, and a copied query matched nothing there without an error.
 - `gcx kg graph query` now adds a `warnings` entry to its `-o json` and
