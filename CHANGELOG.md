@@ -38,6 +38,10 @@
   property, as in `n.name <> '<label>'`, does not name a label, and a query
   that filters out one catalog label is still warned about the others. Rows
   are unchanged.
+- `gcx kg graph query --json list` now prints the response fields, `warnings`
+  included, without running the query. The command's help now says that its
+  default output is a table, or the agents format (JSON) in agent mode; it
+  said only a table.
 - The `gcx kg diagnose` entity overview now also leaves `Account` records out
   of its entity total and per-type counts, as it already did `EntityType`,
   `Env` and `Schema` records. `gcx kg meta schema`, `gcx kg graph query` and

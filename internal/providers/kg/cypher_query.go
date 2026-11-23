@@ -34,11 +34,13 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
 The response has columns, rows and stats (rowCount, columnCount, elapsedMs),
 plus warnings when gcx finds rows that hold the graph's own catalog records
-rather than observed entities. Warnings are part of -o json and -o yaml output
-and are written to stderr in every format.
+rather than observed entities. Warnings are part of the agents, json and yaml
+output and are written to stderr in every format.
 Each row is an array aligned with columns, values keep their JSON shape, and
 node/relationship refs are local to one response. Output is a table by
-default, or -o json or -o yaml; unlike kg meta, there is no -o text.
+default and the agents format (JSON) in agent mode; -o picks table, json, yaml
+or agents, and unlike kg meta, there is no -o text. --json list prints the
+response fields without running the query.
 
 Time window. Every query runs over a window: --since (ending now) or both
 --from and --to, the last hour by default. A node or relationship matches if
@@ -122,6 +124,11 @@ if several entities match, it fails with one command per candidate.`,
 			opts.query = args[0]
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+			if opts.IO.JSONDiscovery {
+				// The fields are the same for every query, warnings included,
+				// so field discovery lists them without running the query.
+				return opts.IO.Encode(cmd.OutOrStdout(), &CypherQueryResponse{Warnings: []string{""}})
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
