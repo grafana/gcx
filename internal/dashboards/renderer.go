@@ -222,8 +222,19 @@ func normalizeRenderTime(name, value string) (string, error) {
 	}
 
 	if ts, err := strconv.ParseFloat(value, 64); err == nil {
-		ms := ts * 1000
-		if ms > math.MaxInt64 || ms < math.MinInt64 {
+		if math.IsNaN(ts) || math.IsInf(ts, 0) {
+			return "", fmt.Errorf("invalid %s time %q: value is not a finite number", name, value)
+		}
+		// Apply the same seconds-versus-milliseconds cutoff as integer input so
+		// a fractional millisecond value such as 1705315800123.5 is not scaled
+		// a second time.
+		ms := ts
+		if math.Abs(ts) < 10_000_000_000 {
+			ms = ts * 1000
+		}
+		// float64(math.MaxInt64) rounds up to 2^63, which int64 cannot hold, so
+		// the upper bound is exclusive.
+		if ms >= math.MaxInt64 || ms < math.MinInt64 {
 			return "", fmt.Errorf("invalid %s time %q: Unix seconds value overflows milliseconds", name, value)
 		}
 		return strconv.FormatInt(int64(ms), 10), nil
