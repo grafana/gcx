@@ -73,6 +73,15 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant mcp-servers list":               {Cost: "small"},
 	"gcx assistant mcp-servers update":             {Cost: "small"},
 
+	// assistant change-review
+	"gcx assistant change-review checks list":               {Cost: "small", Hint: "Every built-in and custom check with enabled/blocking/paths; use get CHECK for full instructions"},
+	"gcx assistant change-review checks get":                {Cost: "small", Hint: "CHECK -o yaml; output round-trips into update -f"},
+	"gcx assistant change-review checks create":             {Cost: "small", Hint: "--name <name> --instructions <text> [--path <glob>] [--blocking]; ID is derived from the name"},
+	"gcx assistant change-review checks update":             {Cost: "small", Hint: "CHECK [--enabled=false] [--blocking] [--instructions <text>] [--path <glob>] [-f check.yaml]; only set fields change"},
+	"gcx assistant change-review checks delete":             {Cost: "small", Hint: "CHECK --force; custom checks only (turn built-ins off with update --enabled=false)"},
+	"gcx assistant change-review checks list-pull-requests": {Cost: "medium", Hint: "CHECK [--since 7d] [--repository owner/name] -o json; one row per pull request with findings from the check. Narrow with --since or --repository"},
+	"gcx assistant change-review stats":                     {Cost: "small", Hint: "[--since 30d] [--repository owner/name] -o json; per-check counts only, never finding text"},
+
 	// login
 	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
 	"gcx signup":      {Cost: "small", Hint: "Creates a Grafana Cloud account and connects gcx to its first stack. A person completes the browser steps (sign-up, email verification, first-stack creation) and approves Connect gcx. A browser already signed in to Grafana Cloud skips sign-up and asks for one of that account's stacks, or goes straight to Connect gcx with one organization and one stack. In agent mode gcx prints the URL for the person and asks no questions. Pass an unused CONTEXT_NAME. If it fails after the browser step started, run the gcx login command the error shows, never signup again. It saves no Cloud credential; for Cloud product APIs add a Cloud Access Policy token afterwards: gcx cloud login --context <ctx> --cloud-token <token>. For an existing account use gcx login instead."},
@@ -236,6 +245,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert template-groups create":           {Cost: "small", Hint: "-f manifest.yaml creates only; the server derives the API name."},
 	"gcx alert template-groups update":           {Cost: "small", Hint: "<current-title> -f manifest.yaml selects the current title; retain the fetched resourceVersion."},
 	"gcx alert template-groups delete":           {Cost: "small", Hint: "<title> --force"},
+	"gcx scim settings get":                      {Cost: "small"},
+	"gcx scim settings update":                   {Cost: "small"},
+	"gcx scim users list":                        {Cost: "large", Hint: "Use --filter to select matching users. All matching pages are fetched."},
+	"gcx scim users get":                         {Cost: "small"},
+	"gcx scim users create":                      {Cost: "small"},
+	"gcx scim users update":                      {Cost: "small"},
+	"gcx scim users deactivate":                  {Cost: "small", Hint: "<id> --force --token-file <path>"},
+	"gcx scim endpoint get":                      {Cost: "small"},
 	"gcx alert routing-trees list":               {Cost: "small"},
 	"gcx alert routing-trees get":                {Cost: "small", Hint: "<name> -o yaml"},
 	"gcx alert routing-trees create":             {Cost: "small", Hint: "-f tree.yaml"},
@@ -383,10 +400,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg notifications get":    {Cost: "small", Hint: "<name> | get one alert notification config by name (list-then-filter; no by-name GET on the backend)"},
 	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML from notifications get/list) | accepts an alertConfigs wrapper, one config, or a config list; exact field names required; never deletes absent remote entries"},
 	"gcx kg notifications delete": {Cost: "small"},
-	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
-	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d|tenant/<name>> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
+	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d|tenant/<name>> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d|tenant/<name>> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; a tenant-domain ref is tenant/<name>/Type/name; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; a tenant-domain ref is tenant/<name>/Type/name; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
@@ -558,7 +575,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall shifts update":                       {Cost: "small", Hint: "<id> -f shift.yaml"},
 	"gcx irm oncall slack-channels list":                 {Cost: "small"},
 	"gcx irm oncall teams get":                           {Cost: "small"},
+	"gcx irm oncall teams get-team-hours":                {Cost: "small"},
 	"gcx irm oncall teams list":                          {Cost: "small"},
+	"gcx irm oncall teams update-team-hours":             {Cost: "small", Hint: "<id> -f hours.yaml"},
 	"gcx irm oncall user-groups list":                    {Cost: "small"},
 	"gcx irm oncall users current":                       {Cost: "small"},
 	"gcx irm oncall users get":                           {Cost: "small"},

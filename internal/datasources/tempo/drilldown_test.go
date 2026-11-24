@@ -37,6 +37,25 @@ func TestTracesDrilldownURL_SimpleFilters(t *testing.T) {
 	assert.Equal(t, "resource.service.name|=|checkout", q["var-filters"][1])
 }
 
+func TestTracesExceptionsURL(t *testing.T) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC)
+
+	got, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid",
+		`{ resource.service.name = "adaptive-profiles-api" }`, start, end)
+	require.True(t, ok)
+
+	q := queryOf(t, got)
+	assert.Equal(t, "errors", q.Get("var-metric"))
+	assert.Equal(t, "exceptions", q.Get("actionView"))
+	assert.Equal(t, "tempo-uid", q.Get("var-ds"))
+	require.Len(t, q["var-filters"], 1)
+	assert.Equal(t, "resource.service.name|=|adaptive-profiles-api", q["var-filters"][0])
+
+	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", `{ span.http.status_code >= 500 }`, start, end)
+	assert.False(t, ok)
+}
+
 func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
 	tests := map[string]struct {
 		host, uid, expr string
@@ -75,4 +94,12 @@ func TestTracesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.
 	_, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
 		`{ span.foo = "x__gfp__y" }`, time.Time{}, time.Time{})
 	assert.False(t, ok)
+}
+
+func queryOf(t *testing.T, raw string) url.Values {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "/a/grafana-exploretraces-app/explore", u.Path)
+	return u.Query()
 }
