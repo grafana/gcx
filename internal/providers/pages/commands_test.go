@@ -1,10 +1,13 @@
 package pages //nolint:testpackage // Verify flag validation and publish audience rules on unexported options.
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
 
 	clientpages "github.com/grafana/gcx/internal/assistant/pages"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,4 +101,53 @@ func TestSnapshotAndListFlagValidation(t *testing.T) {
 	require.NoError(t, bound(&listOpts{}, func(o *listOpts) { o.Section = "mine" }).Validate())
 
 	require.ErrorContains(t, (&createOpts{Title: "  "}).Validate(), "--title is required")
+}
+
+type fakeLister []clientpages.ListBatch
+
+func (f *fakeLister) List(context.Context, clientpages.ListOptions) (*clientpages.ListBatch, error) {
+	batch := (*f)[0]
+	*f = (*f)[1:]
+	return &batch, nil
+}
+
+func TestListPagesReportsADegradedCatalogAsPartial(t *testing.T) {
+	lister := &fakeLister{
+		{Pages: []clientpages.Entry{{ID: "a"}}, NextCursor: "next"},
+		{Pages: []clientpages.Entry{{ID: "b"}}, Degraded: true},
+	}
+	result, err := listPages(context.Background(), lister, &listOpts{Limit: 30}, []string{"gcx", "pages", "list"})
+	require.NoError(t, err)
+	assert.Len(t, result.Items, 2)
+	assert.True(t, result.Degraded)
+	assert.Equal(t, "gcx.partial_result", result.Type)
+	require.NotNil(t, result.Error)
+	assert.Equal(t, gcxerrors.ExitPartialFailure, result.Error.ExitCode)
+
+	complete, err := listPages(context.Background(), &fakeLister{{Pages: []clientpages.Entry{}}}, &listOpts{Limit: 30}, nil)
+	require.NoError(t, err)
+	assert.Empty(t, complete.Type)
+	assert.Nil(t, complete.Error)
+	assert.NotNil(t, complete.Items, "an empty list is [] in JSON")
+}
+
+func TestInvalidFlagsAreUsageErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"snapshot", "--width", "100"},
+		{"list", "--limit", "-1"},
+		{"create", "--title", ""},
+		{"publish", "--folder", "ops", "--unlisted"},
+		{"pull", "page-1", "--force"},
+		{"get", "page-1", "-o", "xml"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cmd := Commands()
+			cmd.SetArgs(args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			err := cmd.Execute()
+			var usage *gcxerrors.UsageError
+			require.ErrorAs(t, err, &usage)
+		})
+	}
 }

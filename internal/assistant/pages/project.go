@@ -44,6 +44,9 @@ type Link struct {
 	Project   string `json:"project"`
 	Title     string `json:"title"`
 	ReleaseID string `json:"releaseId"`
+	// PendingCandidate is a build a push made but could not yet make the
+	// draft's version; the next push finishes it.
+	PendingCandidate string `json:"pendingCandidate,omitempty"`
 	// Files maps each synced path to the SHA-256 of what was synced.
 	Files map[string]string `json:"files"`
 	// Publication is the published page this draft updates, once there is one.

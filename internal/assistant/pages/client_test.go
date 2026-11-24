@@ -41,6 +41,12 @@ type fakeAssistant struct {
 	catalog  pages.Entry
 	refuse   string
 	omitted  []string
+	// candidate is the build waiting to become the release.
+	candidate string
+	// acceptFailures, skipWrites and writeError inject failures.
+	acceptFailures int
+	skipWrites     int
+	writeError     string
 }
 
 const (
@@ -78,6 +84,7 @@ func (f *fakeAssistant) build() map[string]any {
 	}
 	f.builds++
 	candidate := fmt.Sprintf("33333333-3333-3333-3333-%012d", f.builds)
+	f.candidate = candidate
 	return map[string]any{"output": "", "exitCode": 0, "pages": []any{f.page(candidate, "")}, "projects": []any{map[string]any{"uid": pageID, "directory": project, "status": "compiled"}}}
 }
 
@@ -104,7 +111,13 @@ func (f *fakeAssistant) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && path == "/chats/"+chatID+"/sandbox/commands":
 		f.workspace(w, body)
 	case r.Method == http.MethodPost && path == draft+"/accept":
-		f.release = str(body["candidate"])
+		if f.acceptFailures > 0 {
+			f.acceptFailures--
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"name":"PAGE_API_UNAVAILABLE","message":"try again"}`))
+			return
+		}
+		f.release, f.candidate = str(body["candidate"]), ""
 		f.accepted = append(f.accepted, f.release)
 		f.respond(w, map[string]any{"page": f.page("", "")})
 	case r.Method == http.MethodGet && path == draft+"/releases/"+f.release+"/source":
@@ -114,7 +127,7 @@ func (f *fakeAssistant) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.respond(w, map[string]any{"source": map[string]any{"version": 1, "files": files}, "omittedFiles": f.omitted})
 	case r.Method == http.MethodGet && path == "/chats/"+chatID+"/pages":
-		f.respond(w, map[string]any{"pages": []any{f.page("", "")}})
+		f.respond(w, map[string]any{"pages": []any{f.page(f.candidate, "")}})
 	case r.Method == http.MethodPost && path == draft+"/screenshot":
 		f.respond(w, map[string]any{"releaseId": f.release, "image": "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("\x89PNG"))})
 	case r.Method == http.MethodGet && path == "/page-catalog/pub-1":
@@ -163,6 +176,15 @@ func (f *fakeAssistant) workspace(w http.ResponseWriter, body map[string]any) {
 		file := object(body["file"])
 		switch file["tool"] {
 		case "sandbox_write":
+			if f.skipWrites > 0 {
+				f.skipWrites--
+				f.respond(w, map[string]any{"output": "The workspace was restarted from saved sources on a new VM, so your sandbox_write of x did not run. Files outside the saved source paths were not restored. Send it again if you still need it.\n\n", "pages": []any{}, "projects": []any{}})
+				return
+			}
+			if f.writeError != "" {
+				f.respond(w, map[string]any{"output": "", "error": f.writeError, "exitCode": 0, "pages": []any{}, "projects": []any{}})
+				return
+			}
 			name := str(file["path"])
 			f.writes = append(f.writes, strings.TrimPrefix(name, "/workspace/pages/"+project+"/"))
 			f.files[name] = []byte(str(file["content"]))
@@ -367,6 +389,78 @@ func TestPushToleratesALinkWithoutFiles(t *testing.T) {
 	assert.Equal(t, pages.StatusBuilt, result.Status)
 }
 
+func TestPushResendsAWriteTheSandboxSkipped(t *testing.T) {
+	f, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Create(context.Background(), dir, "Checkout health", "")
+	require.NoError(t, err)
+	f.skipWrites = 1
+	write(t, dir, "src/App.tsx", "export const App = () => 'new';\n")
+
+	result, err := client.Push(context.Background(), dir, mustLink(t, dir))
+	require.NoError(t, err)
+	assert.Equal(t, pages.StatusBuilt, result.Status)
+	assert.Equal(t, "export const App = () => 'new';\n", string(f.files["/workspace/pages/"+project+"/src/App.tsx"]), "the write ran after the restart")
+}
+
+func TestPushFailsOnASandboxErrorAndSendsTheFileAgain(t *testing.T) {
+	f, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Create(context.Background(), dir, "Checkout health", "")
+	require.NoError(t, err)
+	f.writeError = "the workspace file change timed out"
+	write(t, dir, "src/App.tsx", "export const App = () => 'new';\n")
+
+	_, err = client.Push(context.Background(), dir, mustLink(t, dir))
+	require.ErrorContains(t, err, "timed out")
+
+	f.writeError = ""
+	result, err := client.Push(context.Background(), dir, mustLink(t, dir))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"src/App.tsx"}, result.Written, "the failed write is not recorded as synced")
+	assert.Equal(t, pages.StatusBuilt, result.Status)
+}
+
+func TestPushFinishesABuildWhoseAcceptanceFailed(t *testing.T) {
+	f, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Create(context.Background(), dir, "Checkout health", "")
+	require.NoError(t, err)
+	before := f.release
+	f.acceptFailures = 1
+	write(t, dir, "src/App.tsx", "export const App = () => 'new';\n")
+
+	_, err = client.Push(context.Background(), dir, mustLink(t, dir))
+	require.Error(t, err)
+	link := mustLink(t, dir)
+	assert.NotEmpty(t, link.PendingCandidate)
+	assert.Equal(t, before, link.ReleaseID)
+	_, err = client.PublishDraft(context.Background(), dir, link, pages.Metadata{Title: "Checkout", Category: "report", FolderUID: "ops"}, nil)
+	require.ErrorContains(t, err, "not the draft's version yet", "publishing would share the version before the push")
+
+	result, err := client.Push(context.Background(), dir, mustLink(t, dir))
+	require.NoError(t, err)
+	assert.Equal(t, pages.StatusBuilt, result.Status, "a retry finishes the build though no file changed")
+	link = mustLink(t, dir)
+	assert.Empty(t, link.PendingCandidate)
+	assert.Equal(t, f.release, link.ReleaseID)
+	assert.NotEqual(t, before, link.ReleaseID)
+}
+
+func TestListReportsDegradedBatches(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"pages":[],"nextCursor":"","degraded":true}}`))
+	}))
+	t.Cleanup(server.Close)
+	baseClient, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+	require.NoError(t, err)
+	batch, err := pages.NewClient(baseClient, server.URL).List(context.Background(), pages.ListOptions{})
+	require.NoError(t, err)
+	assert.True(t, batch.Degraded)
+	assert.Empty(t, batch.Pages)
+}
+
 func TestPublishRefusesAStaleDraft(t *testing.T) {
 	f, client := newFake(t)
 	dir := filepath.Join(t.TempDir(), "page")
@@ -416,7 +510,7 @@ func TestErrorsNameWhatToDo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f, client := newFake(t)
 			f.refuse = tt.body
-			_, _, err := client.List(context.Background(), pages.ListOptions{Section: "mine", Limit: 1})
+			_, err := client.List(context.Background(), pages.ListOptions{Section: "mine", Limit: 1})
 			require.ErrorIs(t, err, tt.want)
 		})
 	}
@@ -430,7 +524,7 @@ func TestUnavailablePages(t *testing.T) {
 	t.Cleanup(server.Close)
 	baseClient, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 	require.NoError(t, err)
-	_, _, err = pages.NewClient(baseClient, server.URL).List(context.Background(), pages.ListOptions{})
+	_, err = pages.NewClient(baseClient, server.URL).List(context.Background(), pages.ListOptions{})
 	require.ErrorIs(t, err, pages.ErrUnavailable)
 }
 

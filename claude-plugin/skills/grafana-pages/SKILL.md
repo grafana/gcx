@@ -328,6 +328,8 @@ export function App() {
 | `The page did not build` | Type or build errors, listed | Fix the named file and line, push again |
 | `The page failed to render` | The page threw or a query failed at startup | Read the snapshot image, fix, push, snapshot |
 | `has N unpushed change(s)` | `pull --dir` would overwrite local edits | Push first, or pass `--force` to discard them |
+| `not the draft's version yet` | A push built the page but stopped before making the build its version | Run `push` again; it finishes that build, then publish |
+| `gcx.partial_result` from `list` (exit 4) | Grafana could not list the pages shared in folders | Retry; the other pages in the result are complete |
 | `is at version N, and this draft was pulled at version M` | Someone published since you pulled | Pull into a new directory, reapply, push, publish |
 | `need a user identity` (401) | Publishing with a service account | Ask the user to publish, or to sign in with `gcx login` |
 | `cannot be pushed: gcx writes text files` | A binary or large file | Use SVG, shrink it, or drop it |

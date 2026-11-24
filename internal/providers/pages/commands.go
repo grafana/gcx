@@ -3,6 +3,7 @@
 package pages
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -64,6 +65,12 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*clientpages
 	return clientpages.NewClient(base, cfg.GrafanaURL), nil
 }
 
+// usageError marks a flag that fails validation as a usage error (exit code
+// 2), with the command's usage line.
+func usageError(cmd *cobra.Command, err error) error {
+	return gcxerrors.NewCommandUsageError(cmd, "", err)
+}
+
 // textCodec renders a command's result for people; JSON and YAML encode the
 // same value.
 type textCodec struct {
@@ -111,8 +118,21 @@ func (o *listOpts) Validate() error {
 }
 
 type listResult struct {
-	Items    []clientpages.Entry `json:"items"`
-	ListMeta *cmdio.ListMeta     `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+	// Type and SchemaVersion mark a partial result, as Error does.
+	Type          string              `json:"type,omitempty" yaml:"type,omitempty"`
+	SchemaVersion string              `json:"schema_version,omitempty" yaml:"schema_version,omitempty"`
+	Items         []clientpages.Entry `json:"items"`
+	ListMeta      *cmdio.ListMeta     `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+	// Degraded reports that the Grafana Page API failed, so the pages shared
+	// in folders are missing.
+	Degraded bool       `json:"degraded,omitempty" yaml:"degraded,omitempty"`
+	Error    *listError `json:"error,omitempty" yaml:"error,omitempty"`
+}
+
+type listError struct {
+	Summary     string   `json:"summary"`
+	ExitCode    int      `json:"exitCode"`
+	Suggestions []string `json:"suggestions,omitempty"`
 }
 
 // ListItemsKey keeps list_meta when --json selects item fields.
@@ -129,45 +149,73 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
   gcx pages list --search checkout -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			limit := opts.Limit
-			if limit == 0 || limit > maxListed {
-				limit = maxListed
+			result, err := listPages(cmd.Context(), client, opts, os.Args)
+			if err != nil {
+				return err
 			}
-			result := listResult{Items: []clientpages.Entry{}}
-			cursor := ""
-			var more bool
-			for {
-				batch, next, err := client.List(cmd.Context(), clientpages.ListOptions{Section: opts.Section, Search: opts.Search, Limit: min(100, limit-len(result.Items)), Cursor: cursor})
-				if err != nil {
-					return err
-				}
-				result.Items = append(result.Items, batch...)
-				more = next != ""
-				if !more || len(result.Items) >= limit {
-					break
-				}
-				cursor = next
-			}
-			if len(result.Items) > limit {
-				result.Items, more = result.Items[:limit], true
-			}
-			result.ListMeta = cmdio.AttachListMeta(cmdio.PagedListMeta(len(result.Items), opts.Limit, more, maxListed), os.Args)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
+			if result.Error != nil {
+				cmdio.Warning(cmd.ErrOrStderr(), "%s.", result.Error.Summary)
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(result.Error.Summary))
+			}
 			return nil
 		},
 	}
 	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// pageLister reads the page catalog.
+type pageLister interface {
+	List(ctx context.Context, opts clientpages.ListOptions) (*clientpages.ListBatch, error)
+}
+
+// listPages reads catalog batches up to opts.Limit. A batch the Grafana Page
+// API could not complete makes the result partial.
+func listPages(ctx context.Context, client pageLister, opts *listOpts, argv []string) (listResult, error) {
+	limit := opts.Limit
+	if limit == 0 || limit > maxListed {
+		limit = maxListed
+	}
+	result := listResult{Items: []clientpages.Entry{}}
+	cursor := ""
+	var more bool
+	for {
+		batch, err := client.List(ctx, clientpages.ListOptions{Section: opts.Section, Search: opts.Search, Limit: min(100, limit-len(result.Items)), Cursor: cursor})
+		if err != nil {
+			return listResult{}, err
+		}
+		result.Items = append(result.Items, batch.Pages...)
+		result.Degraded = result.Degraded || batch.Degraded
+		more = batch.NextCursor != ""
+		if !more || len(result.Items) >= limit {
+			break
+		}
+		cursor = batch.NextCursor
+	}
+	if len(result.Items) > limit {
+		result.Items, more = result.Items[:limit], true
+	}
+	result.ListMeta = cmdio.AttachListMeta(cmdio.PagedListMeta(len(result.Items), opts.Limit, more, maxListed), argv)
+	if result.Degraded {
+		result.Type, result.SchemaVersion = "gcx.partial_result", "1"
+		result.Error = &listError{
+			Summary:     "Grafana could not list the pages shared in folders, so they are missing",
+			ExitCode:    gcxerrors.ExitPartialFailure,
+			Suggestions: []string{"Retry gcx pages list; the other pages are complete"},
+		}
+	}
+	return result, nil
 }
 
 func renderList(w io.Writer, value any) error {
@@ -207,7 +255,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
   gcx pages get https://example.grafana.net/a/grafana-assistant-app/pages/checkout-health-0a1b2c3d4e5f --source -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
@@ -291,7 +339,7 @@ The draft is private to you until you publish it. No Assistant turn runs.`,
   gcx pages create --title "Q3 review" --dir ./q3-review --style keynote`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
@@ -357,10 +405,10 @@ again, for changes made to it in Grafana, such as by Grafana Assistant.`,
   gcx pages pull --dir ./checkout-health`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			if len(args) == 1 && opts.Force {
-				return errors.New("--force applies only when refreshing a directory without PAGE")
+				return usageError(cmd, errors.New("--force applies only when refreshing a directory without PAGE"))
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
@@ -422,7 +470,7 @@ Push changes only your draft. Publish shares it.`,
   gcx pages push -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			link, err := clientpages.ReadLink(opts.Dir)
 			if err != nil {
@@ -531,7 +579,7 @@ in the image and fails the command.`,
   gcx pages snapshot --dir ./q3-review --click '[aria-label="Next slide"]'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			link, err := clientpages.ReadLink(opts.Dir)
 			if err != nil {
@@ -663,7 +711,7 @@ asked for that. It needs a user identity (gcx login), not a service account.`,
   gcx pages publish --dir ./checkout-health`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			link, err := clientpages.ReadLink(opts.Dir)
 			if err != nil {
@@ -678,7 +726,7 @@ asked for that. It needs a user identity (gcx login), not a service account.`,
 			}
 			meta, sharing, err := opts.publication(link)
 			if err != nil {
-				return err
+				return usageError(cmd, err)
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {

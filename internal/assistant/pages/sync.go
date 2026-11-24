@@ -191,11 +191,20 @@ func (c *Client) Push(ctx context.Context, dir string, link *Link) (*PushResult,
 		return nil, err
 	}
 	out := &PushResult{Status: StatusUnchanged, URL: c.DraftURL(link.ChatID, link.PageID), ReleaseID: link.ReleaseID, Written: []string{}, Deleted: []string{}, Ignored: diff.Ignored}
+	save := func() error { return WriteLink(dir, link) }
 	if diff.Empty() {
-		return out, nil
+		if link.PendingCandidate == "" {
+			return out, nil
+		}
+		// An earlier push built a version but stopped before making it the
+		// draft's version: finish that.
+		if err := c.finishPending(ctx, link); err != nil {
+			return nil, errors.Join(err, save())
+		}
+		out.Status, out.ReleaseID = StatusBuilt, link.ReleaseID
+		return out, save()
 	}
 	var last *WorkspaceResult
-	save := func() error { return WriteLink(dir, link) }
 	for _, change := range diff.Changed {
 		result, err := c.WriteFile(ctx, link.ChatID, link.Project, change.Path, change.Content)
 		if err != nil {
@@ -229,17 +238,51 @@ func (c *Client) Push(ctx context.Context, dir string, link *Link) (*PushResult,
 	case page != nil && page.Error != "" && page.CandidateID == "":
 		out.Status, out.Errors = StatusFailed, page.Error
 	case page != nil && page.CandidateID != "" && page.CandidateID != page.ReleaseID:
+		// Record the build first: if accepting it fails, the next push
+		// finishes it, though no file has changed by then.
+		link.PendingCandidate = page.CandidateID
 		accepted, err := c.Accept(ctx, link.ChatID, link.PageID, page.CandidateID)
 		if err != nil {
 			return nil, errors.Join(err, save())
 		}
-		link.ReleaseID = accepted.ReleaseID
+		link.ReleaseID, link.PendingCandidate = accepted.ReleaseID, ""
 		out.Status = StatusBuilt
 	default:
 		out.Status = StatusSaved
 	}
 	out.ReleaseID = link.ReleaseID
 	return out, save()
+}
+
+// finishPending makes the build an earlier push recorded the draft's
+// version. It reads the draft first: the build may have become its version
+// meanwhile, or been replaced by a newer one.
+func (c *Client) finishPending(ctx context.Context, link *Link) error {
+	pages, err := c.Pages(ctx, link.ChatID)
+	if err != nil {
+		return err
+	}
+	pending := link.PendingCandidate
+	for _, page := range pages {
+		if page.ID != link.PageID {
+			continue
+		}
+		switch pending {
+		case page.ReleaseID:
+			link.ReleaseID, link.PendingCandidate = pending, ""
+			return nil
+		case page.CandidateID:
+			accepted, err := c.Accept(ctx, link.ChatID, link.PageID, pending)
+			if err != nil {
+				return err
+			}
+			link.ReleaseID, link.PendingCandidate = accepted.ReleaseID, ""
+			return nil
+		}
+		link.PendingCandidate = ""
+		return errors.New("the version an earlier push built was replaced by a newer build of the draft; pull the draft with gcx pages pull --dir, or change a file and push again")
+	}
+	return fmt.Errorf("the conversation no longer has page %s (%s)", link.PageID, link.Title)
 }
 
 // Snapshot captures the draft's latest build on the server and returns the
@@ -260,6 +303,9 @@ func (c *Client) Snapshot(ctx context.Context, link *Link, opts ScreenshotOption
 // publication when it has one, with that publication's details unless meta
 // overrides them, or else as a new page with meta.
 func (c *Client) PublishDraft(ctx context.Context, dir string, link *Link, meta Metadata, sharing *Sharing) (*Entry, error) {
+	if link.PendingCandidate != "" {
+		return nil, fmt.Errorf("the last push built a version that is not the draft's version yet; run gcx pages push --dir %s to finish it, then publish", dir)
+	}
 	req := PublishRequest{PageID: link.PageID, ReleaseID: link.ReleaseID, Metadata: meta, Sharing: sharing}
 	if link.Publication != nil {
 		current, err := c.Get(ctx, link.Publication.ID)

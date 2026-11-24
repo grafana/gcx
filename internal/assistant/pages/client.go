@@ -38,6 +38,14 @@ const (
 	sandboxTimeout = 120
 	// notStarted is how a sandbox operation answers before the sandbox starts.
 	notStarted = "Sandbox is not started"
+	// recovered opens the answer to an operation that found its sandbox gone:
+	// the Assistant restarts it from the saved sources, and says whether the
+	// operation itself did not run.
+	recovered = "The workspace was restarted from saved sources on a new VM"
+	skipped   = "did not run"
+	// maxAttempts bounds how often one sandbox operation is sent: once, again
+	// after starting the sandbox, and again after a restart skipped it.
+	maxAttempts = 3
 )
 
 var (
@@ -176,6 +184,16 @@ type PublishRequest struct {
 	Sharing   *Sharing `json:"sharing,omitempty"`
 }
 
+// ListBatch is one batch of a catalog listing.
+type ListBatch struct {
+	Pages []Entry
+	// NextCursor continues the listing; empty when it is complete.
+	NextCursor string
+	// Degraded reports that the Grafana Page API failed, so the batch leaves
+	// out the pages shared in folders.
+	Degraded bool
+}
+
 // ListOptions narrows a catalog listing.
 type ListOptions struct {
 	// Section is discover, mine, starred or unlisted.
@@ -210,9 +228,8 @@ func (c *Client) DraftURL(chatID, pageID string) string {
 	return c.host + "/a/grafana-assistant-app/pages/new/" + url.PathEscape(chatID) + "?page=" + url.QueryEscape(pageID)
 }
 
-// List returns one batch of catalog pages and the cursor of the next, empty
-// when the listing is complete.
-func (c *Client) List(ctx context.Context, opts ListOptions) ([]Entry, string, error) {
+// List returns one batch of catalog pages.
+func (c *Client) List(ctx context.Context, opts ListOptions) (*ListBatch, error) {
 	q := url.Values{}
 	if opts.Section != "" {
 		q.Set("section", opts.Section)
@@ -233,9 +250,10 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Entry, string, e
 	var out struct {
 		Pages      []Entry `json:"pages"`
 		NextCursor string  `json:"nextCursor"`
+		Degraded   bool    `json:"degraded"`
 	}
 	if err := c.do(ctx, http.MethodGet, path, nil, &out, "list pages"); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if out.Pages == nil {
 		out.Pages = []Entry{}
@@ -243,7 +261,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]Entry, string, e
 	for i := range out.Pages {
 		out.Pages[i].URL = c.PageURL(out.Pages[i].ID)
 	}
-	return out.Pages, out.NextCursor, nil
+	return &ListBatch{Pages: out.Pages, NextCursor: out.NextCursor, Degraded: out.Degraded}, nil
 }
 
 // Get returns one published page by ID or link.
@@ -401,17 +419,42 @@ func (c *Client) draftPath(chatID, pageID string) string {
 	return chatsPath + "/" + url.PathEscape(chatID) + "/pages/" + url.PathEscape(pageID)
 }
 
-// workspaceStarted runs a sandbox operation, starting the sandbox first when
-// it has not started.
+// workspaceStarted runs a sandbox operation until it has run: it starts the
+// sandbox when it has not started, and sends the operation again when the
+// Assistant restarted a lost sandbox instead of running it. An operation that
+// reports an error fails.
 func (c *Client) workspaceStarted(ctx context.Context, chatID string, op map[string]any, name string) (*WorkspaceResult, error) {
-	result, err := c.workspace(ctx, chatID, op, name)
-	if err != nil || !strings.HasPrefix(result.Output, notStarted) {
-		return result, err
+	for attempt := 1; ; attempt++ {
+		result, err := c.workspace(ctx, chatID, op, name)
+		if err != nil {
+			return nil, err
+		}
+		retry := false
+		switch {
+		case strings.HasPrefix(result.Output, notStarted):
+			if _, err := c.StartSandbox(ctx, chatID); err != nil {
+				return nil, err
+			}
+			retry = true
+		case strings.HasPrefix(result.Output, recovered) && strings.Contains(firstParagraph(result.Output), skipped):
+			retry = true
+		case result.Error != "":
+			return nil, fmt.Errorf("%s: %s", name, strings.TrimSpace(result.Error))
+		}
+		if !retry {
+			return result, nil
+		}
+		if attempt == maxAttempts {
+			return nil, fmt.Errorf("%s did not run after %d attempts; the sandbox kept restarting: %s", name, attempt, strings.TrimSpace(firstParagraph(result.Output)))
+		}
 	}
-	if _, err := c.StartSandbox(ctx, chatID); err != nil {
-		return nil, err
-	}
-	return c.workspace(ctx, chatID, op, name)
+}
+
+// firstParagraph is the text before the first blank line, where the
+// Assistant puts its notice about the operation.
+func firstParagraph(text string) string {
+	first, _, _ := strings.Cut(text, "\n\n")
+	return first
 }
 
 func (c *Client) workspace(ctx context.Context, chatID string, op map[string]any, name string) (*WorkspaceResult, error) {
