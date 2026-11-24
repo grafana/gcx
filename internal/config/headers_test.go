@@ -60,12 +60,12 @@ func TestConfigView_RedactsHeaderValues(t *testing.T) {
 	g := config.GrafanaConfig{
 		Server:   "https://grafana.example.com",
 		APIToken: "glsa_test",
-		Headers:  map[string]string{"X-Scaleway-Token": "secret-value", "X-Empty": ""},
+		Headers:  map[string]string{"X-Auth-Token": "secret-value", "X-Empty": ""},
 	}
 	if err := secrets.Redact(&g); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got, want := g.Headers["X-Scaleway-Token"], "**REDACTED**"; got != want {
+	if got, want := g.Headers["X-Auth-Token"], "**REDACTED**"; got != want {
 		t.Errorf("expected %q, got %q", want, got)
 	}
 	if got := g.Headers["X-Empty"]; got != "" {

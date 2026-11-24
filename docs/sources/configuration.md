@@ -269,7 +269,7 @@ stacks:
       # Grafana server. Values are redacted in `config view` unless --raw.
       # Useful when Grafana sits behind a gateway that requires a custom header.
       headers:
-        X-Scaleway-Auth: string
+        X-Auth-Token: string
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using

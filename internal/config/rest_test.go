@@ -456,8 +456,8 @@ func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		got = map[string]string{
-			"X-Tenant":         r.Header.Get("X-Tenant"),
-			"X-Scaleway-Token": r.Header.Get("X-Scaleway-Token"),
+			"X-Tenant":     r.Header.Get("X-Tenant"),
+			"X-Auth-Token": r.Header.Get("X-Auth-Token"),
 		}
 		mu.Unlock()
 	}))
@@ -468,7 +468,7 @@ func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
 			Server:   server.URL,
 			StackID:  99999,
 			APIToken: "glsa_test",
-			Headers:  map[string]string{"X-Tenant": tenant, "X-Scaleway-Token": token},
+			Headers:  map[string]string{"X-Tenant": tenant, "X-Auth-Token": token},
 		},
 	})
 	if err != nil {
@@ -485,7 +485,7 @@ func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if got["X-Tenant"] != tenant || got["X-Scaleway-Token"] != token {
+	if got["X-Tenant"] != tenant || got["X-Auth-Token"] != token {
 		t.Fatalf("expected custom headers on the request, got %#v", got)
 	}
 }
