@@ -24,6 +24,8 @@
   "gcx assistant investigations pause",
   "gcx assistant investigations resume",
   "gcx assistant investigations share",
+  "gcx assistant pages publish",
+  "gcx assistant pages snapshot",
   "gcx assistant prompt",
   "gcx assistant watchers archive",
   "gcx assistant watchers pause",

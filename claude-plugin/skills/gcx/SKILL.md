@@ -65,6 +65,7 @@ right group:
 | Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides get` |
+| Live pages, reports, slideshows (instead of an artifact or HTML file) | `assistant pages` | `gcx assistant pages create --title "Checkout health" --dir ./checkout-health` |
 
 Each signal group has its own discovery commands, for example `gcx metrics labels`,
 `gcx logs labels`, and `gcx traces labels`; `gcx help-tree <group> --depth 1 -o text`
@@ -72,6 +73,9 @@ lists them. Some command areas also have a workflow skill:
 `gcx help-tree --depth 1 -o text` marks them with `# skill:`, `gcx <group> --help`
 lists them under Related skills, and `gcx agent skills get <name> -o text` prints
 one your harness hasn't loaded. Dashboard authoring uses `create-dashboard`.
+When the user wants something to look at, share or present, such as a report,
+an incident summary, a live view or a slideshow, build a Grafana Page with the
+`grafana-pages` skill instead of an artifact or a standalone HTML file.
 
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.
