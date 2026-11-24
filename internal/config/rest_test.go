@@ -563,3 +563,144 @@ func TestNewNamespacedRESTConfig_PayloadDumpShowsCustomHeaders(t *testing.T) {
 		t.Errorf("payload dump is missing %q\ngot:\n%s", want, logged.String())
 	}
 }
+
+// Headers are per-stack auth to a specific Grafana server and must never leak
+// to unrelated hosts: rest.HTTPClientFor applies WrapTransport to every URL
+// (e.g. Cloud product endpoints reachable through the same rest.Config).
+func TestNewNamespacedRESTConfig_CustomHeadersNotSentToOtherHosts(t *testing.T) {
+	var got string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Tenant")
+	}))
+	defer other.Close()
+
+	grafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer grafana.Close()
+
+	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   grafana.URL,
+			StackID:  99999,
+			APIToken: "glsa_test",
+			Headers:  map[string]string{"X-Tenant": "acme"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, other.URL+"/external", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp.Body.Close()
+
+	if got != "" {
+		t.Fatalf("custom header leaked to a non-Grafana host, got %q", got)
+	}
+}
+
+// The OAuth proxy refresh POST is constructed inside auth.RefreshTransport and
+// sent through its base chain, so configured headers must be applied inside
+// that chain or a gateway that requires the header rejects the refresh.
+func TestNewNamespacedRESTConfig_OAuthRefreshSendsCustomHeaders(t *testing.T) {
+	const tenant = "acme"
+	var mu sync.Mutex
+	var refreshHeader string
+
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/auth/refresh") {
+			mu.Lock()
+			refreshHeader = r.Header.Get("X-Tenant")
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"token":              "gat_new",
+					"expires_at":         "2099-01-01T00:00:00Z",
+					"refresh_token":      "gar_new",
+					"refresh_expires_at": "2099-02-01T00:00:00Z",
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer proxy.Close()
+
+	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:              proxy.URL,
+			ProxyEndpoint:       proxy.URL,
+			StackID:             1,
+			OAuthToken:          "gat_expired",
+			OAuthRefreshToken:   "gar_expired",
+			OAuthTokenExpiresAt: time.Now().Add(-time.Minute).Format(time.RFC3339),
+			Headers:             map[string]string{"X-Tenant": tenant},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, proxy.URL+"/resource", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp.Body.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if refreshHeader != tenant {
+		t.Fatalf("OAuth refresh request missing custom header, got %q", refreshHeader)
+	}
+}
+
+// The /bootdata stack-ID discovery request must also carry configured headers:
+// with a gateway in front of Grafana, discovery fails without them.
+func TestNewNamespacedRESTConfig_DiscoverySendsCustomHeaders(t *testing.T) {
+	const tenant = "acme"
+	var mu sync.Mutex
+	var bootdataHeader string
+
+	bootdata := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/bootdata") {
+			mu.Lock()
+			bootdataHeader = r.Header.Get("X-Tenant")
+			mu.Unlock()
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"settings": map[string]any{
+				"namespace": "stacks-12345",
+			},
+		})
+	}))
+	defer bootdata.Close()
+
+	// No StackID configured: forces /bootdata discovery inside
+	// NewNamespacedRESTConfig via resolveNamespace.
+	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   bootdata.URL,
+			APIToken: "glsa_test",
+			Headers:  map[string]string{"X-Tenant": tenant},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if restCfg.Namespace != "stacks-12345" {
+		t.Fatalf("expected namespace stacks-12345, got %q", restCfg.Namespace)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if bootdataHeader != tenant {
+		t.Fatalf("/bootdata discovery request missing custom header, got %q", bootdataHeader)
+	}
+}

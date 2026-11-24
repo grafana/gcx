@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -403,16 +404,21 @@ func parseRFC3339OrZero(s string) time.Time {
 	return t
 }
 
-// headersTransport adds configured headers to every request. It clones the
-// request before mutating headers because RoundTrip may run concurrently and
-// the caller may reuse the request after this transport returns.
+// headersTransport adds configured headers to requests bound for one of the
+// Grafana hosts (the Grafana server, and the OAuth proxy endpoint that fronts
+// it). It is host-scoped so a gateway credential never leaks to unrelated
+// hosts that share this rest.Config (e.g. Cloud product endpoints built with
+// rest.HTTPClientFor). It clones the request before mutating headers because
+// RoundTrip may run concurrently and the caller may reuse the request after
+// this transport returns.
 type headersTransport struct {
 	Base    http.RoundTripper
 	Headers map[string]string
+	Hosts   []string // lowercase hostnames allowed to receive the headers
 }
 
 func (t *headersTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if len(t.Headers) == 0 {
+	if len(t.Headers) == 0 || !t.hostsContains(strings.ToLower(req.URL.Host)) {
 		return t.Base.RoundTrip(req)
 	}
 	r := req.Clone(req.Context())
@@ -420,6 +426,32 @@ func (t *headersTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		r.Header.Set(name, value)
 	}
 	return t.Base.RoundTrip(r)
+}
+
+func (t *headersTransport) hostsContains(host string) bool {
+	return slices.Contains(t.Hosts, host)
+}
+
+// headerHosts returns the lowercase authorities (host[:port]) the configured
+// headers may be sent to: the Grafana server and, in OAuth proxy mode, the
+// proxy endpoint that fronts the same server (both proxied and token-refresh
+// requests reach it). The port is part of the match so a same-hostname
+// different-port endpoint never receives the credential. Deduplicated.
+func headerHosts(cfg GrafanaConfig) []string {
+	var hosts []string
+	for _, raw := range []string{cfg.Server, cfg.ProxyEndpoint} {
+		if raw == "" {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if host := strings.ToLower(parsed.Host); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return slices.Compact(hosts)
 }
 
 // NewNamespacedRESTConfig creates a new namespaced REST config.
@@ -531,6 +563,19 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		if payloadLogging {
 			rt = &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 		}
+		// Configured headers are applied here — inside the OAuth transport's
+		// base chain, so auth.RefreshTransport's internally built refresh POST
+		// also carries them, and above the payload dump so `-vvv` shows them
+		// on the wire. Host-scoping keeps the credential from leaking to
+		// unrelated hosts reachable through this same rest.Config. len == 0
+		// keeps the known chain shape intact for header-less configs.
+		if len(selectedGrafana.Headers) > 0 {
+			rt = &headersTransport{
+				Base:    rt,
+				Headers: selectedGrafana.Headers,
+				Hosts:   headerHosts(selectedGrafana),
+			}
+		}
 		if prevWrap != nil {
 			rt = prevWrap(rt)
 		}
@@ -538,15 +583,8 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		rt = &retry.Transport{Base: rt}
 		// Outermost layer: stamp the caller-id header so every datasource query
 		// (unified query API and legacy proxy alike) is attributable upstream,
-		// and so it's visible to the logging transports above. Configured custom
-		// headers sit outside it for the same reason: the payload dump shows
-		// them on the wire. len == 0 keeps the known chain shape intact for
-		// header-less configs.
-		rt = &httputils.CallerIDTransport{Base: rt}
-		if len(selectedGrafana.Headers) > 0 {
-			rt = &headersTransport{Base: rt, Headers: selectedGrafana.Headers}
-		}
-		return rt
+		// and so it's visible to the logging transports above.
+		return &httputils.CallerIDTransport{Base: rt}
 	}
 
 	return NamespacedRESTConfig{
