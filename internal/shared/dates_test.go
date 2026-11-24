@@ -43,3 +43,31 @@ func TestParseDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestParseTime_rejectsOutOfRange(t *testing.T) {
+	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	for _, in := range []string{"NaN", "Inf", "-Inf", "+Inf", "1e30", "-1e30", "now-99999999999999999999h", "now-9999999999y", "now+9999999999y"} {
+		t.Run(in, func(t *testing.T) {
+			_, err := shared.ParseTime(in, now)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestParseTime_validValuesUnchanged(t *testing.T) {
+	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	got, err := shared.ParseTime("now-1y", now)
+	require.NoError(t, err)
+	assert.Equal(t, now.Add(-365*24*time.Hour), got)
+
+	got, err = shared.ParseTime("1705315800.5", now)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1705315800), got.Unix())
+	assert.Equal(t, 500_000_000, got.Nanosecond())
+
+	got, err = shared.ParseTime("-1.5", now)
+	require.NoError(t, err)
+	assert.Equal(t, time.Unix(-1, -500_000_000).UnixNano(), got.UnixNano())
+}
