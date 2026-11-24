@@ -43,20 +43,24 @@ func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
 // unscoped intrinsics, >=/<=, ...) returns ok=false so the caller can fall
 // back to the plain Explore link instead of showing an inaccurate Drilldown
 // link.
-func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
+//
+// orgID is the Grafana org that owns the datasource. When it is above 0 the
+// link carries orgId, as the Explore link does, so it opens in the right org.
+func TracesDrilldownURL(host string, orgID int64, datasourceUID, expr string, start, end time.Time) (string, bool) {
 	filters, ok := drilldownFilters(host, datasourceUID, expr)
 	if !ok {
 		return "", false
 	}
-	return tracesDrilldownURL(host, datasourceUID, filters, start, end, "rate", "traceList")
+	return tracesDrilldownURL(host, orgID, datasourceUID, filters, start, end, "rate", "traceList")
 }
 
 // TracesExceptionsURL builds a Traces Drilldown link that opens the Exceptions
 // tab (var-metric=errors, actionView=exceptions). An empty expr opens the tab
 // with no var-filters, which is every service. A non-empty expr must be the
 // same flat spanset TracesDrilldownURL accepts; the tab adds status = error
-// itself, so that comparison does not belong in var-filters.
-func TracesExceptionsURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
+// itself, so that comparison does not belong in var-filters. orgID works as it
+// does for TracesDrilldownURL.
+func TracesExceptionsURL(host string, orgID int64, datasourceUID, expr string, start, end time.Time) (string, bool) {
 	if host == "" || datasourceUID == "" {
 		return "", false
 	}
@@ -68,7 +72,7 @@ func TracesExceptionsURL(host, datasourceUID, expr string, start, end time.Time)
 		}
 		filters = parsed
 	}
-	return tracesDrilldownURL(host, datasourceUID, filters, start, end, "errors", "exceptions")
+	return tracesDrilldownURL(host, orgID, datasourceUID, filters, start, end, "errors", "exceptions")
 }
 
 // ExceptionRowFilters are the Exceptions tab filters for one row: the caller's
@@ -114,7 +118,7 @@ func drilldownFilters(host, datasourceUID, expr string) ([]tempo.TraceQLFilter, 
 	return filters, true
 }
 
-func tracesDrilldownURL(host, datasourceUID string, filters []tempo.TraceQLFilter, start, end time.Time, metric, actionView string) (string, bool) {
+func tracesDrilldownURL(host string, orgID int64, datasourceUID string, filters []tempo.TraceQLFilter, start, end time.Time, metric, actionView string) (string, bool) {
 	if host == "" || datasourceUID == "" {
 		return "", false
 	}
@@ -133,6 +137,9 @@ func tracesDrilldownURL(host, datasourceUID string, filters []tempo.TraceQLFilte
 		"var-primarySignal": {"true"},
 		"var-metric":        {metric},
 		"actionView":        {actionView},
+	}
+	if orgID > 0 {
+		params["orgId"] = []string{strconv.FormatInt(orgID, 10)}
 	}
 	for _, f := range filters {
 		encoded, ok := encodeTraceQLFilter(f)

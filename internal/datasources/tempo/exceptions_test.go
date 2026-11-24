@@ -68,6 +68,7 @@ func TestExceptionsCmd_GroupsSpanSample(t *testing.T) {
 	assert.Contains(t, stdout, "grafana-exploretraces-app")
 	assert.Contains(t, stdout, "actionView=exceptions")
 	assert.Contains(t, stdout, "var-metric=errors")
+	assert.Contains(t, stdout, "orgId=1", "row links must carry the Grafana org like the Explore link")
 	assert.Contains(t, stdout, "event.exception.type%7C%3D%7CTimeoutError")
 	assert.Contains(t, stdout, `"traces_sampled": 1`)
 	assert.Contains(t, stderr, "exception counts use the first 1 traces")
@@ -81,6 +82,7 @@ func TestExceptionsCmd_GroupsSpanSample(t *testing.T) {
 	assert.Contains(t, tableOut, "LINK")
 	assert.Contains(t, tableOut, srv.URL)
 	assert.Contains(t, tableOut, "actionView=exceptions")
+	assert.Contains(t, tableOut, "orgId=1")
 	assert.Contains(t, tableOut, "event.exception.type%7C%3D%7CTimeoutError")
 	assert.Contains(t, tableOut, "timeout for user <num>")
 	assert.Contains(t, tableOut, "TimeoutError")
@@ -105,6 +107,17 @@ func serveTempoSearch(t *testing.T, body string) string {
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL
+}
+
+func TestExceptionsCmd_DrilldownLinkCarriesTheGrafanaOrg(t *testing.T) {
+	// The tab link does not depend on the result, so an empty sample is enough.
+	_, stderr, err := execTempoCmd(tempo.ExceptionsCmd(tempoLoader(t, serveTempoSearch(t, `{"traces":[]}`))), []string{
+		"exceptions", `{ resource.service.name = "checkout" }`, "--since", "1h", "-o", "json", "--drilldown-link",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "grafana-exploretraces-app")
+	assert.Contains(t, stderr, "actionView=exceptions")
+	assert.Contains(t, stderr, "orgId=1")
 }
 
 func TestExceptionsCmd_WarnsWhenTempoLeavesSpansOut(t *testing.T) {
@@ -231,7 +244,7 @@ func TestExceptionsExploreAndTabURLs(t *testing.T) {
 	assert.Contains(t, panes, `"spss":10`)
 	assert.Contains(t, panes, "most_recent")
 
-	tab, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", `{ resource.service.name = "checkout" }`, start, start.Add(time.Hour))
+	tab, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", 0, "tempo-uid", `{ resource.service.name = "checkout" }`, start, start.Add(time.Hour))
 	require.True(t, ok)
 	u, err := url.Parse(tab)
 	require.NoError(t, err)
@@ -239,14 +252,14 @@ func TestExceptionsExploreAndTabURLs(t *testing.T) {
 	assert.Equal(t, "exceptions", u.Query().Get("actionView"))
 	assert.Equal(t, []string{"resource.service.name|=|checkout"}, u.Query()["var-filters"])
 
-	all, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", "", start, start.Add(time.Hour))
+	all, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", 0, "tempo-uid", "", start, start.Add(time.Hour))
 	require.True(t, ok)
 	u, err = url.Parse(all)
 	require.NoError(t, err)
 	assert.Equal(t, "exceptions", u.Query().Get("actionView"))
 	assert.Empty(t, u.Query()["var-filters"])
 
-	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", `{ status = error } | count()`, start, start)
+	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", 0, "tempo-uid", `{ status = error } | count()`, start, start)
 	assert.False(t, ok)
 }
 

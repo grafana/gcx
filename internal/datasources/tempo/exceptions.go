@@ -147,14 +147,15 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 	if to == "" {
 		to = end.Format(time.RFC3339)
 	}
-	attachExceptionLinks(result.Exceptions, cfg.GrafanaURL, datasourceUID, filter, start, end)
+	orgID := dsquery.OrgID(cfgCtx)
+	attachExceptionLinks(result.Exceptions, cfg.GrafanaURL, orgID, datasourceUID, filter, start, end)
 	exploreURL := ExceptionsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 		DatasourceUID:  datasourceUID,
 		DatasourceType: "tempo",
 		Expr:           expr,
 		From:           from,
 		To:             to,
-		OrgID:          dsquery.OrgID(cfgCtx),
+		OrgID:          orgID,
 	}, opts.Limit)
 	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("exception sample")
 
@@ -182,7 +183,7 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 		return err
 	}
 
-	exceptionsURL, _ := TracesExceptionsURL(cfg.GrafanaURL, datasourceUID, filter, start, end)
+	exceptionsURL, _ := TracesExceptionsURL(cfg.GrafanaURL, orgID, datasourceUID, filter, start, end)
 	exceptionsUnavailable, exceptionsFailedOpen := dsquery.DrilldownMessages("exception sample", "Traces Drilldown Exceptions")
 	if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *exceptions, exceptionsURL, exceptionsUnavailable, exceptionsFailedOpen,
 		*share, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
@@ -224,13 +225,13 @@ func (opts *exceptionsOpts) filter(flags *pflag.FlagSet, args []string) (string,
 	return positional, nil
 }
 
-func attachExceptionLinks(groups []tempo.ExceptionGroup, host, datasourceUID, filter string, start, end time.Time) {
+func attachExceptionLinks(groups []tempo.ExceptionGroup, host string, orgID int64, datasourceUID, filter string, start, end time.Time) {
 	for i := range groups {
 		filters, ok := ExceptionRowFilters(filter, groups[i].Service, groups[i].Type)
 		if !ok {
 			continue
 		}
-		url, ok := tracesDrilldownURL(host, datasourceUID, filters, start, end, "errors", "exceptions")
+		url, ok := tracesDrilldownURL(host, orgID, datasourceUID, filters, start, end, "errors", "exceptions")
 		if !ok {
 			continue
 		}

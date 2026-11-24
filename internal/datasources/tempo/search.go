@@ -148,9 +148,9 @@ the Exceptions tab instead of the trace list. The view requires
 			var drilldownURL string
 			if drilldown.Enabled() && shared.IsRange() {
 				if drilldownView == "exceptions" {
-					drilldownURL, _ = TracesExceptionsURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+					drilldownURL, _ = TracesExceptionsURL(cfg.GrafanaURL, dsquery.OrgID(cfgCtx), datasourceUID, expr, start, end)
 				} else {
-					drilldownURL, _ = TracesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+					drilldownURL, _ = TracesDrilldownURL(cfg.GrafanaURL, dsquery.OrgID(cfgCtx), datasourceUID, expr, start, end)
 				}
 			}
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
