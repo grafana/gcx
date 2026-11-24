@@ -187,6 +187,8 @@ type OnCallAPI interface {
 
 	ListTeams(ctx context.Context) ([]Team, error)
 	GetTeam(ctx context.Context, id string) (*Team, error)
+	GetTeamHours(ctx context.Context, id string) (map[string]any, error)
+	UpdateTeamHours(ctx context.Context, id string, hours map[string]any) (map[string]any, error)
 
 	ListUserGroups(ctx context.Context) ([]UserGroup, error)
 	ListSlackChannels(ctx context.Context) ([]SlackChannel, error)
@@ -545,6 +547,7 @@ type DirectPagingInput struct {
 	Users                   []UserReference `json:"users,omitempty"`
 	ImportantTeamEscalation bool            `json:"important_team_escalation,omitempty"`
 	AlertGroupID            string          `json:"alert_group_id,omitempty"`
+	IncidentID              string          `json:"incident_id,omitempty"`
 }
 
 type DirectPagingResult struct {
