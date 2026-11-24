@@ -24,17 +24,61 @@ const tenantDomainPrefix = "tenant/"
 
 // parseEntityRefToken parses a compact "domain/Type/name" ref token. A tenant
 // domain contains a slash of its own, so its token is tenant/<name>/Type/name.
+// No other domain and no type contains "/", so the name is everything after
+// the type and may itself contain "/" (for example github.com/contoso/shop).
 // Scope is supplied separately via --from-scope/--to-scope, so it is not part
 // of the token.
+//
+// A token that starts with "tenant/" can also name the bare "tenant" domain,
+// and parseTenantPrefixedToken decides which domain it names.
 func parseEntityRefToken(token string) (EntityRef, error) {
-	parts := strings.Split(token, "/")
-	if len(parts) == 4 && parts[0] == "tenant" && parts[1] != "" {
-		parts = []string{tenantDomainPrefix + parts[1], parts[2], parts[3]}
+	parts := strings.SplitN(token, "/", 3)
+	if len(parts) == 3 && parts[0] == "tenant" {
+		return parseTenantPrefixedToken(token, parts[1], parts[2])
 	}
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return EntityRef{}, fmt.Errorf("invalid ref %q: expected domain/Type/name (e.g. myapp/Service/checkout, or tenant/myapp/Service/checkout for a tenant domain)", token)
+		return EntityRef{}, invalidRefError(token)
 	}
 	return EntityRef{Domain: parts[0], Type: parts[1], Name: parts[2]}, nil
+}
+
+// parseTenantPrefixedToken parses a token that starts with "tenant/", given
+// its second segment and everything after that segment.
+//
+// With exactly three segments the token is tenant/Type/name in the bare
+// "tenant" domain, as before names could contain "/".
+//
+// With more segments, the token is tenant/<name>/Type/name for a tenant
+// domain or tenant/Type/name for the bare "tenant" domain with a name that
+// contains "/". A tenant name is lowercase letters and digits, which is also a
+// valid type, so in these tokens the type must start with an uppercase letter,
+// as every entity type that a schema declares does. The second segment is
+// then the type of the bare "tenant" domain when it starts with an uppercase
+// letter, and a tenant name otherwise. A token that fits neither reading, such
+// as tenant/worker/foo/bar, is rejected rather than read one way or the other.
+func parseTenantPrefixedToken(token, second, rest string) (EntityRef, error) {
+	if second == "" || rest == "" {
+		return EntityRef{}, invalidRefError(token)
+	}
+	if !strings.Contains(rest, "/") || startsWithUpper(second) {
+		return EntityRef{Domain: "tenant", Type: second, Name: rest}, nil
+	}
+	typ, name, _ := strings.Cut(rest, "/")
+	if typ == "" || name == "" {
+		return EntityRef{}, invalidRefError(token)
+	}
+	if !reTenantDomain.MatchString(tenantDomainPrefix+second) || !startsWithUpper(typ) {
+		return EntityRef{}, fmt.Errorf("invalid ref %q: a ref that starts with tenant/ and has more than three parts must be tenant/<name>/Type/name for a tenant domain (<name> is a lowercase letter, then lowercase letters or digits) or tenant/Type/name for the bare tenant domain, and its Type must start with an uppercase letter", token)
+	}
+	return EntityRef{Domain: tenantDomainPrefix + second, Type: typ, Name: name}, nil
+}
+
+func startsWithUpper(s string) bool {
+	return s != "" && s[0] >= 'A' && s[0] <= 'Z'
+}
+
+func invalidRefError(token string) error {
+	return fmt.Errorf("invalid ref %q: expected domain/Type/name (e.g. myapp/Service/checkout, or tenant/myapp/Service/checkout for a tenant domain)", token)
 }
 
 // parseTTL converts a duration string to seconds for the API's ttlSeconds field.
