@@ -1967,10 +1967,10 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 			name = cfg.CurrentContext
 		}
 		fmt.Fprintf(w, "Refreshing context %q (server: %s)\n\n",
-			name, login.DisplayServer(sourceCtx.Grafana.Server))
+			login.DisplayServer(name), login.DisplayServer(sourceCtx.Grafana.Server))
 	case contextName != "":
 		// Creating a new named context.
-		fmt.Fprintf(w, "Creating new context %q\n", contextName)
+		fmt.Fprintf(w, "Creating new context %q\n", login.DisplayServer(contextName))
 		if names := existingContextNames(cfg); len(names) > 0 {
 			fmt.Fprintf(w, "Existing contexts: %s\n", strings.Join(names, ", "))
 		}
@@ -1986,7 +1986,7 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 func existingContextNames(cfg config.Config) []string {
 	names := make([]string, 0, len(cfg.Contexts))
 	for name := range cfg.Contexts {
-		names = append(names, name)
+		names = append(names, login.DisplayServer(name))
 	}
 	sort.Strings(names)
 	return names
