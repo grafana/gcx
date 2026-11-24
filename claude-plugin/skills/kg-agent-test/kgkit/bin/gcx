@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Knowledge Graph agent test skill: gcx wrapper.
+#
+# Every gcx command the agent runs passes through here. It is logged to
+# $KGKIT_LOG, and in the "without-graph" configuration any command that would
+# reach the Knowledge Graph is refused before it runs.
+#
+#   KGKIT_REAL_GCX  path to the real gcx binary (required)
+#   KGKIT_MODE      with-graph | without-graph
+#   KGKIT_LOG       file to append one line per command to
+#   KGKIT_CONTEXT   optional gcx context to add to every command
+
+real="${KGKIT_REAL_GCX:?KGKIT_REAL_GCX is not set}"
+log="${KGKIT_LOG:-/dev/null}"
+mode="${KGKIT_MODE:-with-graph}"
+
+blocked=""
+if [ "$mode" = "without-graph" ]; then
+  for a in "$@"; do
+    case "$a" in
+      kg|knowledge-graph) blocked="the Knowledge Graph (gcx $a)" ;;
+      # the graph's own datasource and API groups, reachable through generic
+      # commands such as gcx datasources query and gcx resources get (gcx 1.x)
+      *knowledgegraph*|*kg.ext.grafana*|*kgatlas*|*kgschema*) blocked="the Knowledge Graph ($a)" ;;
+      assistant) blocked="Grafana Assistant (gcx assistant)" ;;
+      api) blocked="raw API access (gcx api)" ;;
+      # recording rules the graph is built from; labels such as asserts_env on
+      # ordinary series are left alone
+      *asserts:*) blocked="Knowledge Graph recording rules (asserts: metrics)" ;;
+    esac
+  done
+fi
+
+# commands refused in every configuration, e.g. irm for an incident question, so the
+# agent can't read the post-incident review instead of working the problem out
+if [ -z "$blocked" ] && [ -n "$KGKIT_BLOCK_ALWAYS" ]; then
+  for a in "$@"; do
+    for b in ${KGKIT_BLOCK_ALWAYS//,/ }; do
+      [ "$a" = "$b" ] && blocked="gcx $b for this question"
+    done
+  done
+fi
+
+status="ok"
+[ -n "$blocked" ] && status="blocked"
+# one line per command: UTC time, mode, ok|blocked, then the arguments, shell-quoted
+printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$status" "$(printf '%q ' "$@")" >> "$log"
+
+if [ -n "$blocked" ]; then
+  echo "error: this test configuration does not allow $blocked. Use metrics, traces, logs or other telemetry commands instead." >&2
+  exit 2
+fi
+
+if [ -n "$KGKIT_CONTEXT" ]; then
+  exec "$real" --context "$KGKIT_CONTEXT" "$@"
+fi
+exec "$real" "$@"

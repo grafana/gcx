@@ -1,0 +1,11 @@
+{
+ "_note": "Where share.py sends scorecards. Swap the form by editing this file; no code changes needed. form_url must end in /formResponse. Entry IDs are the form's question IDs as decimal numbers. Until a public form is set here, share.py tells the user to email the scorecard instead.",
+ "form_url": "REPLACE_WITH_PUBLIC_FORM/formResponse",
+ "entry": {
+  "scorecard": "entry.REPLACE",
+  "agent": "entry.REPLACE",
+  "contact": "entry.REPLACE",
+  "comments": "entry.REPLACE"
+ },
+ "fallback": "If you can't reach the form, email results/scorecard.json to your Grafana contact."
+}
