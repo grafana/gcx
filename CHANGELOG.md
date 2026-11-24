@@ -8,11 +8,7 @@
   timeline labels returned `[]`. The category comes from the entity's insight
   timeline over the same window and scope: the `asserts_alert_category` label
   of that insight's entries, used only when they have exactly one category.
-  When the timeline read finds no entity, one entity type lookup over the
-  same window and scope looks for the given type written in another case
-  (for example the given type is all lower case); if exactly one type
-  matches, the timeline read is repeated with that name and the retry sends
-  it. A lookup that returns metrics the first time sends no extra request.
+  A lookup that returns metrics the first time sends no extra request.
   The help now says to copy every label of the timeline entry with `--label`
   and, for alert-rule and change insights, to pass the entry's category as
   `asserts_alert_category`; its examples pass the timeline entry's labels,

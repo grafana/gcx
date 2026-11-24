@@ -19,10 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sourcesFake serves source-metrics, the insight timeline read and the
-// entity type counts for the sources category fill-in tests, and records the
-// label set of every source-metrics request and the body of every timeline
-// and type-count request.
+// sourcesFake serves source-metrics and the insight timeline read for the
+// sources category fill-in tests, and records the label set of every
+// source-metrics request and the body of every timeline request.
 type sourcesFake struct {
 	mu sync.Mutex
 	// metrics returns the source-metrics answer for one request's labels;
@@ -34,20 +33,13 @@ type sourcesFake struct {
 	// answer (default `[]`); timelineStatus overrides 200 when set.
 	timelines      map[string]string
 	timelineStatus int
-	// types is the entity type count answer (default `{}`); typesStatus
-	// overrides 200 when set.
-	types       string
-	typesStatus int
-	// onTimeline, onTypes and onSource, when set, run before a timeline or
-	// type-count request or the nth (0-based) source-metrics request is
-	// answered.
+	// onTimeline and onSource, when set, run before a timeline request or the
+	// nth (0-based) source-metrics request is answered.
 	onTimeline func()
-	onTypes    func()
 	onSource   func(n int)
 
 	sourceCalls    []map[string]string
 	timelineBodies []map[string]any
-	typeBodies     []map[string]any
 	// searchCalls counts requests to the entity search (POST /v1/search),
 	// which the fill must not use.
 	searchCalls int
@@ -91,23 +83,6 @@ func (f *sourcesFake) handler(t *testing.T) http.Handler {
 			answer := `[]`
 			if a, ok := f.timelines[filterEntityType(body)]; ok {
 				answer = a
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(answer))
-		case strings.HasSuffix(r.URL.Path, "/v1/entity_type/count"):
-			var body map[string]any
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-			f.typeBodies = append(f.typeBodies, body)
-			if f.onTypes != nil {
-				f.onTypes()
-			}
-			if f.typesStatus != 0 {
-				w.WriteHeader(f.typesStatus)
-				return
-			}
-			answer := f.types
-			if answer == "" {
-				answer = `{}`
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(answer))
@@ -186,10 +161,7 @@ func ownFailure() string {
 		group(entry("TypeA", "name-a", "OtherChange", "amend")))
 }
 
-const (
-	hintTimeline = "added asserts_alert_category=failure, the category of this insight on the entity's insight timeline in the same window"
-	hintType     = hintTimeline + ", and set asserts_entity_type=TypeA, the graph's name for entity type typea"
-)
+const hintTimeline = "added asserts_alert_category=failure, the category of this insight on the entity's insight timeline in the same window"
 
 // categoryFillCase is one sources lookup run against sourcesFake.
 type categoryFillCase struct {
@@ -198,20 +170,15 @@ type categoryFillCase struct {
 	metrics        func(map[string]string) string
 	timelines      map[string]string
 	timelineStatus int
-	types          string
-	typesStatus    int
 	// sourceStatus overrides 200 for the nth (0-based) source-metrics
 	// request when it returns non-zero.
 	sourceStatus func(n int) int
 	wantMetrics  bool
 	// wantTimelineTypes lists the entity type of each timeline read.
 	wantTimelineTypes []string
-	wantTypeLookups   int
-	// wantSourceCategories and wantSourceTypes list the
-	// asserts_alert_category and asserts_entity_type labels of each
+	// wantSourceCategories lists the asserts_alert_category label of each
 	// source-metrics request in order ("" = label absent).
 	wantSourceCategories []string
-	wantSourceTypes      []string
 	// wantHint is the stderr hint expected ("" = no category hint).
 	wantHint string
 }
@@ -232,7 +199,6 @@ func runCategoryFillCases(t *testing.T, tests []categoryFillCase) {
 			fake := &sourcesFake{
 				metrics: tc.metrics, sourceStatus: tc.sourceStatus,
 				timelines: tc.timelines, timelineStatus: tc.timelineStatus,
-				types: tc.types, typesStatus: tc.typesStatus,
 			}
 			server := httptest.NewServer(fake.handler(t))
 			defer server.Close()
@@ -260,23 +226,15 @@ func runCategoryFillCases(t *testing.T, tests []categoryFillCase) {
 				wantTimelineTypes = []string{}
 			}
 			assert.Equal(t, wantTimelineTypes, gotTimelineTypes, "entity type per timeline read")
-			assert.Len(t, fake.typeBodies, tc.wantTypeLookups, "entity type lookups")
 			assert.Zero(t, fake.searchCalls, "entity searches")
 			gotCategories := make([]string, 0, len(fake.sourceCalls))
-			gotTypes := make([]string, 0, len(fake.sourceCalls))
 			for _, l := range fake.sourceCalls {
 				gotCategories = append(gotCategories, l["asserts_alert_category"])
-				gotTypes = append(gotTypes, l["asserts_entity_type"])
 			}
 			assert.Equal(t, tc.wantSourceCategories, gotCategories, "asserts_alert_category per source-metrics request")
-			assert.Equal(t, tc.wantSourceTypes, gotTypes, "asserts_entity_type per source-metrics request")
-			switch tc.wantHint {
-			case "":
+			if tc.wantHint == "" {
 				assert.NotContains(t, stderr, "asserts_alert_category")
-			case hintTimeline:
-				assert.Contains(t, stderr, tc.wantHint)
-				assert.NotContains(t, stderr, "graph's name")
-			default:
+			} else {
 				assert.Contains(t, stderr, tc.wantHint)
 			}
 		})
@@ -295,7 +253,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			timelines:            map[string]string{"TypeA": ownFailure()},
 			wantMetrics:          true,
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:                 "empty lookup, the insight on the entity's timeline has one category: retried with it",
@@ -305,7 +262,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			wantMetrics:          true,
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"TypeA", "TypeA"},
 			wantHint:             hintTimeline,
 		},
 		{
@@ -317,7 +273,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			wantMetrics:          true,
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"TypeA", "TypeA"},
 			wantHint:             hintTimeline,
 		},
 		{
@@ -329,7 +284,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 				group(entry("TypeA", "name-a", "AlertX", "error")))},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:    "entry of the insight without a category label: no retry",
@@ -339,38 +293,30 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 				group(entry("TypeA", "name-a", "AlertX", "")))},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
-			name:                 "insight name not on the entity's timeline: no retry, no type lookup",
+			name:                 "insight name not on the entity's timeline: no retry",
 			args:                 []string{"sources", "TypeA--name-a", "--insight", "OtherAlert", "--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T01:00:00Z"},
 			metrics:              metricsWhenFailure(),
 			timelines:            map[string]string{"TypeA": ownFailure()},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:                 "timeline of another entity name is not used",
 			args:                 base,
 			metrics:              metricsWhenFailure(),
 			timelines:            map[string]string{"TypeA": strings.ReplaceAll(ownFailure(), "name-a", "name-b")},
-			types:                `{"TypeA":2}`,
 			wantTimelineTypes:    []string{"TypeA"},
-			wantTypeLookups:      1,
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:                 "timeline of the same name and another entity type is not used",
 			args:                 base,
 			metrics:              metricsWhenFailure(),
 			timelines:            map[string]string{"TypeA": strings.ReplaceAll(ownFailure(), "TypeA", "TypeB")},
-			types:                `{"TypeA":2,"TypeB":1}`,
 			wantTimelineTypes:    []string{"TypeA"},
-			wantTypeLookups:      1,
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			// An insight raised on a related entity sits on the entity's own
@@ -383,7 +329,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			wantMetrics:          true,
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"TypeA", "TypeA"},
 			wantHint:             hintTimeline,
 		},
 		{
@@ -395,7 +340,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 				group(entry("TypeB", "name-b", "AlertX", "error")))},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:                 "category passed by hand: no timeline read",
@@ -403,7 +347,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			metrics:              metricsWhenFailure(),
 			timelines:            map[string]string{"TypeA": ownFailure()},
 			wantSourceCategories: []string{"amend"},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:                 "no alertname: no timeline read",
@@ -411,7 +354,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			metrics:              metricsWhenFailure(),
 			timelines:            map[string]string{"TypeA": ownFailure()},
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:                 "timeline read fails: the empty result is printed, exit 0",
@@ -420,7 +362,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			timelineStatus:       http.StatusInternalServerError,
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 		{
 			name:      "retry fails: the empty result is printed, exit 0",
@@ -435,7 +376,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"TypeA", "TypeA"},
 		},
 		{
 			name:                 "retry also empty: the empty result is printed",
@@ -444,78 +384,6 @@ func TestInsightsSources_CategoryFill(t *testing.T) {
 			timelines:            map[string]string{"TypeA": ownFailure()},
 			wantTimelineTypes:    []string{"TypeA"},
 			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"TypeA", "TypeA"},
-		},
-	})
-}
-
-// An entity type written in another case than the graph's type name.
-func TestInsightsSources_CategoryFillEntityTypeCase(t *testing.T) {
-	forceNoColor(t)
-	pinHumanMode(t)
-	base := fillArgs("TypeA--name-a")
-	lower := fillArgs("typea--name-a")
-	runCategoryFillCases(t, []categoryFillCase{
-		{
-			name:                 "type in another case: the graph's type name is used for the timeline and the retry",
-			args:                 lower,
-			metrics:              metricsWhenFailure(),
-			timelines:            map[string]string{"TypeA": ownFailure()},
-			types:                `{"TypeA":2,"TypeB":1}`,
-			wantMetrics:          true,
-			wantTimelineTypes:    []string{"typea", "TypeA"},
-			wantTypeLookups:      1,
-			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"typea", "TypeA"},
-			wantHint:             hintType,
-		},
-		{
-			name: "timeline answered for the type in another case: its entries are used, the type is kept",
-			args: lower,
-			metrics: func(labels map[string]string) string {
-				if labels["asserts_alert_category"] == "failure" {
-					return ruleMetrics
-				}
-				return `[]`
-			},
-			timelines:            map[string]string{"typea": ownFailure()},
-			wantMetrics:          true,
-			wantTimelineTypes:    []string{"typea"},
-			wantSourceCategories: []string{"", "failure"},
-			wantSourceTypes:      []string{"typea", "typea"},
-			wantHint:             hintTimeline,
-		},
-		{
-			name:                 "type in another case, two graph types match it: no retry",
-			args:                 lower,
-			metrics:              metricsWhenFailure(),
-			timelines:            map[string]string{"TypeA": ownFailure()},
-			types:                `{"TypeA":2,"TYPEA":1}`,
-			wantTimelineTypes:    []string{"typea"},
-			wantTypeLookups:      1,
-			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"typea"},
-		},
-		{
-			name:                 "type in another case, type lookup fails: no retry",
-			args:                 lower,
-			metrics:              metricsWhenFailure(),
-			timelines:            map[string]string{"TypeA": ownFailure()},
-			typesStatus:          http.StatusInternalServerError,
-			wantTimelineTypes:    []string{"typea"},
-			wantTypeLookups:      1,
-			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"typea"},
-		},
-		{
-			name:                 "entity not on any timeline and no type in another case: no retry",
-			args:                 base,
-			metrics:              metricsWhenFailure(),
-			types:                `{"TypeA":2,"TypeB":1}`,
-			wantTimelineTypes:    []string{"TypeA"},
-			wantTypeLookups:      1,
-			wantSourceCategories: []string{""},
-			wantSourceTypes:      []string{"TypeA"},
 		},
 	})
 }
@@ -542,7 +410,7 @@ func TestInsightsSources_CategoryFillKeepsLabels(t *testing.T) {
 
 // The timeline read covers the lookup's window and the scope labels it
 // carries and filters on the entity's type and exact name, without the
-// havingAssertion filter; the type lookup covers the same window and scope.
+// havingAssertion filter.
 // The window is a past one that is not one hour long, so neither the default
 // window nor a fixed-length window ending at --to matches it.
 func TestInsightsSources_CategoryFillTimelineRequest(t *testing.T) {
@@ -587,27 +455,22 @@ func TestInsightsSources_CategoryFillTimelineRequest(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// The type is written in another case, so the fill reads the
-			// timeline, looks the type up and reads the timeline again.
 			fake := &sourcesFake{
 				metrics:   metricsWhenFailure(),
 				timelines: map[string]string{"TypeA": ownFailure()},
-				types:     `{"TypeA":1}`,
 			}
 			server := httptest.NewServer(fake.handler(t))
 			defer server.Close()
 
-			args := append([]string{"sources", "typea--name-a", "--insight", "AlertX"}, window...)
+			args := append([]string{"sources", "TypeA--name-a", "--insight", "AlertX"}, window...)
 			args = append(args, tc.scopeArgs...)
 			_, _, err := runKgCommand(t,
 				func() *cobra.Command { return kg.NewInsightsCommand(writeLoaderFor(server)) },
 				args, "")
 			require.NoError(t, err)
-			require.Len(t, fake.timelineBodies, 2)
-			require.Len(t, fake.typeBodies, 1)
+			require.Len(t, fake.timelineBodies, 1)
 
-			checkWindowAndScope(t, fake.typeBodies[0], tc.wantScope)
-			for i, body := range fake.timelineBodies {
+			for _, body := range fake.timelineBodies {
 				checkWindowAndScope(t, body, tc.wantScope)
 
 				filters, ok := body["filterCriteria"].([]any)
@@ -615,7 +478,7 @@ func TestInsightsSources_CategoryFillTimelineRequest(t *testing.T) {
 				require.Len(t, filters, 1)
 				f, ok := filters[0].(map[string]any)
 				require.True(t, ok)
-				assert.Equal(t, []string{"typea", "TypeA"}[i], f["entityType"])
+				assert.Equal(t, "TypeA", f["entityType"])
 				assert.NotContains(t, f, "havingAssertion")
 				assert.NotContains(t, f, "havingPropagatedAssertions")
 				matchers, ok := f["propertyMatchers"].([]any)
@@ -631,9 +494,9 @@ func TestInsightsSources_CategoryFillTimelineRequest(t *testing.T) {
 	}
 }
 
-// A cancelled command (Ctrl-C) during the timeline read, the type lookup or
-// the retry returns the context's error and prints nothing, instead of the
-// first lookup's empty array with exit 0.
+// A cancelled command (Ctrl-C) during the timeline read or the retry returns
+// the context's error and prints nothing, instead of the first lookup's empty
+// array with exit 0.
 func TestInsightsSources_CategoryFillCancelled(t *testing.T) {
 	forceNoColor(t)
 	pinHumanMode(t)
@@ -653,12 +516,6 @@ func TestInsightsSources_CategoryFillCancelled(t *testing.T) {
 			cancel:    func(f *sourcesFake, cancel context.CancelFunc) { f.onTimeline = cancel },
 		},
 		{
-			name:      "cancelled during the type lookup",
-			entity:    "typea--name-a",
-			timelines: map[string]string{"TypeA": ownFailure()},
-			cancel:    func(f *sourcesFake, cancel context.CancelFunc) { f.onTypes = cancel },
-		},
-		{
 			name:      "cancelled during the retry",
 			entity:    "TypeA--name-a",
 			timelines: map[string]string{"TypeA": ownFailure()},
@@ -675,7 +532,7 @@ func TestInsightsSources_CategoryFillCancelled(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			fake := &sourcesFake{metrics: func(map[string]string) string { return `[]` }, timelines: tc.timelines, types: `{"TypeA":1}`}
+			fake := &sourcesFake{metrics: func(map[string]string) string { return `[]` }, timelines: tc.timelines}
 			tc.cancel(fake, cancel)
 			server := httptest.NewServer(fake.handler(t))
 			defer server.Close()
@@ -786,8 +643,6 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 		"copy every label of the insight's timeline entry in 'gcx kg entities inspect' (timeLines[].labels) with --label",
 		"For alert-rule and change insights also pass asserts_alert_category=<the entry's category>",
 		"sources reads the entity's insight timeline for the same window and scope",
-		"When the timeline read finds no entity, sources looks up the entity type names of that window and scope",
-		"it repeats the timeline read with that name and sends it in the retry",
 	} {
 		t.Run("Long "+phrase, func(t *testing.T) {
 			assert.Contains(t, long, phrase)
