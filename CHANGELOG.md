@@ -6,7 +6,10 @@
   history line`, because it only read the Loki frame layout. It now shows the
   previous and current state, values, and errors of each transition. Rule
   title and instance labels are not shown for this backend, because Grafana
-  returns them only inside a free-form text field. (#1661)
+  returns them only inside a free-form text field. Grafana releases without
+  grafana/grafana#137865 return this backend's timestamps 1000 times too
+  large. gcx corrects them, so its times differ from the raw API response on
+  those releases. (#1661)
 
 ## v1.8.0 (2026-11-17)
 
