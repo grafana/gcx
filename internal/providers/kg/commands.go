@@ -925,9 +925,9 @@ case-sensitive and unknown fields are rejected.`,
 			total := len(suppressions.DisabledAlertConfigs)
 			result := cmdio.NewBatchMutation("upserted")
 			for i, s := range suppressions.DisabledAlertConfigs {
-				// list prints backend-owned fields, so a piped round trip must
-				// not send them back.
-				if err := client.UpsertSuppression(cmd.Context(), withoutSystemFields(s)); err != nil {
+				// managedBy is sent as given: the backend replaces the whole entry
+				// by name, so omitting it would clear a stored "terraform" owner.
+				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
 					failure := fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
 					if i == 0 {
 						// Nothing succeeded: no result document is owed, so

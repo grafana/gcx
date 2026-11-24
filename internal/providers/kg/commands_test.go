@@ -704,10 +704,8 @@ func TestSuppressionsUpsert_RoundTripsListOutput(t *testing.T) {
 	cmd.SetIn(&listed)
 	cmd.SetOut(&bytes.Buffer{})
 	require.NoError(t, cmd.Execute())
-	// managedBy is backend-owned: list prints it, but upsert must not send it back.
-	want := []kg.Suppression{remote.DisabledAlertConfigs[0], remote.DisabledAlertConfigs[1]}
-	want[1].ManagedBy = ""
-	assert.Equal(t, want, upserted)
+	// managedBy must survive the round trip: the backend stores what the request carries.
+	assert.Equal(t, remote.DisabledAlertConfigs, upserted)
 }
 
 func TestSuppressionsUpsert_RejectsBadInput(t *testing.T) {
