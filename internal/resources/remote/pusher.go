@@ -85,6 +85,10 @@ func NewPusher(client PushClient, registry PushRegistry) *Pusher {
 
 // PushRequest is a request for pushing resources to Grafana.
 type PushRequest struct {
+	// Include returned identities from successful writes.
+	// IncludeSuccesses bounds receipt storage to explicit requests.
+	IncludeSuccesses bool
+
 	// A list of resources to push.
 	Resources *resources.Resources
 
@@ -290,7 +294,8 @@ func (p *Pusher) pushSingleResource(
 		return nil
 	}
 
-	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache); err != nil {
+	applied, action, err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache)
+	if err != nil {
 		var warnings adapter.OperationWarnings
 		if errors.As(err, &warnings) {
 			summary.RecordWarnings(warnings.OperationWarnings())
@@ -318,12 +323,15 @@ func (p *Pusher) pushSingleResource(
 
 	logger.Info("Resource pushed")
 	summary.RecordSuccess()
+	if request.IncludeSuccesses && !request.DryRun && applied != nil && applied.GetName() != "" {
+		summary.RecordApplied(OperationSuccess{RequestedName: name, SourcePath: res.SourcePath(), Action: action, Kind: desc.Kind, Name: applied.GetName(), UID: string(applied.GetUID()), Namespace: applied.GetNamespace()})
+	}
 	return nil
 }
 
 func (p *Pusher) upsertResource(
 	ctx context.Context, desc resources.Descriptor, name string, src *resources.Resource, dryRun bool, log logging.Logger, nkCache *naturalKeyCache,
-) error {
+) (*unstructured.Unstructured, string, error) {
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}
@@ -333,7 +341,7 @@ func (p *Pusher) upsertResource(
 	}); ok {
 		obj := src.ToUnstructured()
 		if handled, err := client.PushEnvelope(ctx, desc, &obj, metav1.CreateOptions{DryRun: dryRunOpts}); handled {
-			return err
+			return nil, "", err
 		}
 	}
 
@@ -345,7 +353,7 @@ func (p *Pusher) upsertResource(
 		var identityErr error
 		desiredIdentity, _, identityErr = resources.NativeIdentity(&obj)
 		if identityErr != nil {
-			return identityErr
+			return nil, "", identityErr
 		}
 	}
 
@@ -364,26 +372,27 @@ func (p *Pusher) upsertResource(
 	}
 	if err == nil {
 		if nativePolicy && resources.IsReadOnlyNative(existing) {
-			return fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(existing))
+			return nil, "", fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(existing))
 		}
 		// Use the destination address and version on updates.
 		obj.SetName(existing.GetName())
 		obj.SetResourceVersion(existing.GetResourceVersion())
 		preserveManagerIdentity(&obj, existing)
 
-		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
+		applied, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
-		}); err != nil {
-			return err
+		})
+		if err != nil {
+			return nil, "", err
 		}
 
 		log.Info("Resource updated")
-		return nil
+		return applied, "updated", nil
 	}
 
 	// If the error is not a NotFound, it's an unexpected API error — surface it.
 	if !apierrors.IsNotFound(err) {
-		return err
+		return nil, "", err
 	}
 
 	// Resource does not exist — try natural key matching for cross-stack push.
@@ -391,37 +400,39 @@ func (p *Pusher) upsertResource(
 	// Look for a resource with the same content identity.
 	matched, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj, desiredIdentity)
 	if nkErr != nil {
-		return nkErr
+		return nil, "", nkErr
 	}
 	if found {
 		if nativePolicy && resources.IsReadOnlyNative(matched) {
-			return fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(matched))
+			return nil, "", fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(matched))
 		}
 		remoteName := matched.GetName()
 		obj.SetName(remoteName)
 		obj.SetResourceVersion(matched.GetResourceVersion())
 		preserveManagerIdentity(&obj, matched)
-		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
+		applied, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
-		}); err != nil {
-			return err
+		})
+		if err != nil {
+			return nil, "", err
 		}
-		log.Info("Resource updated via natural key match", "remoteName", matched.GetName())
-		return nil
+		log.Info("Resource updated via natural key match", "remoteName", remoteName)
+		return applied, "updated", nil
 	}
 
 	// No natural key match — create as new resource.
 	if nativePolicy {
 		obj = *resources.PrepareNativeCreate(&obj)
 	}
-	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
+	applied, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
 		DryRun: dryRunOpts,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		return nil, "", err
 	}
 
 	log.Info("Resource created")
-	return nil
+	return applied, "created", nil
 }
 
 // preserveManagerIdentity keeps the live kubectl identity on updates. Grafana

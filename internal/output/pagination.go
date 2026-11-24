@@ -1,6 +1,7 @@
 package output
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -48,11 +49,82 @@ func stripFlag(argv []string, flag string) []string {
 }
 
 func shellJoin(argv []string) string {
+	return shellJoinForOS(argv, runtime.GOOS)
+}
+
+// ShellCommand formats a command for a POSIX shell on Unix. On Windows, simple
+// commands also work in cmd.exe. Commands that need quoting use PowerShell
+// syntax. The caller must use PowerShell to run those Windows commands.
+func ShellCommand(argv []string) string {
+	return shellJoin(argv)
+}
+
+func shellJoinForOS(argv []string, goos string) string {
+	allSafe := true
+	for _, arg := range argv {
+		if arg == "" || !isShellSafe(arg) || (goos == "windows" && (strings.ContainsRune(arg, '%') || strings.HasPrefix(arg, "@"))) {
+			allSafe = false
+			break
+		}
+	}
+	if allSafe {
+		return strings.Join(argv, " ")
+	}
+	if goos == "windows" {
+		parts := make([]string, len(argv))
+		for i, arg := range argv {
+			parts[i] = powerShellQuote(arg)
+		}
+		// PowerShell needs the call operator for a quoted executable path.
+		// Windows PowerShell 5.1 loses empty arguments and literal double quotes
+		// when it passes ordinary strings to a native command. A trailing backslash
+		// can also escape its closing quote. Use its legacy
+		// command-line format for those values. PowerShell 7 can use the same
+		// format when its native argument mode is set to Legacy in this scope.
+		for _, arg := range argv[1:] {
+			if arg == "" || strings.ContainsRune(arg, '"') || strings.HasSuffix(arg, `\`) {
+				for i := 1; i < len(parts); i++ {
+					parts[i] = powerShellQuote(windowsCommandLineQuote(argv[i]))
+				}
+				return "& { $PSNativeCommandArgumentPassing = 'Legacy'; & " + strings.Join(parts, " ") + " }"
+			}
+		}
+		return "& " + strings.Join(parts, " ")
+	}
 	parts := make([]string, len(argv))
 	for i, arg := range argv {
 		parts[i] = shellQuoteArg(arg)
 	}
 	return strings.Join(parts, " ")
+}
+
+func powerShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// windowsCommandLineQuote preserves an argument when Legacy mode joins native
+// arguments into one command line. The Windows runtime then parses that line.
+func windowsCommandLineQuote(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	backslashes := 0
+	for _, r := range s {
+		switch r {
+		case '\\':
+			backslashes++
+		case '"':
+			b.WriteString(strings.Repeat("\\", backslashes*2+1))
+			b.WriteByte('"')
+			backslashes = 0
+		default:
+			b.WriteString(strings.Repeat("\\", backslashes))
+			backslashes = 0
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString(strings.Repeat("\\", backslashes*2))
+	b.WriteByte('"')
+	return b.String()
 }
 
 func shellQuoteArg(s string) string {

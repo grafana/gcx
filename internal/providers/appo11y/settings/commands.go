@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -43,8 +42,9 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &settingsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &settingsTableCodec{Wide: true})
+	table := settingsTable()
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -91,49 +91,27 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// settingsTableCodec renders PluginSettings as a tabular table.
-type settingsTableCodec struct {
-	Wide bool
-}
-
-func (c *settingsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func settingsTable() cmdio.TableAdapter[*PluginSettings, PluginSettings] {
+	return cmdio.TableAdapter[*PluginSettings, PluginSettings]{
+		Table: cmdio.Table[PluginSettings]{Columns: []cmdio.Column[PluginSettings]{
+			{Header: "NAME", Content: func(s PluginSettings) string { return s.GetResourceName() }},
+			{Header: "LOG QUERY MODE", Content: func(s PluginSettings) string {
+				if s.JSONData.DefaultLogQueryMode == "" {
+					return "-"
+				}
+				return s.JSONData.DefaultLogQueryMode
+			}},
+			{Header: "METRICS MODE", Content: func(s PluginSettings) string {
+				if s.JSONData.MetricsMode == "" {
+					return "-"
+				}
+				return s.JSONData.MetricsMode
+			}},
+			{Header: "LOGS QUERY (NS)", Visible: cmdio.WideOnly, Content: func(s PluginSettings) string { return s.JSONData.LogsQueryWithNamespace }},
+			{Header: "LOGS QUERY (NO NS)", Visible: cmdio.WideOnly, Content: func(s PluginSettings) string { return s.JSONData.LogsQueryWithoutNamespace }},
+		}},
+		Rows: func(s *PluginSettings) ([]PluginSettings, error) { return []PluginSettings{*s}, nil },
 	}
-	return "table"
-}
-
-func (c *settingsTableCodec) Encode(w io.Writer, v any) error {
-	s, ok := v.(*PluginSettings)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *PluginSettings")
-	}
-
-	logQueryMode := s.JSONData.DefaultLogQueryMode
-	if logQueryMode == "" {
-		logQueryMode = "-"
-	}
-
-	metricsMode := s.JSONData.MetricsMode
-	if metricsMode == "" {
-		metricsMode = "-"
-	}
-
-	if c.Wide {
-		logsQueryNS := s.JSONData.LogsQueryWithNamespace
-		logsQueryNoNS := s.JSONData.LogsQueryWithoutNamespace
-		t := style.NewTable("NAME", "LOG QUERY MODE", "METRICS MODE", "LOGS QUERY (NS)", "LOGS QUERY (NO NS)")
-		t.Row(s.GetResourceName(), logQueryMode, metricsMode, logsQueryNS, logsQueryNoNS)
-		return t.Render(w)
-	}
-
-	t := style.NewTable("NAME", "LOG QUERY MODE", "METRICS MODE")
-	t.Row(s.GetResourceName(), logQueryMode, metricsMode)
-	return t.Render(w)
-}
-
-func (c *settingsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------

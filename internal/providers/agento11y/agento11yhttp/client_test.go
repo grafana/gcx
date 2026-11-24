@@ -3,11 +3,17 @@ package agento11yhttp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -198,6 +204,38 @@ func TestListAllWithHasMore_TruncatedWithNextPage(t *testing.T) {
 	assert.Equal(t, 1, callCount)
 }
 
+func TestListAll_AlwaysSendsPageLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    url.Values
+		maxItems []int
+		want     string
+	}{
+		{name: "no bound uses default page size", want: "100"},
+		{name: "small maxItems shrinks the page", maxItems: []int{10}, want: "10"},
+		{name: "large maxItems keeps default page size", maxItems: []int{5000}, want: "100"},
+		{name: "caller limit is kept", query: url.Values{"limit": {"7"}}, maxItems: []int{50}, want: "7"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var limits []string
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				limits = append(limits, r.URL.Query().Get("limit"))
+				resp := map[string]any{"items": []testItem{{ID: "1"}}}
+				if len(limits) == 1 {
+					resp["next_cursor"] = "page2"
+				}
+				writeJSON(w, resp)
+			}))
+
+			_, err := agento11yhttp.ListAll[testItem](context.Background(), client, "/query/items", tc.query, tc.maxItems...)
+			require.NoError(t, err)
+			require.Len(t, limits, 2)
+			assert.Equal(t, []string{tc.want, tc.want}, limits, "first and cursor follow-up requests both carry the page limit")
+		})
+	}
+}
+
 func TestListAll_ErrorResponse(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -206,4 +244,76 @@ func TestListAll_ErrorResponse(t *testing.T) {
 	_, err := agento11yhttp.ListAll[testItem](context.Background(), client, "/query/items", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
+}
+
+func TestHandleErrorResponsePluginUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      int
+		body        string
+		unavailable bool
+	}{
+		{"plugin absent JSON", http.StatusNotFound, `{"message":"Plugin not found"}`, true},
+		{"plugin absent text", http.StatusNotFound, "Plugin not found, no installed plugin with id grafana-agento11y-app", true},
+		{"plugin wording suffix", http.StatusNotFound, `{"message":"Plugin not found with id: grafana-agento11y-app"}`, true},
+		{"resource absent", http.StatusNotFound, `{"message":"experiment not found"}`, false},
+		{"unknown route", http.StatusNotFound, "404 page not found", false},
+		{"unrelated status", http.StatusForbidden, `{"message":"Plugin not found"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(tc.body))}
+			err := agento11yhttp.HandleErrorResponse(resp)
+			require.Error(t, err)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, tc.status, statusErr.HTTPStatusCode())
+			var pluginErr *agento11yhttp.PluginUnavailableError
+			assert.Equal(t, tc.unavailable, errors.As(err, &pluginErr))
+			if tc.unavailable {
+				require.NotNil(t, pluginErr)
+				assert.Contains(t, err.Error(), "grafana-agento11y-app")
+				assert.Contains(t, err.Error(), "Agent Observability")
+				assert.NotContains(t, err.Error(), "\n")
+				assert.NotContains(t, err.Error(), "\x1b")
+			}
+		})
+	}
+}
+
+func TestNotFoundHelpersPreservePluginUnavailable(t *testing.T) {
+	for _, operation := range []string{"get", "delete"} {
+		for _, pluginMissing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/plugin-missing-%t", operation, pluginMissing), func(t *testing.T) {
+				client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, "/api/plugins/grafana-agento11y-app/resources/eval/experiments/example", r.URL.Path)
+					if operation == "get" {
+						assert.Equal(t, http.MethodGet, r.Method)
+					} else {
+						assert.Equal(t, http.MethodDelete, r.Method)
+					}
+					w.WriteHeader(http.StatusNotFound)
+					if pluginMissing {
+						writeJSON(w, map[string]string{"message": "Plugin not found"})
+					} else {
+						writeJSON(w, map[string]string{"message": "experiment not found"})
+					}
+				}))
+				sentinel := errors.New("example: not found")
+				var err error
+				if operation == "get" {
+					_, err = agento11yhttp.DoJSONNotFound[any, testItem](context.Background(), client, http.MethodGet, "/eval/experiments/example", nil, sentinel, http.StatusOK)
+				} else {
+					err = agento11yhttp.DoStatusNotFound[any](context.Background(), client, http.MethodDelete, "/eval/experiments/example", nil, sentinel, http.StatusNoContent)
+				}
+				require.Error(t, err)
+				if pluginMissing {
+					var pluginErr *agento11yhttp.PluginUnavailableError
+					require.ErrorAs(t, err, &pluginErr)
+					assert.NotErrorIs(t, err, sentinel)
+				} else {
+					assert.ErrorIs(t, err, sentinel)
+				}
+			})
+		}
+	}
 }

@@ -175,7 +175,7 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   │      FilterTypeMultiple → client.GetMultiple(ctx, desc, names, ...)  │
   │      FilterTypeSingle   → client.Get(ctx, desc, name, ...)           │
   │                                                                       │
-  │    404 / 405 responses: counted as not-listable skips, not errors.   │
+  │    404 / 405 and unsupported List operations: counted as skips.     │
   │    Some resource types discovered via the API may not support List   │
   │    or Get; the pull pipeline ignores them rather than failing.       │
   │                                                                       │
@@ -395,7 +395,9 @@ User invocation:
   │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
   │                                                                       │
   │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
-  │        Body: same structure with "type":"loki", "maxLines":limit     │
+  │        Body: same structure with "type":"loki" and "queryType":      │
+  │          "instant" or "range" (not "instant": true); log queries     │
+  │          also send "maxLines":limit                                  │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
@@ -450,17 +452,21 @@ Shared query CLI infrastructure lives in [internal/datasources/query](../../inte
 
 ### Instant vs Range Query
 
-Both Prometheus and Loki clients auto-detect the query mode from `QueryRequest.IsRange()`:
+Both Prometheus and Loki clients pick the query mode from `QueryRequest.IsRange()`. They mark the mode with different fields, because each Grafana datasource reads a different one. Grafana's Loki datasource ignores the legacy `instant` field, and a missing `queryType` means a range query.
 
 ```
 IsRange() == false (no --start/--end):
-  → "instant" mode: from="now-1m", to="now", query["instant"]=true
-  → Prometheus: ResultType="vector" (one value per series)
+  → from="now-1m", to="now"
+  → Prometheus: query["instant"]=true; ResultType="vector" (one value per series)
+  → Loki metric query: query["queryType"]="instant"; ResultType="vector"
+  → Loki log query: query["queryType"]="range" over the last minute,
+    because Loki rejects instant log queries
   → Graph output: RenderBarChart (horizontal bars)
 
 IsRange() == true (--start and --end provided):
   → "range" mode: from/to as Unix milliseconds
   → Prometheus: ResultType="matrix" ([]values per series)
+  → Loki: query["queryType"]="range"
   → Graph output: RenderLineChart (time series line chart)
 ```
 
@@ -773,17 +779,24 @@ Browser's livereload client receives → navigates to /gcx/.../{name}
 
 `internal/resources/remote/summary.go` provides thread-safe counters for batch operations.
 
+With `--include-successes`, push records the requested identity and the identity
+returned by each real API write. Dry-run and skipped operations do not produce
+these records. The CLI includes the records in structured output.
+Resource bodies are not stored in these records.
+
 ```go
 type OperationSummary struct {
     successCount atomic.Int64    // lock-free increment
     failedCount  atomic.Int64    // lock-free increment
-    mu           sync.Mutex      // protects failures slice
+    mu           sync.Mutex      // protects result slices
     failures     []OperationFailure
+    successes    []OperationSuccess
 }
 ```
 
 - `RecordSuccess()` — atomic increment, no lock
 - `RecordFailure(res, err)` — atomic increment + mutex-protected append to slice
+- `RecordApplied(result)` — mutex-protected append of a real push identity
 - `OperationFailure.Resource` may be nil (e.g. a List operation failed, no specific resource)
 
 Used by all three remote operations (push, pull, delete). The summary is returned

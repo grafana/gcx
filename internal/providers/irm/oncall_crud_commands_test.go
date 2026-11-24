@@ -180,6 +180,13 @@ type fakeManifestAPI struct {
 
 	gotSchedule Schedule
 	gotShift    ShiftRequest
+	gotWebhook  Webhook
+}
+
+func (f *fakeManifestAPI) CreateWebhook(_ context.Context, w Webhook) (*Webhook, error) {
+	f.gotWebhook = w
+	w.ID = "WHNEW"
+	return &w, nil
 }
 
 func (f *fakeManifestAPI) CreateSchedule(_ context.Context, s Schedule) (*Schedule, error) {
@@ -204,6 +211,7 @@ func TestScheduleCreateAcceptsEnvelopeManifest(t *testing.T) {
 		manifest     string
 		wantName     string
 		wantTimeZone string
+		wantOverride string
 	}{
 		{
 			name:         "generated envelope example",
@@ -216,9 +224,11 @@ func TestScheduleCreateAcceptsEnvelopeManifest(t *testing.T) {
 			manifest: `name: my schedule
 type: 2
 time_zone: Europe/Amsterdam
+ical_url_overrides: https://example.com/overrides.ics
 `,
 			wantName:     "my schedule",
 			wantTimeZone: "Europe/Amsterdam",
+			wantOverride: "https://example.com/overrides.ics",
 		},
 	}
 
@@ -243,6 +253,61 @@ time_zone: Europe/Amsterdam
 			}
 			if got.TimeZone != tt.wantTimeZone {
 				t.Errorf("time_zone = %q, want %q", got.TimeZone, tt.wantTimeZone)
+			}
+			if got.ICalURLOverrides != tt.wantOverride {
+				t.Errorf("ical_url_overrides = %q, want %q", got.ICalURLOverrides, tt.wantOverride)
+			}
+		})
+	}
+}
+
+func TestScheduleCreateRejectsMissingType(t *testing.T) {
+	resetAgentMode(t)
+	fake := &fakeManifestAPI{}
+	cmd := newSchedulesCmd(&fakeLoader{client: fake})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"create", "-f", writeManifest(t, "name: my schedule\n"), "-o", "json"})
+	if err := cmd.ExecuteContext(context.Background()); err == nil || !strings.Contains(err.Error(), "schedule type is required") {
+		t.Fatalf("expected schedule type error, got %v", err)
+	}
+	if fake.gotSchedule.Name != "" {
+		t.Fatal("create request reached API without type")
+	}
+}
+
+func TestWebhookCreateTriggerValidation(t *testing.T) {
+	resetAgentMode(t)
+	tests := []struct {
+		name      string
+		trigger   string
+		wantError bool
+	}{
+		{"numeric trigger", "1", false},
+		{"string trigger", `"1"`, false},
+		{"unknown name", `"escalation"`, true},
+		{"future numeric value", "21", false},
+		{"negative value", "-1", true},
+		{"empty string", `""`, true},
+		{"null trigger", "null", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeManifestAPI{}
+			cmd := newWebhooksCmd(&fakeLoader{client: fake})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			manifest := "name: my-webhook\nurl: https://example.com/webhook\ntrigger_type: " + tt.trigger + "\n"
+			cmd.SetArgs([]string{"create", "-f", writeManifest(t, manifest), "-o", "json"})
+			err := cmd.ExecuteContext(context.Background())
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), "trigger_type") || fake.gotWebhook.Name != "" {
+					t.Fatalf("expected local trigger rejection, got %v; API value = %#v", err, fake.gotWebhook)
+				}
+				return
+			}
+			if err != nil || fake.gotWebhook.Name != "my-webhook" {
+				t.Fatalf("valid trigger did not reach API: error = %v, value = %#v", err, fake.gotWebhook)
 			}
 		})
 	}
@@ -291,5 +356,72 @@ spec:
 	}
 	if len(got.ByDay) != 2 {
 		t.Errorf("by_day = %v, want two entries", got.ByDay)
+	}
+}
+
+func TestShiftCreateValidatesNumericFields(t *testing.T) {
+	resetAgentMode(t)
+	tests := []struct {
+		name      string
+		typeValue string
+		frequency string
+		wantError bool
+	}{
+		{"numeric", "2", "1", false},
+		{"numeric strings", `"2"`, `"1"`, false},
+		{"future type", "4", "1", false},
+		{"future frequency", "2", "4", false},
+		{"negative type", "-1", "1", true},
+		{"nonnumeric frequency", "2", `"daily"`, true},
+		{"empty frequency", "2", `""`, true},
+		{"null frequency", "2", "null", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeManifestAPI{}
+			cmd := newShiftsCmd(&fakeLoader{client: fake})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			manifest := "name: my-shift\ntype: " + tt.typeValue + "\nfrequency: " + tt.frequency + "\n"
+			cmd.SetArgs([]string{"create", "-f", writeManifest(t, manifest), "-o", "json"})
+			err := cmd.ExecuteContext(context.Background())
+			if tt.wantError {
+				if err == nil || fake.gotShift.Name != "" {
+					t.Fatalf("expected local choice rejection, got %v; API value = %#v", err, fake.gotShift)
+				}
+				return
+			}
+			if err != nil || fake.gotShift.Name != "my-shift" {
+				t.Fatalf("valid choices did not reach API: error = %v, value = %#v", err, fake.gotShift)
+			}
+		})
+	}
+}
+
+func TestOptionalOnCallNumericFieldsMarshal(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		item  func(any) any
+	}{
+		{"webhook trigger", "trigger_type", func(value any) any { return Webhook{TriggerType: value} }},
+		{"shift frequency", "frequency", func(value any) any { return ShiftRequest{Frequency: value} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, value := range []any{nil, ""} {
+				data, err := json.Marshal(tc.item(value))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var fields map[string]any
+				if err := json.Unmarshal(data, &fields); err != nil {
+					t.Fatal(err)
+				}
+				_, present := fields[tc.field]
+				if wantPresent := value != nil; present != wantPresent {
+					t.Errorf("%s present = %t for %#v, want %t", tc.field, present, value, wantPresent)
+				}
+			}
+		})
 	}
 }

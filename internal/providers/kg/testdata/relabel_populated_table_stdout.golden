@@ -1,0 +1,4 @@
+SELECTOR          TARGET LABEL  JOIN LABELS     RANKED CHOICE  REPLACEMENT  DROP
+{job="checkout"}  service       namespace, job  service, app   checkout     true
+{job="cart"}      service                                                   
+{job="database"}                job                                         

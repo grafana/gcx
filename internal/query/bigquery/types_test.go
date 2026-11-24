@@ -18,10 +18,110 @@ func TestEscapeSQLString(t *testing.T) {
 		{"normal name", "events", "events"},
 		{"single quote", "it's", "it''s"},
 		{"empty string", "", ""},
+		{"backslash is doubled", `a\b`, `a\\b`},
+		// Without backslash escaping the trailing backslash would escape the
+		// first of the doubled quotes, closing the literal early and letting
+		// the rest of the value continue as SQL.
+		{"backslash before quote cannot break out of the literal", `x\' OR 1=1`, `x\\'' OR 1=1`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, bigquery.EscapeSQLString(tt.input))
+		})
+	}
+}
+
+func TestMetadataFilterClause(t *testing.T) {
+	tests := []struct {
+		name   string
+		column string
+		filter string
+		want   string
+	}{
+		{"empty filter yields no clause", "table_name", "", ""},
+		{
+			name:   "substring match is case-insensitive on both sides",
+			column: "table_name",
+			filter: "RudderStack",
+			want:   "STRPOS(LOWER(table_name), 'rudderstack') > 0",
+		},
+		{
+			// LIKE wildcards must stay literal text: STRPOS has no pattern
+			// semantics, so no escaping of % or _ is needed or applied.
+			name:   "LIKE wildcards are matched literally",
+			column: "column_name",
+			filter: "a%b_c",
+			want:   "STRPOS(LOWER(column_name), 'a%b_c') > 0",
+		},
+		{
+			name:   "quotes and backslashes are escaped for the literal",
+			column: "schema_name",
+			filter: `it's\`,
+			want:   `STRPOS(LOWER(schema_name), 'it''s\\') > 0`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, bigquery.MetadataFilterClause(tt.column, tt.filter))
+		})
+	}
+}
+
+// TestMetadataQuery pins the clause assembly the three discovery commands
+// share, including the limit+1 row request that lets warnIfMetadataTruncated
+// tell a complete result from a capped one.
+func TestMetadataQuery(t *testing.T) {
+	const selectFrom = "SELECT table_name FROM `p.d`.INFORMATION_SCHEMA.TABLES"
+
+	tests := []struct {
+		name       string
+		predicates []string
+		orderBy    string
+		limit      int
+		want       string
+	}{
+		{
+			name:  "no predicates, capped",
+			limit: 1000,
+			want:  selectFrom + " LIMIT 1001",
+		},
+		{
+			name:    "order by and cap",
+			orderBy: "table_name",
+			limit:   10,
+			want:    selectFrom + " ORDER BY table_name LIMIT 11",
+		},
+		{
+			name:       "empty predicates are dropped",
+			predicates: []string{"", "table_name = 'x'", ""},
+			orderBy:    "table_name",
+			limit:      5,
+			want:       selectFrom + " WHERE table_name = 'x' ORDER BY table_name LIMIT 6",
+		},
+		{
+			name:       "multiple predicates are ANDed",
+			predicates: []string{"table_name = 'x'", "STRPOS(LOWER(column_name), 'ts') > 0"},
+			orderBy:    "ordinal_position",
+			limit:      2,
+			want:       selectFrom + " WHERE table_name = 'x' AND STRPOS(LOWER(column_name), 'ts') > 0 ORDER BY ordinal_position LIMIT 3",
+		},
+		{
+			name:    "limit 0 emits no LIMIT clause",
+			orderBy: "table_name",
+			limit:   0,
+			want:    selectFrom + " ORDER BY table_name",
+		},
+		{
+			// Defensive: callers validate --limit >= 0, but a negative value
+			// must never emit "LIMIT -4" for BigQuery to reject.
+			name:  "negative limit emits no LIMIT clause",
+			limit: -4,
+			want:  selectFrom,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, bigquery.MetadataQuery(selectFrom, tt.predicates, tt.orderBy, tt.limit))
 		})
 	}
 }

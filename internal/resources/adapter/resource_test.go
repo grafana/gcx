@@ -280,17 +280,18 @@ func TestResource_MissingGetterDoesNotFallBackToList(t *testing.T) {
 
 func TestResource_RegistrationMetadata(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		naturalKey  string
-		urlTemplate string
+		name            string
+		naturalKey      string
+		urlTemplate     string
+		pullStripFields []string
 	}{
-		{name: "configured", naturalKey: "value", urlTemplate: "/gadgets/{name}"},
+		{name: "configured", naturalKey: "value", urlTemplate: "/gadgets/{name}", pullStripFields: []string{"serverDetail"}},
 		{name: "omitted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res := adapter.Resource[fakeGadget]{
 				Group: "declaration-metadata.test.example.com", Version: "v1", Kind: "Gadget",
-				NaturalKey: tc.naturalKey, URLTemplate: tc.urlTemplate,
+				NaturalKey: tc.naturalKey, URLTemplate: tc.urlTemplate, PullStripFields: tc.pullStripFields,
 			}
 			// Restore only this test's registry entry, preserving unrelated registrations.
 			gvk := schema.GroupVersionKind{Group: res.Group, Version: res.Version, Kind: res.Kind}
@@ -300,6 +301,7 @@ func TestResource_RegistrationMetadata(t *testing.T) {
 			p := adapter.NewProvider("metadata-test", "Metadata test", nil, res)
 			reg := p.TypedRegistrations()[0]
 			require.Equal(t, tc.urlTemplate, reg.URLTemplate)
+			require.Equal(t, tc.pullStripFields, reg.PullStripFields)
 			extractor := adapter.GetNaturalKeyExtractor(reg.GVK)
 			if tc.naturalKey == "" {
 				require.Nil(t, extractor)
@@ -376,4 +378,15 @@ func TestResource_TypedCRUD(t *testing.T) {
 			assert.ErrorIs(t, err, errors.ErrUnsupported)
 		})
 	}
+}
+
+func TestResourceNaturalKeyPolicySurvivesTypedBinding(t *testing.T) {
+	policy := adapter.NaturalKeyPolicy{RequireUnique: true, IDLabel: "test ID"}
+	r := adapter.Resource[fakeGadget]{Group: "policy-binding.test", Version: "v1", Kind: "Gadget", NaturalKey: "name", NaturalKeyPolicy: policy}
+	p := adapter.NewProvider("policy-binding", "test", fakeDeps, r)
+	gvk := p.TypedRegistrations()[0].GVK
+	require.Equal(t, policy, adapter.GetNaturalKeyPolicy(gvk))
+	r.TypedCRUD(&readOnlyGadgetClient{}, "default")
+	require.Equal(t, policy, adapter.GetNaturalKeyPolicy(gvk))
+	require.NotNil(t, adapter.GetNaturalKeyExtractor(gvk))
 }

@@ -1,0 +1,3 @@
+NAME          ENGINE    VERSION  ENVIRONMENT  PROVIDER
+orders        postgres  17       prod         aws
+empty-fields  -         -        -            -

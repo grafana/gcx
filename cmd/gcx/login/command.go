@@ -596,8 +596,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if errors.Is(err, errLoginAborted) {
 		return nil
 	}
-	var runtimeOnlyDestination *login.RuntimeOnlyBearerDestinationError
-	if errors.As(err, &runtimeOnlyDestination) {
+	if runtimeOnlyDestination, ok := errors.AsType[*login.RuntimeOnlyBearerDestinationError](err); ok {
 		err = runtimeOnlyBearerDestinationError(mutationTarget, persistedSourceCtx, &opts, runtimeOnlyDestination)
 	}
 	if err != nil {
@@ -796,12 +795,7 @@ func (command destinationRecoveryCommand) args() []string {
 }
 
 func (command destinationRecoveryCommand) String() string {
-	return "gcx config set --config " + shellQuote(command.ConfigFile) + " " +
-		shellQuote(command.Path) + " " + shellQuote(command.Value)
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return cmdio.ShellCommand([]string{"gcx", "config", "set", "--config", command.ConfigFile, command.Path, command.Value})
 }
 
 func runtimeOnlyBearerDestinationError(
@@ -968,12 +962,20 @@ func runtimeOnlyDestinationEditorRecoveryError(
 		),
 		Parent: cause,
 		Suggestions: []string{
-			"If the explicit config does not exist yet, initialize it: gcx config set --config " + shellQuote(configFile) + " version '1'",
-			"Open the selected config: gcx config edit --config " + shellQuote(configFile),
+			"If the explicit config does not exist yet, initialize it: " + editorRecoveryInitCommand(configFile),
+			"Open the selected config: " + editorRecoveryEditCommand(configFile),
 			"Then rerun the same gcx login command",
 			"Or unset the listed GRAFANA_* overrides and retry if they were not intended for this context",
 		},
 	}
+}
+
+func editorRecoveryInitCommand(configFile string) string {
+	return cmdio.ShellCommand([]string{"gcx", "config", "set", "--config", configFile, "version", "1"})
+}
+
+func editorRecoveryEditCommand(configFile string) string {
+	return cmdio.ShellCommand([]string{"gcx", "config", "edit", "--config", configFile})
 }
 
 func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName string) (config.Config, *config.Context, string, error) {
@@ -1995,7 +1997,7 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "You're authenticated for the Grafana API (dashboards, datasources, queries, alerts, folders).")
 		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")
 		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
-		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
+		fmt.Fprintln(ew, "See: "+docs.HumanURL(docs.AccessPolicies))
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
 	// The probe only runs for an interactive human and only once per context, so

@@ -1,0 +1,5 @@
+SCORE KEY  TYPE    VALUE     PASSED  EVALUATOR  VERSION  RULE    EXPLANATION                                                                       CREATED AT
+relevance  number  0.95      yes     eval-1     v1       rule-1  explanation explanation explanation explanation explanation explanation expla...  2026-09-01 12:00
+harmful    bool    false     no      eval-2              -       -                                                                                 -
+sentiment  string  positive  -                           -       -                                                                                 -
+unset              -         -                           -       -                                                                                 -

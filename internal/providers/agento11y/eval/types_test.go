@@ -93,3 +93,21 @@ func TestRuleDefinition_MinIdleSeconds(t *testing.T) {
 		assert.NotContains(t, string(body), "min_idle_seconds")
 	})
 }
+
+// TestRuleDefinition_OptionalFieldsOmittedWhenUnset verifies that a rule file
+// without execution_mode or filterable_tag_keys sends neither, so create keeps
+// the server defaults and update leaves the stored values unchanged.
+func TestRuleDefinition_OptionalFieldsOmittedWhenUnset(t *testing.T) {
+	rule := eval.RuleDefinition{
+		RuleID:       "rule-1",
+		Enabled:      true,
+		Selector:     "user_visible_turn",
+		SampleRate:   1.0,
+		EvaluatorIDs: []string{"eval-1"},
+	}
+
+	body, err := json.Marshal(rule)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "execution_mode")
+	assert.NotContains(t, string(body), "filterable_tag_keys")
+}

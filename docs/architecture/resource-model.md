@@ -347,6 +347,10 @@ This replaces the old format (`{Kind}/{Name}.{ext}`) to make the API version
 and group unambiguous, which is important when multiple versions of the same
 resource type are pulled simultaneously.
 
+`adapter.PullFieldsStripper` applies each registration's optional `PullStripFields`
+list to saved manifests. Providers declare spec keys that cannot be restored.
+Get and list retain these fields. The generic command does not import providers.
+
 ### Pipeline Wiring
 
 ```
@@ -356,7 +360,7 @@ PUSH pipeline (cmd/gcx/resources/push.go):
   → pusher.Push() calls Process() on each resource before Create/Update
 
 PULL pipeline (cmd/gcx/resources/pull.go):
-  PullRequest{Processors: [ServerFieldsStripper{}], ...}
+  PullRequest{Processors: [ServerFieldsStripper{}, adapter.PullFieldsStripper{}], ...}
   → puller.Pull() calls Process() on each resource after fetching from API
 ```
 
@@ -386,6 +390,13 @@ ResourceAdapter interface
 `adapter.Factory` is `func(ctx context.Context) (ResourceAdapter, error)` — a lazy
 constructor that is only called on first use and its result cached for the router's
 lifetime.
+
+SLO definitions and reports match `spec.name` through their registered natural-key
+extractor, which slugifies names. Both generic resource push and the deprecated
+SLO push commands reject multiple remote matches instead of choosing one; supply
+an explicit `metadata.name` UUID to disambiguate. Legacy push only matches names
+when the UUID is omitted and caches remote resources across its file batch,
+including successful writes. Its dry-run remains a local manifest preview.
 
 ### Adapter-owned read and mutation policies
 

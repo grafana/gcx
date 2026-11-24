@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,7 +83,7 @@ func TestFaroList_TruncationHint(t *testing.T) {
 				return
 			}
 			assert.Contains(t, stderr, tc.wantHint)
-			assert.Contains(t, stderr, "--limit 0")
+			assert.Contains(t, stderr, "See all results with: "+cmdio.BuildListLimitCommand(os.Args, 0))
 		})
 	}
 }

@@ -1,0 +1,34 @@
+{
+  "name": "generated",
+  "rules": [
+    {
+      "drop": true,
+      "join_labels": [
+        "namespace",
+        "job"
+      ],
+      "ranked_choice": [
+        "service",
+        "app"
+      ],
+      "replacement": "checkout",
+      "selector": "{job=\"checkout\"}",
+      "target_label": "service"
+    },
+    {
+      "drop": false,
+      "selector": "{job=\"cart\"}",
+      "target_label": "service"
+    },
+    {
+      "join_labels": [
+        "job",
+        3
+      ],
+      "ranked_choice": "not-a-list",
+      "selector": "{job=\"database\"}"
+    },
+    null,
+    "not-a-rule"
+  ]
+}

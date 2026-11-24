@@ -240,11 +240,12 @@ func TestListExplicitLimitTrimsDatasources(t *testing.T) {
 	assert.Equal(t, 10, result.ListMeta.Returned)
 	require.NotNil(t, result.ListMeta.Total)
 	assert.Equal(t, 60, *result.ListMeta.Total)
-	assert.Equal(t, "gcx datasources list --limit 0", result.ListMeta.Continue)
+	wantCommand := "gcx datasources list --limit 0"
+	assert.Equal(t, wantCommand, result.ListMeta.Continue)
 
 	// ...and human-legible on stderr, in the maintainer-approved sentence
 	// shape (not a "<summary>: <command>" splice).
-	assert.Contains(t, stderr, "hint: showing first 10 of 60. See all results with: gcx datasources list --limit 0")
+	assert.Contains(t, stderr, "hint: showing first 10 of 60. See all results with: "+wantCommand)
 }
 
 // TestListDefaultReturnsAllWithoutMeta locks the cheaply-complete-source

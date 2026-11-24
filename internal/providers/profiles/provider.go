@@ -1,9 +1,9 @@
 package profiles
 
 import (
-	"fmt"
-
 	dspyroscope "github.com/grafana/gcx/internal/datasources/pyroscope"
+	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/signals"
@@ -26,10 +26,15 @@ func (p *Provider) descriptor() signals.Descriptor {
 Use 'list-profile-types' and 'labels' (or 'series') to find profile type IDs
 and label values, 'metrics' to see how cost changes over time, and 'query' to
 see which code paths account for it (-o dot for call graphs, -o pprof for local
-analysis). An empty result means no matching samples, not zero cost. To
-investigate a regression, compare against a baseline window of equal length
-with the same selector and profile type.`,
+analysis). Use 'diff' to compare symbol costs across selectors or time windows,
+with profile and comparison links. An empty result means no matching samples,
+not zero cost. Prefer comparable, equal-length windows with the same profile type.`,
 		Commands: []signals.CommandSpec{
+			{
+				Build:     dspyroscope.DiffCmd,
+				TokenCost: "large",
+				LLMHint:   `gcx profiles diff '{service_name="frontend"}' '{service_name="frontend"}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --before-from now-1h --before-to now-30m --after-from now-30m --after-to now -o agents`,
+			},
 			{
 				Build:     dspyroscope.QueryCmd,
 				TokenCost: "medium",
@@ -174,7 +179,7 @@ with the same selector and profile type.`,
 			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
-			return adaptiveStubCmd()
+			return adaptiveUnsupportedCmd()
 		}},
 		ConfigKeys: []providers.ConfigKey{
 			{Name: "profiles-tenant-id", Secret: false},
@@ -193,13 +198,19 @@ func (p *Provider) Commands() []*cobra.Command {
 	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
-func adaptiveStubCmd() *cobra.Command {
+func adaptiveUnsupportedCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "adaptive",
-		Short: "Manage Adaptive Profiles (not yet available)",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Adaptive Profiles is not yet available.")
-			return nil
+		Short: "Adaptive Profiles management is not supported by gcx.",
+		Long: "Adaptive Profiles is available in Grafana Cloud. gcx does not support its management commands. " +
+			"In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See " + docs.AdaptiveProfiles,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return &gcxerrors.DetailedError{
+				Summary:     "Adaptive Profiles management is not supported by gcx",
+				Suggestions: []string{"In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles."},
+				DocsLink:    docs.AdaptiveProfiles,
+			}
 		},
 	}
 }

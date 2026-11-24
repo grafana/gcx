@@ -262,8 +262,7 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 // distinguish exemplars calls from other SelectSeries/SelectHeatmap callers.
 // No-op for errors that aren't APIErrors.
 func relabelAPIErrorOperation(err error, operation string) error {
-	var apiErr *queryerror.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*queryerror.APIError](err); ok {
 		apiErr.Operation = operation
 	}
 	return err

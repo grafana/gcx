@@ -29,7 +29,7 @@ const (
 	// AccessPolicies documents creating a Grafana Cloud access-policy token,
 	// the value passed to `gcx login --cloud-token`. It is also the canonical
 	// reference for the "invalid scope" / "permission denied" cloud errors.
-	AccessPolicies = "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md"
+	AccessPolicies = "https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/create-access-policies.md"
 
 	// RolesAndPermissions documents Grafana roles and plugin permissions. It is
 	// the reference for a plugin action a user does not hold, such as
@@ -72,8 +72,14 @@ const (
 	// AdaptiveLogs documents Adaptive Logs cost control.
 	AdaptiveLogs = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs.md"
 
+	// AdaptiveLogsArchive documents archiving logs to a customer-owned bucket.
+	AdaptiveLogsArchive = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs/archive-logs.md"
+
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
 	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-traces.md"
+
+	// AdaptiveProfiles documents Adaptive Profiles sampling controls.
+	AdaptiveProfiles = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles.md"
 
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
@@ -91,18 +97,18 @@ const (
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
 
 	// Keychain documents credential storage and keychain error procedures for gcx.
-	Keychain = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/keychain.md"
+	Keychain = "https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/keychain.md"
 
 	// ConfigMigration documents migrating a legacy (unversioned) gcx config
 	// to the version 1 stacks/cloud/contexts format, including the manual
 	// field mapping. Referenced by the loader's automatic migration on both
 	// success and failure.
-	ConfigMigration = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/migrate-configuration.md"
+	ConfigMigration = "https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/migrate-configuration.md"
 
 	// AnonymousUsageStats documents gcx's anonymous usage statistics: what is
 	// collected and how to opt out. Referenced by the first-run telemetry
 	// notice.
-	AnonymousUsageStats = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/anonymous-usage-statistics.md"
+	AnonymousUsageStats = "https://grafana.com/docs/grafana/latest/ai-tools/grafana-cli/gcx/anonymous-usage-statistics.md"
 
 	// CloudAPI documents the Grafana Cloud API (GCOM), the canonical reference
 	// for stack create/update parameters — including the slug rules (stack
@@ -141,7 +147,9 @@ func AllNamed() []NamedLink {
 		{Name: "KubernetesMonitoring", URL: KubernetesMonitoring},
 		{Name: "AdaptiveMetrics", URL: AdaptiveMetrics},
 		{Name: "AdaptiveLogs", URL: AdaptiveLogs},
+		{Name: "AdaptiveLogsArchive", URL: AdaptiveLogsArchive},
 		{Name: "AdaptiveTraces", URL: AdaptiveTraces},
+		{Name: "AdaptiveProfiles", URL: AdaptiveProfiles},
 		{Name: "AssistantPricing", URL: AssistantPricing},
 		{Name: "SyntheticMonitoringInvoice", URL: SyntheticMonitoringInvoice},
 		{Name: "PerformanceTestingInvoice", URL: PerformanceTestingInvoice},

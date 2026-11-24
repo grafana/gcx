@@ -38,6 +38,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(listTypesCmd(configOpts))
 	cmd.AddCommand(pullCmd(configOpts))
 	cmd.AddCommand(pushCmd(configOpts))
+	cmd.AddCommand(searchCmd(configOpts))
 	cmd.AddCommand(validateCmd(configOpts))
 
 	return cmd

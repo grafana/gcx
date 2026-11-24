@@ -105,7 +105,9 @@ func newSSEFixture(t *testing.T, body string) (*assistant.Client, *[]bool) {
 func runStream(t *testing.T, em *streamEmitter, client *assistant.Client) error {
 	t.Helper()
 	// Redirect the last-context-id state file away from the real home.
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	streamOpts := assistant.StreamOptions{Timeout: 30, OnEvent: em.onEvent()}
 	result := client.ChatWithApproval(t.Context(), "hello", streamOpts, em.approvalHandler(nil))
 	return em.finish(result, 30)
@@ -446,7 +448,9 @@ func TestFinishTerminalWriteFailureSurfaces(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setAgentMode(t, tt.agentMode)
-			t.Setenv("HOME", t.TempDir()) // keep SaveLastContextID away from the real home
+			home := t.TempDir()
+			t.Setenv("HOME", home) // keep SaveLastContextID away from the real home
+			t.Setenv("USERPROFILE", home)
 			em := newStreamEmitter(&failingWriter{err: writeErr}, &bytes.Buffer{}, &tt.opts)
 
 			err := em.finish(tt.result, 30)

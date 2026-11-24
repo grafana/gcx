@@ -12,7 +12,10 @@ func (r *QueryResponse) CSVRecords() ([]string, [][]string, error) {
 		return columns, nil, nil
 	}
 	// The name count bounds the distinct functions without the terminal's top-20 cap.
-	functions := ExtractTopFunctions(r.Flamegraph, len(r.Flamegraph.Names))
+	functions, err := ExtractTopFunctions(r.Flamegraph, len(r.Flamegraph.Names))
+	if err != nil {
+		return nil, nil, err
+	}
 	slices.SortFunc(functions, func(a, b FunctionSample) int {
 		if order := cmp.Compare(b.Self, a.Self); order != 0 {
 			return order

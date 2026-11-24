@@ -159,7 +159,7 @@ func TestTemplateGroupsTable(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		t.Run(map[bool]string{false: "table", true: "wide"}[wide], func(t *testing.T) {
 			var out bytes.Buffer
-			require.NoError(t, (&templateGroupTableCodec{wide: wide}).Encode(&out, &unstructured.UnstructuredList{Items: items}))
+			require.NoError(t, templateGroupListTable().Codec(map[bool]string{false: "table", true: "wide"}[wide]).Encode(&out, &unstructured.UnstructuredList{Items: items}))
 			for _, s := range []string{"TITLE", "API_NAME", "KIND", "READ-ONLY", "historical", "old-api-name", "grafana", "mimir", "true", "false"} {
 				assert.Contains(t, out.String(), s)
 			}

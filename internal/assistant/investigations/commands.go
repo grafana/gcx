@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/cobra"
@@ -30,19 +31,6 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, err
 		return nil, err
 	}
 	return NewClient(base), nil
-}
-
-// printV2Hint writes a one-line v2-successor hint to stderr when the connected
-// stack is known to support the /api/v2 investigations surface. Reads from
-// cache only — no network. The `hint:` prefix and stderr channel match the
-// convention in internal/output (Options.Encode): agents read these and adjust
-// subsequent invocations, so we emit unconditionally rather than suppressing
-// in agent or piped modes.
-func printV2Hint(cmd *cobra.Command, loader *providers.ConfigLoader, message string) {
-	if !CachedAPIMode(cmd.Context(), loader).SupportsV2() {
-		return
-	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "hint: %s\n", message)
 }
 
 // loadClientAndAPIMode returns a client configured for the detected API mode.
@@ -282,6 +270,21 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 			inv, err := client.Get(cmd.Context(), args[0])
 			if err != nil {
+				var statusErr *gcxerrors.HTTPStatusError
+				if mode.SupportsV2() && errors.As(err, &statusErr) &&
+					(statusErr.Status == http.StatusNotFound || statusErr.Status == http.StatusInternalServerError) {
+					// Neither a v2 nor a legacy investigation. The legacy
+					// endpoint answers an unknown ID with a bare 500, so say
+					// what was probably passed.
+					return gcxerrors.DetailedError{
+						Summary: gcxerrors.SummaryResourceNotFound,
+						Details: fmt.Sprintf("No investigation %q: %s.", args[0], idKindsHint),
+						Parent:  err,
+						Suggestions: []string{
+							"List investigations and use the `id` field: gcx assistant investigations list -o json",
+						},
+					}
+				}
 				return err
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), inv)
@@ -482,11 +485,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
-				return err
-			}
-			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())

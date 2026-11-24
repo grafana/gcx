@@ -36,6 +36,8 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	// codec; the switch below registers the matching table/wide codecs per
 	// resource type.
 	switch resource {
+	case "personal-notification-rules":
+		cmdio.RegisterTable(&o.IO, personalNotificationRuleTable())
 	case "integrations":
 		cmdio.RegisterTable(&o.IO, integrationTable())
 	case "escalation-chains":
@@ -133,6 +135,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := lo.IO.Validate(); err != nil {
 				return err
@@ -562,6 +565,8 @@ func newTeamsCmd(loader OnCallConfigLoader) *cobra.Command {
 			func(ctx context.Context, c OnCallAPI, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
 		newGetSubcommand(loader, "Get a team by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Team, error) { return c.GetTeam(ctx, name) }),
+		newTeamGetHoursCmd(loader),
+		newTeamUpdateHoursCmd(loader),
 	)
 	return cmd
 }
@@ -692,7 +697,7 @@ func specStr(obj unstructured.Unstructured, key string) string {
 		return ""
 	}
 	v, ok := spec[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	return fmt.Sprint(v)

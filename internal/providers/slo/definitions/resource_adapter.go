@@ -10,7 +10,7 @@ import (
 // SloResource declares the SLO definitions resource type end-to-end for
 // adapter.NewProvider: identity (GVK), registration metadata, and client
 // constructor. Declaring NaturalKey folds in
-// RegisterNaturalKey(gvk, SpecFieldKey("name")) and declaring URLTemplate
+// RegisterNaturalKeyWithPolicy(gvk, SpecFieldKey("name"), policy) and declaring URLTemplate
 // folds in the deeplink registration — neither needs a separate init().
 // Schema and Example are derived from Slo/the value below rather than
 // hand-written. A function (not a package-level var) to avoid a mutable
@@ -21,9 +21,10 @@ func SloResource() adapter.Resource[Slo] {
 		Version: api.Version,
 		Kind:    "SLO",
 
-		NaturalKey:  "name",
-		URLTemplate: "/a/grafana-slo-app/slo/{name}",
-		StripFields: []string{"uuid", "readOnly"},
+		NaturalKey:       "name",
+		NaturalKeyPolicy: adapter.NaturalKeyPolicy{RequireUnique: true, IDLabel: "UUID"},
+		URLTemplate:      "/a/grafana-slo-app/slo/{name}",
+		StripFields:      []string{"uuid", "readOnly"},
 
 		Example: &Slo{
 			UUID:        "my-slo",

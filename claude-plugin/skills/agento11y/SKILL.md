@@ -132,6 +132,8 @@ match:
     - my-agent
 ```
 
+Optional rule fields: `execution_mode: sequential` runs `evaluator_ids` as an ordered gate chain (default `parallel`), and `filterable_tag_keys` exposes generation tag keys as labels on score metrics. See [rule-templates.md](references/rule-templates.md) for both.
+
 There is no `evaluators update` command; to change an evaluator, re-run `upsert` with the same `evaluator_id` and a new `version` (re-using an existing version is rejected with a 409).
 
 ## Setting Up Online Evaluation

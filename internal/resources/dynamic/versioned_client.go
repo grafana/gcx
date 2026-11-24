@@ -11,7 +11,7 @@ import (
 )
 
 // VersionedClient is a dynamic client that supports automatic version switching.
-// It will automatically switch to the correct version of the resource based on the stored version.
+// It re-fetches the stored version only when conversion to the requested version failed.
 type VersionedClient struct {
 	*NamespacedClient
 }
@@ -34,7 +34,7 @@ func WrapNamespacedClient(client *NamespacedClient) *VersionedClient {
 }
 
 // List lists resources from the server.
-// It will automatically re-fetch resources which need to be fetched using the stored version.
+// It re-fetches the stored version for resources whose requested conversion failed.
 func (c *VersionedClient) List(
 	ctx context.Context, desc resources.Descriptor, opts metav1.ListOptions,
 ) (*unstructured.UnstructuredList, error) {
@@ -54,7 +54,7 @@ func (c *VersionedClient) List(
 }
 
 // GetMultiple gets multiple resources from the server.
-// It will automatically re-fetch resources which need to be fetched using the stored version.
+// It re-fetches the stored version for resources whose requested conversion failed.
 func (c *VersionedClient) GetMultiple(
 	ctx context.Context, desc resources.Descriptor, names []string, opts metav1.GetOptions,
 ) ([]unstructured.Unstructured, error) {
@@ -77,7 +77,7 @@ func (c *VersionedClient) Get(
 		return nil, err
 	}
 
-	storedVersion := getStoredVersion(obj)
+	storedVersion := getFailedConversionStoredVersion(obj)
 	if storedVersion == "" {
 		return obj, nil
 	}
@@ -97,7 +97,7 @@ func (c *VersionedClient) getMultipleCorrectVersions(
 	// Iterate over all objects and check if they need to be re-fetched using the stored version.
 	// Group the objects by the new descriptor.
 	for _, obj := range src {
-		storedVersion := getStoredVersion(&obj)
+		storedVersion := getFailedConversionStoredVersion(&obj)
 		if storedVersion == "" {
 			res = append(res, obj)
 			continue
@@ -132,7 +132,7 @@ func (c *VersionedClient) getMultipleCorrectVersions(
 	return res, nil
 }
 
-func getStoredVersion(obj *unstructured.Unstructured) string {
+func getFailedConversionStoredVersion(obj *unstructured.Unstructured) string {
 	acc, err := utils.MetaAccessor(obj)
 	if err != nil {
 		return ""
@@ -155,6 +155,12 @@ func getStoredVersion(obj *unstructured.Unstructured) string {
 
 	convm, ok := conv.(map[string]any)
 	if !ok {
+		return ""
+	}
+
+	// A successful conversion already provides the requested representation.
+	failed, _ := convm["failed"].(bool)
+	if !failed {
 		return ""
 	}
 

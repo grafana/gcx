@@ -60,3 +60,72 @@ evaluator_ids:
 	require.NotNil(t, def.MinIdleSeconds)
 	assert.Equal(t, 10, *def.MinIdleSeconds)
 }
+
+func Test_readRuleFile_Actions(t *testing.T) {
+	content := `rule_id: quality
+enabled: true
+selector: conversation
+sample_rate: 1
+evaluator_ids: [quality]
+actions:
+  - action_id: ra_existing
+    enabled: false
+    condition:
+      kind: all_evaluators_fail
+    action_config:
+      kind: add_to_collection
+      collection_ids: [needs-review, regression]
+`
+	path := filepath.Join(t.TempDir(), "rule-actions.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	def, err := rules.ReadRuleFile(path, nil)
+	require.NoError(t, err)
+	require.NotNil(t, def.Actions)
+	require.Len(t, *def.Actions, 1)
+	assert.Equal(t, "ra_existing", (*def.Actions)[0].ActionID)
+	assert.Equal(t, "all_evaluators_fail", (*def.Actions)[0].Condition.Kind)
+	assert.Equal(t, []string{"needs-review", "regression"}, (*def.Actions)[0].ActionConfig.CollectionIDs)
+}
+
+func Test_readRuleFile_ExecutionModeAndFilterableTagKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		content string
+	}{
+		{
+			name: "yaml",
+			file: "rule.yaml",
+			content: `rule_id: gated_quality
+enabled: true
+selector: user_visible_turn
+sample_rate: 1.0
+evaluator_ids:
+  - cheap_gate
+  - quality_judge
+execution_mode: sequential
+filterable_tag_keys:
+  - environment
+  - team
+`,
+		},
+		{
+			name:    "json",
+			file:    "rule.json",
+			content: `{"rule_id":"gated_quality","enabled":true,"selector":"user_visible_turn","sample_rate":1,"evaluator_ids":["cheap_gate","quality_judge"],"execution_mode":"sequential","filterable_tag_keys":["environment","team"]}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tc.file)
+			require.NoError(t, os.WriteFile(path, []byte(tc.content), 0o600))
+
+			def, err := rules.ReadRuleFile(path, nil)
+			require.NoError(t, err)
+			assert.Equal(t, "sequential", def.ExecutionMode)
+			assert.Equal(t, []string{"environment", "team"}, def.FilterableTagKeys)
+		})
+	}
+}

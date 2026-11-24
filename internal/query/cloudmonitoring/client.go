@@ -121,8 +121,7 @@ func (c *Client) Query(ctx context.Context, dsUID string, req QueryRequest) (*Qu
 // simplifyQueryError rewrites the GCP error envelope carried inside a query
 // API error message to its status and message.
 func simplifyQueryError(err error) error {
-	var apiErr *queryerror.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*queryerror.APIError](err); ok {
 		apiErr.Message = simplifyGCPError(apiErr.Message)
 	}
 	return err

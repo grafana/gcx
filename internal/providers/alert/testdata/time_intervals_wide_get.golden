@@ -1,0 +1,2 @@
+TITLE     API_NAME         INTERVALS  READ-ONLY  PROVENANCE
+weekends  opaque-weekends  2          true       system

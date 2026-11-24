@@ -23,6 +23,7 @@ func TestResolveSignalAuthRejectsAutoLocalCacheMissBeforeNetwork(t *testing.T) {
 	homeDir := t.TempDir()
 	workDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv(config.ConfigFileEnvVar, "")

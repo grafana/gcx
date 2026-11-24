@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
@@ -1330,7 +1330,7 @@ func (o *finalShiftsOpts) setup(flags *pflag.FlagSet) {
 	o.Start = today
 	o.End = endDate
 
-	o.IO.RegisterCustomCodec("table", &finalShiftTableCodec{})
+	cmdio.RegisterTable(&o.IO, finalShiftTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Start, "start", o.Start, "Start date (YYYY-MM-DD)")
@@ -1509,12 +1509,14 @@ func newUsersCurrentCommand(loader OnCallConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type escalateOpts struct {
-	IO        cmdio.Options
-	Title     string
-	Message   string
-	Team      string
-	UserIDs   []string
-	Important bool
+	IO            cmdio.Options
+	Title         string
+	Message       string
+	Team          string
+	UserIDs       []string
+	Important     bool
+	IncidentID    string
+	incidentIDSet bool
 }
 
 func (o *escalateOpts) setup(flags *pflag.FlagSet) {
@@ -1531,11 +1533,22 @@ func (o *escalateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Team, "team", "", "Team ID")
 	flags.StringSliceVar(&o.UserIDs, "user-ids", nil, "User IDs (comma-separated)")
 	flags.BoolVar(&o.Important, "important", false, "Mark as important")
+	flags.StringVar(&o.IncidentID, "incident-id", "", "Incident ID to associate with the page (optional, must not be blank when set)")
 }
 
 func (o *escalateOpts) Validate() error {
-	if o.Title == "" {
-		return errors.New("--title is required")
+	if strings.TrimSpace(o.Title) == "" {
+		return &gcxerrors.UsageError{
+			Message:     `--title is required and must not be blank. Provide a title, for example --title "Database outage".`,
+			Suggestions: []string{"See examples: gcx irm oncall escalate --help"},
+		}
+	}
+	o.IncidentID = strings.TrimSpace(o.IncidentID)
+	if o.incidentIDSet && o.IncidentID == "" {
+		return &gcxerrors.UsageError{
+			Message:     "--incident-id must not be blank: provide an incident ID or omit the flag to page without linking an incident",
+			Suggestions: []string{"Find incident IDs: gcx irm incidents list"},
+		}
 	}
 	return nil
 }
@@ -1545,7 +1558,20 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "escalate",
 		Short: "Create a direct escalation.",
+		Long: `Page users or a team. Use --incident-id to associate the page with an existing incident.
+Incident participants, timeline activity, and context update asynchronously;
+do not repeat a successful page while waiting for those updates.`,
+		Example: `  # Page a user
+  gcx irm oncall escalate --title "Database outage" --user-ids U123
+
+  # Page a team for an incident (IDs: gcx irm incidents list)
+  gcx irm oncall escalate --title "Database outage" --team T123 --incident-id 4
+
+  # Send an important page to multiple users for an incident
+  gcx irm oncall escalate --title "Database outage" --user-ids U123,U456 --important --incident-id 4`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts.incidentIDSet = cmd.Flags().Changed("incident-id")
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -1573,6 +1599,7 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 				Team:                    opts.Team,
 				Users:                   users,
 				ImportantTeamEscalation: opts.Important,
+				IncidentID:              opts.IncidentID,
 			}
 
 			result, err := client.CreateDirectPaging(cmd.Context(), input)
@@ -1800,27 +1827,14 @@ func alertRichToEnvelope(api *alertAPI, rich *AlertRich, groupID, namespace stri
 	}, nil
 }
 
-type finalShiftTableCodec struct{ noDecodeCodec }
-
-func (c *finalShiftTableCodec) Format() format.Format { return "table" }
-
-func (c *finalShiftTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]FlatShift)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []FlatShift")
+func finalShiftTable() cmdio.Table[FlatShift] {
+	return cmdio.Table[FlatShift]{
+		Columns: []cmdio.Column[FlatShift]{
+			{Header: "USER_PK", Content: func(s FlatShift) string { return s.UserPK }},
+			{Header: "EMAIL", Content: func(s FlatShift) string { return s.UserEmail }},
+			{Header: "USERNAME", Content: func(s FlatShift) string { return s.UserUsername }},
+			{Header: "START", Content: func(s FlatShift) string { return s.ShiftStart[:min(len(s.ShiftStart), 16)] }},
+			{Header: "END", Content: func(s FlatShift) string { return s.ShiftEnd[:min(len(s.ShiftEnd), 16)] }},
+		},
 	}
-
-	t := style.NewTable("USER_PK", "EMAIL", "USERNAME", "START", "END")
-	for _, item := range items {
-		start := item.ShiftStart
-		if len(start) > 16 {
-			start = start[:16]
-		}
-		end := item.ShiftEnd
-		if len(end) > 16 {
-			end = end[:16]
-		}
-		t.Row(item.UserPK, item.UserEmail, item.UserUsername, start, end)
-	}
-	return t.Render(w)
 }

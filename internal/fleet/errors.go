@@ -50,6 +50,8 @@ type HTTPError struct {
 	Path string
 	// Body is the trimmed response body (for diagnostics).
 	Body string
+	// RequiredAction is the plugin route action, when known by the caller.
+	RequiredAction string
 	// ContentType is the response Content-Type header, when available.
 	ContentType string
 }

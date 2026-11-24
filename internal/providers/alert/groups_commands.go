@@ -1,14 +1,11 @@
 package alert
 
 import (
-	"errors"
 	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -93,8 +90,8 @@ type groupsGetOpts struct {
 }
 
 func (o *groupsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &GroupRulesTableCodec{})
-	o.IO.DefaultFormat("table")
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, GroupRulesTable().Codec(cmdio.FormatTable))
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 }
 
@@ -135,30 +132,11 @@ func newGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// GroupRulesTableCodec renders a group's rules as a table.
-type GroupRulesTableCodec struct{}
-
-func (c *GroupRulesTableCodec) Format() format.Format { return "table" }
-
-func (c *GroupRulesTableCodec) Encode(w io.Writer, v any) error {
-	group, ok := v.(*RuleGroup)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected *RuleGroup")
+func GroupRulesTable() cmdio.TableAdapter[*RuleGroup, RuleStatus] {
+	return cmdio.TableAdapter[*RuleGroup, RuleStatus]{
+		Table: RulesTable(),
+		Rows:  func(group *RuleGroup) ([]RuleStatus, error) { return group.Rules, nil },
 	}
-
-	t := style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
-	for _, r := range group.Rules {
-		paused := "no"
-		if r.IsPaused {
-			paused = "yes"
-		}
-		t.Row(r.UID, r.Name, r.State, r.Health, paused)
-	}
-	return t.Render(w)
-}
-
-func (c *GroupRulesTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
 }
 
 type groupsStatusOpts struct {

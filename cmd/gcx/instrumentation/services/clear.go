@@ -123,8 +123,7 @@ func runClear(
 	}
 
 	if err := rmw.Update(ctx, getFn, mutateFn, setFn, namespacesEqual, 3); err != nil {
-		var ce rmw.ConflictError
-		if errors.As(err, &ce) {
+		if ce, ok := errors.AsType[rmw.ConflictError](err); ok {
 			ce.Command = "services clear"
 			ce.Namespace = namespace
 			return ce

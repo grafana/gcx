@@ -30,6 +30,11 @@ func TestListTablesCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"--dataset", "bad; DROP TABLE x"},
 			wantErr: "invalid dataset",
 		},
+		{
+			name:    "negative --limit rejected by the shared binder before any config/datasource I/O",
+			args:    []string{"--dataset", "d", "--limit", "-1"},
+			wantErr: "invalid --limit -1: must be >= 0",
+		},
 	}
 
 	for _, tt := range tests {

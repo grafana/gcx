@@ -1,0 +1,5 @@
+Dry run: POST /api/instances
+
+{
+  "name": "Example"
+}

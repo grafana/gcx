@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/providers"
 )
 
 // Connect endpoint paths for the instrumentation, discovery, and pipeline services.
@@ -545,11 +546,17 @@ func (c *Client) RunK8sMonitoring(ctx context.Context, promHeaders PromHeaders) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("RunK8sMonitoring: %w", &fleet.HTTPError{
-			Status:      resp.StatusCode,
-			ContentType: resp.Header.Get("Content-Type"),
-			Path:        pathRunK8sMonitoring,
-			Body:        fleet.ReadErrorBody(resp),
+		body := fleet.ReadErrorBody(resp)
+		var requiredAction string
+		if providers.IsPluginRouteDenied(resp.StatusCode, []byte(body)) {
+			requiredAction = fleet.CollectorAppAdminAction
+		}
+		return nil, fmt.Errorf("check Kubernetes monitoring: %w", &fleet.HTTPError{
+			Status:         resp.StatusCode,
+			RequiredAction: requiredAction,
+			ContentType:    resp.Header.Get("Content-Type"),
+			Path:           pathRunK8sMonitoring,
+			Body:           body,
 		})
 	}
 

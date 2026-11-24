@@ -402,7 +402,7 @@ func (c *Client) ListRules(ctx context.Context, segment string) ([]MetricRule, s
 		return nil, "", fmt.Errorf("adaptive-metrics: list rules: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
-	etag := resp.Header.Get("Etag")
+	etag := resp.Header.Get("ETag")
 
 	var rules []MetricRule
 	if err := json.NewDecoder(resp.Body).Decode(&rules); err != nil {
@@ -481,7 +481,7 @@ func (c *Client) CreateRule(ctx context.Context, rule MetricRule, etag, segment 
 		return "", fmt.Errorf("adaptive-metrics: create rule: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
-	return resp.Header.Get("Etag"), nil
+	return resp.Header.Get("ETag"), nil
 }
 
 // UpdateRule updates an existing aggregation rule using the provided ETag.
@@ -519,7 +519,7 @@ func (c *Client) UpdateRule(ctx context.Context, rule MetricRule, etag, segment 
 		return "", fmt.Errorf("adaptive-metrics: update rule: status %d: %s", resp.StatusCode, serverError(b))
 	}
 
-	return resp.Header.Get("Etag"), nil
+	return resp.Header.Get("ETag"), nil
 }
 
 // DeleteRule deletes an aggregation rule using the provided ETag.

@@ -27,7 +27,7 @@ func (e editor) openEditor(ctx context.Context, file string) error {
 	// Pass all arguments to cmd.exe as one string
 	// See https://pkg.go.dev/os/exec#Command
 	//nolint:gosec
-	cmd := exec.Command(args[0])
+	cmd := exec.CommandContext(ctx, args[0])
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.CmdLine = strings.Join(args, " ")
 

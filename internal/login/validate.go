@@ -93,16 +93,14 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 // runtime.APIError in the chain, or 0 for transport-level failures (dial, TLS,
 // timeout) where no HTTP response was received.
 func extractGoAPIStatus(err error) int {
-	var apiErr *runtime.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*runtime.APIError](err); ok {
 		return apiErr.Code
 	}
 	return 0
 }
 
 func extractGCOMStatus(err error) int {
-	var httpErr *cloud.GCOMHTTPError
-	if errors.As(err, &httpErr) {
+	if httpErr, ok := errors.AsType[*cloud.GCOMHTTPError](err); ok {
 		return httpErr.Status
 	}
 	return 0

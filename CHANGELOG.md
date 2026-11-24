@@ -1,9 +1,99 @@
-## Unreleased
+## v1.8.0 (2026-11-17)
 
-- Anonymous usage statistics for `gcx signup` now record the last step it
-  reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
-  `gcx signup` reports its HTTP status. The one-time telemetry notice is shown
-  again to disclose the new field.
+### Breaking changes
+
+- `gcx setup status` now reports a failed instrumentation check as unknown
+  (`enabled: null`) instead of disabled. It exits 3 on authentication failures
+  and 1 on other probe failures. It used to exit 4. The JSON document gains an
+  optional `error` object. Update scripts that branch on exit 4 or on
+  `enabled: false`. (#1699)
+- `gcx logs metrics` with no time flags now runs an instant query. It returns
+  one value per series. It used to run a range query over the last minute and
+  return two points per series. Callers that sum the points now get the
+  correct count, so their totals change. The `--share-link` URL now opens an
+  instant query in Explore. (#1786)
+- `gcx logs query` and `gcx datasources loki query` now reject a negative
+  `--limit`. A negative value used to run with the Loki default line limit and
+  exit 0. Remove the negative value from scripts. `--limit 0` still sends no
+  limit. (#1404)
+- `gcx api` now rejects an absolute URL as the path and exits 2. It used to
+  join the URL to the configured Grafana host, which sent the request to a
+  wrong address. Pass a path that is relative to the stack. (#1735)
+- On Grafana Cloud targets, `gcx logs query`, `gcx logs metrics`, and the
+  `gcx datasources loki` commands now estimate the cost of a Loki query before
+  they run it. A query that is too expensive fails with a `Query blocked`
+  error and exit 1. Narrow the selector or the time range, or pass `--force`.
+  gcx enforces only a budget that your stack policy serves. Without a served
+  policy, gcx logs what it would block and runs the query. Self-managed
+  targets are not checked. (#1759)
+- `gcx frontend apps create` and `update` now reject an unknown or misspelled
+  field in a manifest, such as `allowedOrigins` instead of `corsOrigins`. They
+  used to drop the field and report success. (#1758)
+- `gcx irm` incident create now rejects a non-empty `spec.description`, and
+  incident delete previews now fail with exit 4. The IRM API supports neither
+  action. Both used to report success. (#1737, #1736)
+- An explicit human-format `-o`, such as `-o yaml`, now overrides agent mode
+  for errors. gcx prints the error on stderr. It no longer writes a
+  `gcx.error` JSON document to stdout. (#1655)
+
+### New commands and improvements
+
+- Add `gcx annotations` commands to manage Grafana annotations.
+- Add `gcx logs archive` commands (experimental).
+- Add `gcx ml` commands for forecasts, holidays, and outlier detectors.
+- Add `gcx profiles diff` to compare two profiles.
+- Add `gcx resources search` for hybrid search (experimental).
+- Add `--filename-by=title` to `gcx resources pull`.
+- Add `--drilldown-link` to the Loki, Prometheus, Tempo, and Pyroscope queries.
+- Add `gcx help exit-codes` help topic.
+- Add Assistant usage views.
+- Add native Windows installation and runtime support.
+- Add `thresholds` upsert, delete, and update commands to the Knowledge Graph (KG).
+- Add `--skip-promql-eval` to KG `prom-rules upsert`.
+- Show write API availability in `gcx kg status`.
+- Add Agent Observability model cards and `model-rates resolve`.
+- Add rule actions to evaluators and `experiments list-filter-values`.
+- Let `gcx synth checks test` target existing checks.
+- Add OnCall personal notification rules, and align OnCall schemas.
+- Fix Loki: send `queryType` instant for metric queries without a time range.
+- Fix Loki: send `supportingQueryType` on `/api/ds/query` requests.
+- Fix Loki: include total count in `query-patterns` JSON and YAML output.
+- Fix Pyroscope: keep profile selection in pprof exports.
+- Fix profiles: stop double-counting recursive CPU time.
+- Fix profiles: report unsupported adaptive management.
+- Fix Assistant: read investigation chats by engine.
+- Fix Assistant: explain missing permissions on 403 errors.
+- Fix Assistant: keep legacy conversation tool fields.
+- Fix Agent Observability: always request a bounded page size.
+- Fix Agent Observability: keep `execution_mode` and `filterable_tag_keys` on rules.
+- Fix Agent Observability: explain a missing plugin.
+- Fix Faro: resolve app arguments safely.
+- Fix IRM: restore personal notification rules with user authentication.
+- Fix SLO: update pushes without a UUID by resource name.
+- Fix resources: skip unsupported provider list operations.
+- Fix resources: keep dashboard schemas that convert successfully.
+- Fix resources: show returned push identities on request.
+- Fix dashboards: report actual snapshot image dimensions.
+- Fix k6: keep configured run threshold options.
+- Fix synthetic monitoring: keep `basicMetricsOnly` false on checks.
+- Fix lint: resolve datasource variables before PromQL validation.
+- Fix BigQuery: filterable metadata lists and clearer permission errors.
+- Classify datasource proxy authentication failures.
+- Record the last `gcx signup` step as `signup_stage` in anonymous usage statistics.
+  gcx shows the one-time telemetry notice again to disclose the new field.
+  A failed OAuth token exchange in `gcx login` or `gcx signup` now reports its HTTP status.
+- Show API server warnings at the default verbosity.
+- Keep angle-bracket placeholders in terminal `--help` output.
+- Let `GCX_AUTO_APPROVE` unlock `thresholds update -f -`.
+- Unify table output with shared adapters across many commands.
+- Shorten plugin skill descriptions.
+- Add the `Invocation.HomeFS` read-only home to the sandbox.
+- Update to Go 1.27, and update Go dependencies and `golangci-lint`.
+- Update Kubernetes dependencies, and the Docker base image digest.
+- Add the Authentication and Permissions pages, and rewrite the README and guides.
+- Add the installation docs for `asdf` and Windows.
+- Propose organization access and SCIM commands in an RFC.
+
 
 ## v1.7.1 (2026-10-21)
 

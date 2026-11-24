@@ -1,0 +1,4 @@
+USER_PK  EMAIL              USERNAME  START             END
+user-1   alice@example.com  alice     2026-10-19T09:00  2026-10-20T17:00
+user-2                                2026-10-19        2026-10-20T17:00
+user-3                                                  

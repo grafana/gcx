@@ -81,7 +81,8 @@ func TestSurfaceLogLimit(t *testing.T) {
 		warn         bool
 	}{
 		{"empty", 0, 50, false}, {"below", 49, 50, false}, {"at cap", 50, 50, true},
-		{"above cap", 51, 50, true}, {"uncapped", 50, 0, false},
+		{"above cap", 51, 50, true}, {"zero limit", 50, 0, true},
+		{"zero limit, empty", 0, 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resp := &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{

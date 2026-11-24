@@ -7,11 +7,9 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -59,11 +57,11 @@ type entityCreateOpts struct {
 }
 
 func (o *entityCreateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &EntityWriteTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, entityWriteTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
-	flags.StringVar(&o.domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required; 'kg' is reserved)")
+	flags.StringVar(&o.domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required; 'kg' is reserved)")
 	flags.StringVar(&o.entityType, "type", "", "Entity type (identifier; required)")
 	flags.StringVar(&o.name, "name", "", "Entity name (required)")
 	flags.StringToStringVar(&o.scope, "scope", nil, "Scope as key=value (repeatable or comma-separated; identity-significant)")
@@ -92,6 +90,7 @@ With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,
 and entries already written stay written if a later entry fails.`,
 		Example: `  gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
+  gcx kg entities upsert --domain tenant/github --type Repository --name my-repo
   gcx kg entities upsert -f entity.yaml`,
 		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -223,31 +222,25 @@ func neverExpire() *int64 {
 	return &v
 }
 
-// EntityWriteTableCodec renders one or more EntityWriteResponses as an
-// identity table (one row per upserted entity).
-type EntityWriteTableCodec struct{}
-
-func (c *EntityWriteTableCodec) Format() format.Format { return "table" }
-
-func (c *EntityWriteTableCodec) Encode(w io.Writer, v any) error {
-	var responses []*EntityWriteResponse
-	switch resp := v.(type) {
-	case *EntityWriteResponse:
-		responses = []*EntityWriteResponse{resp}
-	case []*EntityWriteResponse:
-		responses = resp
-	default:
-		return errors.New("invalid data type for table codec: expected *EntityWriteResponse")
+func entityWriteTable() cmdio.TableAdapter[any, *EntityWriteResponse] {
+	return cmdio.TableAdapter[any, *EntityWriteResponse]{
+		Table: cmdio.Table[*EntityWriteResponse]{Columns: []cmdio.Column[*EntityWriteResponse]{
+			{Header: "DOMAIN", Content: func(r *EntityWriteResponse) string { return r.Domain }},
+			{Header: "TYPE", Content: func(r *EntityWriteResponse) string { return r.Type }},
+			{Header: "NAME", Content: func(r *EntityWriteResponse) string { return r.Name }},
+			{Header: "SCOPE", Content: func(r *EntityWriteResponse) string { return scopeStr(r.Scope) }},
+		}},
+		Rows: func(v any) ([]*EntityWriteResponse, error) {
+			switch resp := v.(type) {
+			case *EntityWriteResponse:
+				return []*EntityWriteResponse{resp}, nil
+			case []*EntityWriteResponse:
+				return resp, nil
+			default:
+				return nil, errors.New("invalid data type for table codec: expected *EntityWriteResponse")
+			}
+		},
 	}
-	t := style.NewTable("DOMAIN", "TYPE", "NAME", "SCOPE")
-	for _, resp := range responses {
-		t.Row(resp.Domain, resp.Type, resp.Name, scopeStr(resp.Scope))
-	}
-	return t.Render(w)
-}
-
-func (c *EntityWriteTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 func newEntitiesDeleteCommand(loader RESTConfigLoader) *cobra.Command {
@@ -315,7 +308,7 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 				cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: et, Name: n}))
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm' (required)")
+	cmd.Flags().StringVar(&domain, "domain", "", "Writable domain slug — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required)")
 	cmd.Flags().StringVar(&entityType, "type", "", "Entity type (or use positional Type--Name)")
 	cmd.Flags().StringVar(&name, "name", "", "Entity name (or use positional Type--Name)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
@@ -412,15 +405,15 @@ type relCreateOpts struct {
 }
 
 func (o *relCreateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RelationshipWriteTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, relationshipWriteTable().Codec(cmdio.FormatTable))
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 	flags.StringVarP(&o.file, "file", "f", "", "Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags")
-	flags.StringVar(&o.domain, "domain", "", "Writable domain slug for the edge — a specific application domain such as 'irm' (required)")
+	flags.StringVar(&o.domain, "domain", "", "Writable domain slug for the edge — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required)")
 	flags.StringVar(&o.relType, "type", "", "Relationship type (identifier; required)")
-	flags.StringVar(&o.from, "from", "", "Source entity ref as domain/Type/name (required)")
+	flags.StringVar(&o.from, "from", "", "Source entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	flags.StringToStringVar(&o.fromScope, "from-scope", nil, "Scope for --from as key=value (repeatable or comma-separated)")
-	flags.StringVar(&o.to, "to", "", "Target entity ref as domain/Type/name (required)")
+	flags.StringVar(&o.to, "to", "", "Target entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	flags.StringToStringVar(&o.toScope, "to-scope", nil, "Scope for --to as key=value (repeatable or comma-separated)")
 	flags.StringToStringVar(&o.property, "property", nil, "Property as key=value (repeatable or comma-separated)")
 	flags.StringVar(&o.ttl, "ttl", "", "Time-to-live duration (e.g. 1h, 7d); omitted = never expire")
@@ -574,33 +567,28 @@ func validateRelFileRef(ref EntityRef, side string) error {
 	return validateKgKeys(ref.Scope, side+".scope")
 }
 
-// RelationshipWriteTableCodec renders one or more RelationshipWriteResponses
-// as a table (one row per upserted edge).
-type RelationshipWriteTableCodec struct{}
-
-func (c *RelationshipWriteTableCodec) Format() format.Format { return "table" }
-
-func (c *RelationshipWriteTableCodec) Encode(w io.Writer, v any) error {
-	var responses []*RelationshipWriteResponse
-	switch resp := v.(type) {
-	case *RelationshipWriteResponse:
-		responses = []*RelationshipWriteResponse{resp}
-	case []*RelationshipWriteResponse:
-		responses = resp
-	default:
-		return errors.New("invalid data type for table codec: expected *RelationshipWriteResponse")
+func relationshipWriteTable() cmdio.TableAdapter[any, *RelationshipWriteResponse] {
+	return cmdio.TableAdapter[any, *RelationshipWriteResponse]{
+		Table: cmdio.Table[*RelationshipWriteResponse]{Columns: []cmdio.Column[*RelationshipWriteResponse]{
+			{Header: "TYPE", Content: func(r *RelationshipWriteResponse) string { return r.Type }},
+			{Header: "FROM", Content: func(r *RelationshipWriteResponse) string {
+				return fmt.Sprintf("%s/%s/%s", r.From.Domain, r.From.Type, r.From.Name)
+			}},
+			{Header: "TO", Content: func(r *RelationshipWriteResponse) string {
+				return fmt.Sprintf("%s/%s/%s", r.To.Domain, r.To.Type, r.To.Name)
+			}},
+		}},
+		Rows: func(v any) ([]*RelationshipWriteResponse, error) {
+			switch resp := v.(type) {
+			case *RelationshipWriteResponse:
+				return []*RelationshipWriteResponse{resp}, nil
+			case []*RelationshipWriteResponse:
+				return resp, nil
+			default:
+				return nil, errors.New("invalid data type for table codec: expected *RelationshipWriteResponse")
+			}
+		},
 	}
-	t := style.NewTable("TYPE", "FROM", "TO")
-	for _, resp := range responses {
-		t.Row(resp.Type,
-			fmt.Sprintf("%s/%s/%s", resp.From.Domain, resp.From.Type, resp.From.Name),
-			fmt.Sprintf("%s/%s/%s", resp.To.Domain, resp.To.Type, resp.To.Name))
-	}
-	return t.Render(w)
-}
-
-func (c *RelationshipWriteTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
@@ -668,9 +656,9 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 		},
 	}
 	cmd.Flags().StringVar(&relType, "type", "", "Relationship type (identifier; required)")
-	cmd.Flags().StringVar(&from, "from", "", "Source entity ref as domain/Type/name (required)")
+	cmd.Flags().StringVar(&from, "from", "", "Source entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	cmd.Flags().StringToStringVar(&fromScope, "from-scope", nil, "Scope for --from as key=value (repeatable or comma-separated)")
-	cmd.Flags().StringVar(&to, "to", "", "Target entity ref as domain/Type/name (required)")
+	cmd.Flags().StringVar(&to, "to", "", "Target entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)")
 	cmd.Flags().StringToStringVar(&toScope, "to-scope", nil, "Scope for --to as key=value (repeatable or comma-separated)")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
 	ioOpts.RegisterCustomCodec("text", singleMutationText(func(w io.Writer, m cmdio.SingleMutation) {

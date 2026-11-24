@@ -3,6 +3,7 @@ package resources
 import (
 	"io"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -53,4 +54,9 @@ func WriteGetOutputForTest(stdout, stderr io.Writer, opts *getOpts, res *FetchRe
 // ReportOperationWarnings exposes diagnostic reporting for package-external tests.
 func ReportOperationWarnings(w io.Writer, summary *remote.OperationSummary) {
 	reportOperationWarnings(w, summary)
+}
+
+// BatchMutationForTest exposes the shared mutation conversion for wire tests.
+func BatchMutationForTest(action string, summary *remote.OperationSummary, dryRun bool) cmdio.BatchMutation {
+	return batchMutationFromSummary(action, summary, dryRun)
 }

@@ -93,6 +93,10 @@ func init() {
 	// clones the default transport dials natively and fails; gcx's own
 	// clients do not depend on that, as they all go through WireTransport.
 	t := http.DefaultTransport.(*http.Transport)
+	// The host negotiates HTTP versions. Disable the guest's HTTP/2 setup,
+	// which would try to register another "https" alternate transport.
+	t.Protocols = new(http.Protocols)
+	t.Protocols.SetHTTP1(true)
 	t.RegisterProtocol("http", hostTransport{})
 	t.RegisterProtocol("https", hostTransport{})
 }

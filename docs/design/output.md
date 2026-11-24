@@ -48,6 +48,15 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 }
 ```
 
+**Redirected to a file** — spilling is skipped and the full payload is written
+inline, however large it is, when stdout is a **regular file on disk** (the
+`gcx ... > out.json` case). The threshold exists to protect an agent's context
+window; a caller who named a destination file has already said where the bytes
+belong, and a receipt pointing at a different temp file is never what they
+asked for. A pipe, a terminal and `/dev/null` are not regular files, so a
+harness capturing stdout — as `os/exec` does for any non-`*os.File` writer —
+keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
+
 | Field | Always present | Description |
 |-------|---------------|-------------|
 | `type` | yes | Fixed discriminator `gcx.spill_reference` — the receipt shape differs from the domain result, so consumers dispatch on this marker instead of heuristics |
@@ -326,6 +335,22 @@ are always populated. Select the shape that fits the operation:
 Batch counts cover every matched target exactly once. Successes and skips are
 counted; zero `skipped` is omitted.
 
+With `resources push --include-successes`, structured results include
+`successes` with real-write identity references in JSON, YAML, and agents output.
+Without the option, output keeps success counts only. The option controls
+receipt retention and output. Each receipt uses the existing API write response.
+Each entry has `action` (`created` or `updated`), `requested` (the input kind and
+name), and `target` (`kind`, `name`, `uid`, and `namespace` when available).
+The optional `source` on the success entry identifies its input file, matching
+`source` on failure entries. These references contain no resource body.
+Dry-run and skipped operations do not produce applied identity references.
+API responses without a resource name also produce no reference.
+If the option is set and no reference is returned, `successes` is an empty array.
+If an abort follows a successful write, the opt-in result keeps the completed
+identity references and reports a partial failure.
+Entries follow completion order, not input order.
+Large results use the agents codec spill receipt and file.
+
 Batch results and artifact receipts always include `failures` (`[]` when
 empty). Each failure contains `target` and `error`. The optional `source`
 field identifies the input file when available; it is omitted when the
@@ -424,6 +449,8 @@ A populated `NewArtifactReceipt("pulled", "json")` result:
 }
 ```
 
+`resources push --include-successes` adds a `"successes"` array for audit.
+
 ---
 
 ## 13. Agent-Mode Output Contract
@@ -485,9 +512,11 @@ safety cap must NOT use the binder — "0 means all" would be dishonest there.
 They keep a bespoke flag description that discloses the cap, and disclose the
 cap at runtime via `ListMeta.Cap` plus the cap-variant hint (below).
 `--limit 0` on a capped source means "as much as the cap allows", and the
-output must say so. No command currently takes this exception: the last one,
-`irm oncall alert-groups list`, dropped its 1000-item cap in favour of a real
-cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
+output must say so. The one command taking this exception is
+`agento11y review-queues list-scores`, whose cap is set by the backend export
+(not client-side) and cannot be raised by the caller. The last client-side
+one, `irm oncall alert-groups list`, dropped its 1000-item cap in favour of a
+real cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
 raise makes the complete set unreachable, which is the defect that issue
 reported.
 

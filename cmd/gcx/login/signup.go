@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -185,23 +186,17 @@ func printSignupHeader(cmd *cobra.Command, contextName string) {
 // without, it signs in through the stack launcher, which cannot create a
 // second account.
 func signupLoginCommand(flags *loginOpts, contextName, server string, oauthArgs ...string) string {
-	parts := []string{"gcx login", shellArg(contextName)}
+	args := []string{"gcx", "login", contextName}
 	if server != "" {
-		parts = append(parts, "--server", shellArg(server))
+		args = append(args, "--server", server)
 	} else {
-		parts = append(parts, "--cloud")
+		args = append(args, "--cloud")
 	}
-	parts = append(parts, oauthArgs...)
-	return signupFollowUpCommand(flags, strings.Join(parts, " "))
-}
-
-// signupFollowUpCommand appends the signup's --config to command, so a
-// command that signup prints acts on the file the connection is saved to.
-func signupFollowUpCommand(flags *loginOpts, command string) string {
-	if flags.Config.ConfigFile == "" {
-		return command
+	args = append(args, oauthArgs...)
+	if flags.Config.ConfigFile != "" {
+		args = append(args, "--config", flags.Config.ConfigFile)
 	}
-	return command + " --config " + shellArg(flags.Config.ConfigFile)
+	return cmdio.ShellCommand(args)
 }
 
 // signupOAuthArgs are the gcx login flags that reach the browser the way the
@@ -218,18 +213,6 @@ func signupOAuthArgs(flags *loginOpts) []string {
 	default:
 		return []string{"--oauth"}
 	}
-}
-
-// shellArg quotes value for a printed command only when a shell would
-// otherwise split or expand it, so the common case stays readable.
-func shellArg(value string) string {
-	safe := func(r rune) bool {
-		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._/:@=+-,%_", r)
-	}
-	if value != "" && strings.IndexFunc(value, func(r rune) bool { return !safe(r) }) == -1 {
-		return value
-	}
-	return shellQuote(value)
 }
 
 // signupManualRetryCommand is what the remote session hint offers when the

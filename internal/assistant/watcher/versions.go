@@ -150,8 +150,7 @@ func RestoreVersion(ctx context.Context, client *watchers.Client, current *watch
 	result := &VersionRestoreOutcome{}
 	accepted, err := client.RestoreVersion(ctx, current.ID, version, expected, summary)
 	if err != nil {
-		var unknown *watchers.UnknownRestoreError
-		if errors.As(err, &unknown) {
+		if _, ok := errors.AsType[*watchers.UnknownRestoreError](err); ok {
 			// A cancelled response decoder can report only an invalid body.
 			// Keep cancellation discoverable without losing the uncertain write.
 			result.Outcome = "unknown"

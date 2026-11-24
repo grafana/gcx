@@ -1,8 +1,10 @@
 package investigations_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/investigations"
@@ -17,6 +19,10 @@ import (
 func TestGetChatThread(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
+		if strings.HasSuffix(r.URL.Path, "/chats/chat-1") {
+			writeJSON(w, map[string]any{"data": map[string]any{"id": "chat-1", "engine": "legacy"}})
+			return
+		}
 		assert.Contains(t, r.URL.Path, "/chats/chat-1/all-messages")
 		writeJSON(w, map[string]any{
 			"data": map[string]any{
@@ -65,9 +71,8 @@ func TestGetChatThread(t *testing.T) {
 	assert.NotEmpty(t, messages[0].Content[1].ToolInput)
 	assert.Equal(t, "tool_result", messages[1].Content[0].Type)
 	assert.Equal(t, "tu_1", messages[1].Content[0].ToolUseID)
-	assert.Equal(t, int64(42), messages[1].Content[0].DurationMs)
-	require.Len(t, messages[1].Content[0].ToolResult, 1)
-	assert.Equal(t, "text", messages[1].Content[0].ToolResult[0].Type)
+	assert.Equal(t, json.Number("42"), messages[1].Content[0].DurationMs)
+	assert.Contains(t, string(messages[1].Content[0].ToolResult), `"type":"text"`)
 }
 
 func TestGetChatThread_EmptyMessages(t *testing.T) {
@@ -111,8 +116,8 @@ func TestExtractToolCalls(t *testing.T) {
 			{Type: "tool_use", ToolID: "tu_2", ToolName: "prometheus_query_handler"},
 		}},
 		{Role: "assistant", Content: []investigations.ChatContentBlock{
-			{Type: "tool_result", ToolUseID: "tu_1", ToolName: "search_skills", DurationMs: 12, ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "<results count=\"0\"/>"}}},
-			{Type: "tool_result", ToolUseID: "tu_2", ToolName: "prometheus_query_handler", IsError: true, ToolResult: []investigations.ToolResultPart{{Type: "text", Text: "boom"}}},
+			{Type: "tool_result", ToolUseID: "tu_1", ToolName: "search_skills", DurationMs: json.Number("12"), ToolResult: json.RawMessage(`[{"type":"text","text":"<results count=\"0\"/>"}]`)},
+			{Type: "tool_result", ToolUseID: "tu_2", ToolName: "prometheus_query_handler", IsError: true, ToolResult: json.RawMessage(`[{"type":"text","text":"boom"}]`)},
 		}},
 	}
 	calls := investigations.ExtractToolCalls(messages)
@@ -120,9 +125,9 @@ func TestExtractToolCalls(t *testing.T) {
 	assert.Equal(t, "search_skills", calls[0].Name)
 	assert.Equal(t, "tu_1", calls[0].ID)
 	assert.NotEmpty(t, calls[0].Input)
-	assert.Equal(t, int64(12), calls[0].DurationMs)
+	assert.Equal(t, json.Number("12"), calls[0].DurationMs)
 	assert.False(t, calls[0].IsError)
-	require.Len(t, calls[0].Result, 1)
+	assert.JSONEq(t, `[{"type":"text","text":"<results count=\"0\"/>"}]`, string(calls[0].Result))
 	assert.True(t, calls[1].IsError)
 }
 
@@ -136,4 +141,27 @@ func TestExtractToolCalls_PendingResult(t *testing.T) {
 	require.Len(t, calls, 1)
 	assert.Empty(t, calls[0].Result)
 	assert.Zero(t, calls[0].DurationMs)
+}
+
+func TestGetChatThreadPreservesLegacyFields(t *testing.T) {
+	const blocks = `[{"type":"tool_use","toolId":"tu_1","toolName":"query","status":"complete"},{"type":"tool_result","toolUseId":"tu_1","durationMs":1.5,"toolResult":[{"type":"text","text":"answer"},{"type":"data","value":{"count":9007199254740993}}]},{"type":"thinking","thinking":"","signature":"signed","isError":null}]`
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"messages":[{"id":"m1","role":"assistant","content":` + blocks + `}]}}`))
+	}))
+	messages, err := client.GetChatThread(t.Context(), "chat-1")
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	encoded, err := json.Marshal(messages[0].Content)
+	require.NoError(t, err)
+	assert.JSONEq(t, blocks, string(encoded))
+	assert.Contains(t, string(encoded), `9007199254740993`)
+	calls := investigations.ExtractToolCalls(messages)
+	require.Len(t, calls, 1)
+	assert.Equal(t, json.Number("1.5"), calls[0].DurationMs)
+	assert.JSONEq(t, `[{"type":"text","text":"answer"},{"type":"data","value":{"count":9007199254740993}}]`, string(calls[0].Result))
+	assert.Contains(t, string(calls[0].Result), `9007199254740993`)
+	var out bytes.Buffer
+	require.NoError(t, (&investigations.ChatThreadTextCodec{}).Encode(&out, messages))
+	assert.Contains(t, out.String(), "durationMs=1.5")
+	assert.Contains(t, out.String(), "result=answer")
 }

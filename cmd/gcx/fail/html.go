@@ -40,6 +40,10 @@ func renderConvertedError(err error, detailed *gcxerrors.DetailedError) *gcxerro
 	if !html {
 		return detailed
 	}
+	var fleetErr *fleet.HTTPError
+	if errors.As(err, &fleetErr) && (fleetErr.Status == http.StatusUnauthorized || fleetErr.Status == http.StatusForbidden) {
+		return detailed
+	}
 	operation := wrappedTypedErrorContext(err, response.inner)
 	if operation == "" {
 		operation = response.operation

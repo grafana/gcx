@@ -15,12 +15,13 @@ func buildIncidentRegistrations(loader *configLoader) []adapter.Registration {
 	desc := incidentStaticDescriptor
 	return []adapter.Registration{
 		{
-			Factory:     NewIncidentAdapterFactory(loader),
-			Descriptor:  desc,
-			GVK:         desc.GroupVersionKind(),
-			Schema:      IncidentSchema,
-			Example:     IncidentExample(),
-			URLTemplate: "/a/grafana-irm-app/incidents/{name}",
+			Factory:         NewIncidentAdapterFactory(loader),
+			Descriptor:      desc,
+			GVK:             desc.GroupVersionKind(),
+			Schema:          IncidentSchema,
+			Example:         IncidentExample(),
+			PullStripFields: []string{"description"},
+			URLTemplate:     "/a/grafana-irm-app/incidents/{name}",
 		},
 	}
 }

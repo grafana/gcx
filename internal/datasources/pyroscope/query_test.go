@@ -18,6 +18,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPyroscopeQueryOptsResolveMaxNodes(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+		want int64
+	}{
+		{name: "default", want: defaultMaxNodes},
+		{name: "pprof unlimited", args: []string{"-o", "pprof"}, want: 0},
+		{name: "pprof explicit limit", args: []string{"-o", "pprof", "--max-nodes", "123"}, want: 123},
+		{name: "dot server default", args: []string{"-o", "dot"}, want: 0},
+		{name: "explicit unlimited", args: []string{"--max-nodes", "0"}, want: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &pyroscopeQueryOpts{}
+			flags := pflag.NewFlagSet(t.Name(), pflag.ContinueOnError)
+			opts.setup(flags)
+			require.NoError(t, flags.Parse(tt.args))
+			assert.Equal(t, tt.want, opts.resolveMaxNodes(flags))
+		})
+	}
+}
+
 func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -90,9 +112,8 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 			wantErr: "--trace-id and --profile-id cannot be used together",
 		},
 		{
-			name:    "span ID with pprof",
-			args:    []string{"--span-id", "00f067aa0ba902b7", "-o", "pprof"},
-			wantErr: "--span-id is not supported with -o pprof",
+			name: "span ID with pprof",
+			args: []string{"--span-id", "00f067aa0ba902b7", "-o", "pprof"},
 		},
 		{
 			name: "trace selector with dot",

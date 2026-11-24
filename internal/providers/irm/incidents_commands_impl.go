@@ -377,6 +377,7 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new incident from a file.",
+		Long:  "Create a new incident from a file. The documented create request has no description field. Pulled Incident manifests omit spec.description. Remove this field from a hand-written manifest before creating an incident.",
 		Example: `  # Create an incident from a YAML manifest:
   cat <<EOF | gcx irm incidents create -f -
   apiVersion: incident.ext.grafana.app/v1alpha1

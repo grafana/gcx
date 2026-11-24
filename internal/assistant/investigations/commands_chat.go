@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/grafana/gcx/internal/assistant"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -229,9 +229,18 @@ func (c *ChatThreadTextCodec) Decode(_ io.Reader, _ any) error {
 }
 
 func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
+	if b.Raw != nil {
+		// An aisdk part gcx has no mapping for; -o json shows it.
+		return
+	}
+	if b.Type == errorBlockType && !b.Received() {
+		// A converted aisdk data-error part.
+		fmt.Fprintf(w, "  ! error %s\n", errorText(b.Text))
+		return
+	}
 	switch b.Type {
 	case "text":
-		text := stripContextTags(b.Text)
+		text := assistant.StripContextTags(b.Text)
 		if text == "" {
 			return
 		}
@@ -262,8 +271,8 @@ func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
 		if wide && b.ToolUseID != "" {
 			fmt.Fprintf(w, " for=%s", b.ToolUseID)
 		}
-		if b.DurationMs > 0 {
-			fmt.Fprintf(w, " durationMs=%d", b.DurationMs)
+		if b.DurationMs != "" {
+			fmt.Fprintf(w, " durationMs=%s", b.DurationMs)
 		}
 		text := joinToolResultText(b.ToolResult)
 		if text != "" {
@@ -291,7 +300,14 @@ func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
 
 // joinToolResultText concatenates all text parts of a tool_result with
 // blank-line separators. Non-text parts are ignored.
-func joinToolResultText(parts []ToolResultPart) string {
+func joinToolResultText(raw json.RawMessage) string {
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &parts) != nil {
+		return ""
+	}
 	var sb strings.Builder
 	for _, p := range parts {
 		if p.Type != "text" || p.Text == "" {
@@ -413,8 +429,8 @@ func (c *ToolsTableCodec) Encode(w io.Writer, v any) error {
 			input = compactJSON(call.Input, c.Wide)
 		}
 		dur := "-"
-		if call.DurationMs > 0 {
-			dur = strconv.FormatInt(call.DurationMs, 10)
+		if call.DurationMs != "" {
+			dur = call.DurationMs.String()
 		}
 		if c.Wide {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", call.Name, status, dur, call.ID, input)

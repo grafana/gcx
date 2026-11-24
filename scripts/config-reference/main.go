@@ -166,7 +166,7 @@ func docs(typeDef reflect.Type, typesCommentsMap map[string]typeComments) string
 			}
 			fieldKind := field.Type.Kind()
 			yamlTag := field.Tag.Get("yaml")
-			yamlName := strings.Split(yamlTag, ",")[0]
+			yamlName, _, _ := strings.Cut(yamlTag, ",")
 			if yamlName == "" {
 				yamlName = field.Name
 			}

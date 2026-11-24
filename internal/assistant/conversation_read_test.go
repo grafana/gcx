@@ -2,6 +2,7 @@ package assistant_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -453,6 +454,104 @@ func TestClientGetConversationErrorDiagnostics(t *testing.T) {
 			assert.Equal(t, http.StatusForbidden, apiErr.HTTPStatusCode())
 			assert.Equal(t, tt.want, apiErr.APIUserMessage())
 			assert.Equal(t, 1, strings.Count(err.Error(), "HTTP 403"))
+		})
+	}
+}
+
+func TestClientGetConversationPreservesLegacyToolFields(t *testing.T) {
+	const content = `[{"type":"thinking","thinking":"reason"},{"type":"artifact","artifactType":"panel","panel":{"title":"test"}},{"type":"text","text":"answer"},{"type":"tool_use","toolId":"call-1","toolName":"query","toolInput":{"queries":["anonymous"]}},{"type":"tool_result","toolUseId":"call-1","toolName":"query","toolResult":[{"type":"text","text":"result"},{"type":"data","value":{"count":1}}],"isError":false,"durationMs":0,"panel":{"count":1}}]`
+	client, requests := newConversationTestClient(t, map[string]testHTTPResponse{
+		"/chats/chat-1":              {body: `{"data":{"id":"chat-1","engine":"legacy"}}`},
+		"/chats/chat-1/all-messages": {body: `{"data":{"messages":[{"id":"m1","role":"assistant","content":` + content + `}]}}`},
+	}, nil)
+	got, err := client.GetConversation(context.Background(), assistant.ConversationReference{ID: "chat-1"})
+	require.NoError(t, err)
+	require.Len(t, got.Messages, 1)
+	encoded, err := json.Marshal(got.Messages[0].Content)
+	require.NoError(t, err)
+	assert.JSONEq(t, content, string(encoded))
+	assert.Equal(t, "answer", got.Messages[0].ExtractText())
+	assert.Equal(t, []string{"/chats/chat-1", "/chats/chat-1/all-messages"}, *requests)
+}
+
+func TestLegacyToolJSONValuesRoundTrip(t *testing.T) {
+	for _, value := range []string{`""`, `[]`, `{}`, `null`, `false`, `0`, `{"large":9007199254740993,"nested":[null,false,0]}`} {
+		t.Run(value, func(t *testing.T) {
+			wire := `{"type":"tool_result","toolId":"id","toolName":"name","toolUseId":"use","toolInput":` + value + `,"toolResult":` + value + `,"panel":` + value + `,"isError":false,"durationMs":0}`
+			var block assistant.ContentBlock
+			require.NoError(t, json.Unmarshal([]byte(wire), &block))
+			assert.Equal(t, value, string(block.ToolInput))
+			assert.Equal(t, value, string(block.ToolResult))
+			assert.Equal(t, value, string(block.Panel))
+			encoded, err := json.Marshal(block)
+			require.NoError(t, err)
+			assert.JSONEq(t, wire, string(encoded))
+		})
+	}
+	var absent assistant.ContentBlock
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"text","text":"unchanged"}`), &absent))
+	encoded, err := json.Marshal(absent)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"text","text":"unchanged"}`, string(encoded))
+	var empty assistant.ContentBlock
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"tool_use","toolId":"","toolName":"","toolUseId":""}`), &empty))
+	encoded, err = json.Marshal(empty)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"tool_use","toolId":"","toolName":"","toolUseId":""}`, string(encoded))
+}
+
+func TestLegacyToolDurationAcceptsFraction(t *testing.T) {
+	var block assistant.ContentBlock
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"tool_result","durationMs":1.5}`), &block))
+	encoded, err := json.Marshal(block)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"tool_result","durationMs":1.5}`, string(encoded))
+}
+
+func TestLegacyNonTextTranscriptHint(t *testing.T) {
+	for _, content := range []assistant.ContentJSON{
+		{{Type: "tool_use"}},
+		{{Type: "text", Text: "answer"}, {Type: "tool_result"}},
+	} {
+		transcript := assistant.ConversationTranscript{Messages: []assistant.ChatMessage{{Role: "assistant", Content: content}}}
+		assert.Contains(t, transcript.FormatText(), "use --output json")
+		assert.NotContains(t, transcript.FormatText(), "(no user/assistant messages)")
+	}
+}
+
+func TestLegacyContentPreservesUnknownAndEmptyFields(t *testing.T) {
+	for _, wire := range []string{
+		`{"type":"thinking","thinking":"","signature":"signed","status":null}`,
+		`{"type":"text","text":"","artifactType":"","toolId":null,"toolName":"","toolUseId":null,"isError":null}`,
+		`{"type":"tool_result","durationMs":null,"toolResult":null,"future":{"count":9007199254740993}}`,
+	} {
+		t.Run(wire, func(t *testing.T) {
+			var block assistant.ContentBlock
+			require.NoError(t, json.Unmarshal([]byte(wire), &block))
+			encoded, err := json.Marshal(block)
+			require.NoError(t, err)
+			assert.Equal(t, wire, string(encoded))
+		})
+	}
+}
+
+func TestLegacyDurationRejectsNonNumbers(t *testing.T) {
+	for _, value := range []string{`"slow"`, `{}`, `[]`, `true`} {
+		t.Run(value, func(t *testing.T) {
+			var block assistant.ContentBlock
+			require.Error(t, json.Unmarshal([]byte(`{"type":"tool_result","durationMs":`+value+`}`), &block))
+		})
+	}
+}
+
+func TestLegacyOmissionHintIgnoresOtherRolesAndHiddenMessages(t *testing.T) {
+	for _, role := range []string{"tool", "system", "internal", "assistant"} {
+		t.Run(role, func(t *testing.T) {
+			transcript := assistant.ConversationTranscript{Messages: []assistant.ChatMessage{
+				{Role: "assistant", Content: assistant.ContentJSON{{Type: "text", Text: "answer"}}},
+				{Role: role, Hidden: role == "assistant", Content: assistant.ContentJSON{{Type: "tool_result"}}, Parts: json.RawMessage(`[{"type":"tool-result"}]`)},
+			}}
+			assert.NotContains(t, transcript.FormatText(), "use --output json")
 		})
 	}
 }
