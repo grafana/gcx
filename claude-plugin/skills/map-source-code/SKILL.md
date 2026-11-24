@@ -534,6 +534,16 @@ The links are in the `sourcecode` domain. Default views of a Service hide nodes
 from other domains, so a `Repository` or `CloudResource` may not appear next to
 its Service in the entity graph UI even when the link exists.
 
+### Recommend repeated runs
+
+At the end of a run with a person present, tell the user that the links stay
+current only when the skill runs again. Recommend the two kinds of repeated
+runs in [Keeping links current](#keeping-links-current): after each merge, and
+on a schedule at least once a week. Offer to write the instructions for these
+jobs, with the repositories that this run scanned, the values that the user
+gave, and the sources that the user approved. Do not set up a job yourself:
+never add CI files or schedules to the scanned repositories.
+
 When telemetry also has the S3 bucket, SQS queue or DynamoDB table, the
 Knowledge Graph links its node to the `CloudResource` with `DEPLOYMENT_OF` on
 the next model build. Other kinds, including SNS, Pub/Sub and Kafka topics and
@@ -542,20 +552,44 @@ write from you, and may take a while to appear.
 
 ## Keeping links current
 
-Run the skill again after changes to the code or deployment config, or on a
-schedule, for example in CI after each merge. Each run writes new links,
-changes the `path` of links that moved inside a repository, and removes the
-links and resources that the code of its repositories no longer has (Step 6).
+The graph does not update these links by itself. They do not expire, and only
+a run of this skill writes or removes them. Each run writes new links, changes
+the `path` of links that moved inside a repository, and removes the links that
+the code of its repositories no longer has (Step 6). Use two kinds of repeated
+runs:
+
+- **After each merge** to the default branch that changes code or deployment
+  config. Scan only the repository of the merge.
+- **On a schedule, at least once a week.** Scan every repository that the
+  skill maps. The `Repository` query in Step 6 lists the repositories that
+  earlier runs mapped. This run finds changes that no merge job finds:
+  - a Service that telemetry did not have at the last run, which the run can
+    now match
+  - a resource id that a source can now resolve, such as a new telemetry node
+    with an `arn`
+  - a change in a repository that has no job after each merge
+
+For a change that no merge job finds, the interval of the schedule is the
+longest time that the graph stays out of date. Run it daily when services or
+resources change often. A run that finds no changes only writes the same links
+again.
+
+Both kinds of runs usually have nobody to approve. Each job needs instructions
+that allow it to write (see
+[Runs with nobody to approve](#runs-with-nobody-to-approve)), and a local
+checkout of each repository that it scans. For example:
+
+```text
+Run the map-source-code skill. Write without approval, and remove stale links.
+Repositories: github.com/contoso/shop, github.com/contoso/shop-deploy
+Values: AWS account 111122223333 and region us-east-1 for env prod
+Sources: Knowledge Graph telemetry
+```
 
 A run checks only the repositories that it scans. The links of a repository
 that it did not scan stay as they are, so narrowing a run to fewer
-repositories removes nothing.
-
-- Run the skill in each repository's own CI, or in one job that scans every
-  repository it ever mapped. A CI run needs instructions that allow it to
-  write: see [Runs with nobody to approve](#runs-with-nobody-to-approve).
-- A resource that several repositories use stays while any of them still
-  links to it.
+repositories removes nothing. A resource that several repositories use stays
+while any of them still links to it.
 
 ### Runs with nobody to approve
 

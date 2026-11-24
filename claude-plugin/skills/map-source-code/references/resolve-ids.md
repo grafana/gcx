@@ -63,7 +63,9 @@ With no candidate or several candidates, keep the resource unresolved, and
 say how many candidates you found. In the summary, list each id that you
 resolved this way with its source. An id from another source is not in the
 code, so a later run resolves it again only with the same approval. Put the
-value in the instructions of repeated runs, as for a value that the user gives.
+value in the instructions of repeated runs (see
+[Keeping links current](../SKILL.md#keeping-links-current)), as for a value
+that the user gives.
 
 ## Sources
 
