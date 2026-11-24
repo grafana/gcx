@@ -2061,9 +2061,8 @@ in 'gcx kg entities inspect' (timeLines[].labels) with --label. For alert-rule
 and change insights also pass asserts_alert_category=<the entry's category>:
 inspect shows it as the timeline entry's category field, not among its
 labels. An empty array means that nothing matched the labels sent in that
-window: the same labels can return metrics for one window and an empty array
-for another, so check that --from/--to (or --since) covers the insight before
-changing labels. The output lists each metric's name and label matchers, not
+window; the same labels can return metrics for one window and an empty array
+for another. The output lists each metric's name and label matchers, not
 the rule's expression or threshold. When the timeline entry's labels include
 grafana_rule_uid, 'gcx alert rules get <uid>' shows that alert rule,
 including its query.

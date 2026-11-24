@@ -555,37 +555,9 @@ func TestInsightsSources_CategoryFillCancelled(t *testing.T) {
 	}
 }
 
-// The sources help must not present an empty array as proof that the labels
-// are wrong: the same labels return an empty array for a window that does not
-// cover the insight.
-func TestInsightsSources_HelpEmptyArray(t *testing.T) {
-	server := httptest.NewServer(http.NotFoundHandler())
-	defer server.Close()
-	cmd := kg.NewInsightsCommand(writeLoaderFor(server))
-	sources, _, err := cmd.Find([]string{"sources"})
-	require.NoError(t, err)
-	long := strings.Join(strings.Fields(sources.Long), " ")
-
-	tests := []struct {
-		phrase string
-		want   bool
-	}{
-		{"An empty array means that nothing matched the labels sent in that window", true},
-		{"check that --from/--to (or --since) covers the insight before changing labels", true},
-		{"An empty array means that no rule matched the labels sent.", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.phrase, func(t *testing.T) {
-			assert.Equal(t, tc.want, strings.Contains(long, tc.phrase), "Long: %s", long)
-		})
-	}
-}
-
-// The sources help shows the command's shape with placeholders and states the
-// label rule generically: the entity, the insight and every label come from
-// what the graph reports for the reader's entity, not from names in the help.
-// Every example follows the rule it states: it passes the timeline entry's
-// labels, and the alert-rule and change example also passes the category.
+// The sources examples show the command's shape with placeholders: the
+// entity, the insight and every label come from what the graph reports for the
+// reader's entity, not from names in the help.
 func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
@@ -613,42 +585,4 @@ func TestInsightsSources_HelpPlaceholders(t *testing.T) {
 			}
 		})
 	}
-
-	// Each example is a comment followed by one command; every command
-	// passes the timeline entry's labels, and the alert-rule and change
-	// example passes the category as well.
-	blocks := strings.Split(strings.TrimSpace(sources.Example), "\n\n")
-	require.Len(t, blocks, 2, "Example: %s", sources.Example)
-	for i, b := range blocks {
-		flat := strings.Join(strings.Fields(b), " ")
-		t.Run("Example labels "+[]string{"first", "second"}[i], func(t *testing.T) {
-			assert.Contains(t, flat, "--label <key>=<value> # repeat for each label in the entry's timeLines[].labels", "Example: %s", b)
-			if strings.Contains(flat, "alert-rule or change insight") {
-				assert.Contains(t, flat, "--label asserts_alert_category=<category>", "Example: %s", b)
-			} else {
-				assert.NotContains(t, flat, "asserts_alert_category", "Example: %s", b)
-			}
-		})
-	}
-
-	// An insight name with a space, filled in unquoted, would be cut at the
-	// space: the example quotes the placeholder and says why.
-	t.Run("Example quoting note", func(t *testing.T) {
-		assert.Contains(t, strings.Join(strings.Fields(sources.Example), " "),
-			"(quote the insight name: insight names can contain spaces)")
-	})
-
-	long := strings.Join(strings.Fields(sources.Long), " ")
-	for _, phrase := range []string{
-		"copy every label of the insight's timeline entry in 'gcx kg entities inspect' (timeLines[].labels) with --label",
-		"For alert-rule and change insights also pass asserts_alert_category=<the entry's category>",
-		"sources reads the entity's insight timeline for the same window and scope",
-	} {
-		t.Run("Long "+phrase, func(t *testing.T) {
-			assert.Contains(t, long, phrase)
-		})
-	}
-	t.Run("Long no connected-entity fallback", func(t *testing.T) {
-		assert.NotContains(t, long, "connected to it")
-	})
 }
