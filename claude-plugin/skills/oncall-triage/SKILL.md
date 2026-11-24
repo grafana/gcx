@@ -40,9 +40,13 @@ gcx irm oncall escalation-chains list
 
 To attribute alert load to a rotation, filter by escalation chain, not integration: one integration routes through several chains to several schedules, and the alert group record carries no chain field of its own. Chain-filtered queries over the same integration return disjoint subsets.
 
+For alert-group labels, use `--label service:api --label env:prod`: names, not IDs. All labels must match; `--label-exclude env:dev` drops groups carrying any of its pairs. Filtering runs server-side before pagination. Repeat the flag for each pair; commas are literal and colons cannot occur inside names. Matching ignores case and accents, so `service:API` and `service:apí` match the same groups. These flags apply to `list`, not bulk actions.
+
+`--search <text>` matches an exact alert-group ID or number, or text in the title OnCall renders, which can be longer than `status.title`. The server only searches the 30 days before the filtered date window ends (now when no window is set), so finding an older group needs a `--from`/`--to` window that ends near it.
+
 Escape hatches: `--all` (drops both defaults — returns resolved + child groups), `--include-child-groups`, `--state resolved`.
 
-For a historical window use `--from` / `--to` (RFC3339, unix timestamp, or `now-30d`); `--max-age` only anchors to now, and the two cannot be combined. `--resolved-from` / `--resolved-to` bound resolved_at instead. `--acknowledged-by <user-id>` / `--resolved-by <user-id>` attribute handling to a person.
+For a historical window use `--from` / `--to` (RFC3339, unix timestamp, or `now-30d`); `--max-age` only anchors to now, and the two cannot be combined. `--resolved-from` / `--resolved-to` bound resolved_at instead. `--acknowledged-by <user-id>` / `--resolved-by <user-id>` / `--silenced-by <user-id>` attribute handling to a person. `--involved-user <user-id>` also matches groups the user was notified about, counting only their 1000 most recently notified groups; `--acted-by <user-id>` matches any log entry by the user.
 
 Default table: `ID TITLE SEVERITY STATE TEAM SUBJECT AGE`. `-o wide` adds `RULE` (Grafana rule URL) and `ALERTS` (group-wide count). Use `-o wide` when the user needs the rule pivot.
 

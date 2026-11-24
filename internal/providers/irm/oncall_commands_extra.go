@@ -55,6 +55,12 @@ type alertGroupListOpts struct {
 	EscalationChains   []string
 	AcknowledgedBy     []string
 	ResolvedBy         []string
+	SilencedBy         []string
+	InvolvedUsers      []string
+	ActedBy            []string
+	Labels             []string
+	LabelExcludes      []string
+	Search             string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -85,6 +91,12 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.EscalationChains, "escalation-chain", nil, "Filter by escalation chain ID (repeatable, comma-separated; see: gcx irm oncall escalation-chains list)")
 	flags.StringSliceVar(&o.AcknowledgedBy, "acknowledged-by", nil, "Filter by acknowledging user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringSliceVar(&o.ResolvedBy, "resolved-by", nil, "Filter by resolving user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.SilencedBy, "silenced-by", nil, "Filter by silencing user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.InvolvedUsers, "involved-user", nil, "Filter by user ID notified about, or acknowledging, resolving, or silencing the group (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringSliceVar(&o.ActedBy, "acted-by", nil, "Filter by user ID with any recorded action in the group's log (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; matching ignores case and accents)")
+	flags.StringArrayVar(&o.LabelExcludes, "label-exclude", nil, "Exclude groups carrying any of these label key:value names (repeatable; matching ignores case and accents)")
+	flags.StringVar(&o.Search, "search", "", "Match an exact alert-group ID or number, or text in the title OnCall renders (searches only the 30 days before the date window ends)")
 	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
 	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
 	flags.StringVar(&o.ResolvedFrom, "resolved-from", "", "Start of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-30d)")
@@ -96,7 +108,8 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.IncludeChildGroups, "include-child-groups", false, "Include child groups (drops the is_root filter while keeping the status default)")
 }
 
-// Validate checks the time-window flags before any config or network work.
+// Validate checks label, search, and time-window flags before any config or
+// network work.
 // Negative --limit values are rejected by the shared binder's validation
 // (Options.Validate, internal/output/format.go), which RunE calls immediately
 // after this method — the fetch is no longer bounded by a client-side safety
@@ -104,6 +117,22 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 // contract rather than bespoke capped-source wording (docs/design/output.md
 // § 15.1).
 func (o *alertGroupListOpts) Validate() error {
+	for _, f := range o.repeatedFilters() {
+		if !f.labelPairs {
+			continue
+		}
+		for _, pair := range f.values {
+			key, value, ok := strings.Cut(pair, ":")
+			// The API ignores pairs with extra colons, which would silently
+			// broaden the query. Preserve valid names exactly, including commas.
+			if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" || strings.Contains(value, ":") {
+				return fmt.Errorf("invalid --%s %q: expected key:value with non-empty names and no extra colons (e.g. --%s service:api)", f.flag, pair, f.flag)
+			}
+		}
+	}
+	if o.Search != "" && strings.TrimSpace(o.Search) == "" {
+		return errors.New("invalid --search value: must not be blank")
+	}
 	// --max-age and --from/--to both compile into the same started_at range
 	// param, so combining them would be ambiguous.
 	if o.MaxAge != "" && (o.From != "" || o.To != "") {
@@ -120,6 +149,36 @@ func (o *alertGroupListOpts) Validate() error {
 		return err
 	}
 	return nil
+}
+
+// alertGroupListRepeatedFilter is one repeatable filter flag: each value is
+// sent as its own occurrence of the wire param.
+type alertGroupListRepeatedFilter struct {
+	flag   string
+	param  string
+	values []string
+	// labelPairs marks key:value label names, which Validate checks and the
+	// filter hint quotes one by one because commas inside them are literal.
+	labelPairs bool
+}
+
+// repeatedFilters lists every repeatable filter flag. A row added here reaches
+// the wire query, the filter hint, and the legacy unsupported-filter note.
+func (o *alertGroupListOpts) repeatedFilters() []alertGroupListRepeatedFilter {
+	return []alertGroupListRepeatedFilter{
+		{flag: "team", param: "team", values: o.Teams},
+		{flag: "integration", param: "integration", values: o.Integrations},
+		{flag: "escalation-chain", param: "escalation_chain", values: o.EscalationChains},
+		{flag: "acknowledged-by", param: "acknowledged_by", values: o.AcknowledgedBy},
+		{flag: "resolved-by", param: "resolved_by", values: o.ResolvedBy},
+		{flag: "silenced-by", param: "silenced_by", values: o.SilencedBy},
+		{flag: "involved-user", param: "involved_users_are", values: o.InvolvedUsers},
+		// Despite its name, invitees_are matches any log record the user
+		// authored, not just invitations.
+		{flag: "acted-by", param: "invitees_are", values: o.ActedBy},
+		{flag: "label", param: "label", values: o.Labels, labelPairs: true},
+		{flag: "label-exclude", param: "label_exclude", values: o.LabelExcludes, labelPairs: true},
+	}
 }
 
 // timeWindow is a resolved absolute range, ready to be rendered into the OnCall
@@ -226,13 +285,12 @@ func newAlertGroupsCommand(loader OnCallConfigLoader) *cobra.Command {
 // and the alternate-implementation fallback (listAlertGroupsLegacy — e.g.
 // test doubles; not reachable via the production loader today).
 type alertGroupListFilters struct {
-	Statuses           []int
-	IsRoot             *bool
-	Teams              []string
-	Integrations       []string
-	EscalationChains   []string
-	AcknowledgedBy     []string
-	ResolvedBy         []string
+	Statuses []int
+	IsRoot   *bool
+	// Repeated holds the repeatable filters keyed by wire param, one value
+	// per query occurrence.
+	Repeated           url.Values
+	Search             string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -260,14 +318,16 @@ type alertGroupListFilters struct {
 // path has to parse user input.
 func resolveAlertGroupListFilters(cmd *cobra.Command, opts *alertGroupListOpts) (alertGroupListFilters, error) {
 	out := alertGroupListFilters{
-		Teams:              opts.Teams,
-		Integrations:       opts.Integrations,
-		EscalationChains:   opts.EscalationChains,
-		AcknowledgedBy:     opts.AcknowledgedBy,
-		ResolvedBy:         opts.ResolvedBy,
+		Repeated:           url.Values{},
+		Search:             opts.Search,
 		Mine:               opts.Mine,
 		WithResolutionNote: opts.WithResolutionNote,
 		HasRelatedIncident: opts.HasRelatedIncident,
+	}
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) > 0 {
+			out.Repeated[f.param] = f.values
+		}
 	}
 
 	now := time.Now()
@@ -339,6 +399,22 @@ Alert group records carry no escalation chain field, so --escalation-chain is th
 only way to attribute alert load to the rotation that was actually paged. It is not
 interchangeable with --integration: one integration routes to several chains.
 
+Use --label key:value to filter by alert-group label names, not IDs. Repeat the
+flag to require all labels, e.g. --label service:api --label env:prod.
+--label-exclude drops groups carrying any of its pairs. Filtering happens on the
+server before pagination and ignores case and accents, so service:API and
+service:apí match the same groups. Commas are literal; colons cannot occur inside
+names.
+
+--search matches an exact alert-group ID or number, or text in the title OnCall
+renders, which can be longer than status.title. By default the server only
+searches the 30 days before the filtered date window ends, or before now when no
+window is set.
+
+--involved-user matches groups the user was notified about or acknowledged,
+resolved, or silenced; notifications only count for the user's 1000 most recently
+notified groups. --acted-by matches groups with any log entry by the user.
+
 --max-age anchors to now; use --from/--to for a historical started-at window, and
 --resolved-from/--resolved-to for a resolved-at window. They accept RFC3339, a unix
 timestamp, or a relative expression like now-30d. --max-age and --from/--to cannot
@@ -351,17 +427,17 @@ requests, so narrow the window or the filters when a partial answer will do.`
 const alertGroupListExample = `  # List firing, acknowledged, and silenced root groups
   gcx irm oncall alert-groups list
 
-  # Narrow to one team, most recent day
-  gcx irm oncall alert-groups list --team <team-id> --max-age 24h
-
-  # Attribute load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
-  gcx irm oncall alert-groups list --escalation-chain <chain-id> --all
+  # Attribute one service's load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
+  gcx irm oncall alert-groups list --escalation-chain <chain-id> --label service:api --all
 
   # Historical window, including resolved groups
   gcx irm oncall alert-groups list --from now-30d --to now-7d --all
 
-  # Groups resolved last week by a given user
-  gcx irm oncall alert-groups list --resolved-by <user-id> --resolved-from now-7d --all`
+  # Search titles, skipping groups from the dev environment
+  gcx irm oncall alert-groups list --search "disk full" --label-exclude env:dev
+
+  # Groups a user was paged for or handled in the last week
+  gcx irm oncall alert-groups list --involved-user <user-id> --max-age 7d --all`
 
 func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &alertGroupListOpts{}
@@ -503,20 +579,22 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 	if len(opts.States) > 0 {
 		parts = append(parts, "status="+strings.Join(opts.States, ","))
 	}
-	if len(opts.Teams) > 0 {
-		parts = append(parts, "team="+strings.Join(opts.Teams, ","))
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) == 0 {
+			continue
+		}
+		if !f.labelPairs {
+			parts = append(parts, f.flag+"="+strings.Join(f.values, ","))
+			continue
+		}
+		// Joined by commas, --label a:b,c --label d:e would read the same
+		// as --label a:b --label c,d:e.
+		for _, v := range f.values {
+			parts = append(parts, f.flag+"="+strconv.Quote(v))
+		}
 	}
-	if len(opts.Integrations) > 0 {
-		parts = append(parts, "integration="+strings.Join(opts.Integrations, ","))
-	}
-	if len(opts.EscalationChains) > 0 {
-		parts = append(parts, "escalation-chain="+strings.Join(opts.EscalationChains, ","))
-	}
-	if len(opts.AcknowledgedBy) > 0 {
-		parts = append(parts, "acknowledged-by="+strings.Join(opts.AcknowledgedBy, ","))
-	}
-	if len(opts.ResolvedBy) > 0 {
-		parts = append(parts, "resolved-by="+strings.Join(opts.ResolvedBy, ","))
+	if opts.Search != "" {
+		parts = append(parts, "search="+strconv.Quote(opts.Search))
 	}
 	if opts.MaxAge != "" {
 		parts = append(parts, "max-age="+opts.MaxAge)
@@ -570,17 +648,18 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 // --all is in effect. Used to decide whether the filter-summary hint stays
 // silent in the "user passed --all and nothing else" case.
 func alertGroupListHasExplicitFilter(opts *alertGroupListOpts) bool {
-	return opts.MaxAge != "" ||
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) > 0 {
+			return true
+		}
+	}
+	return opts.Search != "" ||
+		opts.MaxAge != "" ||
 		opts.From != "" ||
 		opts.To != "" ||
 		opts.ResolvedFrom != "" ||
 		opts.ResolvedTo != "" ||
 		len(opts.States) > 0 ||
-		len(opts.Teams) > 0 ||
-		len(opts.Integrations) > 0 ||
-		len(opts.EscalationChains) > 0 ||
-		len(opts.AcknowledgedBy) > 0 ||
-		len(opts.ResolvedBy) > 0 ||
 		opts.Mine ||
 		opts.WithResolutionNote ||
 		opts.HasRelatedIncident ||
@@ -683,11 +762,11 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	if len(filters.Statuses) > 0 {
 		listOpts = append(listOpts, WithStatuses(filters.Statuses...))
 	}
-	if len(filters.Teams) > 0 {
-		listOpts = append(listOpts, WithTeams(filters.Teams...))
+	if teams := filters.Repeated["team"]; len(teams) > 0 {
+		listOpts = append(listOpts, WithTeams(teams...))
 	}
-	if len(filters.Integrations) > 0 {
-		listOpts = append(listOpts, WithIntegrations(filters.Integrations...))
+	if integrations := filters.Repeated["integration"]; len(integrations) > 0 {
+		listOpts = append(listOpts, WithIntegrations(integrations...))
 	}
 	if opts.Limit > 0 {
 		// Over-fetch by one: the public API has no more-pages signal, so a
@@ -699,9 +778,9 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 
 	// Surface unsupported-filter warnings once at the command edge — the
 	// public API doesn't speak is_root, mine, with_resolution_note,
-	// has_related_incident, the escalation_chain / acknowledged_by /
-	// resolved_by option filters, or either daterange's upper bound. Honor
-	// what we can and tell the user about the rest.
+	// has_related_incident, search, any repeatable filter besides team and
+	// integration, or either daterange's upper bound. Honor what we can and
+	// tell the user about the rest.
 	var unsupported []string
 	if filters.IsRoot != nil {
 		unsupported = append(unsupported, "is_root (root-only / include-child-groups)")
@@ -715,14 +794,13 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	if filters.HasRelatedIncident {
 		unsupported = append(unsupported, "--has-related-incident")
 	}
-	if len(filters.EscalationChains) > 0 {
-		unsupported = append(unsupported, "--escalation-chain")
+	for _, f := range opts.repeatedFilters() {
+		if len(f.values) > 0 && f.param != "team" && f.param != "integration" {
+			unsupported = append(unsupported, "--"+f.flag)
+		}
 	}
-	if len(filters.AcknowledgedBy) > 0 {
-		unsupported = append(unsupported, "--acknowledged-by")
-	}
-	if len(filters.ResolvedBy) > 0 {
-		unsupported = append(unsupported, "--resolved-by")
+	if filters.Search != "" {
+		unsupported = append(unsupported, "--search")
 	}
 	// --from's lower bound survives as started_after above; the upper bound
 	// and the whole resolved_at window have no public-API equivalent.
@@ -846,20 +924,13 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 			params.Set("is_root", "false")
 		}
 	}
-	for _, t := range filters.Teams {
-		params.Add("team", t)
+	for param, values := range filters.Repeated {
+		for _, v := range values {
+			params.Add(param, v)
+		}
 	}
-	for _, i := range filters.Integrations {
-		params.Add("integration", i)
-	}
-	for _, e := range filters.EscalationChains {
-		params.Add("escalation_chain", e)
-	}
-	for _, u := range filters.AcknowledgedBy {
-		params.Add("acknowledged_by", u)
-	}
-	for _, u := range filters.ResolvedBy {
-		params.Add("resolved_by", u)
+	if filters.Search != "" {
+		params.Set("search", filters.Search)
 	}
 	if filters.Mine {
 		params.Set("mine", "true")

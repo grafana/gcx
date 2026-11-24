@@ -49,6 +49,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -858,9 +859,8 @@ func resolveBulkTargets(ctx context.Context, client OnCallAPI, filters alertGrou
 // pass --state explicitly" check, so we replicate just the bits we need here).
 func (o *alertGroupActionVerbOpts) toListFilters() (alertGroupListFilters, error) {
 	out := alertGroupListFilters{
-		Teams:        o.Teams,
-		Integrations: o.Integrations,
-		Mine:         o.Mine,
+		Repeated: url.Values{"team": o.Teams, "integration": o.Integrations},
+		Mine:     o.Mine,
 	}
 
 	// --max-age is the only time expression the bulk verbs take; resolve it to
