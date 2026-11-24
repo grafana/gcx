@@ -942,6 +942,10 @@ func validateHeaders(headers map[string]string, contextName string) error {
 }
 
 func (grafana GrafanaConfig) IsEmpty() bool {
+	if len(grafana.Headers) != 0 {
+		return false
+	}
+	grafana.Headers = nil
 	return reflect.DeepEqual(grafana, GrafanaConfig{})
 }
 
