@@ -58,7 +58,6 @@ func checkEntityType(ctx context.Context, client *Client, entityType string, c t
 		return entityType, nil //nolint:nilerr // best-effort: type validation is advisory
 	}
 	schema := processGraphSchema(schemaResp)
-	c.search.dims.seed(schema) // the probes' scope filter reads the same schema
 	schemaTypes := make([]string, 0, len(schema.EntityTypes))
 	for _, et := range schema.EntityTypes {
 		schemaTypes = append(schemaTypes, et.Type)
@@ -361,10 +360,9 @@ func runProbes(ctx context.Context, client *Client, c typeCheck, probes []typeAl
 
 // valueProperties maps each schema type to the properties whose values can
 // suggest a property match for an unknown type: those the schema lists for
-// the type, other than name and the type's scope dimensions. Rows can carry
+// the type, other than name and the scope dimensions. Rows can carry
 // properties the schema does not list; those are left out.
 func valueProperties(schema KGSchemaResult) map[string]map[string]bool {
-	dims := schemaScopeDims(schema)
 	out := make(map[string]map[string]bool, len(schema.EntityTypes))
 	for _, et := range schema.EntityTypes {
 		ps := out[et.Type]
@@ -373,7 +371,9 @@ func valueProperties(schema KGSchemaResult) map[string]map[string]bool {
 			out[et.Type] = ps
 		}
 		for _, p := range et.Properties {
-			if p != "name" && !dims[et.Type][p] {
+			switch p {
+			case "name", "env", "namespace", "site":
+			default:
 				ps[p] = true
 			}
 		}

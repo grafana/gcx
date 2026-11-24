@@ -40,7 +40,7 @@ func runEntities(t *testing.T, f *fakeKG, args string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
-func entitiesFake(applyScope bool) *fakeKG {
+func entitiesFake() *fakeKG {
 	api := svc("api", "gadget")
 	api.Scope = map[string]string{"env": "prod", "namespace": "ns1"}
 	db := svc("db", "Widget")
@@ -56,14 +56,11 @@ func entitiesFake(applyScope bool) *fakeKG {
 		},
 		entities: map[string][]SearchResult{
 			"Service": {api, db, gateway},
-			// Nodes carry no namespace: a backend that applies --namespace
-			// returns them.
 			"Node": {
 				{Name: "node-1", Type: "Node", Scope: map[string]string{"env": "prod"}, Assertion: map[string]any{"assertions": []any{map[string]any{"assertionName": "Saturation"}}}},
 				{Name: "node-2", Type: "Node", Scope: map[string]string{"env": "dev"}},
 			},
 		},
-		applyScope: applyScope,
 	}
 }
 
@@ -83,51 +80,6 @@ func TestEntitiesListCommand(t *testing.T) {
 		wantStderr   string
 		wantNoStderr string
 	}{
-		{
-			name:      "--page 0 applies the scope",
-			args:      "list --type Service --page 0 --namespace ns1 -o json " + testWindow,
-			wantNames: []string{"api"},
-		},
-		{
-			name:      "--page 0 with none",
-			args:      "list --type Service --page 0 --namespace none -o json " + testWindow,
-			wantNames: []string{"gateway"},
-		},
-		{
-			name:      "rows of a type without the dimension are kept",
-			args:      "list --type Node --page 0 --namespace ns1 -o json " + testWindow,
-			wantNames: []string{"node-1", "node-2"},
-		},
-		{
-			name:      "a backend that applies the scope: output unchanged",
-			fake:      entitiesFake(true),
-			args:      "list --type Node --env prod --namespace ns1 -o json " + testWindow,
-			wantNames: []string{"node-1"},
-		},
-		{
-			name:      "a backend that applies the scope: a type with the dimension",
-			fake:      entitiesFake(true),
-			args:      "list --type Service --namespace ns1 -o json " + testWindow,
-			wantNames: []string{"api"},
-		},
-		{
-			name:      "a backend that applies the scope: --insight any",
-			fake:      entitiesFake(true),
-			args:      "list --type Node --namespace ns1 --insight any -o json " + testWindow,
-			wantNames: []string{"node-1"},
-		},
-		{
-			name:      "a backend that applies the scope: --namespace none",
-			fake:      entitiesFake(true),
-			args:      "list --type Node --namespace none -o json " + testWindow,
-			wantNames: []string{"node-1", "node-2"},
-		},
-		{
-			name:           "a name lookup does not hide that the type has a namespace",
-			args:           "list --type Service --property name=gateway --namespace ns1 -o json " + testWindow,
-			wantNames:      []string{},
-			wantCountCalls: 1,
-		},
 		{
 			name:         "the limit hint says how far --limit 0 reads",
 			args:         "list --type Service --limit 2 -o json " + testWindow,
@@ -245,7 +197,7 @@ func TestEntitiesListCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.fake
 			if f == nil {
-				f = entitiesFake(false)
+				f = entitiesFake()
 			}
 			stdout, stderr, err := runEntities(t, f, tt.args)
 			assert.Contains(t, stderr, tt.wantStderr)
@@ -410,22 +362,6 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 		wantCountCalls int
 	}{
 		{name: "a found entity makes no count call", args: "inspect Service--api " + testWindow},
-		{
-			// The fake ignores the scope, so only the client-side filter on
-			// the probe keeps an entity of another namespace out.
-			name:           "a probe drops an entity outside the requested scope",
-			args:           "inspect Gadget--api --namespace ns2 " + testWindow,
-			wantErr:        `entity type "Gadget" is not in the graph`,
-			wantNoSuggest:  "These return matching entities",
-			wantCountCalls: 1,
-		},
-		{
-			name:           "a probe keeps an entity inside the requested scope",
-			args:           "inspect Gadget--api --namespace ns1 " + testWindow,
-			wantErr:        `entity type "Gadget" is not in the graph`,
-			wantSuggestion: "These return matching entities: gcx kg entities inspect Service--api --env prod --namespace ns1 --from 2026-01-01T00:00:00Z --to 2026-01-01T01:00:00Z",
-			wantCountCalls: 1,
-		},
 		{name: "a type in the wrong case is corrected", args: "inspect service--api " + testWindow, wantCountCalls: 1},
 		{
 			name:           "an unknown type suggests the entity under its type, with its scope",
@@ -460,7 +396,7 @@ func TestEntitiesInspectCommandTypeCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := tt.fake
 			if f == nil {
-				f = entitiesFake(false)
+				f = entitiesFake()
 			}
 			_, _, err := runEntities(t, f, tt.args)
 			if tt.wantErr == "" {
