@@ -1,37 +1,26 @@
 ## Unreleased
 
-- `gcx kg stats` no longer counts the graph's own catalog records as entities:
-  `entities.total` and `entities.byType` now leave out every counted type that
-  `kg meta schema` does not list for the same window (for example Account,
-  EntityType, Env and Schema), so `entities.total` is smaller than before. These
-  types inflated the total and showed up in `entities.byType` although
-  `kg meta schema` does not list them. They are now listed separately under
-  `entities.internal`, which is omitted when there are none. Scripts that relied
-  on the old total can add `entities.internal.total`. To tell them apart,
-  `kg stats` now also reads the schema for its window; if it cannot, it warns on
-  stderr and leaves out only the graph's catalog record types (Account,
-  EntityType, Env and Schema).
+- `gcx kg stats` no longer counts the graph's own catalog records as entities.
+  `entities.total` and `entities.byType` leave out every counted type that
+  `kg meta schema` does not list for the same window, such as Account,
+  EntityType, Env and Schema, so `entities.total` is smaller than before. These
+  records are listed under `entities.internal`. Scripts that relied on the old
+  total can add `entities.internal.total`. If the schema cannot be read, stats
+  warns on stderr and leaves out only those four types. (#1811)
 - The `gcx kg diagnose` entity overview uses the same rule, so it now leaves out
-  Account records too. On a stack whose only counted entities are catalog
-  records, the overview total is now 0 and diagnose reports the no-entities
-  scenario. The overview reads the schema for the same last-hour window as its
-  entity counts; when the schema cannot be read, it leaves out only the catalog
-  record types.
-- `gcx kg stats` now breaks active insights down by category
-  (`insights.byCategory`, for example failure, error, anomaly, saturation and
-  amend; insights without a category count under `unknown`), each with its own
-  total and per-name counts. The existing `total`, `bySeverity` and `byName`
-  keys are unchanged.
+  Account records too. On a stack that holds only catalog records, the overview
+  total is now 0 and diagnose reports the no-entities scenario. (#1811)
+- `gcx kg stats` now breaks active insights down by category in
+  `insights.byCategory` (for example failure, error, anomaly, saturation and
+  amend; `unknown` when an insight has none), each with its own total and
+  per-name counts. (#1811)
 - `gcx kg stats` now lists in `insights.incompleteTypes` every entity type whose
-  insight-carrying entities it could not read in full: the server's result
-  limit, more than 50 search pages, a server error, or a rate limit (HTTP 429)
-  that persisted through gcx's retries. Its JSON output gave no sign of the
-  first three before; only stderr did. A search that is still rate limited
-  after gcx's retries no longer fails the whole command: stats warns on stderr,
-  as it does for a server error, lists that type in `insights.incompleteTypes`
-  and prints the counts for the other types. It also follows further search
-  pages while the server reports more, up to 50 per type, in place of the
-  stderr hint to use `--page`. `--type` still limits only the insight counts.
+  insights it could not read in full: the server's result limit, more than 50
+  search pages, a server error, or a rate limit (HTTP 429) that persisted
+  through gcx's retries. Before, the JSON gave no sign of this. A persistent
+  rate limit no longer fails the whole command; the other types are still
+  counted. stats now follows further search pages, up to 50 per type, in place
+  of the stderr hint to use `--page`. (#1811)
 
 ## v1.8.0 (2026-11-17)
 
