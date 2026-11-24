@@ -2,7 +2,8 @@
 
 What happens between `gcx pages push` and a viewer seeing the page,
 so you can tell a code problem from a platform rule. The SDK hides the bridge:
-pages call SDK functions, never `postMessage` themselves.
+pages call SDK functions, never `postMessage` themselves. How queries and
+bindings work is in [data.md](data.md).
 
 ## Contents
 
@@ -84,7 +85,7 @@ What the SDK asks the host for:
 
 | SDK API | Message | Host does |
 |---------|---------|-----------|
-| `useQuery`, `grafana.query`, `grafana.subscribe` | `query-subscribe` | Resolves a named binding from the bundle (or takes an inline request), runs it through the datasource plugin as the viewer, and streams `query-result`, `query-complete` or `query-error` |
+| `useQuery`, `grafana.query`, `grafana.subscribe` | `query-subscribe` | Resolves a named binding from the bundle (or takes an inline request), runs it through the datasource plugin as the viewer, and streams `query-result`, `query-complete` or `query-error`; see [data.md](data.md#the-path-of-a-query) |
 | `grafana.datasources.list` | `datasources` | Lists datasources the viewer can query |
 | `GrafanaPanel` | `panels`, `panel-data` | Renders the plugin in its own isolated frame over the reserved slot |
 | `useTimeRange`, `TimeRangePicker` | `range`, `timezone`, `refresh` | Updates the shared range and reruns queries |
@@ -125,8 +126,7 @@ request a host lacks fails with "… is only available inside Grafana".
 | Project | 1,024 files (the SDK uses about 177), 10 MiB of source |
 | Built page | 16 MiB of script, styles and inlined assets |
 | One gcx push write | A text file of up to 120 KiB |
-| Bindings | 32; each query object up to 64 KiB |
-| Query results | 1,000 frames, 100,000 cells, 4 MiB; 8 running, 64 queued |
+| Queries and bindings | See [data.md](data.md#limits) |
 | Native panels | 32 mounted, 4096×2400 pixels each |
 | URL state | 2,000 URL-encoded characters |
 | User storage | Values up to 64 KiB |
@@ -142,8 +142,6 @@ request a host lacks fails with "… is only available inside Grafana".
 | `fetch` fails with a CSP error | Network access outside Grafana; use a binding, or an MCP server for outside data |
 | Fonts fall back to a system font | A remote font URL; import an `@fontsource` package |
 | Form does nothing on Enter | Native submission is blocked; use `onClick` and `onKeyDown` |
-| "This query binding is not declared by the page" | `useQuery('name')` without that key in `pages.bindings.json` |
-| A panel shows the previous selection briefly | `useQuery` keeps the last result while variables change |
 | Menu or tooltip is cut off | Overlays can't leave the frame; place them inside it |
-| Works in the snapshot, empty for a colleague | Their datasource permissions; queries run as each viewer |
 | "… is only available inside Grafana" | The page runs on a host without that bridge feature |
+| Wrong or missing data | See [data.md](data.md#symptoms-and-causes) |
