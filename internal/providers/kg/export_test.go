@@ -32,6 +32,11 @@ func ParseInsightFlag(s string) (InsightMatcher, error) {
 	return parseInsightFlag(s)
 }
 
+// ParsePropertyFlag wraps the unexported parsePropertyFlag for testing.
+func ParsePropertyFlag(s string) (PropertyMatcher, error) {
+	return parsePropertyFlag(s)
+}
+
 // FilterByInsightMatchers wraps the unexported filterByInsightMatchers for testing.
 func FilterByInsightMatchers(results []SearchResult, matchers []InsightMatcher) []SearchResult {
 	return filterByInsightMatchers(results, matchers)
