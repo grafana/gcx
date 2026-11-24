@@ -422,6 +422,7 @@ func TestLoginRejectsTokenAsServerWithoutPrintingIt(t *testing.T) {
 		{name: "flag with scheme", args: []string{"--server", "https://" + fakeToken}, wantSource: "--server"},
 		{name: "cloud token flag", args: []string{"--server", "glc_FAKE_example"}, wantSource: "--server"},
 		{name: "quoted bearer flag", args: []string{"--server", `"Bearer ` + fakeToken + `"`}, wantSource: "--server"},
+		{name: "authorization header flag", args: []string{"--server", "Authorization: Bearer\t" + fakeToken}, wantSource: "--server"},
 		{name: "environment", env: fakeToken, wantSource: "GRAFANA_SERVER"},
 		{name: "saved context", stored: "https://" + fakeToken, wantSource: `context "default"`},
 	}

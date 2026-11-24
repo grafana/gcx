@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
@@ -664,14 +665,22 @@ func NormalizeServerURL(raw string) string {
 // printed: it would leak in a DNS query and in error output.
 func LooksLikeToken(server string) bool {
 	host := strings.ToLower(server)
-	// Pasted tokens often arrive quoted or as an Authorization header value,
-	// either bare or after a scheme, so peel those off in any order.
+	// Pasted tokens often arrive quoted or as an Authorization header copied
+	// from a curl command, either bare or after a scheme, so peel those off in
+	// any order.
 	for {
 		prev := host
-		host = strings.TrimLeft(host, " \t\"'")
+		host = strings.TrimLeftFunc(host, func(r rune) bool {
+			return unicode.IsSpace(r) || r == '"' || r == '\''
+		})
 		host = strings.TrimPrefix(host, "https://")
 		host = strings.TrimPrefix(host, "http://")
-		host = strings.TrimPrefix(host, "bearer ")
+		host = strings.TrimPrefix(host, "authorization:")
+		for _, scheme := range []string{"bearer", "token"} {
+			if rest, ok := strings.CutPrefix(host, scheme); ok && rest != "" && unicode.IsSpace(rune(rest[0])) {
+				host = rest
+			}
+		}
 		if host == prev {
 			break
 		}

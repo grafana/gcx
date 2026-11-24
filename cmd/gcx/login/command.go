@@ -261,9 +261,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	// Checked before anything else because later gates and context-name
 	// inference echo the server value in their errors.
 	if login.LooksLikeToken(requestedLoginServer(flags.Server, nil)) {
-		source := "--server"
+		source := "The --server value"
 		if flags.Server == "" {
-			source = "GRAFANA_SERVER"
+			source = "The GRAFANA_SERVER value"
 		}
 		return tokenAsServerError(source)
 	}
@@ -342,7 +342,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	}
 	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
 	if login.LooksLikeToken(flags.Server) {
-		return tokenAsServerError(fmt.Sprintf("the server saved in context %q", login.DisplayServer(contextName)))
+		return tokenAsServerError(fmt.Sprintf("The server saved in context %q", login.DisplayServer(contextName)))
 	}
 	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
 	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget)
@@ -1164,7 +1164,7 @@ func grafanaDestinationChangeAuthError(previousServer, requestedServer string) e
 func tokenAsServerError(source string) error {
 	return gcxerrors.DetailedError{
 		Summary:  "Server URL looks like a Grafana token",
-		Details:  fmt.Sprintf("The server value from %s starts with a Grafana token prefix, so it is a token rather than a URL. gcx did not contact it or print it.", source),
+		Details:  source + " starts with a Grafana token prefix, so it is a token rather than a URL. gcx did not contact it or print it.",
 		ExitCode: new(gcxerrors.ExitUsageError),
 		Suggestions: []string{
 			"Pass the Grafana URL with --server, for example --server https://my-stack.grafana.net",
