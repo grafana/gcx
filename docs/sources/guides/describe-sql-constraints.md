@@ -11,7 +11,7 @@ weight: 8
 
 # Inspect SQL table constraints
 
-Use `describe-constraints` to inspect declared MySQL and PostgreSQL primary, unique, check, and foreign-key constraints:
+Use `describe-constraints` to inspect declared MySQL and PostgreSQL primary, unique, check, and foreign-key constraints. For PostgreSQL only, it also shows exclusion (`EXCLUDE`) constraints:
 
 ```shell
 gcx datasources mysql describe-constraints mydb.orders -d UID

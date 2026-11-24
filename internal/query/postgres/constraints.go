@@ -54,5 +54,6 @@ LEFT JOIN pg_attribute ref_att
  AND ref_att.attnum = ref_cols.attnum
 WHERE src_ns.nspname = '%s'
   AND src_cls.relname = '%s'
+  AND c.contype IN ('p', 'u', 'f', 'c', 'x')
 ORDER BY c.conname, cols.ordinality`, EscapeSQLString(schema), EscapeSQLString(table))
 }

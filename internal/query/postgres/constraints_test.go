@@ -14,6 +14,7 @@ func TestBuildDescribeConstraintsQuery(t *testing.T) {
 	assert.Contains(t, query, "unnest(c.confkey) WITH ORDINALITY")
 	assert.Contains(t, query, "src_ns.nspname = 'public'")
 	assert.Contains(t, query, "src_cls.relname = 'orders'")
+	assert.Contains(t, query, "AND c.contype IN ('p', 'u', 'f', 'c', 'x')")
 	assert.Contains(t, query, "ORDER BY c.conname, cols.ordinality")
 }
 

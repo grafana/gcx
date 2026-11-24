@@ -35,7 +35,7 @@ func DescribeConstraintsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "describe-constraints TABLE",
 		Short:   "Show the declared constraints of a PostgreSQL table",
-		Long:    "Show declared primary, unique, check, and foreign-key constraints.\n\nUse schema.TABLE or --schema to select one table explicitly. Local and\nreferenced columns retain their declared order. Only database-declared metadata\nis returned; relationships are never inferred from column names or values.\nTables with no declared constraints return an empty constraints array.",
+		Long:    "Show declared primary, unique, check, foreign-key, and PostgreSQL-only exclusion (EXCLUDE) constraints.\n\nUse schema.TABLE or --schema to select one table explicitly. Local and\nreferenced columns retain their declared order. Only database-declared metadata\nis returned; relationships are never inferred from column names or values.\nTables with no declared constraints return an empty constraints array.",
 		Example: "  gcx datasources postgres describe-constraints public.orders -d UID\n  gcx datasources postgres describe-constraints orders --schema public -o json",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
