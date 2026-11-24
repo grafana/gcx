@@ -56,18 +56,40 @@ func TestParseEntityRefTokenTenantDomain(t *testing.T) {
 	assert.Equal(t, "Service", ref.Type)
 	assert.Equal(t, "checkout", ref.Name)
 
-	// The second segment names a tenant domain only when it is a valid tenant
-	// name, so a PascalCase type keeps the bare "tenant" domain.
+	// With more than three segments, a second segment that starts with an
+	// uppercase letter is the type of the bare "tenant" domain.
 	ref, err = kg.ParseEntityRefToken("tenant/Service/github.com/contoso/shop")
 	require.NoError(t, err)
 	assert.Equal(t, "tenant", ref.Domain)
 	assert.Equal(t, "Service", ref.Type)
 	assert.Equal(t, "github.com/contoso/shop", ref.Name)
 
-	for _, bad := range []string{"tenant//Repository/gcx", "tenant/github/Repository/", "tenant/github//gcx"} {
+	// Exactly three segments keep the bare "tenant" reading for any type.
+	ref, err = kg.ParseEntityRefToken("tenant/worker/foo")
+	require.NoError(t, err)
+	assert.Equal(t, "tenant", ref.Domain)
+	assert.Equal(t, "worker", ref.Type)
+	assert.Equal(t, "foo", ref.Name)
+
+	for _, bad := range []string{"tenant/", "tenant/github/", "tenant//Repository/gcx", "tenant/github/Repository/", "tenant/github//gcx"} {
 		_, err := kg.ParseEntityRefToken(bad)
 		require.Error(t, err, "expected error for %q", bad)
 	}
+}
+
+func TestParseEntityRefTokenRejectsAmbiguousTenantRefs(t *testing.T) {
+	// Each token could be tenant/<name>/Type/name with a lowercase type, or
+	// tenant/Type/name with a lowercase type and a name that contains "/".
+	// The parser rejects it instead of choosing one reading.
+	for _, ambiguous := range []string{"tenant/worker/foo/bar", "tenant/github/repository/gcx", "tenant/worker/foo/bar/baz"} {
+		_, err := kg.ParseEntityRefToken(ambiguous)
+		require.Error(t, err, "expected error for %q", ambiguous)
+		assert.Contains(t, err.Error(), "must start with an uppercase letter")
+	}
+
+	// A second segment that is not a valid tenant name is also rejected.
+	_, err := kg.ParseEntityRefToken("tenant/9github/Repository/gcx")
+	require.Error(t, err)
 }
 
 func TestParseTTL(t *testing.T) {
