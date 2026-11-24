@@ -2,7 +2,6 @@ package config_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -463,7 +462,7 @@ func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:   server.URL,
 			StackID:  99999,
@@ -476,7 +475,7 @@ func TestNewNamespacedRESTConfig_CustomHeadersSent(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/test", nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -499,7 +498,7 @@ func TestNewNamespacedRESTConfig_NoHeadersAddsNothing(t *testing.T) {
 	}))
 	defer server.Close()
 
-	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:   server.URL,
 			StackID:  99999,
@@ -511,7 +510,7 @@ func TestNewNamespacedRESTConfig_NoHeadersAddsNothing(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/test", nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -579,7 +578,7 @@ func TestNewNamespacedRESTConfig_CustomHeadersNotSentToOtherHosts(t *testing.T) 
 	}))
 	defer grafana.Close()
 
-	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:   grafana.URL,
 			StackID:  99999,
@@ -592,7 +591,7 @@ func TestNewNamespacedRESTConfig_CustomHeadersNotSentToOtherHosts(t *testing.T) 
 	}
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, other.URL+"/external", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, other.URL+"/external", nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -631,7 +630,7 @@ func TestNewNamespacedRESTConfig_OAuthRefreshSendsCustomHeaders(t *testing.T) {
 	}))
 	defer proxy.Close()
 
-	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:              proxy.URL,
 			ProxyEndpoint:       proxy.URL,
@@ -647,7 +646,7 @@ func TestNewNamespacedRESTConfig_OAuthRefreshSendsCustomHeaders(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, proxy.URL+"/resource", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, proxy.URL+"/resource", nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -684,7 +683,7 @@ func TestNewNamespacedRESTConfig_DiscoverySendsCustomHeaders(t *testing.T) {
 
 	// No StackID configured: forces /bootdata discovery inside
 	// NewNamespacedRESTConfig via resolveNamespace.
-	restCfg, err := config.NewNamespacedRESTConfig(context.Background(), config.Context{
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{
 		Grafana: &config.GrafanaConfig{
 			Server:   bootdata.URL,
 			APIToken: "glsa_test",
