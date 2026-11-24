@@ -90,16 +90,20 @@ Copy a published page into a new draft:
 
 ```shell
 gcx assistant pages list --section mine
-gcx assistant pages pull PAGE --dir ./checkout-health
+gcx assistant pages pull PAGE --dir ./checkout-health-copy
 ```
 
-Replace `PAGE` with the page's ID or link. Edit, push and check the page as before. Publishing it makes your changes the page's next version.
+Replace `PAGE` with the page's ID or link. The directory must be new or empty. Edit, push and check the page as before. Publishing it makes your changes the page's next version.
+
+A copy leaves out the page's agent guidance and the SDK's Markdown docs, which another person may have written, and lists them under `omitted`. The stack builds the copy with the template's guidance.
 
 If the draft changes in Grafana, for example when you ask Grafana Assistant to change it, download it again before you edit:
 
 ```shell
-gcx assistant pages pull --dir ./checkout-health
+gcx assistant pages pull --dir ./checkout-health-copy
 ```
+
+This refuses while the directory has changes you haven't pushed. Push them first, or add `--force` to discard them.
 
 ## Publish the page
 

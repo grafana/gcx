@@ -100,7 +100,11 @@ gcx assistant pages pull <page-id-or-url> --dir ./checkout-health
 ```
 
 `pull` copies the published page into a new draft, as Edit does in Grafana;
-publishing it later makes your changes the page's next version. `get --source`
+publishing it later makes your changes the page's next version. The copy comes
+without the page's `AGENTS.md`, skills and the SDK's Markdown docs, which
+another person may have written; `pull` lists them under `omitted`, and the
+stack builds with the template's. For the docs, use
+[references/sdk.md](references/sdk.md) or a project you created. `get --source`
 reads a page's code without making a draft.
 
 When someone changed the draft in Grafana (for example with Grafana Assistant),
@@ -150,8 +154,10 @@ gcx assistant pages push --dir ./checkout-health
 
 Push sends only the files that changed since the last push or pull. The stack
 type-checks and builds the page. A build that compiles becomes the draft's
-version; a failed build fails the command with the compiler's errors and keeps
-the previous version up. Fix the file and line it names and push again.
+version (`status: built`); a failed build fails the command with the compiler's
+errors and keeps the previous version up. Fix the file and line it names and
+push again. `status: saved` means the files were sent but none changes the
+build, such as `AGENTS.md`.
 
 ### 5. Snapshot and look
 

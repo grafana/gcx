@@ -25,23 +25,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const experimentalPreamble = "This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions."
-
 // maxWindow is the longest window the statistics API reads.
 const maxWindow = 90 * 24 * time.Hour
-
-func markExperimental(cmd *cobra.Command) {
-	long := cmd.Long
-	if long == "" {
-		long = cmd.Short
-	}
-	cmd.Short = "[experimental] " + cmd.Short
-	cmd.Long = experimentalPreamble + "\n\n" + long
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	cmd.Annotations[agent.AnnotationStability] = agent.StabilityExperimental
-}
 
 // Commands returns the change-review command group.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
@@ -59,14 +44,14 @@ checks, and fails without saving if it changed the same check.`,
 		Example: `  gcx assistant change-review checks list
   gcx assistant change-review stats --since 7d`,
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 
 	checks := &cobra.Command{
 		Use:   "checks",
 		Short: "Manage change review checks.",
 		Long:  "List, inspect, create, update, and delete the checks change review runs on pull requests.",
 	}
-	markExperimental(checks)
+	agent.MarkExperimental(checks)
 	checks.AddCommand(
 		newListCommand(loader),
 		newGetCommand(loader),
@@ -178,7 +163,7 @@ or get CHECK for a check's full instructions.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), list)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -287,7 +272,7 @@ The output is valid input for update -f, so get, edit, and update round-trip.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), checks.Checks[index])
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -515,7 +500,7 @@ save; reviews already running keep the checks they started with.`,
 			}
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags(), true)
 	return cmd
 }
@@ -595,7 +580,7 @@ guidance, and --enabled, --blocking, and --path tune where and how they run.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags(), false)
 	return cmd
 }
@@ -685,7 +670,7 @@ In agent mode, deletion requires --force or an enabled GCX_AUTO_APPROVE.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), newMutationResult("deleted", deleted))
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -886,7 +871,7 @@ as long as their review chat, so older windows may be partial.`,
 			return nil
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -1066,7 +1051,7 @@ totals.`,
 			return nil
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }

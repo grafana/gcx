@@ -12,8 +12,14 @@ import (
 
 // Build statuses a push reports.
 const (
-	StatusBuilt     = "built"
-	StatusFailed    = "failed"
+	// StatusBuilt: files were sent and the page built a new version.
+	StatusBuilt = "built"
+	// StatusSaved: files were sent, but none changes the page's build, so
+	// its version stays.
+	StatusSaved = "saved"
+	// StatusFailed: files were sent and the build failed.
+	StatusFailed = "failed"
+	// StatusUnchanged: nothing changed since the last push or pull.
 	StatusUnchanged = "unchanged"
 )
 
@@ -32,6 +38,9 @@ type Draft struct {
 	// PublishedURL where it opens.
 	Publication  *Publication `json:"publication,omitempty"`
 	PublishedURL string       `json:"publishedUrl,omitempty"`
+	// Omitted is the saved agent guidance left out of a copy of another
+	// person's page, such as its AGENTS.md and the SDK's Markdown docs.
+	Omitted []string `json:"omitted,omitempty"`
 }
 
 // PushResult reports a push.
@@ -84,15 +93,24 @@ func (c *Client) Create(ctx context.Context, dir, title, style string) (*Draft, 
 }
 
 // Pull copies a published page into a new conversation, as Edit does in
-// Grafana, and mirrors its project into dir, which must be missing or empty.
-// Publishing the copy makes it the page's next version.
+// Grafana, and mirrors its project into dir, which must be missing or empty;
+// an empty dir is a folder named after the page. Publishing the copy makes it
+// the page's next version.
 func (c *Client) Pull(ctx context.Context, dir, ref string) (*Draft, error) {
-	if err := checkEmpty(dir); err != nil {
-		return nil, err
+	if dir != "" {
+		if err := checkEmpty(dir); err != nil {
+			return nil, err
+		}
 	}
 	entry, err := c.Get(ctx, ref)
 	if err != nil {
 		return nil, err
+	}
+	if dir == "" {
+		dir = Slug(entry.Title)
+		if err := checkEmpty(dir); err != nil {
+			return nil, err
+		}
 	}
 	chatID, err := c.CreateChat(ctx, entry.Title)
 	if err != nil {
@@ -136,7 +154,7 @@ func (c *Client) mirror(ctx context.Context, dir string, page Page, publication 
 	if page.ReleaseID == "" {
 		return nil, fmt.Errorf("page %s has no working version to download yet", page.Title)
 	}
-	source, err := c.Source(ctx, page.ChatID, page.ID, page.ReleaseID)
+	source, omitted, err := c.Source(ctx, page.ChatID, page.ID, page.ReleaseID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +165,9 @@ func (c *Client) mirror(ctx context.Context, dir string, page Page, publication 
 	if err != nil {
 		return nil, err
 	}
-	return c.draft(dir, link), nil
+	d := c.draft(dir, link)
+	d.Omitted = omitted
+	return d, nil
 }
 
 func (c *Client) draft(dir string, link *Link) *Draft {
@@ -216,7 +236,7 @@ func (c *Client) Push(ctx context.Context, dir string, link *Link) (*PushResult,
 		link.ReleaseID = accepted.ReleaseID
 		out.Status = StatusBuilt
 	default:
-		out.Status = StatusUnchanged
+		out.Status = StatusSaved
 	}
 	out.ReleaseID = link.ReleaseID
 	return out, save()

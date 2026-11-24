@@ -1,6 +1,7 @@
 package pages //nolint:testpackage // Verify flag validation and publish audience rules on unexported options.
 
 import (
+	"strings"
 	"testing"
 
 	clientpages "github.com/grafana/gcx/internal/assistant/pages"
@@ -69,11 +70,12 @@ func TestPublishFlagValidation(t *testing.T) {
 		"link sharing alone":      {publishOpts{LinkSharing: true}, "requires --unlisted"},
 		"unknown category":        {publishOpts{Category: "dashboard"}, "--category must be one of"},
 		"too many tags":           {publishOpts{Tags: make([]string, 13)}, "at most 12"},
+		"long description":        {publishOpts{Description: strings.Repeat("x", 2001)}, "--description"},
 		"valid unlisted with tag": {publishOpts{Unlisted: true, LinkSharing: true, Tags: []string{"checkout"}}, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			opts := bound(&publishOpts{}, func(o *publishOpts) {
-				o.Folder, o.Unlisted, o.LinkSharing, o.Category, o.Tags = tt.opts.Folder, tt.opts.Unlisted, tt.opts.LinkSharing, tt.opts.Category, tt.opts.Tags
+				o.Folder, o.Unlisted, o.LinkSharing, o.Category, o.Tags, o.Description = tt.opts.Folder, tt.opts.Unlisted, tt.opts.LinkSharing, tt.opts.Category, tt.opts.Tags, tt.opts.Description
 			})
 			err := opts.Validate()
 			if tt.err == "" {
@@ -92,7 +94,7 @@ func TestSnapshotAndListFlagValidation(t *testing.T) {
 	require.NoError(t, bound(&snapshotOpts{}, func(o *snapshotOpts) { o.Theme = "light" }).Validate())
 
 	require.ErrorContains(t, (&listOpts{Section: "all", Limit: 30}).Validate(), "--section")
-	require.ErrorContains(t, (&listOpts{Limit: 0}).Validate(), "--limit")
+	require.ErrorContains(t, (&listOpts{Limit: -1}).Validate(), "--limit")
 	require.NoError(t, bound(&listOpts{}, func(o *listOpts) { o.Section = "mine" }).Validate())
 
 	require.ErrorContains(t, (&createOpts{Title: "  "}).Validate(), "--title is required")

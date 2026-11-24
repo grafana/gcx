@@ -40,6 +40,7 @@ type fakeAssistant struct {
 	publish  map[string]any
 	catalog  pages.Entry
 	refuse   string
+	omitted  []string
 }
 
 const (
@@ -111,7 +112,7 @@ func (f *fakeAssistant) serve(w http.ResponseWriter, r *http.Request) {
 		for name, data := range f.files {
 			files[strings.TrimPrefix(name, "/workspace/pages/"+project+"/")] = data
 		}
-		f.respond(w, map[string]any{"source": map[string]any{"version": 1, "files": files}})
+		f.respond(w, map[string]any{"source": map[string]any{"version": 1, "files": files}, "omittedFiles": f.omitted})
 	case r.Method == http.MethodGet && path == "/chats/"+chatID+"/pages":
 		f.respond(w, map[string]any{"pages": []any{f.page("", "")}})
 	case r.Method == http.MethodPost && path == draft+"/screenshot":
@@ -121,6 +122,7 @@ func (f *fakeAssistant) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && path == "/page-catalog/pub-1/edit":
 		f.files = map[string][]byte{"/workspace/pages/" + project + "/src/App.tsx": []byte("export const App = () => null;\n")}
 		f.release = "44444444-4444-4444-4444-444444444444"
+		f.omitted = []string{"AGENTS.md", "packages/pages-sdk/README.md"}
 		f.respond(w, map[string]any{"page": f.page("", "")})
 	case r.Method == http.MethodPost && path == "/page-catalog":
 		f.publish = body
@@ -164,6 +166,11 @@ func (f *fakeAssistant) workspace(w http.ResponseWriter, body map[string]any) {
 			name := str(file["path"])
 			f.writes = append(f.writes, strings.TrimPrefix(name, "/workspace/pages/"+project+"/"))
 			f.files[name] = []byte(str(file["content"]))
+			if strings.HasSuffix(name, "/AGENTS.md") {
+				// Guidance is saved with the page but isn't part of its build.
+				f.respond(w, map[string]any{"output": "", "exitCode": 0, "pages": []any{f.page("", "")}, "projects": []any{map[string]any{"uid": pageID, "directory": project, "status": "unchanged"}}})
+				return
+			}
 		case "sandbox_patch":
 			patch := str(file["patch"])
 			f.patches = append(f.patches, patch)
@@ -297,6 +304,7 @@ func TestPullCopiesThePublishedPageAndPublishUpdatesIt(t *testing.T) {
 	draft, err := client.Pull(context.Background(), dir, "pub-1")
 	require.NoError(t, err)
 	assert.Equal(t, &pages.Publication{ID: "pub-1", Version: 3}, draft.Publication)
+	assert.Equal(t, []string{"AGENTS.md", "packages/pages-sdk/README.md"}, draft.Omitted, "a copy reports the guidance the Assistant left out")
 	assert.Equal(t, "https://example.grafana.net/a/grafana-assistant-app/pages/new/"+chatID+"?page="+pageID, draft.URL)
 	assert.Equal(t, "https://example.grafana.net/a/grafana-assistant-app/pages/pub-1", draft.PublishedURL)
 
@@ -311,6 +319,52 @@ func TestPullCopiesThePublishedPageAndPublishUpdatesIt(t *testing.T) {
 	assert.Equal(t, "Errors and latency", meta["description"])
 	assert.Equal(t, "ops", meta["folderUid"])
 	assert.Equal(t, &pages.Publication{ID: "pub-1", Version: 4}, mustLink(t, dir).Publication)
+}
+
+func TestPullNamesTheDirectoryAfterThePageWithOneCatalogRead(t *testing.T) {
+	f, client := newFake(t)
+	t.Chdir(t.TempDir())
+
+	draft, err := client.Pull(context.Background(), "", "pub-1")
+	require.NoError(t, err)
+	assert.Equal(t, "checkout-health", draft.Dir)
+	assert.FileExists(t, filepath.Join("checkout-health", "src/App.tsx"))
+	reads := 0
+	for _, request := range f.requests {
+		if request == "GET /page-catalog/pub-1" {
+			reads++
+		}
+	}
+	assert.Equal(t, 1, reads)
+}
+
+func TestPushReportsFilesThatDontRebuild(t *testing.T) {
+	_, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Create(context.Background(), dir, "Checkout health", "")
+	require.NoError(t, err)
+	write(t, dir, "AGENTS.md", "Keep the summary first.\n")
+
+	result, err := client.Push(context.Background(), dir, mustLink(t, dir))
+	require.NoError(t, err)
+	assert.Equal(t, pages.StatusSaved, result.Status, "files were sent, so the push is not unchanged")
+	assert.Equal(t, []string{"AGENTS.md"}, result.Written)
+}
+
+func TestPushToleratesALinkWithoutFiles(t *testing.T) {
+	_, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Create(context.Background(), dir, "Checkout health", "")
+	require.NoError(t, err)
+	link := mustLink(t, dir)
+	link.Files = nil
+	data, err := json.Marshal(link)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, pages.LinkFile), data, 0o600))
+
+	result, err := client.Push(context.Background(), dir, mustLink(t, dir))
+	require.NoError(t, err, "a hand-edited link sends every file instead of panicking")
+	assert.Equal(t, pages.StatusBuilt, result.Status)
 }
 
 func TestPublishRefusesAStaleDraft(t *testing.T) {
@@ -412,7 +466,7 @@ func TestSourceOnAnAssistantWithoutTheRoute(t *testing.T) {
 	t.Cleanup(server.Close)
 	baseClient, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 	require.NoError(t, err)
-	_, err = pages.NewClient(baseClient, server.URL).Source(context.Background(), chatID, pageID, "release")
+	_, _, err = pages.NewClient(baseClient, server.URL).Source(context.Background(), chatID, pageID, "release")
 	require.ErrorIs(t, err, pages.ErrRefused)
 	require.ErrorContains(t, err, "cannot download a page's project")
 }

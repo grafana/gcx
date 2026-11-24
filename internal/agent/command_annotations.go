@@ -67,7 +67,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant watchers list":                  {Cost: "large", Hint: "Enumerates all visible Watchers. Prefer gcx assistant watchers get WATCHER for one configuration or status WATCHER for runtime observations; use --json spec.title or --jq to select fields."},
 	"gcx assistant watchers get":                   {Cost: "medium", Hint: "Read one configuration-only manifest by resource name or server ID. Use status for runtime observations."},
 	"gcx assistant watchers status":                {Cost: "large", Hint: "Read one Watcher runtime view including calibrated checks. Use get for reusable configuration and --json lifecycle,calibration or --jq to select observations."},
-	"gcx assistant pages list":                     {Cost: "small", Hint: "Published pages you can open. --section mine for your own; --search <text>; -o json"},
+	"gcx assistant pages list":                     {Cost: "small", Hint: "Published pages you can open. --section mine for your own; --search <text>; --limit 0 for all; -o json"},
 	"gcx assistant pages get":                      {Cost: "medium", Hint: "<page-id-or-url> [--source] -o json; details and named queries (bindings). To change a page, pull it instead"},
 	"gcx assistant pages create":                   {Cost: "small", Hint: "Start a page as a local React project instead of an HTML artifact: --title \"Checkout health\" --dir ./checkout-health. Then read packages/pages-sdk/README.md in it, write pages.bindings.json and src/App.tsx, push, snapshot"},
 	"gcx assistant pages pull":                     {Cost: "small", Hint: "<page-id-or-url> --dir <new-dir> copies a published page to edit; without PAGE refreshes --dir from Grafana"},

@@ -126,6 +126,11 @@ func readLink(root *os.Root) (*Link, error) {
 	if link.ChatID == "" || link.PageID == "" || link.Project == "" {
 		return nil, fmt.Errorf("%s does not name a draft page", LinkFile)
 	}
+	// A hand-edited link may leave out what was synced; push then sends
+	// every file.
+	if link.Files == nil {
+		link.Files = map[string]string{}
+	}
 	return &link, nil
 }
 

@@ -24,18 +24,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const experimental = "This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions."
-
 var sections = []string{"discover", "mine", "starred", "unlisted"} //nolint:gochecknoglobals // Closed vocabulary for --section.
-
-func markExperimental(cmd *cobra.Command) {
-	cmd.Short = "[experimental] " + cmd.Short
-	cmd.Long = experimental + "\n\n" + cmd.Long
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	cmd.Annotations[agent.AnnotationStability] = agent.StabilityExperimental
-}
 
 // Commands returns the experimental Pages subtree.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
@@ -56,7 +45,7 @@ running Grafana Assistant.`,
   gcx assistant pages snapshot --dir ./checkout-health
   gcx assistant pages publish --dir ./checkout-health --folder ops`,
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.AddCommand(newListCommand(loader), newGetCommand(loader), newCreateCommand(loader), newPullCommand(loader), newPushCommand(loader), newSnapshotCommand(loader), newPublishCommand(loader))
 	return cmd
 }
@@ -98,30 +87,33 @@ type listOpts struct {
 	Limit   int
 }
 
+// maxListed bounds a list without --limit, so --limit 0 cannot page through
+// an unbounded catalog.
+const maxListed = 1000
+
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	bindIO(&o.IO, flags, renderList)
 	flags.StringVar(&o.Section, "section", "", "Which pages: "+strings.Join(sections, ", ")+". Default lists every page you can find")
 	flags.StringVar(&o.Search, "search", "", "Only pages whose title or description match")
-	flags.IntVar(&o.Limit, "limit", 30, "Maximum number of pages to return")
+	o.IO.BindListLimit(flags, &o.Limit, "pages", 30)
 }
 
 func (o *listOpts) Validate() error {
 	if o.Section != "" && !slices.Contains(sections, o.Section) {
 		return fmt.Errorf("--section must be one of %s", strings.Join(sections, ", "))
 	}
-	if o.Limit < 1 || o.Limit > 1000 {
-		return errors.New("--limit must be between 1 and 1000")
+	if o.Limit < 0 {
+		return errors.New("--limit must not be negative")
 	}
 	return o.IO.Validate()
 }
 
 type listResult struct {
-	Items []clientpages.Entry `json:"items"`
-	// More reports that the catalog has pages past the limit.
-	More bool `json:"more"`
+	Items    []clientpages.Entry `json:"items"`
+	ListMeta *cmdio.ListMeta     `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
-// ListItemsKey keeps more when --json selects item fields.
+// ListItemsKey keeps list_meta when --json selects item fields.
 func (listResult) ListItemsKey() string { return "items" }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -141,30 +133,37 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			limit := opts.Limit
+			if limit == 0 || limit > maxListed {
+				limit = maxListed
+			}
 			result := listResult{Items: []clientpages.Entry{}}
 			cursor := ""
+			var more bool
 			for {
-				batch, next, err := client.List(cmd.Context(), clientpages.ListOptions{Section: opts.Section, Search: opts.Search, Limit: min(100, opts.Limit-len(result.Items)), Cursor: cursor})
+				batch, next, err := client.List(cmd.Context(), clientpages.ListOptions{Section: opts.Section, Search: opts.Search, Limit: min(100, limit-len(result.Items)), Cursor: cursor})
 				if err != nil {
 					return err
 				}
 				result.Items = append(result.Items, batch...)
-				if next == "" {
-					break
-				}
-				if len(result.Items) >= opts.Limit {
-					result.Items, result.More = result.Items[:opts.Limit], true
+				more = next != ""
+				if !more || len(result.Items) >= limit {
 					break
 				}
 				cursor = next
 			}
-			if result.More {
-				cmdio.Info(cmd.ErrOrStderr(), "Showing the first %d pages; raise --limit or narrow with --search for more.", opts.Limit)
+			if len(result.Items) > limit {
+				result.Items, more = result.Items[:limit], true
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			result.ListMeta = cmdio.AttachListMeta(cmdio.PagedListMeta(len(result.Items), opts.Limit, more, maxListed), os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
+			return nil
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -219,7 +218,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			return opts.IO.Encode(cmd.OutOrStdout(), content)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -307,7 +306,7 @@ The draft is private to you until you publish it. No Assistant turn runs.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), draft)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -320,6 +319,9 @@ func renderDraft(w io.Writer, value any) error {
 	fmt.Fprintf(w, "%s: %d files in %s\nDraft: %s\n", d.Title, d.Files, d.Dir, d.URL)
 	if d.Publication != nil {
 		fmt.Fprintf(w, "Publishing updates %s (pulled at version %d).\n", d.PublishedURL, d.Publication.Version)
+	}
+	if len(d.Omitted) > 0 {
+		fmt.Fprintf(w, "Left out %d file(s) of its author's agent guidance and SDK docs, which another person may have written; the stack builds with the template's.\n", len(d.Omitted))
 	}
 	fmt.Fprintf(w, "\nRead %s, edit src/App.tsx and pages.bindings.json, then: gcx assistant pages push --dir %s\n", filepath.Join(d.Dir, "packages/pages-sdk/README.md"), d.Dir)
 	return nil
@@ -366,7 +368,7 @@ again, for changes made to it in Grafana, such as by Grafana Assistant.`,
 			if len(args) == 0 {
 				draft, err = refresh(cmd, client, opts)
 			} else {
-				draft, err = pull(cmd, client, opts, args[0])
+				draft, err = client.Pull(cmd.Context(), opts.Dir, args[0])
 			}
 			if err != nil {
 				return err
@@ -374,7 +376,7 @@ again, for changes made to it in Grafana, such as by Grafana Assistant.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), draft)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -389,18 +391,6 @@ func refresh(cmd *cobra.Command, client *clientpages.Client, opts *pullOpts) (*c
 		return nil, err
 	}
 	return client.Refresh(cmd.Context(), dir, link, opts.Force)
-}
-
-func pull(cmd *cobra.Command, client *clientpages.Client, opts *pullOpts, ref string) (*clientpages.Draft, error) {
-	dir := opts.Dir
-	if dir == "" {
-		entry, err := client.Get(cmd.Context(), ref)
-		if err != nil {
-			return nil, err
-		}
-		dir = clientpages.Slug(entry.Title)
-	}
-	return client.Pull(cmd.Context(), dir, ref)
 }
 
 type dirOpts struct {
@@ -457,7 +447,7 @@ Push changes only your draft. Publish shares it.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags(), renderPush)
 	return cmd
 }
@@ -470,6 +460,8 @@ func renderPush(w io.Writer, value any) error {
 	switch r.Status {
 	case clientpages.StatusUnchanged:
 		fmt.Fprintf(w, "Nothing to build: no files changed since the last push.\n")
+	case clientpages.StatusSaved:
+		fmt.Fprintf(w, "Saved: %d file(s) written, %d deleted. None of them changes the page's build, so its version stays.\n", len(r.Written), len(r.Deleted))
 	default:
 		fmt.Fprintf(w, "Built: %d file(s) written, %d deleted.\n", len(r.Written), len(r.Deleted))
 	}
@@ -569,7 +561,7 @@ in the image and fails the command.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), receipt)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -609,6 +601,9 @@ func (o *publishOpts) setup(flags *pflag.FlagSet) {
 func (o *publishOpts) Validate() error {
 	if o.Category != "" && !slices.Contains(clientpages.Categories, o.Category) {
 		return fmt.Errorf("--category must be one of %s", strings.Join(clientpages.Categories, ", "))
+	}
+	if len([]rune(o.Description)) > 2000 {
+		return errors.New("--description must be at most 2000 characters")
 	}
 	if len(o.Tags) > 12 {
 		return errors.New("--tag can name at most 12 tags")
@@ -694,7 +689,7 @@ asked for that. It needs a user identity (gcx login), not a service account.`,
 			return opts.IO.Encode(cmd.OutOrStdout(), entry)
 		},
 	}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
 }

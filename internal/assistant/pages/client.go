@@ -349,22 +349,25 @@ func (c *Client) Accept(ctx context.Context, chatID, pageID, candidate string) (
 	return c.pageRequest(ctx, http.MethodPost, c.draftPath(chatID, pageID)+"/accept", map[string]any{"candidate": candidate}, "accept build")
 }
 
-// Source returns the project a version of a draft page was built from.
-func (c *Client) Source(ctx context.Context, chatID, pageID, releaseID string) (*Source, error) {
+// Source returns the project a version of a draft page was built from, and
+// the saved agent guidance the Assistant left out of it: a copy of another
+// person's page comes without their AGENTS.md, skills and SDK Markdown.
+func (c *Client) Source(ctx context.Context, chatID, pageID, releaseID string) (*Source, []string, error) {
 	var out struct {
-		Source Source `json:"source"`
+		Source       Source   `json:"source"`
+		OmittedFiles []string `json:"omittedFiles"`
 	}
 	err := c.do(ctx, http.MethodGet, c.draftPath(chatID, pageID)+"/releases/"+url.PathEscape(releaseID)+"/source", nil, &out, "read page source")
 	// An Assistant without the route answers with the router's plain 404,
 	// not a Pages error document.
 	var status *gcxerrors.HTTPStatusError
 	if errors.As(err, &status) && status.Status == http.StatusNotFound && !strings.Contains(status.ServerMessage, `"name"`) {
-		return nil, fmt.Errorf("%w: it cannot download a page's project (%w)", ErrRefused, err)
+		return nil, nil, fmt.Errorf("%w: it cannot download a page's project (%w)", ErrRefused, err)
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &out.Source, nil
+	return &out.Source, out.OmittedFiles, nil
 }
 
 // Screenshot captures a draft page's latest build on the server.
