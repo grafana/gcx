@@ -187,6 +187,38 @@ func TestRelationshipsCreate_Success(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 }
 
+func TestRelationshipsCreate_TenantDomain(t *testing.T) {
+	var body kg.RelationshipWriteRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, kg.RelationshipWriteResponse{Type: "BUILDS"})
+	}))
+	defer server.Close()
+	cmd := kg.NewRelationshipsCreateCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"--type", "BUILDS", "--domain", "tenant/github",
+		"--from", "tenant/github/Repository/gcx", "--to", "myapp/Service/cart", "-o", "json"})
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "tenant/github", body.Domain)
+	assert.Equal(t, kg.EntityRef{Domain: "tenant/github", Type: "Repository", Name: "gcx"},
+		kg.EntityRef{Domain: body.From.Domain, Type: body.From.Type, Name: body.From.Name})
+	assert.Equal(t, "myapp", body.To.Domain)
+}
+
+func TestEntitiesCreate_TenantDomain(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, kg.EntityWriteResponse{Domain: "tenant/github", Type: "Repository", Name: "gcx"})
+	}))
+	defer server.Close()
+	cmd := kg.NewEntitiesCreateCommand(writeLoaderFor(server))
+	cmd.SetArgs([]string{"--domain", "tenant/github", "--type", "Repository", "--name", "gcx", "-o", "json"})
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "tenant/github", body["domain"])
+}
+
 func TestRelationshipsCreate_BadRefValidation(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))

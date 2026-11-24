@@ -1,5 +1,8 @@
 ---
-title: Dashboards as code
+aliases:
+  - ../guides/dashboards-as-code/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/dashboards-as-code/
+title: Manage dashboards as code with gcx
+menuTitle: Manage dashboards as code
 labels:
   products:
     - cloud
@@ -10,7 +13,7 @@ keywords:
   - gcx
   - Grafana CLI
   - observability as code
-weight: 1
+weight: 4
 ---
 
 # Manage dashboards as code with `gcx` 

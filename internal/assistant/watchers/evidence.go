@@ -57,7 +57,7 @@ func (e *Enrollment) UnsupportedConfiguration() []string {
 		return nil
 	}
 	out := slices.Clone(e.unsupported)
-	if e.ScheduleCron != "" && strings.TrimSpace(e.ScheduleCron) != "0 9 * * 1" || e.ScheduleTimezone != "" && e.ScheduleTimezone != "UTC" {
+	if e.Enabled && (e.ScheduleCron != "" && strings.TrimSpace(e.ScheduleCron) != "0 9 * * 1" || e.ScheduleTimezone != "" && e.ScheduleTimezone != "UTC") {
 		out = append(out, "automatic recalibration scheduling")
 	}
 	slices.Sort(out)
@@ -191,7 +191,7 @@ func (v *Enrollment) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &item); err != nil {
 		return err
 	}
-	item.unsupported = unknownConfiguration(data, "automatic recalibration settings", "enabled", "scheduleCron", "scheduleTimezone", "watcherId", "automationId", "nextRunAt", "lastRunAt", "lastRunStatus")
+	item.unsupported = unknownConfiguration(data, "automatic recalibration settings", "enabled", "scheduleCron", "scheduleTimezone", "watcherId", "automationId", "nextRunAt", "lastRunAt", "lastRunStatus", "lastRun")
 	*v = Enrollment(item)
 	return nil
 }

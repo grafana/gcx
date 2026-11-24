@@ -40,6 +40,7 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	drilldown := &dsquery.DrilldownLinkOpts{}
 	var limit int
 	var datasource string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -56,7 +57,9 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50. --limit 0 omits the limit, so Loki's own default
-applies (100 lines in Loki's range-query API).
+applies (100 lines in Loki's range-query API), not unlimited results. For
+counts, use 'gcx datasources loki metrics' with no time flags: an instant
+query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
@@ -64,7 +67,15 @@ the Explore URL for expressions Drilldown's simple filter model can't
 represent, e.g. parser stages or aggregations).
 Use -o graph for a log-volume-over-time chart of the lines the query
 returned, counted per level. It does not cover lines beyond --limit or the
-backend's own line limits, so it can undercount a busy time range.`,
+backend's own line limits, so it can undercount a busy time range.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap, or when its stream
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -89,6 +100,9 @@ backend's own line limits, so it can undercount a busy time range.`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+			if err := dsquery.ValidateLimit(limit); err != nil {
 				return err
 			}
 
@@ -129,18 +143,26 @@ backend's own line limits, so it can undercount a busy time range.`,
 				Limit: limit,
 			}
 
+			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), force, datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
+				return err
+			}
+
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
 
+			graphHinted := false
 			if shared.IO.OutputFormat == "graph" {
 				if summary, ok := graphLimitHint(limit, countEntries(resp)); ok {
 					cmdio.EmitHint(cmd.ErrOrStderr(), summary, "")
+					graphHinted = true
 				}
 			}
-
-			dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			// The graph hint already covers --limit; a second hint would repeat it.
+			if !graphHinted {
+				dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
+			}
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -196,6 +218,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
+	cmd.Flags().BoolVar(&force, "force", false, "Run the query even if the Grafana Cloud cost guardrail would refuse it")
 	share.Setup(cmd.Flags(), "executed query")
 	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
 

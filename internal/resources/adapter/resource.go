@@ -73,6 +73,9 @@ type Resource[T ResourceNamer] struct {
 	// StripFields lists spec-level keys to remove from output (e.g. "uuid").
 	StripFields []string
 
+	// PullStripFields lists spec keys removed only from saved pull manifests.
+	PullStripFields []string
+
 	// NaturalKey names a single spec field used to build a cross-stack
 	// identity extractor (SpecFieldKey), folding in RegisterNaturalKey so no
 	// separate init() is needed. Leave empty to skip natural-key
@@ -134,11 +137,12 @@ func (r Resource[T]) registration(loadDeps DepsLoader) Registration {
 			crud := r.TypedCRUD(client, deps.Namespace)
 			return crud.AsAdapter(), nil
 		},
-		Descriptor:  desc,
-		GVK:         gvk,
-		Schema:      SchemaFromType[T](desc),
-		Example:     example,
-		URLTemplate: r.URLTemplate,
+		Descriptor:      desc,
+		GVK:             gvk,
+		Schema:          SchemaFromType[T](desc),
+		Example:         example,
+		URLTemplate:     r.URLTemplate,
+		PullStripFields: r.PullStripFields,
 	}
 }
 

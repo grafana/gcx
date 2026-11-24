@@ -75,7 +75,8 @@ func conversationListCommand(configOpts *providers.ConfigLoader) *cobra.Command 
 
 Use this to discover conversation IDs, then pull a transcript with
 'gcx assistant conversation get' or continue one with
-'gcx assistant prompt --context-id'.`,
+'gcx assistant prompt --context-id'. AI SDK conversations cannot be continued
+from gcx yet.`,
 		Args: cobra.NoArgs,
 		Example: `  gcx assistant conversation list
   gcx assistant conversation list --source assistant --limit 25

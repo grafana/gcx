@@ -471,3 +471,15 @@ func TestExplainDestinationCheck(t *testing.T) {
 		}
 	})
 }
+
+func TestExplainLimit_OnlyLimitCodes(t *testing.T) {
+	for _, err := range []error{
+		apiErrorFromResponseBody(http.StatusForbidden, []byte(`{"message":"storage_config: check failed","errors":[{"field":"storage_config","message":"check failed","code":"write_access_denied"}]}`)),
+		apiErrorFromResponseBody(http.StatusForbidden, []byte(`{"error":"invalid scope requested"}`)),
+		apiErrorFromResponseBody(http.StatusForbidden, []byte(`{"code":"permission_denied","message":"forbidden"}`)),
+		errors.New("network down"),
+	} {
+		_, ok := explainLimit(err)
+		assert.False(t, ok, "%v", err)
+	}
+}

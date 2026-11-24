@@ -347,6 +347,10 @@ This replaces the old format (`{Kind}/{Name}.{ext}`) to make the API version
 and group unambiguous, which is important when multiple versions of the same
 resource type are pulled simultaneously.
 
+`adapter.PullFieldsStripper` applies each registration's optional `PullStripFields`
+list to saved manifests. Providers declare spec keys that cannot be restored.
+Get and list retain these fields. The generic command does not import providers.
+
 ### Pipeline Wiring
 
 ```
@@ -356,7 +360,7 @@ PUSH pipeline (cmd/gcx/resources/push.go):
   → pusher.Push() calls Process() on each resource before Create/Update
 
 PULL pipeline (cmd/gcx/resources/pull.go):
-  PullRequest{Processors: [ServerFieldsStripper{}], ...}
+  PullRequest{Processors: [ServerFieldsStripper{}, adapter.PullFieldsStripper{}], ...}
   → puller.Pull() calls Process() on each resource after fetching from API
 ```
 

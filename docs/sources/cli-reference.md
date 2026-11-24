@@ -8,7 +8,7 @@ weight: 100
 
 # CLI reference
 
-This reference describes gcx **v1.7.1**. Run `gcx version` to check your installed version.
+This reference describes gcx **v1.8.0**. Run `gcx version` to check your installed version.
 
 Flag defaults below are for human mode. Agent mode changes defaults such as output format; explicit flags override those defaults.
 
@@ -977,6 +977,43 @@ Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx agento11y experiments list-filter-values` {#gcx-agento11y-experiments-list-filter-values}
+
+List the distinct owners, suites and tags across experiments, as used to populate filter options.
+
+Only --source, --execution-kind, --from and --to narrow the result: the backend ignores other experiment filters so the option lists stay complete.
+
+```shell
+gcx agento11y experiments list-filter-values [flags]
+```
+
+**Examples**
+
+```shell
+# List every owner, suite and tag.
+  gcx agento11y experiments list-filter-values -o json
+
+  # Restrict to external runs in a time window.
+  gcx agento11y experiments list-filter-values --source external --from 2026-10-01T00:00:00Z --to 2026-10-08T00:00:00Z
+```
+
+**Flags**
+
+```text
+      --execution-kind string   Only include runs of this execution kind (simulation, agent_run or unknown; all means no filter)
+      --from string             Inclusive lower bound on run creation time (RFC3339, Unix seconds, or relative e.g. now-24h)
+  -h, --help                    help for list-filter-values
+      --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string           Output format. One of: agents, json, yaml (default "yaml")
+      --source string           Only include runs from this source (collection or external)
+      --to string               Inclusive upper bound on run creation time (RFC3339, Unix seconds, or relative e.g. now)
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx agento11y experiments list-scores` {#gcx-agento11y-experiments-list-scores}
 
 List scores produced by an experiment.
@@ -1767,6 +1804,102 @@ Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx agento11y model-cards` {#gcx-agento11y-model-cards}
+
+Read the public model catalog: provider, context limits, modalities and catalog pricing.
+
+Catalog prices are not your negotiated rates. Use 'gcx agento11y model-rates resolve' for the price that applies to your tenant.
+
+**Flags**
+
+```text
+  -h, --help   help for model-cards
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y model-cards get` {#gcx-agento11y-model-cards-get}
+
+Read the model card for a canonical model key such as openai/gpt-4o-mini, or for a catalog source and that source's own model ID.
+
+The result is the card itself. When the catalog reports itself stale, a warning is written to stderr. Missing limits mean unknown, not zero. A failed lookup does not prove the model does not exist.
+
+```shell
+gcx agento11y model-cards get [model-key] [flags]
+```
+
+**Examples**
+
+```shell
+# Look up a model card by canonical key.
+  gcx agento11y model-cards get openai/gpt-4o-mini -o json
+
+  # Look up by a catalog source's own model ID.
+  gcx agento11y model-cards get --source openrouter --source-model-id openai/gpt-4o-mini
+```
+
+**Flags**
+
+```text
+  -h, --help                     help for get
+      --jq string                jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string            Output format. One of: agents, json, yaml (default "json")
+      --source string            Catalog source, used with --source-model-id instead of a model key
+      --source-model-id string   The source's own model ID, used with --source instead of a model key
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y model-cards list` {#gcx-agento11y-model-cards-list}
+
+Search the model catalog by text, provider, source, context length or price.
+
+Prices in the table are catalog prices in USD per million tokens, shown as given by the catalog and not as your negotiated rates. A dash means the catalog has no price for that dimension, which is not the same as free.
+
+```shell
+gcx agento11y model-cards list [flags]
+```
+
+**Examples**
+
+```shell
+# The first 50 cards.
+  gcx agento11y model-cards list
+
+  # OpenAI models with at least a 100k context window, cheapest prompt first.
+  gcx agento11y model-cards list --provider openai --min-context-length 100000 --sort prompt_price
+
+  # Every card matching a pattern, with all columns.
+  gcx agento11y model-cards list --regex '^openai/gpt-5' --limit 0 -o wide
+```
+
+**Flags**
+
+```text
+      --free-only                Only free models; --free-only=false is the same as omitting the flag (it does not select paid models)
+  -h, --help                     help for list
+      --jq string                jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int                Maximum number of cards to return (0 for no limit) (default 50)
+      --min-context-length int   Only models with at least this many context tokens
+      --order string             Sort order: asc (default) or desc
+  -o, --output string            Output format. One of: agents, json, table, wide, yaml (default "table")
+      --provider string          Only cards for this provider
+      --query string             Case-insensitive free-text filter on model name, provider and source model ID
+      --regex string             Only cards whose model key, name or provider matches this regular expression (case-sensitive; start with (?i) to ignore case)
+      --sort string              Sort by name (default), provider, prompt_price, context_length or last_seen_at
+      --source string            Only cards from this catalog source
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx agento11y model-rates` {#gcx-agento11y-model-rates}
 
 Configure your own negotiated model prices.
@@ -1938,6 +2071,36 @@ Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx agento11y model-rates resolve` {#gcx-agento11y-model-rates-resolve}
+
+Resolve a model price without changing it. Returns one object with the pricing source and per-token rates (not per-million). When nothing prices the model, the source is empty and pricing is null; an unknown price is not zero cost. Omit --at to use server time; pass a telemetry timestamp for historical pricing.
+
+```shell
+gcx agento11y model-rates resolve [flags]
+```
+
+**Examples**
+
+```shell
+gcx agento11y model-rates resolve --provider openai --model gpt-5.5 -o json
+```
+
+**Flags**
+
+```text
+      --at string         RFC3339 timestamp; omit to resolve at server time
+  -h, --help              help for resolve
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --model string      Model as recorded in telemetry (required)
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+      --provider string   Provider as recorded in telemetry (required)
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx agento11y rules` {#gcx-agento11y-rules}
 
 Manage rules that route generations to evaluators.
@@ -1946,6 +2109,128 @@ Manage rules that route generations to evaluators.
 
 ```text
   -h, --help   help for rules
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y rules actions` {#gcx-agento11y-rules-actions}
+
+Manage actions attached to an evaluation rule.
+
+**Flags**
+
+```text
+  -h, --help   help for actions
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y rules actions create` {#gcx-agento11y-rules-actions-create}
+
+Create an action from a file.
+
+```shell
+gcx agento11y rules actions create <rule-id> [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the action definition (use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y rules actions delete` {#gcx-agento11y-rules-actions-delete}
+
+Delete an action attached to an evaluation rule.
+
+```shell
+gcx agento11y rules actions delete <rule-id> <action-id> [flags]
+```
+
+**Flags**
+
+```text
+      --force           Skip confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y rules actions get` {#gcx-agento11y-rules-actions-get}
+
+Get an action attached to an evaluation rule.
+
+```shell
+gcx agento11y rules actions get <rule-id> <action-id> [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "json")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y rules actions list` {#gcx-agento11y-rules-actions-list}
+
+List actions attached to an evaluation rule.
+
+```shell
+gcx agento11y rules actions list <rule-id> [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "json")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y rules actions update` {#gcx-agento11y-rules-actions-update}
+
+Update an action's condition and config from a file. When the file omits enabled, the action's stored enabled state is left unchanged.
+
+```shell
+gcx agento11y rules actions update <rule-id> <action-id> [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the action definition (use - for stdin)
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
@@ -1976,11 +2261,13 @@ gcx agento11y rules create [flags]
 **Flags**
 
 ```text
-  -f, --filename string   File containing the rule definition (use - for stdin)
-  -h, --help              help for create
-      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+  -f, --filename string              File containing the rule definition (use - for stdin)
+  -h, --help                         help for create
+      --jq string                    jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                  Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --on-fail-collection strings   Collection ID to add matching conversations to when all evaluators fail (repeatable)
+      --on-pass-collection strings   Collection ID to add matching conversations to when all evaluators pass (repeatable)
+  -o, --output string                Output format. One of: agents, json, yaml (default "json")
 ```
 
 Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
@@ -2113,6 +2400,8 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Update an evaluation rule from a file.
 
+Actions in the file's actions list are created, or updated when they carry an action_id. Existing actions that the file does not list are left in place; pass --prune to delete them. --on-pass-collection and --on-fail-collection add or update only the action they describe and never delete others.
+
 ```shell
 gcx agento11y rules update <rule-id> [flags]
 ```
@@ -2127,11 +2416,14 @@ gcx agento11y rules update <rule-id> [flags]
 **Flags**
 
 ```text
-  -f, --filename string   File containing the full rule definition (use - for stdin)
-  -h, --help              help for update
-      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+  -f, --filename string              File containing the full rule definition (use - for stdin)
+  -h, --help                         help for update
+      --jq string                    jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                  Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --on-fail-collection strings   Collection ID to add matching conversations to when all evaluators fail (repeatable)
+      --on-pass-collection strings   Collection ID to add matching conversations to when all evaluators pass (repeatable)
+  -o, --output string                Output format. One of: agents, json, yaml (default "json")
+      --prune                        Delete existing actions that are not listed in the file's actions
 ```
 
 Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
@@ -3943,9 +4235,214 @@ Inherits `--config` from [`gcx alert`](#gcx-alert-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx annotations` {#gcx-annotations}
+
+Manage Grafana annotations
+
+**Flags**
+
+```text
+  -h, --help   help for annotations
+```
+
+#### Shared flags {#gcx-annotations-flags}
+
+```text
+      --config string   Path to the configuration file to use
+```
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx annotations create` {#gcx-annotations-create}
+
+Create an annotation from a JSON file.
+
+```shell
+gcx annotations create [flags]
+```
+
+**Examples**
+
+```shell
+gcx annotations create -f annotation.json
+  cat annotation.json | gcx annotations create -f -
+```
+
+**Flags**
+
+```text
+  -f, --file string     JSON file containing the annotation (use - for stdin)
+  -h, --help            help for create
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx annotations`](#gcx-annotations-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx annotations delete` {#gcx-annotations-delete}
+
+Delete one annotation by ID or all annotations for a dashboard panel.
+Use an ID, or one dashboard selector with a positive --panel-id.
+An ID and selector flags are mutually exclusive.
+
+```shell
+gcx annotations delete [ID] [flags]
+```
+
+**Examples**
+
+```shell
+# Delete one annotation
+  gcx annotations delete 1
+
+  # Delete annotations for one panel
+  gcx annotations delete --dashboard-uid abcdef123 --panel-id 3
+```
+
+**Flags**
+
+```text
+      --dashboard-id int       Dashboard numeric ID (with --panel-id)
+      --dashboard-uid string   Dashboard UID (with --panel-id)
+      --force                  Skip confirmation prompt
+  -h, --help                   help for delete
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string          Output format. One of: agents, json, text, yaml (default "text")
+      --panel-id int           Positive panel ID (with one dashboard selector)
+```
+
+Inherits `--config` from [`gcx annotations`](#gcx-annotations-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx annotations get` {#gcx-annotations-get}
+
+Get an annotation by ID.
+
+```shell
+gcx annotations get ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx annotations get 1
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx annotations`](#gcx-annotations-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx annotations list` {#gcx-annotations-list}
+
+List annotations from Grafana.
+
+By default, returns only annotations from the last 24 hours. Use --since
+to widen the window, or --from/--to for an explicit time range (RFC3339, Unix seconds, or relative time).
+
+```shell
+gcx annotations list [flags]
+```
+
+**Examples**
+
+```shell
+gcx annotations list
+  gcx annotations list --since 168h
+  gcx annotations list --tags deploy,prod
+  gcx annotations list --limit 20
+```
+
+**Flags**
+
+```text
+      --from string     Start time (RFC3339, Unix seconds, or now-1h); empty is invalid
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum results to return (0 = server default of 100) (default 100)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+      --since string    Time window (e.g. 24h or 7d); cannot be used with --from/--to (default "24h")
+      --tags strings    Filter by tags (comma-separated or repeated)
+      --to string       End time (RFC3339, Unix seconds, or now); empty is invalid
+```
+
+Inherits `--config` from [`gcx annotations`](#gcx-annotations-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx annotations list-tags` {#gcx-annotations-list-tags}
+
+List annotation tags with usage counts.
+
+```shell
+gcx annotations list-tags [flags]
+```
+
+**Examples**
+
+```shell
+gcx annotations list-tags
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list-tags
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum tags to return (default 100)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx annotations`](#gcx-annotations-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx annotations update` {#gcx-annotations-update}
+
+Update an annotation from a JSON file (PATCH).
+
+```shell
+gcx annotations update ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx annotations update 1 -f patch.json
+```
+
+**Flags**
+
+```text
+  -f, --file string     JSON file containing the patch (use - for stdin)
+  -h, --help            help for update
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx annotations`](#gcx-annotations-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx api` {#gcx-api}
 
-Send arbitrary HTTP requests to any Grafana API endpoint using the configured authentication. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.
+Send HTTP requests to a path on the configured Grafana stack using its authentication. PATH must be stack-relative, such as /api/health. Absolute URLs are not supported. Supports GET, POST, PUT, PATCH, DELETE with custom headers and request bodies.
 
 ```shell
 gcx api PATH [flags]
@@ -4619,7 +5116,7 @@ Requires Grafana Cloud. Conversational commands use OAuth authentication
 identity and its permissions.
 
 Note: Grafana Assistant is billed based on tokens consumed, including requests
-made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+made through gcx. See https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md.
 
 **Flags**
 
@@ -4689,7 +5186,8 @@ List the conversations you can access, most recently updated first.
 
 Use this to discover conversation IDs, then pull a transcript with
 'gcx assistant conversation get' or continue one with
-'gcx assistant prompt --context-id'.
+'gcx assistant prompt --context-id'. AI SDK conversations cannot be continued
+from gcx yet.
 
 ```shell
 gcx assistant conversation list [flags]
@@ -4759,7 +5257,14 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx assistant investigations create` {#gcx-assistant-investigations-create}
 
-Create a new investigation. On v2-enabled stacks, uses the v2 API with --instruction; falls back to legacy create otherwise.
+Create a Grafana Assistant investigation. v2-enabled stacks require
+--instruction and legacy stacks require --title, so pass both to cover either.
+
+Use it when the user requests a Grafana Assistant investigation or continues an
+authorized Assistant workflow; handle an ordinary request to investigate or
+root-cause with direct gcx signal queries.
+
+Note: investigations run Grafana Assistant agents and consume Assistant tokens; see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md for billing.
 
 ```shell
 gcx assistant investigations create [flags]
@@ -4768,7 +5273,14 @@ gcx assistant investigations create [flags]
 **Examples**
 
 ```shell
-gcx assistant investigations create --instruction="Debug API latency spike" --team=sre
+# Create an investigation on any stack
+  gcx assistant investigations create --title="API latency" --instruction="Debug API latency spike"
+
+  # v2 stacks only: --title is optional
+  gcx assistant investigations create --instruction="Debug API latency spike"
+
+  # v2 stacks only: scope the investigation to a team
+  gcx assistant investigations create --instruction="Debug API latency spike" --team=sre
 ```
 
 **Flags**
@@ -4976,7 +5488,10 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx assistant investigations resume` {#gcx-assistant-investigations-resume}
 
-Resume a paused v2 investigation.
+Resume a paused v2 investigation, which restarts its Grafana Assistant
+agents. Use it when the user asks to resume the investigation.
+
+Note: investigations run Grafana Assistant agents and consume Assistant tokens; see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md for billing.
 
 ```shell
 gcx assistant investigations resume <id> [flags]
@@ -5235,13 +5750,16 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx assistant prompt` {#gcx-assistant-prompt}
 
-Send a single message to Grafana Assistant and receive the response.
-
-This is useful for scripting and automation. The response streams via
+Send a single message to Grafana Assistant and stream the response via
 the A2A (Agent-to-Agent) protocol over Server-Sent Events.
 
+Use it when the user requests Grafana Assistant or continues an authorized
+Assistant workflow. Discovery, queries, and resource operations have direct gcx
+commands that return data without starting Assistant work; run
+'gcx help-tree --depth 1' to find them.
+
 Note: each prompt consumes billable Grafana Assistant tokens, including requests
-made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+made through gcx. See https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md.
 
 ```shell
 gcx assistant prompt <message> [flags]
@@ -5250,8 +5768,13 @@ gcx assistant prompt <message> [flags]
 **Examples**
 
 ```shell
-gcx assistant prompt "What alerts are firing?"
-  gcx assistant prompt "Show CPU usage" --json
+# Delegate a question to Grafana Assistant
+  gcx assistant prompt "Why is checkout-latency firing?"
+
+  # Emit the response as a JSON event stream for agents and scripts
+  gcx assistant prompt "Why is checkout-latency spiking?" --json
+
+  # Continue the previous conversation
   gcx assistant prompt "Follow up" --continue
 ```
 
@@ -5265,6 +5788,55 @@ gcx assistant prompt "What alerts are firing?"
       --json                Output as JSON (streams NDJSON events by default)
       --no-stream           With --json, emit a single JSON object instead of streaming events
       --timeout int         Timeout in seconds when waiting for a response (default 300)
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant usage` {#gcx-assistant-usage}
+
+Read Grafana Assistant usage and limits
+
+**Flags**
+
+```text
+  -h, --help   help for usage
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant usage get` {#gcx-assistant-usage-get}
+
+Show your Grafana Assistant usage and monthly limits.
+
+Admins also see organization usage and users at or above 80% of their token limit.
+JSON groups metrics into yourUsage and orgUsage, with users needing attention
+inside orgUsage.
+
+```shell
+gcx assistant usage get [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant usage get
+  gcx assistant usage get --context my-stack
+  gcx assistant usage get -o json
+  gcx assistant usage get --top 0
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --top int         Maximum users shown in text; 0 shows all (default 10)
 ```
 
 Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
@@ -5328,7 +5900,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Create one inactive Watcher from a complete configuration manifest, then request its first background calibration without automatic activation. The result includes the saved resource and a separate calibration request outcome; acceptance does not mean checks are ready. If calibration is unavailable or the request fails, the Watcher is retained without retry or rollback; continue in Grafana. An existing exact title is an error; use update to change it. Omitted optional settings receive authoritative defaults. Secret inputs use fromEnv/fromFile or clear; preserve markers are rejected on create. Use gcx resources push --dry-run for client-side manifest validation without mutation. Use resources push to save configuration without requesting calibration.
+Create one inactive Watcher from a complete configuration manifest, then request its first background calibration without automatic activation. The result includes the saved resource and a separate calibration request outcome; acceptance does not mean checks are ready. If calibration is unavailable or the request fails, the Watcher is retained without retry or rollback; continue in Grafana. An existing exact title is an error; use update to change it. Omitted optional settings receive authoritative defaults. Secret inputs use fromEnv/fromFile or clear; preserve markers are rejected on create. Use gcx resources push --dry-run for client-side manifest validation without mutation. Use resources push to save configuration without requesting calibration. Watcher calibration and runs consume Grafana Assistant tokens; see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md for billing.
 
 ```shell
 gcx assistant watchers create [flags]
@@ -5547,7 +6119,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Request one immediate scan without changing scheduled activation. Reports request acceptance or skipped work, never a completed assessment. The returned task ID is an enqueue identifier, not a run-history ID; exact correlation is unavailable, and the newest history entry must not be assumed to belong to this request. The server enforces lifecycle and readiness requirements. Requires run/create permission as well as any server-required write permission; editing permission alone may be insufficient. Configured notifications and investigations can run.
+Request one immediate scan without changing scheduled activation. Reports request acceptance or skipped work, never a completed assessment. The returned task ID is an enqueue identifier, not a run-history ID; exact correlation is unavailable, and the newest history entry must not be assumed to belong to this request. The server enforces lifecycle and readiness requirements. Requires run/create permission as well as any server-required write permission; editing permission alone may be insufficient. Configured notifications and investigations can run. Watcher calibration and runs consume Grafana Assistant tokens; see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md for billing.
 
 ```shell
 gcx assistant watchers run WATCHER [flags]
@@ -5576,7 +6148,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Activate a calibrated Watcher with at least one enabled check. The server decides readiness and reports refusal reasons. Starting can immediately enqueue a scan and deliver configured notifications or investigations; event-only Watchers wait for their trigger. A failed start request can still leave monitoring active: inspect the returned lifecycle and status before retrying.
+Activate a calibrated Watcher with at least one enabled check. The server decides readiness and reports refusal reasons. Starting can immediately enqueue a scan and deliver configured notifications or investigations; event-only Watchers wait for their trigger. A failed start request can still leave monitoring active: inspect the returned lifecycle and status before retrying. Watcher calibration and runs consume Grafana Assistant tokens; see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md for billing.
 
 ```shell
 gcx assistant watchers start WATCHER [flags]
@@ -6764,7 +7336,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx dashboards snapshot` {#gcx-dashboards-snapshot}
 
-Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer.
+Render one or more Grafana dashboards or individual panels as PNG images using the Grafana Image Renderer. JSON and YAML receipts report the actual PNG dimensions, which may differ from the requested dimensions.
 
 ```shell
 gcx dashboards snapshot <name> [name...] [flags]
@@ -6800,7 +7372,7 @@ gcx dashboards snapshot <name> [name...] [flags]
 ```text
       --concurrency int      Maximum number of concurrent render requests (default 10)
       --from string          Start time (relative like 'now-1h', RFC3339, Unix seconds, or Unix milliseconds)
-      --height int           Height of the rendered image in pixels (default: -1/full-page for dashboard, 600 for panel)
+      --height int           Requested image height in pixels; renderer may adjust (default: -1/full-page for dashboard, 600 for panel)
   -h, --help                 help for snapshot
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
@@ -6814,7 +7386,7 @@ gcx dashboards snapshot <name> [name...] [flags]
       --to string            End time (relative like 'now', RFC3339, Unix seconds, or Unix milliseconds)
       --tz string            Timezone (e.g. 'UTC', 'America/New_York')
       --var stringToString   Dashboard template variable overrides (e.g. --var cluster=prod --var datasource=prometheus) (default [])
-      --width int            Width of the rendered image in pixels (default: 1920 for dashboard, 800 for panel)
+      --width int            Requested image width in pixels; renderer may adjust (default: 1920 for dashboard, 800 for panel)
 ```
 
 Inherits `--config` from [`gcx dashboards`](#gcx-dashboards-flags).
@@ -7532,8 +8104,9 @@ The dataset is required, supplied either in the table name (DATASET.TABLE or
 PROJECT.DATASET.TABLE) or via --dataset. When the project is omitted, the
 datasource's default project is used.
 
-At most 1000 columns are returned; if a table is wider, a warning is printed
-on stderr rather than silently truncating.
+At most --limit columns are returned (1000 by default); if a table is wider, a
+warning is printed on stderr rather than silently truncating. Narrow a wide
+table with --filter, or pass --limit 0 to return every column.
 
 ```shell
 gcx datasources bigquery describe-table TABLE [flags]
@@ -7550,6 +8123,9 @@ gcx datasources bigquery describe-table TABLE [flags]
   gcx datasources bigquery describe-table my-project.my_dataset.events
   gcx datasources bigquery describe-table events --project my-project --dataset my_dataset
 
+  # Find columns by name in a wide table
+  gcx datasources bigquery describe-table my_dataset.events --filter timestamp
+
   # Output as JSON
   gcx datasources bigquery describe-table my_dataset.events -o json
 ```
@@ -7559,9 +8135,11 @@ gcx datasources bigquery describe-table TABLE [flags]
 ```text
       --dataset string      Dataset containing the table (required)
   -d, --datasource string   Datasource UID (required unless datasources.bigquery is configured)
+      --filter string       Only show columns whose name contains this text (case-insensitive)
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int           Maximum number of columns to return. 0 means all results are returned (default 1000)
   -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --project string      GCP project ID (default: the datasource's default project)
 ```
@@ -7576,8 +8154,9 @@ List datasets (schemas) in a BigQuery project via INFORMATION_SCHEMA.SCHEMATA.
 
 When --project is omitted, the datasource's default project is queried.
 
-At most 1000 datasets are returned; if more match, a warning is printed on
-stderr rather than silently truncating.
+At most --limit datasets are returned (1000 by default); if more match, a
+warning is printed on stderr rather than silently truncating. Narrow a large
+project with --filter, or pass --limit 0 to return every dataset.
 
 ```shell
 gcx datasources bigquery list-datasets [flags]
@@ -7592,6 +8171,12 @@ gcx datasources bigquery list-datasets [flags]
   # List datasets in a specific project
   gcx datasources bigquery list-datasets --project my-project
 
+  # Find datasets by name in a project with thousands of them
+  gcx datasources bigquery list-datasets --filter analytics
+
+  # Return every dataset, however many match
+  gcx datasources bigquery list-datasets --limit 0
+
   # Output as JSON
   gcx datasources bigquery list-datasets -o json
 ```
@@ -7600,9 +8185,11 @@ gcx datasources bigquery list-datasets [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.bigquery is configured)
+      --filter string       Only list datasets whose name contains this text (case-insensitive)
   -h, --help                help for list-datasets
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int           Maximum number of datasets to return. 0 means all results are returned (default 1000)
   -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --project string      GCP project ID (default: the datasource's default project)
 ```
@@ -7618,8 +8205,9 @@ List tables in a BigQuery dataset via INFORMATION_SCHEMA.TABLES.
 --dataset is required. When --project is omitted, the datasource's default
 project is used. Run 'list-datasets' to discover available datasets.
 
-At most 1000 tables are returned; if more match, a warning is printed on
-stderr rather than silently truncating.
+At most --limit tables are returned (1000 by default); if more match, a warning
+is printed on stderr rather than silently truncating. Narrow a large dataset
+with --filter, or pass --limit 0 to return every table.
 
 ```shell
 gcx datasources bigquery list-tables [flags]
@@ -7634,6 +8222,12 @@ gcx datasources bigquery list-tables [flags]
   # List tables in a dataset in a specific project
   gcx datasources bigquery list-tables --project my-project --dataset my_dataset
 
+  # Find tables by name in a dataset with thousands of them
+  gcx datasources bigquery list-tables --dataset my_dataset --filter events
+
+  # Return every table, however many match
+  gcx datasources bigquery list-tables --dataset my_dataset --limit 0
+
   # Output as JSON
   gcx datasources bigquery list-tables --dataset my_dataset -o json
 ```
@@ -7643,9 +8237,11 @@ gcx datasources bigquery list-tables [flags]
 ```text
       --dataset string      Dataset to list tables from (required)
   -d, --datasource string   Datasource UID (required unless datasources.bigquery is configured)
+      --filter string       Only list tables whose name contains this text (case-insensitive)
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int           Maximum number of tables to return. 0 means all results are returned (default 1000)
   -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --project string      GCP project ID (default: the datasource's default project)
 ```
@@ -9031,7 +9627,18 @@ time-series data with table, graph, JSON, and CSV formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every metric LogQL expression is wrapped in an
+aggregation function (rate, count_over_time, ...), which Logs Drilldown's
+filter model can never represent — use 'loki query' for Drilldown links.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap, or when its stream
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.
 
 ```shell
 gcx datasources loki metrics [EXPR] [flags]
@@ -9062,6 +9669,7 @@ gcx datasources loki metrics [EXPR] [flags]
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
+      --force               Run the query even if the Grafana Cloud cost guardrail would refuse it
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
@@ -9092,12 +9700,25 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50. --limit 0 omits the limit, so Loki's own default
-applies (100 lines in Loki's range-query API).
+applies (100 lines in Loki's range-query API), not unlimited results. For
+counts, use 'gcx datasources loki metrics' with no time flags: an instant
+query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
+the Explore URL for expressions Drilldown's simple filter model can't
+represent, e.g. parser stages or aggregations).
 Use -o graph for a log-volume-over-time chart of the lines the query
 returned, counted per level. It does not cover lines beyond --limit or the
 backend's own line limits, so it can undercount a busy time range.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap, or when its stream
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.
 
 ```shell
 gcx datasources loki query [EXPR] [flags]
@@ -9118,6 +9739,9 @@ gcx datasources loki query [EXPR] [flags]
   # Log volume over time, colored by level
   gcx datasources loki query -d UID '{job="varlogs"}' -o graph
 
+  # Print a Grafana Logs Drilldown link for the query
+  gcx datasources loki query '{job="varlogs"}' --drilldown-link
+
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
 
@@ -9129,14 +9753,17 @@ gcx datasources loki query [EXPR] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --drilldown-link      Print the Grafana Logs Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
+      --force               Run the query even if the Grafana Cloud cost guardrail would refuse it
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 omits the limit, so Loki's default applies) (default 50)
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Logs Drilldown
   -o, --output string       Output format. One of: agents, csv, graph, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -9164,6 +9791,11 @@ The result is the patterns and sample counts the backend retained for the
 range, not a complete inventory: Loki prunes low-volume patterns and caps the
 number returned, and retention depends on the deployment, so a long --since
 does not guarantee complete coverage of that window.
+
+Patterns are sorted by total sample count descending, then by pattern text.
+JSON and YAML add totalCount, the sum of each pattern's sample counts.
+Table and wide output show this total in SAMPLES.
+The total describes the returned samples, not all logs in the window.
 
 Default time range is the last hour when no time flags are given. --step is
 optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
@@ -10156,7 +10788,11 @@ CSV preserves original cell values. Spreadsheet apps may interpret values as
 formulas; import untrusted CSV columns as text.
 
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Metrics Drilldown URL (only
+available for a bare metric or a single function/aggregation wrapper around
+one metric; expressions referencing more than one metric fall back to the
+Explore URL).
 
 ```shell
 gcx datasources prometheus query [EXPR] [flags]
@@ -10183,6 +10819,9 @@ gcx datasources prometheus query [EXPR] [flags]
   # Export samples as CSV
   gcx datasources prometheus query -d UID 'up' -o csv
 
+  # Print a Grafana Metrics Drilldown link for the executed query
+  gcx datasources prometheus query 'rate(http_requests_total[5m])' --drilldown-link
+
   # Output as JSON
   gcx datasources prometheus query -d UID 'up' -o json
 ```
@@ -10191,6 +10830,7 @@ gcx datasources prometheus query [EXPR] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
+      --drilldown-link      Print the Grafana Metrics Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -10198,6 +10838,7 @@ gcx datasources prometheus query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Metrics Drilldown
   -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -10495,6 +11136,50 @@ Inherits `--config` from [`gcx datasources pyroscope`](#gcx-datasources-pyroscop
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx datasources pyroscope diff` {#gcx-datasources-pyroscope-diff}
+
+Compare two label selectors over explicit before/after windows.
+
+Both sides use the same datasource and profile type. Results include symbol
+costs, raw after-minus-before deltas, and profile/comparison links.
+
+```shell
+gcx datasources pyroscope diff BEFORE AFTER [flags]
+```
+
+**Examples**
+
+```shell
+# Compare the same selector across adjacent windows, preserving all returned symbols
+  gcx profiles diff '{service_name="frontend"}' '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
+    --before-from now-1h --before-to now-30m --after-from now-30m --after-to now -o json
+```
+
+**Flags**
+
+```text
+      --after-from string     After window start (required; RFC3339, Unix seconds, or relative like 'now-30m')
+      --after-to string       After window end (required; RFC3339, Unix seconds, or 'now')
+      --before-from string    Before window start (required; RFC3339, Unix seconds, or relative like 'now-1h')
+      --before-to string      Before window end (required; RFC3339, Unix seconds, or relative like 'now-30m')
+  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
+      --drilldown-link        Print the Grafana Profiles Drilldown URL for the profile comparison to stderr
+  -h, --help                  help for diff
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --max-nodes int         Backend graph node budget shared by both sides (positive); pruned costs are disclosed in omitted and complete (default 50000)
+      --open                  Open the profile comparison (two Explore panes) in Grafana Explore
+      --open-drilldown        Open the profile comparison in Grafana Profiles Drilldown
+  -o, --output string         Output format. One of: agents, json, table, wide, yaml (default "table")
+      --profile-type string   Profile type ID shared by both sides (required; see 'gcx profiles list-profile-types')
+      --share-link            Print the Grafana Explore URL for the profile comparison (two Explore panes) to stderr
+```
+
+Inherits `--config` from [`gcx datasources pyroscope`](#gcx-datasources-pyroscope-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx datasources pyroscope exemplars` {#gcx-datasources-pyroscope-exemplars}
 
 Query profile or span exemplars from a Pyroscope datasource.
@@ -10759,6 +11444,12 @@ Execute a profiling query against a Pyroscope datasource.
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Profiles Drilldown URL. A single
+--profile-id opens its scoped flame graph; multiple profile IDs, a stacktrace
+selector, or label selectors the app cannot represent fall back to Explore.
+--trace-id has no representation in either, so no link is built for it.
 
 ```shell
 gcx datasources pyroscope query [EXPR] [flags]
@@ -10774,6 +11465,10 @@ gcx datasources pyroscope query [EXPR] [flags]
   # Using configured default datasource
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Print a Grafana Profiles Drilldown link for the query
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --drilldown-link
 
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
@@ -10823,6 +11518,7 @@ gcx datasources pyroscope query [EXPR] [flags]
 
 ```text
   -d, --datasource string             Datasource UID (required unless datasources.pyroscope is configured)
+      --drilldown-link                Print the Grafana Profiles Drilldown URL for the executed query to stderr
       --error-on-empty                Fail if the query returns no results
       --expr string                   Query expression (alternative to positional argument)
       --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -10830,13 +11526,16 @@ gcx datasources pyroscope query [EXPR] [flags]
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
+      --open                          Open the executed query in Grafana Explore
+      --open-drilldown                Open the executed query in Grafana Profiles Drilldown
   -o, --output string                 Output format. One of: agents, csv, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
+      --share-link                    Print the Grafana Explore URL for the executed query to stderr
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)
+      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o dot)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -10995,7 +11694,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
   -h, --help                  help for query
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int             Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses 100 when --limit is omitted; stderr notes when PinotQL is adjusted (default 50)
+      --limit int             Maximum log lines for loki or rows for pinot. 0 sends no limit, so the backend default applies. Pinot uses 100 when --limit is omitted; stderr notes when PinotQL is adjusted (default 50)
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
   -o, --output string         Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
@@ -11396,7 +12095,10 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every TraceQL metrics query uses a pipeline stage
+like "| rate()", which Traces Drilldown's filter model can never
+represent — use 'tempo query' for Drilldown links.
 
 ```shell
 gcx datasources tempo metrics [TRACEQL] [flags]
@@ -11452,7 +12154,10 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Share links require an
-explicit time range via --since or --from/--to.
+explicit time range via --since or --from/--to. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Traces Drilldown URL (only
+available for a flat, &&-joined spanset of scope.tag comparisons; anything
+else falls back to the Explore URL).
 
 **Aliases:** `search`
 
@@ -11472,6 +12177,9 @@ gcx datasources tempo query [TRACEQL] [flags]
   # Print a Grafana Explore share link for the query
   gcx datasources tempo query '{ span.http.status_code >= 500 }' --share-link
 
+  # Print a Grafana Traces Drilldown link for the query
+  gcx datasources tempo query '{ span.http.status_code = 500 }' --drilldown-link
+
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
 
@@ -11483,6 +12191,7 @@ gcx datasources tempo query [TRACEQL] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --drilldown-link      Print the Grafana Traces Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -11491,6 +12200,7 @@ gcx datasources tempo query [TRACEQL] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Traces Drilldown
   -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -11875,7 +12585,7 @@ Inherits `--agent`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`
 
 ### `gcx dev lint run` {#gcx-dev-lint-run}
 
-Lint Grafana resources against Rego-based rules. Checks dashboards and other resource types for best practices, naming conventions, and configuration issues. Use --rules to load custom rules alongside built-in ones.
+Lint Grafana resources against Rego-based rules. Checks dashboards and other resource types for best practices, naming conventions, and configuration issues. Use --rules to load custom rules alongside built-in ones. Exits 0 when no violations are found, or 4 when the report contains violations.
 
 ```shell
 gcx dev lint run PATH... [flags]
@@ -12599,8 +13309,18 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Upload a sourcemap for a Frontend Observability app.
 
+The argument is a slug-id (my-web-app-42), numeric ID or display name. When
+the context has a Grafana server and token, gcx lists the apps and resolves
+the argument as in "gcx frontend apps get".
+
+The upload itself needs only a Cloud token. Without a Grafana server and
+token, or when listing apps fails, gcx takes the ID from the slug-id or
+numeric ID without checking it, and prints a warning. A display name then
+fails, and a slug-id such as checkout-2024 uploads to app 2024 even when app
+2024 has another name.
+
 ```shell
-gcx frontend apps apply-sourcemap <app-name> [flags]
+gcx frontend apps apply-sourcemap <slug-id|name> [flags]
 ```
 
 **Examples**
@@ -12684,12 +13404,13 @@ Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
 Admin and Frontend Observability Admin by default). A user with only apps:write
 can create and update apps but cannot delete them.
 
-The argument is a slug-id or numeric ID, not a name. Any trailing "-&lt;digits&gt;"
-is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
-"gcx frontend apps list" first. There is no confirmation prompt.
+The argument is a slug-id (my-web-app-42), numeric ID or display name. A
+slug-id must match the app's own name, so deleting "checkout-2" never deletes
+app 2 when app 2 has another name. An argument that is one app's name and
+another app's slug-id or ID is an error. There is no confirmation prompt.
 
 ```shell
-gcx frontend apps delete <name> [flags]
+gcx frontend apps delete <slug-id|name> [flags]
 ```
 
 **Flags**
@@ -12709,8 +13430,12 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Delete sourcemap bundles from a Frontend Observability app.
 
+The argument is a slug-id (my-web-app-42), numeric ID or display name. gcx
+lists the apps and resolves it as in "gcx frontend apps get", so an argument
+that is one app's name and another app's slug-id or ID is an error.
+
 ```shell
-gcx frontend apps delete-sourcemap <app-name> <bundle-id> [bundle-id...] [flags]
+gcx frontend apps delete-sourcemap <slug-id|name> <bundle-id> [bundle-id...] [flags]
 ```
 
 **Examples**
@@ -12739,7 +13464,9 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx frontend apps get` {#gcx-frontend-apps-get}
 
 Get a Frontend Observability app by slug-id (my-web-app-42), numeric ID or
-display name. An argument that matches no app by ID is looked up by name.
+display name. A slug-id must match the app's own name, so a display name that
+ends in digits, such as "checkout-2", never returns app 2. An argument that is
+one app's name and another app's slug-id or ID is an error.
 
 ```shell
 gcx frontend apps get <slug-id|name> [flags]
@@ -12794,8 +13521,12 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 List sourcemaps for a Frontend Observability app.
 
+The argument is a slug-id (my-web-app-42), numeric ID or display name. gcx
+lists the apps and resolves it as in "gcx frontend apps get", so an argument
+that is one app's name and another app's slug-id or ID is an error.
+
 ```shell
-gcx frontend apps list-sourcemaps <app-name> [flags]
+gcx frontend apps list-sourcemaps <slug-id|name> [flags]
 ```
 
 **Examples**
@@ -12827,14 +13558,17 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx frontend apps update` {#gcx-frontend-apps-update}
 
-Update a Frontend Observability app from a file.
+Update a Frontend Observability app from a file. The argument is a slug-id,
+numeric ID or display name, resolved as in "gcx frontend apps get".
 
-Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
-API ignores changes to spec.appType. Omitted settings keep their stored values;
-an empty geolocationCountryDenylist clears it.
+The API cannot rename an app, so spec.name must match the stored name exactly. Omit
+spec.corsOrigins or spec.extraLogLabels to keep the stored list; an empty list
+or map clears it. Omit spec.runtime to keep the stored runtime; an empty
+runtime is invalid. The API ignores changes to spec.appType. Omitted settings
+keep their stored values; an empty geolocationCountryDenylist clears it.
 
 ```shell
-gcx frontend apps update <name> [flags]
+gcx frontend apps update <slug-id|name> [flags]
 ```
 
 **Examples**
@@ -12925,7 +13659,7 @@ gcx frontend sessions get <session-id> [flags]
 **Flags**
 
 ```text
-      --app string          Frontend Observability app slug-id or numeric id (required)
+      --app string          Frontend Observability app slug-id, numeric ID or display name (required)
       --app-type string     web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
   -d, --datasource string   Grafana datasource UID (required). Type is inferred (loki or pinot)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -13038,11 +13772,12 @@ Checks performed:
   - Grafana Cloud connectivity (uses env vars for endpoint and credentials)
 
 Components is an optional comma-separated list — defaults to all when omitted.
-Supported components: sdk, beyla, alloy, collector, grafana-cloud.
+Supported components: sdk, beyla, alloy, collector, grafana-cloud, config.
 
 Add --fix-plan=local for a deterministic aggregation of the explanation docs
 (offline, no billing), or --fix-plan=assistant for a prioritized plan synthesized
-by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md).
+by Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md).
+Use --fix-plan=assistant only when the user requests Grafana Assistant.
 
 Powered by github.com/grafana/otel-checker.
 
@@ -13057,7 +13792,7 @@ gcx instrumentation check [components] [flags]
       --debug                          Print additional diagnostic output from the checker.
       --fix-plan string                Synthesize one fix plan for every finding. Values:
                                          local     - deterministic aggregation of the explanation docs (offline, no billing).
-                                         assistant - prioritized plan from Grafana Assistant (BILLABLE, requires a Grafana Cloud context). See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
+                                         assistant - prioritized plan from Grafana Assistant (BILLABLE, requires a Grafana Cloud context). See https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md.
                                        Empty (flag omitted) skips the fix plan.
   -h, --help                           help for check
       --instrumentation-file string    Path to the JS instrumentation file. Required when --language=js and --manual-instrumentation.
@@ -13923,7 +14658,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx irm incidents create` {#gcx-irm-incidents-create}
 
-Create a new incident from a file.
+Create a new incident from a file. The documented create request has no description field. Pulled Incident manifests omit spec.description. Remove this field from a hand-written manifest before creating an incident.
 
 ```shell
 gcx irm incidents create [flags]
@@ -15272,6 +16007,133 @@ gcx irm oncall organizations get [flags]
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules` {#gcx-irm-oncall-personal-notification-rules}
+
+Manage personal notification rules through the IRM plugin proxy.
+Use a Grafana user login (gcx login); service accounts cannot use this API.
+List includes all users and both priority levels.
+The server checks user settings read, write, and admin permissions.
+
+**Aliases:** `personal-notification-rule`, `pnr`
+
+**Flags**
+
+```text
+  -h, --help   help for personal-notification-rules
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules create` {#gcx-irm-oncall-personal-notification-rules-create}
+
+Create a personal notification rule.
+
+```shell
+gcx irm oncall personal-notification-rules create [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules delete` {#gcx-irm-oncall-personal-notification-rules-delete}
+
+Delete a personal notification rule by ID.
+
+```shell
+gcx irm oncall personal-notification-rules delete <id> [flags]
+```
+
+**Flags**
+
+```text
+      --force           Skip confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules get` {#gcx-irm-oncall-personal-notification-rules-get}
+
+Get a personal notification rule by ID.
+
+```shell
+gcx irm oncall personal-notification-rules get <id> [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules list` {#gcx-irm-oncall-personal-notification-rules-list}
+
+List personal notification rules for all users.
+
+```shell
+gcx irm oncall personal-notification-rules list [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall personal-notification-rules update` {#gcx-irm-oncall-personal-notification-rules-update}
+
+Update a personal notification rule by ID.
+
+```shell
+gcx irm oncall personal-notification-rules update <id> [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
@@ -17163,8 +18025,17 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 List test runs for a load test.
 
+Use JSON or YAML to inspect the returned run configuration, including options.thresholds. Threshold expressions are configuration, not evaluated results.
+
 ```shell
 gcx k6 runs list [id-or-name] [flags]
+```
+
+**Examples**
+
+```shell
+# Inspect configured run thresholds
+  gcx k6 runs list --id 6 --json id,options.thresholds
 ```
 
 **Flags**
@@ -17349,8 +18220,17 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 List all test runs for a k6 load test.
 
+Use JSON or YAML to inspect the returned run configuration, including options.thresholds. Threshold expressions are configuration, not evaluated results.
+
 ```shell
 gcx k6 test-run runs list [test-name] [flags]
+```
+
+**Examples**
+
+```shell
+# Inspect configured run thresholds
+  gcx k6 test-run runs list --id 6 --json id,options.thresholds
 ```
 
 **Flags**
@@ -17373,8 +18253,17 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Show the most recent test run status for a k6 load test.
 
+Use JSON or YAML to inspect the returned run configuration, including options.thresholds. Threshold expressions are configuration, not evaluated results.
+
 ```shell
 gcx k6 test-run status [test-name] [flags]
+```
+
+**Examples**
+
+```shell
+# Inspect configured run thresholds
+  gcx k6 test-run status --id 6 --json id,options.thresholds
 ```
 
 **Flags**
@@ -17394,7 +18283,47 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx kg` {#gcx-kg}
 
-Manage Grafana Knowledge Graph rules, entities, and insights
+The Knowledge Graph is a graph of entities and the relationships between
+them, with the insights (alerts and anomalies) attached to them. What entity
+and relationship types exist depends on the stack; look them up with
+'meta schema' instead of assuming.
+
+Read it to answer what exists and how it is connected:
+  - what an entity is connected to: who calls it, what it depends on, what a
+    failure would affect, the path between two entities
+  - how many entities there are, of which types, and which are in an env,
+    namespace or site
+  - which entity types, properties and relationship types exist, and which
+    env, namespace and site values the stack has
+  - which entities have active insights
+
+It does not hold time series, log lines or spans: use 'gcx metrics',
+'gcx logs' and 'gcx traces' for measured values and events, and
+'gcx datasources' to list data sources.
+
+Time window: graph reads (graph query, entities, stats, meta schema and meta
+scopes) cover the last hour by default, so on older data an empty or
+near-empty result means the window is wrong, not that nothing exists. Pass
+--from/--to (or --since) to the command.
+
+Read:
+  graph query  what calls or depends on an entity, what a failure would
+               affect, paths between entities, counts (read-only Cypher)
+  entities     list entities of one type (--type is required), optionally
+               within an env, namespace or site, with their properties and
+               active insights (--insight); correlate maps an alert to its
+               entity
+  meta         entity and relationship types (meta schema), env/namespace/site
+               values (meta scopes), and the entity-property to metric, log,
+               trace and profile label mappings used to build queries (meta
+               metrics|logs|traces|profiles)
+  stats        entity and active-insight counts
+
+Configure: prom-rules, model-rules, thresholds, suppressions and
+notifications change how the graph is built and when it raises insights.
+relabel-rules shows the relabel rules in effect (read-only). Custom entities
+and relationships are written with 'entities upsert|delete' and
+'relationships upsert|delete' (experimental).
 
 **Aliases:** `knowledge-graph`
 
@@ -17524,7 +18453,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx kg entities` {#gcx-kg-entities}
 
-Manage Knowledge Graph entities.
+List, look up and manage Knowledge Graph entities.
 
 Prefer 'list' for listing and for basic lookups (an entity's identity and
 properties — the labels used to build PromQL/Loki queries); it is cheap and is
@@ -17849,7 +18778,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx kg graph` {#gcx-kg-graph}
 
-Query Knowledge Graph projections and paths.
+Query relationships between entities: callers, dependencies, paths and counts (Cypher).
 
 **Flags**
 
@@ -17864,58 +18793,71 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx kg graph query` {#gcx-kg-graph-query}
 
 Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
-The response has columns, rows and stats (rowCount, columnCount, elapsedMs);
-values keep their JSON shape, and node/relationship refs are local to one
-response. Use --json columns,rows,stats or --jq '.rows' to select fields.
+The response has columns, rows and stats (rowCount, columnCount, elapsedMs).
+Each row is an array aligned with columns, values keep their JSON shape, and
+node/relationship refs are local to one response. Output is a table by
+default, or -o json or -o yaml; unlike kg meta, there is no -o text.
 
 Time window. Every query runs over a window: --since (ending now) or both
 --from and --to, the last hour by default. A node or relationship matches if
 it existed at any point in the window; this is checked at every MATCH and
-before aggregation. It is not a snapshot: elements of one path need not
+before aggregation. A result is not a snapshot: elements of one path need not
 coexist, entities can expire and reappear, and no match now does not mean it
-never existed. Use the same --from/--to for kg meta schema, kg meta scopes,
-kg entities, metrics and logs. --since is relative to now; use --from/--to for
-a past incident. --from must be before --to; for an instant, query a short
-window around it (e.g. one minute either side), not a wide window that also
-covers other times.
+never existed. --from must be before --to and equal values are rejected, so an
+instant is a short window around it. The schema, scope values, entities,
+metrics and logs also depend on the window, and their commands take the same
+--from/--to.
 
-LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED). It is capped
+LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED), including one
+that returns a single aggregate row such as count(n) ... LIMIT 1. It is capped
 per tenant, 300 by default; a larger LIMIT is rejected (CYPHER_LIMIT_TOO_LARGE)
-and the error names the cap. There is no paging indicator: if rowCount equals
-LIMIT the result may be truncated, so don't report it as complete or as a
-total. Page with ORDER BY and SKIP/LIMIT.
+and the error names the cap. rowCount counts returned rows, not matches, and
+there is no total or next-page marker: a rowCount equal to LIMIT can mean more
+rows exist. ORDER BY with SKIP and LIMIT pages through a result.
 
-Syntax. Inline values as Cypher literals; '$name' parameters are not
+Syntax. Values are inline Cypher literals; '$name' parameters are not
 supported (CYPHER_PARAMETERS_NOT_SUPPORTED). Only a fixed subset of Cypher is
 accepted, and anything else is refused (CYPHER_UNSUPPORTED_CONSTRUCT) with a
 message naming the supported form. Common refusals: disconnected or multiple
 MATCH patterns, more than one OPTIONAL MATCH, UNION, id()/elementId(),
-shortestPath(), EXISTS{}/COUNT{} subqueries and unbounded variable-length paths.
+shortestPath(), EXISTS{}/COUNT{} subqueries, unbounded variable-length paths,
+and functions whose output size cannot be bounded, such as collect(), split(),
+reduce() and list comprehensions.
 
 Scope. Match an entity on name, type (node label, e.g. :Service) and scope
 (env, site, namespace) together. Scope is stack-specific: relabel rules decide
 which label feeds each dimension (often cluster becomes env), and not every
-type carries all three. Discover values with 'gcx kg meta scopes' and per-type
-properties with 'gcx kg meta schema', over the same window and once per window;
-never guess them. A dimension that scopes lists only as "none" is unset: leave
-it out rather than filling it with another dimension's value. Scope values are
-plain node properties, e.g.
-'MATCH (s:Service {name: "checkout", env: "prod"}) RETURN s LIMIT 1'.
+type carries all three. Discover values with 'gcx kg meta scopes', over the same
+window and once per window; never guess them. A dimension that scopes lists only
+as "none" is unset: leave it out rather than filling it with another
+dimension's value. Scope values are plain node properties, e.g.
+'MATCH (s:Service {name: "&lt;name&gt;", env: "&lt;env&gt;"}) RETURN s.name AS name, s.namespace AS namespace LIMIT 5'.
 
-Relationships. Types and directions are schema-specific: check the
-'A --TYPE--> B' list in 'gcx kg meta schema', and match both directions when
-looking for what depends on an entity. One query can do it with the undirected
-form, returning both ends to keep the direction:
-'MATCH (a)-[r:TYPE]-(b) RETURN startNode(r).name, endNode(r).name LIMIT 50'.
+Schema. Read it once per window, before writing queries:
+'gcx kg meta schema --from &lt;start&gt; --to &lt;end&gt; -o text' prints each entity type
+with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
+with the same flags also prints scopes, metrics, logs, traces and profiles).
+Use only the labels, properties, relationship types and directions it lists.
+Types, properties and relationships differ between stacks and windows. A
+relationship is stored in the direction the schema lists; the undirected form
+'(a)-[r:TYPE]-(b)' matches it from either end, so one query returns both
+directions, and startNode(r)/endNode(r) return its stored ends.
 
-A property, scope value, label, relationship type or direction that does not
-exist matches nothing: the result is empty, not an error.
+Queries are not checked against the schema. A label, property, relationship
+type, direction or scope value that does not exist matches nothing, and a
+property a node lacks, or a list index past the end such as nodes(p)[4] on a
+shorter path, returns null. Neither is an error.
 
-Insights. This command never returns insights (Saturation, Anomaly, Amend,
-Failure, Error), and none should be inferred from its rows. For current health,
-use 'gcx kg entities list' with the same type, name, scope and window (add
---insight to filter to entities with active insights); use
-'gcx kg entities inspect' for the full timeline.
+Insights. The graph holds entities, their properties and relationships, not
+health: no row carries insights (Saturation, Anomaly, Amend, Failure, Error).
+An entity's active insights come from 'gcx kg entities list --type &lt;type&gt;
+--property name=&lt;name&gt;' ('--insight any' keeps only entities that have one),
+and its insight timeline from 'gcx kg entities inspect'. Both take the window
+and --env, --site and --namespace, which match the node properties of the same
+names. With no scope flag, inspect looks the entity up by type and name and
+uses the entity that lookup returns, which can be a same-named entity in
+another scope. Only when the lookup finds nothing does it search by name, and
+if several entities match, it fails with one command per candidate.
 
 ```shell
 gcx kg graph query <cypher-query> [flags]
@@ -17924,11 +18866,17 @@ gcx kg graph query <cypher-query> [flags]
 **Examples**
 
 ```shell
-gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10"
-  gcx kg graph query "MATCH (s:Service {name: 'checkout', env: 'prod'}) RETURN s LIMIT 1" --since 1h
-  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name ORDER BY s.name SKIP 50 LIMIT 50" --since 1h
-  gcx kg graph query "MATCH (s:Service) RETURN count(s) AS services LIMIT 1" --since 1h
-  gcx kg graph query "MATCH p = (s:Service {name: 'checkout'})-[:CALLS*1..3]->(d) RETURN p, length(p) AS hops LIMIT 5" --since 24h
+# Project two properties of one Volume, matched on name and scope
+  gcx kg graph query "MATCH (v:Volume {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN v.storageclass AS storageclass, v.capacity_bytes AS capacity_bytes LIMIT 5" --from <start> --to <end>
+
+  # Count an env's Nodes per zone and instance type, 50 groups per page (the next page is SKIP 50)
+  gcx kg graph query "MATCH (n:Node {env: '<env>'}) RETURN n.zone AS zone, n.instance_type AS instance_type, count(n) AS nodes ORDER BY zone, instance_type SKIP 0 LIMIT 50" --from <start> --to <end>
+
+  # List the entity types at each end of the HOSTS edges that touch an env's Nodes, in stored direction
+  gcx kg graph query "MATCH (n:Node {env: '<env>'})-[r:HOSTS]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
+
+  # Name the hops of HOSTS paths up to 4 long from an env's cluster to one ServiceInstance; hops past a path's length are null
+  gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..4]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4 ORDER BY hops LIMIT 50" --from <start> --to <end>
 ```
 
 **Flags**
@@ -18027,7 +18975,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx kg meta` {#gcx-kg-meta}
 
-Show Knowledge Graph metadata: entity types, valid env/namespace/site values, and telemetry query configs.
+Show what the Knowledge Graph contains: entity and relationship types, valid env/namespace/site values, and telemetry query configs.
 
 **Flags**
 
@@ -18134,7 +19082,8 @@ pass --from/--to for older data, the same window as your queries).
 
 The JSON output nests everything under .schema: .schema.entityTypes[] is
 {type, properties} and .schema.relationships[] is a string. Filter it with the
-built-in --jq rather than an external parser; -o text prints one line per type.
+built-in --jq rather than an external parser; -o text prints one line per type
+with its properties, then one line with every relationship.
 
 ```shell
 gcx kg meta schema [flags]
@@ -18146,14 +19095,14 @@ gcx kg meta schema [flags]
 # Show the schema for an incident window
   gcx kg meta schema --from <start> --to <end>
 
+  # Print one line per entity type with its properties, then every relationship
+  gcx kg meta schema --since 1h -o text
+
   # List the properties of one entity type
   gcx kg meta schema --since 1h --jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'
 
   # List the relationships that involve one entity type
   gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'
-
-  # Print one line per entity type with its properties
-  gcx kg meta schema --since 1h -o text
 ```
 
 **Flags**
@@ -18174,7 +19123,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx kg meta scopes` {#gcx-kg-meta-scopes}
 
-Show all valid env/namespace/site filter values.
+List the environments, namespaces and sites the stack has (last hour by default; --from/--to for older data).
 
 ```shell
 gcx kg meta scopes [flags]
@@ -18614,17 +19563,21 @@ gcx kg prom-rules upsert -f rules.yaml
 
   # Validate against the backend and preview the diff without uploading:
   gcx kg prom-rules upsert -f rules.yaml --dry-run
+
+  # Skip remote PromQL validation for rules too expensive to validate in time:
+  gcx kg prom-rules upsert -f rules.yaml --skip-promql-eval
 ```
 
 **Flags**
 
 ```text
-      --dry-run         Validate against the backend and show a diff without uploading.
-  -f, --file string     Input file (YAML), or '-' for stdin.
-  -h, --help            help for upsert
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --dry-run            Validate against the backend and show a diff without uploading.
+  -f, --file string        Input file (YAML), or '-' for stdin.
+  -h, --help               help for upsert
+      --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string      Output format. One of: agents, json, text, yaml (default "text")
+      --skip-promql-eval   Skip the backend's remote PromQL validation (each expression is otherwise executed against the stack's metrics datasource). Use for expensive rules that time out. Syntax and Asserts metadata checks still run, so a rule that parses but is invalid is accepted and fails later at ruler evaluation. Backends without support for the parameter ignore it and validate as before.
 ```
 
 Inherits `--config` from [`gcx kg`](#gcx-kg-flags).
@@ -18898,6 +19851,10 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Show Knowledge Graph stack status.
 
+kgWriteApiEnabled reports whether the Knowledge Graph write API accepts writes
+for this stack (used by gcx kg entities upsert and gcx kg relationships upsert).
+It is absent when the server does not report it yet.
+
 ```shell
 gcx kg status [flags]
 ```
@@ -19017,7 +19974,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx kg thresholds` {#gcx-kg-thresholds}
 
-Read Asserts threshold rules over the v1 threshold config API.
+Read and write Asserts threshold rules over the v1 threshold config API.
 
 This targets v1 (/v1/config/threshold-rules) — the version the Asserts app UI and all
 user-configured thresholds run on.
@@ -19026,6 +19983,41 @@ user-configured thresholds run on.
 
 ```text
   -h, --help   help for thresholds
+```
+
+Inherits `--config` from [`gcx kg`](#gcx-kg-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx kg thresholds delete` {#gcx-kg-thresholds-delete}
+
+Deletes one threshold over the v1 threshold config API. The backend has no
+delete-by-name: pass the --record, --expr and --label values shown by "thresholds
+list". The backend matches on record and labels, plus expr when the expr is not a
+plain number.
+
+```shell
+gcx kg thresholds delete [flags]
+```
+
+**Examples**
+
+```shell
+gcx kg thresholds delete --record asserts:resource:rate:critical --expr 200e6 \
+    --label asserts_resource_type=network:rx_bytes --label asserts_severity=critical
+```
+
+**Flags**
+
+```text
+      --expr string            PromQL threshold expression (required)
+      --force                  Skip confirmation prompt
+  -h, --help                   help for delete
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --label stringToString   Threshold label as key=value (repeatable or comma-separated; identity-significant) (default [])
+  -o, --output string          Output format. One of: agents, json, text, yaml (default "text")
+      --record string          Threshold record name, e.g. asserts:resource:rate:critical (required)
 ```
 
 Inherits `--config` from [`gcx kg`](#gcx-kg-flags).
@@ -19074,6 +20066,79 @@ gcx kg thresholds list [flags]
       --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string     Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx kg`](#gcx-kg-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx kg thresholds update` {#gcx-kg-thresholds-update}
+
+Replaces the entire threshold configuration with the file's contents. Anything
+not in the file is removed, so this is destructive and asks for confirmation
+(skip with --force or GCX_AUTO_APPROVE). The file may be the bare PrometheusRules YAML or the
+"kind: Thresholds" document printed by "thresholds get -o yaml", which allows a
+get, edit, update round trip. The file is decoded strictly: unknown or misspelled
+keys, a second YAML document, and numeric values where a string is expected
+(quote them, e.g. expr: "200e6") are rejected before anything is sent.
+
+```shell
+gcx kg thresholds update [flags]
+```
+
+**Examples**
+
+```shell
+gcx kg thresholds get -o yaml > thresholds.yaml
+  # edit thresholds.yaml
+  gcx kg thresholds update -f thresholds.yaml
+```
+
+**Flags**
+
+```text
+  -f, --file string     Input file (YAML), or '-' for stdin together with --force or GCX_AUTO_APPROVE (required)
+      --force           Skip confirmation prompt
+  -h, --help            help for update
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx kg`](#gcx-kg-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx kg thresholds upsert` {#gcx-kg-thresholds-upsert}
+
+Creates or updates one threshold over the v1 threshold config API. gcx sends the
+full {record, expr, labels} triple; the backend matches an existing threshold on
+record and labels, plus expr when the expr is not a plain number. Upserting a
+numeric --expr therefore updates the matching threshold in place, while changing a
+label (or a PromQL --expr) creates a new one that you may want to follow with a
+delete of the old one. Use "thresholds update -f" to replace the whole config.
+
+```shell
+gcx kg thresholds upsert [flags]
+```
+
+**Examples**
+
+```shell
+gcx kg thresholds upsert --record asserts:resource:rate:critical --expr 200e6 \
+    --label asserts_resource_type=network:rx_bytes --label asserts_severity=critical
+```
+
+**Flags**
+
+```text
+      --expr string            PromQL threshold expression (required)
+  -h, --help                   help for upsert
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --label stringToString   Threshold label as key=value (repeatable or comma-separated; identity-significant) (default [])
+  -o, --output string          Output format. One of: agents, json, text, yaml (default "text")
+      --record string          Threshold record name, e.g. asserts:resource:rate:critical (required)
 ```
 
 Inherits `--config` from [`gcx kg`](#gcx-kg-flags).
@@ -19168,7 +20233,9 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx logs adaptive` {#gcx-logs-adaptive}
 
-Manage Adaptive Logs resources
+Manage Adaptive Logs resources.
+
+To archive log streams to a cloud storage bucket you own, see 'gcx logs archive'.
 
 **Flags**
 
@@ -19582,6 +20649,460 @@ Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx logs archive` {#gcx-logs-archive}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Archive log streams to an S3, GCS or Azure Blob Storage bucket you own.
+
+A destination is a bucket. A stream is a log stream selector whose lines are copied to one destination.
+
+To set up a destination:
+  1. Run 'gcx logs archive principal get' to see the identity to grant and the region the bucket must be in.
+  2. Grant that identity list, read and write access to the bucket.
+  3. Upload an empty object named grafana-archive-ownership under &lt;path-prefix&gt;/tenant=&lt;logs-instance-id&gt;/.
+  4. Check the bucket with 'gcx logs archive destinations create --dry-run', then create the destination and its streams.
+
+Requires an access policy token with the adaptive-logs:admin scope. See https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs/archive-logs.md.
+
+**Flags**
+
+```text
+  -h, --help   help for archive
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive destinations` {#gcx-logs-archive-destinations}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Manage archive destinations: the buckets archived logs are written to.
+
+Destinations cannot be changed after they are created. To change one, delete it and create it again; deleting a destination also deletes its streams.
+
+**Flags**
+
+```text
+  -h, --help   help for destinations
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive destinations create` {#gcx-logs-archive-destinations-create}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Create an archive destination from flags or from a file (--filename).
+
+Before saving, the archive API checks the bucket: it must be on the cell's cloud provider and, for S3 and GCS, in the cell's region; it must contain an empty grafana-archive-ownership object under &lt;path-prefix&gt;/tenant=&lt;logs-instance-id&gt;/; and the Grafana principal must be able to list, read and write it. Run 'gcx logs archive principal get' for the provider, region and principal, and see https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs/archive-logs.md for the exact permissions each provider needs. Use --dry-run to run the check without creating anything.
+
+Destinations cannot be updated; delete and recreate one to change it.
+
+```shell
+gcx logs archive destinations create [flags]
+```
+
+**Examples**
+
+```shell
+# Check an S3 bucket without creating anything
+  gcx logs archive destinations create --name prod-archive --type s3 \
+    --bucket acme-logs --region us-east-1 --path-prefix grafana --dry-run
+
+  # Create an S3 destination
+  gcx logs archive destinations create --name prod-archive --type s3 \
+    --bucket acme-logs --region us-east-1 --path-prefix grafana
+
+  # Create a GCS destination
+  gcx logs archive destinations create --name prod-archive --type gcs --bucket acme-logs
+
+  # Create an Azure destination
+  gcx logs archive destinations create --name prod-archive --type azure \
+    --storage-account acmelogs --container archive --azure-tenant-id 00000000-0000-0000-0000-000000000000
+
+  # Create a destination from a file, such as the output of 'destinations get -o yaml'
+  gcx logs archive destinations create -f destination.yaml
+```
+
+**Flags**
+
+```text
+      --azure-tenant-id string   Azure AD tenant ID that owns the storage account (azure)
+      --bucket string            Bucket name (s3, gcs)
+      --container string         Blob container name (azure)
+      --description string       Destination description
+      --dry-run                  Check the bucket with the archive API without creating the destination
+  -f, --filename string          File containing the destination definition (YAML or JSON; use - for stdin). Cannot be combined with the field flags
+  -h, --help                     help for create
+      --jq string                jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string              Destination name, unique in the stack
+  -o, --output string            Output format. One of: agents, json, yaml (default "yaml")
+      --path-prefix string       Prefix for archived objects in the bucket
+      --region string            Bucket region (s3)
+      --storage-account string   Storage account name (azure)
+      --type string              Destination type: s3, gcs or azure
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive destinations delete` {#gcx-logs-archive-destinations-delete}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Delete an archive destination. Its streams are deleted with it, and pending replays from it will fail. Objects already written to the bucket are not deleted, and neither are Adaptive Logs drop rules that were paired with its streams: logs those rules drop are then neither stored nor archived.
+
+```shell
+gcx logs archive destinations delete ID [flags]
+```
+
+**Examples**
+
+```shell
+# Delete a destination, after a confirmation prompt
+  gcx logs archive destinations delete 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01
+
+  # Delete without prompting
+  gcx logs archive destinations delete 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01 --force
+```
+
+**Flags**
+
+```text
+      --force           Skip confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive destinations get` {#gcx-logs-archive-destinations-get}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Show one archive destination.
+
+```shell
+gcx logs archive destinations get ID [flags]
+```
+
+**Examples**
+
+```shell
+# Show a destination
+  gcx logs archive destinations get 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01
+
+  # Save a destination's definition, for example to recreate it
+  gcx logs archive destinations get 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01 -o yaml > destination.yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive destinations list` {#gcx-logs-archive-destinations-list}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List archive destinations.
+
+```shell
+gcx logs archive destinations list [flags]
+```
+
+**Examples**
+
+```shell
+# List archive destinations
+  gcx logs archive destinations list
+
+  # Include descriptions and creation times
+  gcx logs archive destinations list -o wide
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive principal` {#gcx-logs-archive-principal}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Show the Grafana identity that archive buckets must grant access to.
+
+**Flags**
+
+```text
+  -h, --help   help for principal
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive principal get` {#gcx-logs-archive-principal-get}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Show the cloud provider and region of this stack's Grafana Cloud cell, and the Grafana principal (an AWS IAM ARN, a GCP service account or an Azure application ID) to grant access to an archive bucket.
+
+An archive bucket must be on the same cloud provider as the cell and, for S3 and GCS, in the same region. For Azure, the application must also be authorized in your Azure AD tenant; see https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-logs/archive-logs.md. Use this before 'gcx logs archive destinations create'.
+
+```shell
+gcx logs archive principal get [flags]
+```
+
+**Examples**
+
+```shell
+# Show the principal to grant and the region the bucket must be in
+  gcx logs archive principal get
+
+  # Print the AWS IAM ARN to grant, on an AWS cell
+  gcx logs archive principal get --jq '.aws.arn'
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive streams` {#gcx-logs-archive-streams}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Manage archive streams: log stream selectors whose matching lines are copied to an archive destination.
+
+Changes reach log ingestion after a short delay.
+
+**Flags**
+
+```text
+  -h, --help   help for streams
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive streams create` {#gcx-logs-archive-streams-create}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Create an archive stream: log lines from streams matching --selector are copied to the destination.
+
+The selector uses label matchers only, such as '{service="payments", env=~"prod|staging"}'. A destination cannot have two streams with the same name or the same selector.
+
+```shell
+gcx logs archive streams create [flags]
+```
+
+**Examples**
+
+```shell
+# Archive one service's logs to a destination
+  gcx logs archive streams create --destination 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01 \
+    --name payments --selector '{service="payments"}'
+
+  # Archive several namespaces
+  gcx logs archive streams create --destination 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01 \
+    --name platform --selector '{namespace=~"ingress|cert-manager"}'
+```
+
+**Flags**
+
+```text
+      --destination string   ID of the destination to archive to (required)
+  -h, --help                 help for create
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string          Stream name, unique within the destination (required)
+  -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
+      --selector string      Log stream selector, such as '{service="payments"}' (required)
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive streams delete` {#gcx-logs-archive-streams-delete}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Delete an archive stream. Matching lines stop being archived; objects already written to the bucket are not deleted. An Adaptive Logs drop rule paired with the stream is not deleted; remove it with 'gcx logs adaptive drop-rules delete' if those logs should be stored again.
+
+```shell
+gcx logs archive streams delete ID [flags]
+```
+
+**Examples**
+
+```shell
+# Delete a stream, after a confirmation prompt
+  gcx logs archive streams delete 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f
+
+  # Delete without prompting
+  gcx logs archive streams delete 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f --force
+```
+
+**Flags**
+
+```text
+      --force           Skip confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive streams get` {#gcx-logs-archive-streams-get}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Show one archive stream.
+
+```shell
+gcx logs archive streams get ID [flags]
+```
+
+**Examples**
+
+```shell
+# Show a stream
+  gcx logs archive streams get 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f
+
+  # Show a stream as YAML
+  gcx logs archive streams get 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f -o yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive streams list` {#gcx-logs-archive-streams-list}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List archive streams.
+
+```shell
+gcx logs archive streams list [flags]
+```
+
+**Examples**
+
+```shell
+# List archive streams across all destinations
+  gcx logs archive streams list
+
+  # List the streams archived to one destination
+  gcx logs archive streams list --destination 0190a7e1-9c4d-7a2b-8e3f-5d6c7b8a9f01
+
+  # Include destination IDs and timestamps
+  gcx logs archive streams list -o wide
+```
+
+**Flags**
+
+```text
+      --destination string   Only list streams archived to the destination with this ID
+  -h, --help                 help for list
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs archive streams update` {#gcx-logs-archive-streams-update}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Update an archive stream's name or selector. Fields without a flag keep their current values.
+
+A stream's destination cannot change. To archive the same lines to another destination, create a stream there with 'gcx logs archive streams create', then delete this one.
+
+```shell
+gcx logs archive streams update ID [flags]
+```
+
+**Examples**
+
+```shell
+# Change a stream's selector
+  gcx logs archive streams update 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f --selector '{service=~"payments|billing"}'
+
+  # Rename a stream
+  gcx logs archive streams update 0190a7e2-5b1c-7d3e-9f40-1a2b3c4d5e6f --name payments-and-billing
+```
+
+**Flags**
+
+```text
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string       New stream name
+  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+      --selector string   New log stream selector
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx logs labels` {#gcx-logs-labels}
 
 List all labels or get values for a specific label from a Loki datasource.
@@ -19641,7 +21162,18 @@ time-series data with table, graph, JSON, and CSV formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every metric LogQL expression is wrapped in an
+aggregation function (rate, count_over_time, ...), which Logs Drilldown's
+filter model can never represent — use 'loki query' for Drilldown links.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap, or when its stream
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.
 
 ```shell
 gcx logs metrics [EXPR] [flags]
@@ -19666,6 +21198,7 @@ gcx logs metrics [EXPR] [flags]
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
+      --force               Run the query even if the Grafana Cloud cost guardrail would refuse it
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
@@ -19696,12 +21229,25 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50. --limit 0 omits the limit, so Loki's own default
-applies (100 lines in Loki's range-query API).
+applies (100 lines in Loki's range-query API), not unlimited results. For
+counts, use 'gcx datasources loki metrics' with no time flags: an instant
+query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
+the Explore URL for expressions Drilldown's simple filter model can't
+represent, e.g. parser stages or aggregations).
 Use -o graph for a log-volume-over-time chart of the lines the query
 returned, counted per level. It does not cover lines beyond --limit or the
 backend's own line limits, so it can undercount a busy time range.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap, or when its stream
+selector matches too broadly, whatever its estimated size. Pass --force to run
+a query you know is wide. In agent mode a query whose cost estimate fails is
+also refused; a query gcx cannot parse is passed to Loki, which reports its own
+syntax error. Self-hosted Grafana targets are not guarded.
 
 ```shell
 gcx logs query [EXPR] [flags]
@@ -19733,14 +21279,17 @@ gcx logs query [EXPR] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --drilldown-link      Print the Grafana Logs Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
+      --force               Run the query even if the Grafana Cloud cost guardrail would refuse it
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 omits the limit, so Loki's default applies) (default 50)
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Logs Drilldown
   -o, --output string       Output format. One of: agents, csv, graph, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -19768,6 +21317,11 @@ The result is the patterns and sample counts the backend retained for the
 range, not a complete inventory: Loki prunes low-volume patterns and caps the
 number returned, and retention depends on the deployment, so a long --since
 does not guarantee complete coverage of that window.
+
+Patterns are sorted by total sample count descending, then by pattern text.
+JSON and YAML add totalCount, the sum of each pattern's sample counts.
+Table and wide output show this total in SAMPLES.
+The total describes the returned samples, not all logs in the window.
 
 Default time range is the last hour when no time flags are given. --step is
 optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
@@ -20443,7 +21997,11 @@ CSV preserves original cell values. Spreadsheet apps may interpret values as
 formulas; import untrusted CSV columns as text.
 
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Metrics Drilldown URL (only
+available for a bare metric or a single function/aggregation wrapper around
+one metric; expressions referencing more than one metric fall back to the
+Explore URL).
 
 ```shell
 gcx metrics billing query [EXPR] [flags]
@@ -20469,6 +22027,7 @@ gcx metrics billing query [EXPR] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
+      --drilldown-link      Print the Grafana Metrics Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -20476,6 +22035,7 @@ gcx metrics billing query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Metrics Drilldown
   -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -20765,7 +22325,11 @@ CSV preserves original cell values. Spreadsheet apps may interpret values as
 formulas; import untrusted CSV columns as text.
 
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Metrics Drilldown URL (only
+available for a bare metric or a single function/aggregation wrapper around
+one metric; expressions referencing more than one metric fall back to the
+Explore URL).
 
 ```shell
 gcx metrics query [EXPR] [flags]
@@ -20797,6 +22361,7 @@ gcx metrics query [EXPR] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
+      --drilldown-link      Print the Grafana Metrics Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -20804,6 +22369,7 @@ gcx metrics query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Metrics Drilldown
   -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -21108,6 +22674,776 @@ Inherits `--config` from [`gcx metrics`](#gcx-metrics-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx ml` {#gcx-ml}
+
+Manage Grafana Cloud Machine Learning resources through the ML plugin proxy. Uses the active Grafana credential. Use resources push and resources pull for manifests. Alerts require a parent job or outlier detector ID.
+
+**Flags**
+
+```text
+  -h, --help   help for ml
+```
+
+#### Shared flags {#gcx-ml-flags}
+
+```text
+      --config string   Path to the configuration file to use
+```
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml holidays` {#gcx-ml-holidays}
+
+Manage Machine Learning holidays.
+
+**Flags**
+
+```text
+  -h, --help   help for holidays
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml holidays create` {#gcx-ml-holidays-create}
+
+Create Machine Learning holiday.
+
+```shell
+gcx ml holidays create [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml holidays create -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml holidays delete` {#gcx-ml-holidays-delete}
+
+Delete Machine Learning holiday.
+
+```shell
+gcx ml holidays delete ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml holidays delete <id> --force
+```
+
+**Flags**
+
+```text
+      --dry-run         Check the input without a server mutation; server validation is not available
+      --force           Delete without a confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml holidays get` {#gcx-ml-holidays-get}
+
+Get Machine Learning holiday.
+
+```shell
+gcx ml holidays get ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml holidays get <id> -o yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml holidays list` {#gcx-ml-holidays-list}
+
+List Machine Learning holidays.
+
+```shell
+gcx ml holidays list [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml holidays list --limit 10
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of holidays to return. 0 means all results are returned (default 50)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml holidays update` {#gcx-ml-holidays-update}
+
+Update Machine Learning holiday.
+
+```shell
+gcx ml holidays update ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml holidays update <id> -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs` {#gcx-ml-jobs}
+
+Manage Machine Learning forecast jobs.
+
+**Flags**
+
+```text
+  -h, --help   help for jobs
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs create` {#gcx-ml-jobs-create}
+
+Create Machine Learning forecast job.
+
+```shell
+gcx ml jobs create [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs create -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs create-alert` {#gcx-ml-jobs-create-alert}
+
+Create an alert for one ML parent resource.
+
+```shell
+gcx ml jobs create-alert PARENT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs create-alert <parent-id> -f alert.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for create-alert
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs delete` {#gcx-ml-jobs-delete}
+
+Delete Machine Learning forecast job.
+
+```shell
+gcx ml jobs delete ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs delete <id> --force
+```
+
+**Flags**
+
+```text
+      --dry-run         Check the input without a server mutation; server validation is not available
+      --force           Delete without a confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs delete-alert` {#gcx-ml-jobs-delete-alert}
+
+Delete an alert for one ML parent resource.
+
+```shell
+gcx ml jobs delete-alert PARENT_ID ALERT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs delete-alert <parent-id> <alert-id> --force
+```
+
+**Flags**
+
+```text
+      --dry-run         Check the input without a server mutation; server validation is not available
+      --force           Delete without a confirmation prompt
+  -h, --help            help for delete-alert
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs get` {#gcx-ml-jobs-get}
+
+Get Machine Learning forecast job.
+
+```shell
+gcx ml jobs get ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs get <id> -o yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs get-alert` {#gcx-ml-jobs-get-alert}
+
+Get an alert for one ML parent resource.
+
+```shell
+gcx ml jobs get-alert PARENT_ID ALERT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs get-alert <parent-id> <alert-id> -o yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get-alert
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs list` {#gcx-ml-jobs-list}
+
+List Machine Learning forecast jobs.
+
+```shell
+gcx ml jobs list [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs list --limit 10
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of forecast jobs to return. 0 means all results are returned (default 50)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs list-alerts` {#gcx-ml-jobs-list-alerts}
+
+List alerts for one ML parent resource.
+
+```shell
+gcx ml jobs list-alerts PARENT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs list-alerts <parent-id> --limit 10
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list-alerts
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of alerts to return. 0 means all results are returned (default 50)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs update` {#gcx-ml-jobs-update}
+
+Update Machine Learning forecast job.
+
+```shell
+gcx ml jobs update ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs update <id> -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml jobs update-alert` {#gcx-ml-jobs-update-alert}
+
+Update an alert for one ML parent resource.
+
+```shell
+gcx ml jobs update-alert PARENT_ID ALERT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml jobs update-alert <parent-id> <alert-id> -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for update-alert
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors` {#gcx-ml-outlier-detectors}
+
+Manage Machine Learning outlier detectors.
+
+**Flags**
+
+```text
+  -h, --help   help for outlier-detectors
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors create` {#gcx-ml-outlier-detectors-create}
+
+Create Machine Learning outlier detector.
+
+```shell
+gcx ml outlier-detectors create [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors create -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors create-alert` {#gcx-ml-outlier-detectors-create-alert}
+
+Create an alert for one ML parent resource.
+
+```shell
+gcx ml outlier-detectors create-alert PARENT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors create-alert <parent-id> -f alert.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for create-alert
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors delete` {#gcx-ml-outlier-detectors-delete}
+
+Delete Machine Learning outlier detector.
+
+```shell
+gcx ml outlier-detectors delete ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors delete <id> --force
+```
+
+**Flags**
+
+```text
+      --dry-run         Check the input without a server mutation; server validation is not available
+      --force           Delete without a confirmation prompt
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors delete-alert` {#gcx-ml-outlier-detectors-delete-alert}
+
+Delete an alert for one ML parent resource.
+
+```shell
+gcx ml outlier-detectors delete-alert PARENT_ID ALERT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors delete-alert <parent-id> <alert-id> --force
+```
+
+**Flags**
+
+```text
+      --dry-run         Check the input without a server mutation; server validation is not available
+      --force           Delete without a confirmation prompt
+  -h, --help            help for delete-alert
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors get` {#gcx-ml-outlier-detectors-get}
+
+Get Machine Learning outlier detector.
+
+```shell
+gcx ml outlier-detectors get ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors get <id> -o yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors get-alert` {#gcx-ml-outlier-detectors-get-alert}
+
+Get an alert for one ML parent resource.
+
+```shell
+gcx ml outlier-detectors get-alert PARENT_ID ALERT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors get-alert <parent-id> <alert-id> -o yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get-alert
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors list` {#gcx-ml-outlier-detectors-list}
+
+List Machine Learning outlier detectors.
+
+```shell
+gcx ml outlier-detectors list [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors list --limit 10
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of outlier detectors to return. 0 means all results are returned (default 50)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors list-alerts` {#gcx-ml-outlier-detectors-list-alerts}
+
+List alerts for one ML parent resource.
+
+```shell
+gcx ml outlier-detectors list-alerts PARENT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors list-alerts <parent-id> --limit 10
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list-alerts
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of alerts to return. 0 means all results are returned (default 50)
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors update` {#gcx-ml-outlier-detectors-update}
+
+Update Machine Learning outlier detector.
+
+```shell
+gcx ml outlier-detectors update ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors update <id> -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for update
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx ml outlier-detectors update-alert` {#gcx-ml-outlier-detectors-update-alert}
+
+Update an alert for one ML parent resource.
+
+```shell
+gcx ml outlier-detectors update-alert PARENT_ID ALERT_ID [flags]
+```
+
+**Examples**
+
+```shell
+gcx ml outlier-detectors update-alert <parent-id> <alert-id> -f resource.json
+```
+
+**Flags**
+
+```text
+      --dry-run           Check the input without a server mutation; server validation is not available
+  -f, --filename string   JSON or YAML file, or - for stdin
+  -h, --help              help for update-alert
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx profiles` {#gcx-profiles}
 
 Query Pyroscope datasources and manage continuous profiling.
@@ -21115,9 +23451,9 @@ Query Pyroscope datasources and manage continuous profiling.
 Use 'list-profile-types' and 'labels' (or 'series') to find profile type IDs
 and label values, 'metrics' to see how cost changes over time, and 'query' to
 see which code paths account for it (-o dot for call graphs, -o pprof for local
-analysis). An empty result means no matching samples, not zero cost. To
-investigate a regression, compare against a baseline window of equal length
-with the same selector and profile type.
+analysis). Use 'diff' to compare symbol costs across selectors or time windows,
+with profile and comparison links. An empty result means no matching samples,
+not zero cost. Prefer comparable, equal-length windows with the same profile type.
 
 **Flags**
 
@@ -21135,7 +23471,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx profiles adaptive` {#gcx-profiles-adaptive}
 
-Manage Adaptive Profiles (not yet available)
+Adaptive Profiles is available in Grafana Cloud. gcx does not support its management commands. In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles.md
 
 ```shell
 gcx profiles adaptive [flags]
@@ -21183,6 +23519,50 @@ gcx profiles data-range [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx profiles`](#gcx-profiles-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx profiles diff` {#gcx-profiles-diff}
+
+Compare two label selectors over explicit before/after windows.
+
+Both sides use the same datasource and profile type. Results include symbol
+costs, raw after-minus-before deltas, and profile/comparison links.
+
+```shell
+gcx profiles diff BEFORE AFTER [flags]
+```
+
+**Examples**
+
+```shell
+# Compare the same selector across adjacent windows, preserving all returned symbols
+  gcx profiles diff '{service_name="frontend"}' '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
+    --before-from now-1h --before-to now-30m --after-from now-30m --after-to now -o json
+```
+
+**Flags**
+
+```text
+      --after-from string     After window start (required; RFC3339, Unix seconds, or relative like 'now-30m')
+      --after-to string       After window end (required; RFC3339, Unix seconds, or 'now')
+      --before-from string    Before window start (required; RFC3339, Unix seconds, or relative like 'now-1h')
+      --before-to string      Before window end (required; RFC3339, Unix seconds, or relative like 'now-30m')
+  -d, --datasource string     Datasource UID (required unless datasources.pyroscope is configured)
+      --drilldown-link        Print the Grafana Profiles Drilldown URL for the profile comparison to stderr
+  -h, --help                  help for diff
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --max-nodes int         Backend graph node budget shared by both sides (positive); pruned costs are disclosed in omitted and complete (default 50000)
+      --open                  Open the profile comparison (two Explore panes) in Grafana Explore
+      --open-drilldown        Open the profile comparison in Grafana Profiles Drilldown
+  -o, --output string         Output format. One of: agents, json, table, wide, yaml (default "table")
+      --profile-type string   Profile type ID shared by both sides (required; see 'gcx profiles list-profile-types')
+      --share-link            Print the Grafana Explore URL for the profile comparison (two Explore panes) to stderr
 ```
 
 Inherits `--config` from [`gcx profiles`](#gcx-profiles-flags).
@@ -21454,6 +23834,12 @@ Execute a profiling query against a Pyroscope datasource.
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Profiles Drilldown URL. A single
+--profile-id opens its scoped flame graph; multiple profile IDs, a stacktrace
+selector, or label selectors the app cannot represent fall back to Explore.
+--trace-id has no representation in either, so no link is built for it.
 
 ```shell
 gcx profiles query [EXPR] [flags]
@@ -21509,6 +23895,7 @@ gcx profiles query [EXPR] [flags]
 
 ```text
   -d, --datasource string             Datasource UID (required unless datasources.pyroscope is configured)
+      --drilldown-link                Print the Grafana Profiles Drilldown URL for the executed query to stderr
       --error-on-empty                Fail if the query returns no results
       --expr string                   Query expression (alternative to positional argument)
       --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -21516,13 +23903,16 @@ gcx profiles query [EXPR] [flags]
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
+      --open                          Open the executed query in Grafana Explore
+      --open-drilldown                Open the executed query in Grafana Profiles Drilldown
   -o, --output string                 Output format. One of: agents, csv, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
+      --share-link                    Print the Grafana Explore URL for the executed query to stderr
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)
+      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o dot)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -22100,6 +24490,7 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
       --dry-run                         If set, the push operation will be simulated, without actually creating or updating any resources
   -h, --help                            help for push
       --include-managed                 If set, resources managed by other tools will be included in the push operation
+      --include-successes               Include requested and returned resource identities in structured push results
       --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int              Maximum number of concurrent operations (default 10)
@@ -22110,6 +24501,40 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
                                           abort  — stop on the first error and exit non-zero (default "fail")
   -o, --output string                   Output format. One of: agents, json, text, yaml (default "text")
   -p, --path strings                    Paths on disk from which to read the resources to push (default [./resources])
+```
+
+Inherits `--config`, `--context` from [`gcx resources`](#gcx-resources-flags).
+
+Inherits `--agent`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx resources search` {#gcx-resources-search}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Find bounded top matches across configured resource types through Grafana global hybrid search. Results are not an exhaustive inventory. Use --resource to override server defaults or supply types when none are configured; --folder accepts exact UIDs. --limit accepts 1-200; 0 is unsupported because search has no all-results mode.
+
+```shell
+gcx resources search QUERY [flags]
+```
+
+**Examples**
+
+```shell
+gcx resources search 'kubernetes memory problems'
+  gcx resources search memory --resource dashboards.dashboard.grafana.app --folder team-platform --limit 10
+  gcx resources search memory -o wide
+```
+
+**Flags**
+
+```text
+      --folder stringArray     Filter by exact folder UID (repeatable; empty or general selects root)
+  -h, --help                   help for search
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int              Maximum number of top matches (1-200) (default 50)
+  -o, --output string          Output format. One of: agents, json, table, wide, yaml (default "table")
+      --resource stringArray   Search a resource.group type (repeatable; overrides server defaults)
 ```
 
 Inherits `--config`, `--context` from [`gcx resources`](#gcx-resources-flags).
@@ -22386,7 +24811,9 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 Push SLO from files.
 
 Deprecated: use gcx resources push slos.v1alpha1.slo.ext.grafana.app -p PATH instead.
-Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.
+Writes update an existing metadata.name UUID; an unknown UUID creates a new resource.
+Without a UUID, a unique matching spec.name updates that resource and no match creates a new one; several matches fail.
+Name matching uses slugified spec.name: lowercase with punctuation converted to hyphens.
 Manifests may omit apiVersion and kind; this command supplies its resource type.
 This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
 The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.
@@ -22609,7 +25036,9 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 Push report from files.
 
 Deprecated: use gcx resources push reports.v1alpha1.slo.ext.grafana.app -p PATH instead.
-Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.
+Writes update an existing metadata.name UUID; an unknown UUID creates a new resource.
+Without a UUID, a unique matching spec.name updates that resource and no match creates a new one; several matches fail.
+Name matching uses slugified spec.name: lowercase with punctuation converted to hyphens.
 Manifests may omit apiVersion and kind; this command supplies its resource type.
 This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
 The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.
@@ -22957,7 +25386,10 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx synthetic-monitoring checks test` {#gcx-synthetic-monitoring-checks-test}
 
 Run a Synthetic Monitoring check once against its probes without persisting
-it — the check is never saved, and no schedule is created.
+it — the check is never saved or modified, and no schedule is created.
+
+The check comes from either a saved check, named by NAME, or a YAML manifest
+passed with --filename. Exactly one of the two is required.
 
 Results are recovered by polling Loki for the log lines the probes emit for
 this execution (tagged type="adhoc"), the same mechanism the Synthetic
@@ -22968,17 +25400,21 @@ Note: ad-hoc test executions are billed the same as scheduled check
 executions. See https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/synthetic-monitoring-invoice.md.
 
 ```shell
-gcx synthetic-monitoring checks test [flags]
+gcx synthetic-monitoring checks test [NAME] [flags]
 ```
 
 **Examples**
 
 ```shell
-# Run a check once from a YAML file.
+# Run a saved check once (resource name from 'checks list', or numeric ID).
+  gcx synthetic-monitoring checks test grafana-instance-health-5594
+  gcx synthetic-monitoring checks test 5594
+
+  # Run a check once from a YAML file.
   gcx synthetic-monitoring checks test -f check.yaml
 
   # Specify the Loki datasource to poll for results.
-  gcx synthetic-monitoring checks test -f check.yaml --logs-datasource-uid my-loki
+  gcx synthetic-monitoring checks test 5594 --logs-datasource-uid my-loki
 ```
 
 **Flags**
@@ -23936,7 +26372,10 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every TraceQL metrics query uses a pipeline stage
+like "| rate()", which Traces Drilldown's filter model can never
+represent — use 'tempo query' for Drilldown links.
 
 ```shell
 gcx traces metrics [TRACEQL] [flags]
@@ -23989,7 +26428,10 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Share links require an
-explicit time range via --since or --from/--to.
+explicit time range via --since or --from/--to. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Traces Drilldown URL (only
+available for a flat, &&-joined spanset of scope.tag comparisons; anything
+else falls back to the Explore URL).
 
 **Aliases:** `search`
 
@@ -24014,6 +26456,7 @@ gcx traces query [TRACEQL] [flags]
 
 ```text
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --drilldown-link      Print the Grafana Traces Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -24022,6 +26465,7 @@ gcx traces query [TRACEQL] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Traces Drilldown
   -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from

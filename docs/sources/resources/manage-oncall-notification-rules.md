@@ -1,4 +1,6 @@
 ---
+aliases:
+  - ../guides/manage-oncall-notification-rules/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/manage-oncall-notification-rules/
 title: Manage OnCall notification rules
 labels:
   products:
@@ -8,7 +10,7 @@ keywords:
   - gcx
   - OnCall
   - notifications
-weight: 8
+weight: 6
 ---
 
 # Manage OnCall personal notification rules
