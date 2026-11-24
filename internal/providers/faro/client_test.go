@@ -1,12 +1,14 @@
 package faro_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/faro"
@@ -363,6 +365,8 @@ func TestClient_ListSourcemaps(t *testing.T) {
 		handler http.HandlerFunc
 		wantLen int
 		wantErr bool
+		// wantErrContains narrows wantErr to a specific failure.
+		wantErrContains string
 	}{
 		{
 			name:  "default limit 100 with single page",
@@ -453,6 +457,36 @@ func TestClient_ListSourcemaps(t *testing.T) {
 			wantLen: 2,
 		},
 		{
+			name:  "stops when hasNext is set without a next token",
+			appID: "42",
+			limit: 0,
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{
+					"bundles": []map[string]any{
+						{"ID": "bundle-1", "Created": "2024-01-01T00:00:00Z", "Updated": "2024-01-02T00:00:00Z"},
+					},
+					"page": map[string]any{"hasNext": true, "next": "", "limit": 100, "totalItems": 2},
+				})
+			},
+			wantErr:         true,
+			wantErrContains: "no new page token",
+		},
+		{
+			name:  "stops when the server repeats the same next token",
+			appID: "42",
+			limit: 0,
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{
+					"bundles": []map[string]any{
+						{"ID": "bundle-1", "Created": "2024-01-01T00:00:00Z", "Updated": "2024-01-02T00:00:00Z"},
+					},
+					"page": map[string]any{"hasNext": true, "next": "page2", "limit": 100, "totalItems": 2},
+				})
+			},
+			wantErr:         true,
+			wantErrContains: "no new page token",
+		},
+		{
 			name:  "propagates server error",
 			appID: "42",
 			limit: 0,
@@ -470,10 +504,16 @@ func TestClient_ListSourcemaps(t *testing.T) {
 			defer server.Close()
 
 			c := newTestClient(t, server)
-			result, err := c.ListSourcemaps(t.Context(), tt.appID, tt.limit)
+			// Bound the call so a regression to the endless loop fails instead of hanging.
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			result, err := c.ListSourcemaps(ctx, tt.appID, tt.limit)
 
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.wantErrContains != "" {
+					assert.Contains(t, err.Error(), tt.wantErrContains)
+				}
 				return
 			}
 
