@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
@@ -342,6 +343,11 @@ func loadDiagnosticsConfig() agentlog.Config {
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	// Back up to a rune boundary so a multi-byte character is dropped whole
+	// instead of being cut into invalid UTF-8.
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n]
 }
