@@ -15,7 +15,14 @@ const TracesDrilldownPluginID = "grafana-exploretraces-app"
 // encodeTraceQLFilter renders one var-filters entry: scope and tag joined by
 // ".", then the operator and value, pipe-delimited. ok is false when a field
 // can't round-trip through the Scenes filter decoder.
+//
+// A filter with an empty value is also rejected: Traces Drilldown drops it, so
+// the link would show more than the query asked for. Callers fall back to the
+// Explore link, which keeps the query intact.
 func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
+	if f.Value == "" {
+		return "", false
+	}
 	key, ok := dsquery.EscapeScenesFilterField(f.Scope + "." + f.Tag)
 	if !ok {
 		return "", false

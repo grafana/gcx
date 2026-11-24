@@ -55,6 +55,9 @@ func TestTracesExceptionsURL(t *testing.T) {
 
 	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", `{ span.http.status_code >= 500 }`, start, end)
 	assert.False(t, ok)
+
+	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", `{ event.exception.type = "" }`, start, end)
+	assert.False(t, ok, "an empty filter value must fall back to Explore")
 }
 
 func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
@@ -65,6 +68,11 @@ func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
 		"missing host falls back":           {"", "tempo-uid", `{ span.foo = "bar" }`},
 		"missing datasource UID falls back": {"https://stack.grafana.net", "", `{ span.foo = "bar" }`},
 		"missing expr falls back":           {"https://stack.grafana.net", "tempo-uid", ""},
+		// Drilldown drops a filter with no value, so the link would be wider
+		// than the query. Explore keeps the query intact.
+		"empty event value falls back":    {"https://stack.grafana.net", "tempo-uid", `{ event.exception.type = "" }`},
+		"empty span value falls back":     {"https://stack.grafana.net", "tempo-uid", `{ span.foo = "" }`},
+		"empty value in a set falls back": {"https://stack.grafana.net", "tempo-uid", `{ resource.service.name = "checkout" && event.exception.type != "" }`},
 	}
 
 	for name, tt := range tests {
