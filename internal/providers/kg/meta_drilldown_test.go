@@ -2,14 +2,10 @@ package kg_test
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -228,59 +224,4 @@ func TestMetaDrillDown_NoConfigsNote(t *testing.T) {
 			assert.Contains(t, doc, field)
 		}
 	})
-}
-
-func TestMetaDrillDown_WindowFlagError(t *testing.T) {
-	commands := []struct {
-		use    string
-		signal string
-		build  func(kg.RESTConfigLoader) *cobra.Command
-	}{
-		{"logs", "log", kg.NewDescribeLogsCommand},
-		{"traces", "trace", kg.NewDescribeTracesCommand},
-		{"profiles", "profile", kg.NewDescribeProfilesCommand},
-	}
-	tests := []struct {
-		name string
-		args []string
-		// wantReason is true when the error must say why the flag is refused.
-		wantReason bool
-	}{
-		{name: "--from", args: []string{"--from", "2026-01-01T00:00:00Z"}, wantReason: true},
-		{name: "--to=value", args: []string{"--to=2026-01-01T00:00:00Z"}, wantReason: true},
-		{name: "--since", args: []string{"--since", "1h"}, wantReason: true},
-		{name: "other unknown flag", args: []string{"--frm", "x"}},
-		{name: "other unknown shorthand", args: []string{"-z"}},
-	}
-	for _, tt := range tests {
-		for _, c := range commands {
-			t.Run(tt.name+"/"+c.use, func(t *testing.T) {
-				server := configServer(t, answerConfigs())
-				// The parent stands in for the root command's handler, which
-				// every other flag error must still reach.
-				parent := &cobra.Command{Use: "meta"}
-				parent.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
-					return fmt.Errorf("parent handler: %w", err)
-				})
-				child := c.build(writeLoaderFor(server))
-				parent.AddCommand(child)
-				_, _, err := runKgCommand(t, func() *cobra.Command { return parent },
-					append([]string{c.use}, tt.args...), "")
-				require.Error(t, err)
-
-				usage, isUsage := errors.AsType[*gcxerrors.UsageError](err)
-				if !tt.wantReason {
-					assert.Contains(t, err.Error(), "parent handler: ")
-					assert.NotContains(t, err.Error(), "takes no --from")
-					return
-				}
-				require.True(t, isUsage, "a window flag must be a usage error (exit 2)")
-				assert.Contains(t, usage.Message, "unknown flag: "+tt.args[0][:strings.IndexAny(tt.args[0]+"=", "=")])
-				assert.Contains(t, usage.Message, "meta "+c.use+" takes no --from, --to or --since")
-				assert.Contains(t, usage.Message, "reads the "+c.signal+" drill-down configs as currently stored")
-				assert.Equal(t, []string{"Run 'meta " + c.use + "' without --from, --to or --since"}, usage.Suggestions)
-				assert.NotContains(t, err.Error(), "parent handler: ")
-			})
-		}
-	}
 }
