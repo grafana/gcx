@@ -405,13 +405,13 @@ httpClient, _ := rest.HTTPClientFor(&cfg.Config)
 client := &http.Client{Transport: &http.Transport{...}}
 ```
 
-### When to use `NewClient(ClientOpts{...})`
+### When to use `NewClient(ctx, ClientOpts{...})`
 
 Use the explicit factory only when you need custom TLS, non-default timeout,
 or additional middleware:
 
 ```go
-client := httputils.NewClient(httputils.ClientOpts{
+client := httputils.NewClient(ctx, httputils.ClientOpts{
     TLSConfig:   customTLS,
     Timeout:     5 * time.Second,
     Middlewares: []httputils.Middleware{httputils.LoggingMiddleware, myCustomMiddleware},
@@ -419,6 +419,8 @@ client := httputils.NewClient(httputils.ClientOpts{
 ```
 
 Always include `httputils.LoggingMiddleware` in custom middleware stacks.
+`NewClient` reads `--insecure-log-http-payload` from `ctx` and adds the payload
+dump itself, so do not add `RequestResponseLoggingMiddleware` by hand.
 
 ---
 

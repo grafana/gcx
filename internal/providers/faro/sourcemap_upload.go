@@ -87,7 +87,7 @@ func UploadSourcemap(ctx context.Context, faroAPIURL string, stackID int, token 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %d:%s", stackID, token))
 
-	httpClient := httputils.NewClient(httputils.ClientOpts{Timeout: 5 * time.Minute})
+	httpClient := httputils.NewClient(ctx, httputils.ClientOpts{Timeout: 5 * time.Minute})
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("faro: upload sourcemap: %w", err)

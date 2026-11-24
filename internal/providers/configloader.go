@@ -328,7 +328,7 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	}
 	apiURL := curCtx.ResolveCloudAPIURL()
 
-	client, err := cloud.NewGCOMClient(apiURL, token)
+	client, err := cloud.NewGCOMClient(ctx, apiURL, token)
 	if err != nil {
 		return cloudBase{}, fmt.Errorf("failed to create GCOM client: %w", err)
 	}
@@ -597,7 +597,7 @@ func (l *ConfigLoader) resolveSnapshotCloudConfig(
 	if token == "" {
 		return CloudRESTConfig{}, missingCloudAuthError(&loaded, curCtx)
 	}
-	client, err := cloud.NewGCOMClient(curCtx.ResolveCloudAPIURL(), token)
+	client, err := cloud.NewGCOMClient(ctx, curCtx.ResolveCloudAPIURL(), token)
 	if err != nil {
 		return CloudRESTConfig{}, fmt.Errorf("failed to create GCOM client: %w", err)
 	}

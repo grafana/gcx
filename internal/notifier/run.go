@@ -35,7 +35,7 @@ func MaybeNotifySkills(dst io.Writer) error {
 // are treated as silent misses so notification checks never affect CLI commands.
 func MaybeNotifyVersion(ctx context.Context, dst io.Writer, currentVersion string) error {
 	// No retry: the check has a short budget and misses are silent.
-	client := httputils.NewClient(httputils.ClientOpts{DisableRetry: true})
+	client := httputils.NewClient(ctx, httputils.ClientOpts{DisableRetry: true})
 	return maybeNotifyVersionAt(ctx, dst, StatePath(), currentVersion, time.Now(), client, latestReleaseURL)
 }
 
