@@ -1,7 +1,6 @@
 package config_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -29,7 +28,7 @@ func TestGrafanaConfig_Validate_RejectsInvalidHeaders(t *testing.T) {
 				APIToken: "glsa_test",
 				Headers:  tc.headers,
 			}
-			if err := g.Validate(context.Background(), "test"); err == nil {
+			if err := g.Validate(t.Context(), "test"); err == nil {
 				t.Fatalf("expected validation error for headers %v", tc.headers)
 			}
 		})
@@ -49,7 +48,7 @@ func TestGrafanaConfig_Validate_RejectsAuthorizationHeader(t *testing.T) {
 				APIToken: "glsa_test",
 				Headers:  map[string]string{name: "Bearer custom"},
 			}
-			if err := g.Validate(context.Background(), "test"); err == nil {
+			if err := g.Validate(t.Context(), "test"); err == nil {
 				t.Fatalf("expected validation error for %q header", name)
 			}
 		})
