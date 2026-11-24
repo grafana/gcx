@@ -85,12 +85,15 @@ gcx pages pull <page-id-or-url> --dir ./checkout-health-copy
 
 `create` opens a private draft in a new conversation, builds the starter and
 writes the whole project, with `.gcx-page.json` linking it to the draft; keep
-that file. `pull` copies a published page into a new draft (find it with
-`gcx pages list --section mine`); publishing it makes your changes the page's
-next version. A copy comes without the page's `AGENTS.md`, skills and SDK
-Markdown docs, listed under `omitted`; the SDK source in
-`packages/pages-sdk/src/` stays. `gcx pages pull --dir <dir>` refreshes a
-draft that changed in Grafana.
+that file. `pull` only reads: it writes a published page's source (find the
+page with `gcx pages list --section mine`) as text, without the SDK under
+`packages/` and the stylesheets, which stay on the stack; don't recreate them.
+The first `push` from that directory builds a draft from the page, and
+publishing the draft makes your changes the page's next version. After that
+push, `gcx pages pull --dir <dir>` downloads the draft's whole project; it also
+refreshes a draft that changed in Grafana. A copy of another person's page
+leaves out their `AGENTS.md`, skills and SDK Markdown docs, listed under
+`omitted`.
 
 **2. Read the project's docs, then find the data.** Read
 `packages/pages-sdk/README.md`, `packages/pages-sdk/docs/queries.md` and

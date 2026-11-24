@@ -70,7 +70,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx pages list":                               {Cost: "small", Hint: "Published pages you can open. --section mine for your own; --search <text>; --limit 0 for all; -o json"},
 	"gcx pages get":                                {Cost: "medium", Hint: "<page-id-or-url> [--source] -o json; details and named queries (bindings). To change a page, pull it instead"},
 	"gcx pages create":                             {Cost: "small", Hint: "Start a page as a local React project instead of an HTML artifact: --title \"Checkout health\" --dir ./checkout-health. Then read packages/pages-sdk/README.md in it, write pages.bindings.json and src/App.tsx, push, snapshot"},
-	"gcx pages pull":                               {Cost: "small", Hint: "<page-id-or-url> --dir <new-dir> copies a published page to edit; without PAGE refreshes --dir from Grafana"},
+	"gcx pages pull":                               {Cost: "small", Hint: "<page-id-or-url> --dir <new-dir> writes a published page's source (read-only; the first push builds a draft); without PAGE refreshes --dir from Grafana"},
 	"gcx pages push":                               {Cost: "small", Hint: "--dir <project>; builds on the stack. A failed build returns the compiler errors; fix and push again"},
 	"gcx pages snapshot":                           {Cost: "small", Hint: "--dir <project> [--theme light] [--click <selector>]; writes an image of the latest build. Read the image after each meaningful push"},
 	"gcx pages publish":                            {Cost: "small", Hint: "Shares the page; only when the user asked. New page: --dir <project> --folder <uid> or --unlisted --link-sharing. Pulled or published before: --dir <project>"},

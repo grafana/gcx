@@ -309,7 +309,7 @@ type createOpts struct {
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
-	bindIO(&o.IO, flags, renderDraft)
+	bindIO(&o.IO, flags, renderLocalPage)
 	flags.StringVar(&o.Title, "title", "", "The page's title (required)")
 	flags.StringVar(&o.Dir, "dir", "", "Directory to write the page's project into; must be new or empty. Default: a folder named after the title")
 	flags.StringVar(&o.Style, "style", "", "A style pack from the SDK, such as keynote, newsroom or grafana-native")
@@ -361,17 +361,24 @@ The draft is private to you until you publish it. No Assistant turn runs.`,
 	return cmd
 }
 
-func renderDraft(w io.Writer, value any) error {
-	d, ok := value.(*clientpages.Draft)
+func renderLocalPage(w io.Writer, value any) error {
+	d, ok := value.(*clientpages.LocalPage)
 	if !ok {
-		return errors.New("invalid data type for draft page")
+		return errors.New("invalid data type for local page")
 	}
-	fmt.Fprintf(w, "%s: %d files in %s\nDraft: %s\n", d.Title, d.Files, d.Dir, d.URL)
+	fmt.Fprintf(w, "%s: %d files in %s\n", d.Title, d.Files, d.Dir)
+	if d.ChatID != "" {
+		fmt.Fprintf(w, "Draft: %s\n", d.URL)
+	}
 	if d.Publication != nil {
-		fmt.Fprintf(w, "Publishing updates %s (pulled at version %d).\n", d.PublishedURL, d.Publication.Version)
+		fmt.Fprintf(w, "Publishing updates %s (version %d when downloaded).\n", d.PublishedURL, d.Publication.Version)
 	}
 	if len(d.Omitted) > 0 {
-		fmt.Fprintf(w, "Left out %d file(s) of its author's agent guidance and SDK docs, which another person may have written; the stack builds with the template's.\n", len(d.Omitted))
+		fmt.Fprintf(w, "Left out %d file(s): %s\n", len(d.Omitted), strings.Join(d.Omitted, ", "))
+	}
+	if d.ChatID == "" {
+		fmt.Fprintf(w, "\nNo draft yet: the first gcx pages push --dir %s builds one from this page.\n", d.Dir)
+		return nil
 	}
 	fmt.Fprintf(w, "\nRead %s, edit src/App.tsx and pages.bindings.json, then: gcx pages push --dir %s\n", filepath.Join(d.Dir, "packages/pages-sdk/README.md"), d.Dir)
 	return nil
@@ -384,7 +391,7 @@ type pullOpts struct {
 }
 
 func (o *pullOpts) setup(flags *pflag.FlagSet) {
-	bindIO(&o.IO, flags, renderDraft)
+	bindIO(&o.IO, flags, renderLocalPage)
 	flags.StringVar(&o.Dir, "dir", "", "Directory to write the project into. With PAGE, it must be new or empty (default: a folder named after the page); without PAGE, the project to refresh (default: .)")
 	flags.BoolVar(&o.Force, "force", false, "Without PAGE, discard unpushed local changes")
 }
@@ -393,13 +400,16 @@ func newPullCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull [PAGE]",
-		Short: "Pull a Grafana Page's project into a local directory.",
-		Long: `With PAGE (an ID or link), copy a published page into a new conversation,
-as Edit does in Grafana, and write its project into a new directory.
-Publishing from that directory makes your changes the page's next version.
+		Short: "Pull a Grafana Page's source into a local directory.",
+		Long: `With PAGE (an ID or link), write a published page's source into a new
+directory: pages.bindings.json, page.json and src/, as text. It only reads;
+the SDK under packages/ and the stylesheets stay on the stack. The first push
+from the directory builds a draft from the page, and publishing that draft
+makes your changes the page's next version.
 
-Without PAGE, download the draft's current version into its directory
-again, for changes made to it in Grafana, such as by Grafana Assistant.`,
+Without PAGE, download the directory's page into it again, for changes made
+in Grafana, such as by Grafana Assistant: its draft's current version, or the
+published version while it has no draft.`,
 		Args: cobra.MaximumNArgs(1),
 		Example: `  gcx pages pull checkout-health-0a1b2c3d4e5f --dir ./checkout-health
   gcx pages pull --dir ./checkout-health`,
@@ -414,16 +424,16 @@ again, for changes made to it in Grafana, such as by Grafana Assistant.`,
 			if err != nil {
 				return err
 			}
-			var draft *clientpages.Draft
+			var local *clientpages.LocalPage
 			if len(args) == 0 {
-				draft, err = refresh(cmd, client, opts)
+				local, err = refresh(cmd, client, opts)
 			} else {
-				draft, err = client.Pull(cmd.Context(), opts.Dir, args[0])
+				local, err = client.Pull(cmd.Context(), opts.Dir, args[0])
 			}
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), draft)
+			return opts.IO.Encode(cmd.OutOrStdout(), local)
 		},
 	}
 	agent.MarkExperimental(cmd)
@@ -431,7 +441,7 @@ again, for changes made to it in Grafana, such as by Grafana Assistant.`,
 	return cmd
 }
 
-func refresh(cmd *cobra.Command, client *clientpages.Client, opts *pullOpts) (*clientpages.Draft, error) {
+func refresh(cmd *cobra.Command, client *clientpages.Client, opts *pullOpts) (*clientpages.LocalPage, error) {
 	dir := opts.Dir
 	if dir == "" {
 		dir = "."
@@ -459,7 +469,8 @@ func newPushCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "push",
 		Short: "Build a Grafana Page from its local project.",
 		Long: `Write the files that changed in a page's project directory into its
-sandbox on the stack, which type-checks and builds the page. A build that
+sandbox on the stack, which type-checks and builds the page. The first push
+from a pulled directory builds a draft from its page. A build that
 compiles becomes the draft's version, which Grafana shows and snapshot
 captures; a failed build returns the compiler's errors and keeps the
 previous version.

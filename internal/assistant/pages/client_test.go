@@ -132,8 +132,22 @@ func (f *fakeAssistant) serve(w http.ResponseWriter, r *http.Request) {
 		f.respond(w, map[string]any{"releaseId": f.release, "image": "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("\x89PNG"))})
 	case r.Method == http.MethodGet && path == "/page-catalog/pub-1":
 		f.respond(w, map[string]any{"page": f.catalog})
+	case r.Method == http.MethodGet && path == "/page-catalog/pub-1/content":
+		assert.Equal(f.t, "true", r.URL.Query().Get("source"))
+		f.respond(w, map[string]any{"page": f.catalog, "queries": []any{}, "files": map[string]string{
+			"page.json":           `{"apiVersion":"grafana.ai/v0alpha1","kind":"Page","metadata":{"name":"Checkout health","uid":"pub-uid"}}`,
+			"pages.bindings.json": "{}\n",
+			"src/App.tsx":         "export const App = () => null;\n",
+		}, "omittedFiles": []string{"assets/logo.png"}})
 	case r.Method == http.MethodPost && path == "/page-catalog/pub-1/edit":
-		f.files = map[string][]byte{"/workspace/pages/" + project + "/src/App.tsx": []byte("export const App = () => null;\n")}
+		// The copy restores with a manifest naming the copy, as the real
+		// restore writes it.
+		root := "/workspace/pages/" + project + "/"
+		f.files = map[string][]byte{
+			root + "page.json":           []byte(`{"apiVersion":"grafana.ai/v0alpha1","kind":"Page","metadata":{"name":"Checkout health","uid":"` + pageID + `"}}`),
+			root + "pages.bindings.json": []byte("{}\n"),
+			root + "src/App.tsx":         []byte("export const App = () => null;\n"),
+		}
 		f.release = "44444444-4444-4444-4444-444444444444"
 		f.omitted = []string{"AGENTS.md", "packages/pages-sdk/README.md"}
 		f.respond(w, map[string]any{"page": f.page("", "")})
@@ -319,16 +333,52 @@ func TestPushStartsAStoppedSandbox(t *testing.T) {
 	assert.True(t, f.started)
 }
 
-func TestPullCopiesThePublishedPageAndPublishUpdatesIt(t *testing.T) {
+func TestPullOnlyReadsThePublishedPage(t *testing.T) {
 	f, client := newFake(t)
 	dir := filepath.Join(t.TempDir(), "page")
 
-	draft, err := client.Pull(context.Background(), dir, "pub-1")
+	local, err := client.Pull(context.Background(), dir, "pub-1")
 	require.NoError(t, err)
-	assert.Equal(t, &pages.Publication{ID: "pub-1", Version: 3}, draft.Publication)
-	assert.Equal(t, []string{"AGENTS.md", "packages/pages-sdk/README.md"}, draft.Omitted, "a copy reports the guidance the Assistant left out")
-	assert.Equal(t, "https://example.grafana.net/a/grafana-assistant-app/pages/new/"+chatID+"?page="+pageID, draft.URL)
-	assert.Equal(t, "https://example.grafana.net/a/grafana-assistant-app/pages/pub-1", draft.PublishedURL)
+	assert.Equal(t, []string{"GET /page-catalog/pub-1/content"}, f.requests, "pull makes no conversation and no draft")
+	assert.Empty(t, local.ChatID)
+	assert.Equal(t, &pages.Publication{ID: "pub-1", Version: 3}, local.Publication)
+	assert.Equal(t, "https://example.grafana.net/a/grafana-assistant-app/pages/pub-1", local.URL, "with no draft, the URL is the published page")
+	assert.Equal(t, []string{"assets/logo.png"}, local.Omitted)
+	assert.FileExists(t, filepath.Join(dir, "src/App.tsx"))
+	link := mustLink(t, dir)
+	assert.False(t, link.HasDraft())
+
+	shot, data, ext, err := client.Snapshot(context.Background(), link, pages.ScreenshotOptions{})
+	require.ErrorContains(t, err, "no draft yet")
+	assert.Nil(t, shot)
+	assert.Empty(t, data)
+	assert.Empty(t, ext)
+	_, err = client.PublishDraft(context.Background(), dir, link, pages.Metadata{}, nil)
+	require.ErrorContains(t, err, "no draft yet")
+
+	result, err := client.Push(context.Background(), dir, link)
+	require.NoError(t, err)
+	assert.Equal(t, pages.StatusUnchanged, result.Status)
+	assert.NotContains(t, f.requests, "POST /chats", "a push with nothing to build makes no draft")
+}
+
+func TestFirstPushOfAPulledPageBuildsADraftAndPublishUpdatesThePage(t *testing.T) {
+	f, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Pull(context.Background(), dir, "pub-1")
+	require.NoError(t, err)
+	write(t, dir, "src/App.tsx", "export const App = () => 'faster';\n")
+	write(t, dir, "page.json", `{"apiVersion":"grafana.ai/v0alpha1","kind":"Page","metadata":{"name":"Checkout health, faster","uid":"pub-uid"}}`)
+
+	result, err := client.Push(context.Background(), dir, mustLink(t, dir))
+	require.NoError(t, err)
+	assert.Equal(t, pages.StatusBuilt, result.Status)
+	assert.Equal(t, "https://example.grafana.net/a/grafana-assistant-app/pages/new/"+chatID+"?page="+pageID, result.URL)
+	assert.Contains(t, f.requests, "POST /page-catalog/pub-1/edit")
+	assert.ElementsMatch(t, []string{"page.json", "src/App.tsx"}, result.Written, "only the files changed since the pull")
+	assert.JSONEq(t, `{"apiVersion":"grafana.ai/v0alpha1","kind":"Page","metadata":{"name":"Checkout health, faster","uid":"`+pageID+`"}}`,
+		string(f.files["/workspace/pages/"+project+"/page.json"]), "the manifest names the draft, not the published page")
+	assert.True(t, mustLink(t, dir).HasDraft())
 
 	entry, err := client.PublishDraft(context.Background(), dir, mustLink(t, dir), pages.Metadata{Description: "Errors and latency"}, nil)
 	require.NoError(t, err)
@@ -343,21 +393,39 @@ func TestPullCopiesThePublishedPageAndPublishUpdatesIt(t *testing.T) {
 	assert.Equal(t, &pages.Publication{ID: "pub-1", Version: 4}, mustLink(t, dir).Publication)
 }
 
-func TestPullNamesTheDirectoryAfterThePageWithOneCatalogRead(t *testing.T) {
+func TestFirstPushRefusesAPageRepublishedSincePull(t *testing.T) {
 	f, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Pull(context.Background(), dir, "pub-1")
+	require.NoError(t, err)
+	f.catalog.Version = 5
+	write(t, dir, "src/App.tsx", "export const App = () => 'faster';\n")
+
+	_, err = client.Push(context.Background(), dir, mustLink(t, dir))
+	require.ErrorContains(t, err, "is at version 5, and this directory was pulled at version 3")
+	assert.NotContains(t, f.requests, "POST /chats")
+}
+
+func TestRefreshOfAPulledPageReadsItAgain(t *testing.T) {
+	f, client := newFake(t)
+	dir := filepath.Join(t.TempDir(), "page")
+	_, err := client.Pull(context.Background(), dir, "pub-1")
+	require.NoError(t, err)
+
+	local, err := client.Refresh(context.Background(), dir, mustLink(t, dir), false)
+	require.NoError(t, err)
+	assert.Equal(t, "pub-1", local.Publication.ID)
+	assert.Equal(t, []string{"GET /page-catalog/pub-1/content", "GET /page-catalog/pub-1/content"}, f.requests)
+}
+
+func TestPullNamesTheDirectoryAfterThePage(t *testing.T) {
+	_, client := newFake(t)
 	t.Chdir(t.TempDir())
 
-	draft, err := client.Pull(context.Background(), "", "pub-1")
+	local, err := client.Pull(context.Background(), "", "pub-1")
 	require.NoError(t, err)
-	assert.Equal(t, "checkout-health", draft.Dir)
+	assert.Equal(t, "checkout-health", local.Dir)
 	assert.FileExists(t, filepath.Join("checkout-health", "src/App.tsx"))
-	reads := 0
-	for _, request := range f.requests {
-		if request == "GET /page-catalog/pub-1" {
-			reads++
-		}
-	}
-	assert.Equal(t, 1, reads)
 }
 
 func TestPushReportsFilesThatDontRebuild(t *testing.T) {
@@ -465,6 +533,9 @@ func TestPublishRefusesAStaleDraft(t *testing.T) {
 	f, client := newFake(t)
 	dir := filepath.Join(t.TempDir(), "page")
 	_, err := client.Pull(context.Background(), dir, "pub-1")
+	require.NoError(t, err)
+	write(t, dir, "src/App.tsx", "export const App = () => 'faster';\n")
+	_, err = client.Push(context.Background(), dir, mustLink(t, dir))
 	require.NoError(t, err)
 	f.catalog.Version = 5
 

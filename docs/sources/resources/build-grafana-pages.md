@@ -90,16 +90,24 @@ The output of `push` includes the draft's address in Grafana.
 
 ## Change a published page
 
-Copy a published page into a new draft:
+Download a published page's source:
 
 ```shell
 gcx pages list --section mine
 gcx pages pull PAGE --dir ./checkout-health-copy
 ```
 
-Replace `PAGE` with the page's ID or link. The directory must be new or empty. Edit, push, and check the page as before. Publishing it makes your changes the page's next version.
+Replace `PAGE` with the page's ID or link. The directory must be new or empty. `pull` only reads: it writes the page's source as text, without the Pages SDK under `packages/` and the stylesheets, which stay on the stack.
 
-A copy leaves out the page's agent guidance and the SDK's Markdown docs, which another person may have written, and lists them under `omitted` in JSON or YAML output. The stack builds the copy with the template's guidance.
+Edit the files, then push. The first push builds a draft from the page and sends only the files you changed; it refuses if someone published a newer version since you pulled. Check the draft as before. Publishing it makes your changes the page's next version.
+
+After the first push, download the draft's whole project, SDK included:
+
+```shell
+gcx pages pull --dir ./checkout-health-copy
+```
+
+A draft of another person's page leaves out their agent guidance and the SDK's Markdown docs, and lists them under `omitted` in JSON or YAML output. The stack builds the draft with the template's guidance.
 
 If the draft changes in Grafana, for example when you ask Grafana Assistant to change it, download it again before you edit:
 

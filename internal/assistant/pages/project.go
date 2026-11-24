@@ -35,25 +35,44 @@ var savedRoots = []string{"page.json", "package.json", "pnpm-lock.yaml", "pnpm-w
 // errNotLinked reports a directory without LinkFile.
 var errNotLinked = errors.New("not a page project directory")
 
-// Link is the content of LinkFile.
+// Link is the content of LinkFile. A directory made by create, or pushed
+// once, names its draft: ChatID, PageID and Project. A directory pulled from
+// the catalog names only its Publication until its first push makes a draft.
 type Link struct {
 	// Grafana is the stack the page lives on.
 	Grafana   string `json:"grafana"`
-	ChatID    string `json:"chatId"`
-	PageID    string `json:"pageId"`
-	Project   string `json:"project"`
+	ChatID    string `json:"chatId,omitempty"`
+	PageID    string `json:"pageId,omitempty"`
+	Project   string `json:"project,omitempty"`
 	Title     string `json:"title"`
-	ReleaseID string `json:"releaseId"`
+	ReleaseID string `json:"releaseId,omitempty"`
 	// PendingCandidate is a build a push made but could not yet make the
 	// draft's version; the next push finishes it.
 	PendingCandidate string `json:"pendingCandidate,omitempty"`
 	// Files maps each synced path to the SHA-256 of what was synced.
 	Files map[string]string `json:"files"`
-	// Publication is the published page this draft updates, once there is one.
+	// Publication is the published page this directory updates, once there
+	// is one: the page pulled, or the page publish made.
 	Publication *Publication `json:"publication,omitempty"`
 }
 
-// Publication names a published page and the version a draft was based on.
+// HasDraft reports whether the directory has a draft on the stack yet.
+func (l *Link) HasDraft() bool { return l.ChatID != "" && l.PageID != "" && l.Project != "" }
+
+// identity is what a directory mirrors: its draft, or the published page it
+// was pulled from.
+func (l *Link) identity() string {
+	if l.PageID != "" {
+		return "draft:" + l.PageID
+	}
+	if l.Publication != nil {
+		return "page:" + l.Publication.ID
+	}
+	return ""
+}
+
+// Publication names a published page and the version a directory was based
+// on.
 type Publication struct {
 	ID      string `json:"id"`
 	Version int    `json:"version"`
@@ -126,8 +145,8 @@ func readLink(root *os.Root) (*Link, error) {
 	if err := json.Unmarshal(data, &link); err != nil {
 		return nil, fmt.Errorf("read %s: %w", LinkFile, err)
 	}
-	if link.ChatID == "" || link.PageID == "" || link.Project == "" {
-		return nil, fmt.Errorf("%s does not name a draft page", LinkFile)
+	if !link.HasDraft() && (link.Publication == nil || link.Publication.ID == "") {
+		return nil, fmt.Errorf("%s names neither a draft nor a published page", LinkFile)
 	}
 	// A hand-edited link may leave out what was synced; push then sends
 	// every file.
@@ -173,7 +192,7 @@ func WriteProject(dir string, link Link, source *Source) (*Link, error) {
 		return nil, err
 	}
 	defer root.Close()
-	previous, err := checkTarget(root, dir, link.PageID)
+	previous, err := checkTarget(root, dir, &link)
 	if errors.Is(err, errNotLinked) {
 		previous = &Link{}
 	} else if err != nil {
@@ -284,13 +303,13 @@ func writeRank(name string) int {
 	return 1
 }
 
-// checkTarget accepts a directory that mirrors the same draft page, whose
-// link it returns, and a missing or empty one, for which it returns
-// errNotLinked.
-func checkTarget(root *os.Root, dir, pageID string) (*Link, error) {
+// checkTarget accepts a directory that mirrors the same draft or published
+// page as want, whose link it returns, and a missing or empty one, for which
+// it returns errNotLinked.
+func checkTarget(root *os.Root, dir string, want *Link) (*Link, error) {
 	link, err := readLink(root)
 	if err == nil {
-		if link.PageID != pageID {
+		if link.identity() != want.identity() {
 			return nil, fmt.Errorf("%s holds another page (%s); use a new directory", dir, link.Title)
 		}
 		return link, nil

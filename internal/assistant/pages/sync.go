@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,21 +26,52 @@ const (
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// Draft is a draft page and where it opens.
-type Draft struct {
-	ChatID    string `json:"chatId"`
-	PageID    string `json:"pageId"`
+// errNoDraft reports a pulled directory that has not been pushed: it has no
+// build of its own to capture or publish yet.
+var errNoDraft = errors.New("this directory has no draft yet: push it first, which builds a draft from the pulled page")
+
+// ownManifest makes page.json name the draft it is written to. A pulled page's
+// manifest names the published page, and a draft whose page.json names another
+// page loses its project.
+func ownManifest(data []byte, pageID string) ([]byte, error) {
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("page.json is not valid JSON: %w", err)
+	}
+	metadata, _ := manifest["metadata"].(map[string]any)
+	if metadata == nil {
+		return nil, errors.New(`page.json has no metadata; keep {"apiVersion":"grafana.ai/v0alpha1","kind":"Page","metadata":{"name":"…","uid":"…"}}`)
+	}
+	if metadata["uid"] == pageID {
+		return data, nil
+	}
+	metadata["uid"] = pageID
+	out, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(out, '\n'), nil
+}
+
+// LocalPage is a page project in a local directory: the draft it mirrors,
+// once it has one, and the published page it updates, if any.
+type LocalPage struct {
+	ChatID    string `json:"chatId,omitempty"`
+	PageID    string `json:"pageId,omitempty"`
 	Title     string `json:"title"`
-	ReleaseID string `json:"releaseId"`
-	URL       string `json:"url"`
-	Dir       string `json:"dir"`
-	Files     int    `json:"files"`
-	// Publication is the published page publishing this draft updates, and
+	ReleaseID string `json:"releaseId,omitempty"`
+	// URL is where the draft opens, or the published page while there is no
+	// draft yet.
+	URL   string `json:"url"`
+	Dir   string `json:"dir"`
+	Files int    `json:"files"`
+	// Publication is the published page the directory updates, and
 	// PublishedURL where it opens.
 	Publication  *Publication `json:"publication,omitempty"`
 	PublishedURL string       `json:"publishedUrl,omitempty"`
-	// Omitted is the saved agent guidance left out of a copy of another
-	// person's page, such as its AGENTS.md and the SDK's Markdown docs.
+	// Omitted are files the download left out: for a pulled page, the
+	// binary or large files the catalog does not return as text; for a copy
+	// of another person's page, their saved agent guidance.
 	Omitted []string `json:"omitted,omitempty"`
 }
 
@@ -59,7 +91,7 @@ type PushResult struct {
 // Create starts a draft page from the Pages template in a new conversation,
 // builds it, and mirrors its project into dir, which must be missing or
 // empty.
-func (c *Client) Create(ctx context.Context, dir, title, style string) (*Draft, error) {
+func (c *Client) Create(ctx context.Context, dir, title, style string) (*LocalPage, error) {
 	if err := checkEmpty(dir); err != nil {
 		return nil, err
 	}
@@ -92,42 +124,53 @@ func (c *Client) Create(ctx context.Context, dir, title, style string) (*Draft, 
 	return c.mirror(ctx, dir, page, nil)
 }
 
-// Pull copies a published page into a new conversation, as Edit does in
-// Grafana, and mirrors its project into dir, which must be missing or empty;
-// an empty dir is a folder named after the page. Publishing the copy makes it
-// the page's next version.
-func (c *Client) Pull(ctx context.Context, dir, ref string) (*Draft, error) {
+// Pull writes a published page's source into dir, which must be missing or
+// empty; an empty dir is a folder named after the page. It only reads: the
+// catalog returns the page's text source, without the SDK under packages/
+// and its stylesheets, which the stack keeps. The first push makes a draft
+// from the page, and publishing it makes the page's next version.
+func (c *Client) Pull(ctx context.Context, dir, ref string) (*LocalPage, error) {
 	if dir != "" {
 		if err := checkEmpty(dir); err != nil {
 			return nil, err
 		}
 	}
-	entry, err := c.Get(ctx, ref)
+	content, err := c.Content(ctx, ref, true)
 	if err != nil {
 		return nil, err
 	}
 	if dir == "" {
-		dir = Slug(entry.Title)
+		dir = Slug(content.Page.Title)
 		if err := checkEmpty(dir); err != nil {
 			return nil, err
 		}
 	}
-	chatID, err := c.CreateChat(ctx, entry.Title)
-	if err != nil {
-		return nil, err
-	}
-	page, err := c.Edit(ctx, entry.ID, chatID)
-	if err != nil {
-		return nil, err
-	}
-	page.ChatID = chatID
-	return c.mirror(ctx, dir, *page, &Publication{ID: entry.ID, Version: entry.Version})
+	return c.writePublished(dir, content)
 }
 
-// Refresh mirrors the draft's current release into its directory again, for
-// changes made in Grafana. It refuses while dir has unpushed changes unless
-// force is set.
-func (c *Client) Refresh(ctx context.Context, dir string, link *Link, force bool) (*Draft, error) {
+// writePublished writes a published page's text source into dir.
+func (c *Client) writePublished(dir string, content *Content) (*LocalPage, error) {
+	files := make(map[string][]byte, len(content.Files))
+	for name, text := range content.Files {
+		files[name] = []byte(text)
+	}
+	link, err := WriteProject(dir, Link{
+		Grafana: c.host, Title: content.Page.Title,
+		Publication: &Publication{ID: content.Page.ID, Version: content.Page.Version},
+	}, &Source{Version: 1, Files: files})
+	if err != nil {
+		return nil, err
+	}
+	local := c.local(dir, link)
+	local.Omitted = content.OmittedFiles
+	return local, nil
+}
+
+// Refresh downloads the directory's page into it again, for changes made in
+// Grafana: the draft's current version, or for a page pulled but not pushed
+// yet, its published version. It refuses while dir has unpushed changes
+// unless force is set.
+func (c *Client) Refresh(ctx context.Context, dir string, link *Link, force bool) (*LocalPage, error) {
 	if !force {
 		diff, err := Changes(dir, link)
 		if err != nil {
@@ -136,6 +179,13 @@ func (c *Client) Refresh(ctx context.Context, dir string, link *Link, force bool
 		if !diff.Empty() {
 			return nil, fmt.Errorf("%s has %d unpushed change(s); push them first, or pass --force to discard them", dir, len(diff.Changed)+len(diff.Deleted))
 		}
+	}
+	if !link.HasDraft() {
+		content, err := c.Content(ctx, link.Publication.ID, true)
+		if err != nil {
+			return nil, err
+		}
+		return c.writePublished(dir, content)
 	}
 	pages, err := c.Pages(ctx, link.ChatID)
 	if err != nil {
@@ -150,7 +200,7 @@ func (c *Client) Refresh(ctx context.Context, dir string, link *Link, force bool
 	return nil, fmt.Errorf("the conversation no longer has page %s (%s)", link.PageID, link.Title)
 }
 
-func (c *Client) mirror(ctx context.Context, dir string, page Page, publication *Publication) (*Draft, error) {
+func (c *Client) mirror(ctx context.Context, dir string, page Page, publication *Publication) (*LocalPage, error) {
 	if page.ReleaseID == "" {
 		return nil, fmt.Errorf("page %s has no working version to download yet", page.Title)
 	}
@@ -165,20 +215,48 @@ func (c *Client) mirror(ctx context.Context, dir string, page Page, publication 
 	if err != nil {
 		return nil, err
 	}
-	d := c.draft(dir, link)
-	d.Omitted = omitted
-	return d, nil
+	local := c.local(dir, link)
+	local.Omitted = omitted
+	return local, nil
 }
 
-func (c *Client) draft(dir string, link *Link) *Draft {
-	d := &Draft{
+func (c *Client) local(dir string, link *Link) *LocalPage {
+	local := &LocalPage{
 		ChatID: link.ChatID, PageID: link.PageID, Title: link.Title, ReleaseID: link.ReleaseID,
-		URL: c.DraftURL(link.ChatID, link.PageID), Dir: dir, Files: len(link.Files), Publication: link.Publication,
+		Dir: dir, Files: len(link.Files), Publication: link.Publication,
 	}
 	if link.Publication != nil {
-		d.PublishedURL = c.PageURL(link.Publication.ID)
+		local.PublishedURL = c.PageURL(link.Publication.ID)
+		local.URL = local.PublishedURL
 	}
-	return d
+	if link.HasDraft() {
+		local.URL = c.DraftURL(link.ChatID, link.PageID)
+	}
+	return local
+}
+
+// startDraft makes the draft a pulled directory pushes into: a copy of its
+// published page in a new conversation, as Edit does in Grafana. It refuses
+// when the page was published again since the pull, so the push cannot
+// overwrite that version with changes made to an older one.
+func (c *Client) startDraft(ctx context.Context, link *Link) error {
+	current, err := c.Get(ctx, link.Publication.ID)
+	if err != nil {
+		return err
+	}
+	if current.Version != link.Publication.Version {
+		return fmt.Errorf("page %s is at version %d, and this directory was pulled at version %d; pull it into a new directory, reapply your changes and push", current.Title, current.Version, link.Publication.Version)
+	}
+	chatID, err := c.CreateChat(ctx, current.Title)
+	if err != nil {
+		return err
+	}
+	page, err := c.Edit(ctx, current.ID, chatID)
+	if err != nil {
+		return err
+	}
+	link.ChatID, link.PageID, link.Project, link.ReleaseID = chatID, page.ID, page.ProjectPath, page.ReleaseID
+	return nil
 }
 
 // Push writes dir's changes into the draft's sandbox, which builds the page,
@@ -204,9 +282,24 @@ func (c *Client) Push(ctx context.Context, dir string, link *Link) (*PushResult,
 		out.Status, out.ReleaseID = StatusBuilt, link.ReleaseID
 		return out, save()
 	}
+	if !link.HasDraft() {
+		if err := c.startDraft(ctx, link); err != nil {
+			return nil, err
+		}
+		if err := save(); err != nil {
+			return nil, err
+		}
+		out.URL = c.DraftURL(link.ChatID, link.PageID)
+	}
 	var last *WorkspaceResult
 	for _, change := range diff.Changed {
-		result, err := c.WriteFile(ctx, link.ChatID, link.Project, change.Path, change.Content)
+		content := change.Content
+		if change.Path == "page.json" {
+			if content, err = ownManifest(content, link.PageID); err != nil {
+				return nil, errors.Join(err, save())
+			}
+		}
+		result, err := c.WriteFile(ctx, link.ChatID, link.Project, change.Path, content)
 		if err != nil {
 			return nil, errors.Join(err, save())
 		}
@@ -288,6 +381,9 @@ func (c *Client) finishPending(ctx context.Context, link *Link) error {
 // Snapshot captures the draft's latest build on the server and returns the
 // image's bytes and file extension.
 func (c *Client) Snapshot(ctx context.Context, link *Link, opts ScreenshotOptions) (*Screenshot, []byte, string, error) {
+	if !link.HasDraft() {
+		return nil, nil, "", errNoDraft
+	}
 	shot, err := c.Screenshot(ctx, link.ChatID, link.PageID, opts)
 	if err != nil {
 		return nil, nil, "", err
@@ -303,6 +399,9 @@ func (c *Client) Snapshot(ctx context.Context, link *Link, opts ScreenshotOption
 // publication when it has one, with that publication's details unless meta
 // overrides them, or else as a new page with meta.
 func (c *Client) PublishDraft(ctx context.Context, dir string, link *Link, meta Metadata, sharing *Sharing) (*Entry, error) {
+	if !link.HasDraft() {
+		return nil, errNoDraft
+	}
 	if link.PendingCandidate != "" {
 		return nil, fmt.Errorf("the last push built a version that is not the draft's version yet; run gcx pages push --dir %s to finish it, then publish", dir)
 	}
