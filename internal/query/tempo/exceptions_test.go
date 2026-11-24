@@ -99,6 +99,49 @@ func TestAggregateExceptions(t *testing.T) {
 	assert.Equal(t, "payments", got.Exceptions[1].Service)
 }
 
+func TestAggregateExceptionsCountsSpansTempoLeftOut(t *testing.T) {
+	// The first trace matched 18 spans and Tempo returned 2. The second matched
+	// 5 and returned all 5.
+	resp := &tempo.SpanSearchResponse{Traces: []tempo.SpanSearchTrace{
+		{
+			StartTimeUnixNano: "200",
+			SpanSets: []tempo.SpanSet{{
+				Matched: 18,
+				Spans:   []tempo.SpanHit{spanMsg("boom", "E"), spanMsg("boom", "E")},
+			}},
+		},
+		{
+			StartTimeUnixNano: "100",
+			SpanSets: []tempo.SpanSet{{
+				Matched: 5,
+				Spans:   []tempo.SpanHit{spanMsg("boom", "E"), spanMsg("boom", "E"), spanMsg("boom", "E"), spanMsg("boom", "E"), spanMsg("boom", "E")},
+			}},
+		},
+	}}
+
+	got := tempo.AggregateExceptions(resp, "{ status = error }", 300)
+	assert.Equal(t, 7, got.SpansSampled)
+	assert.Equal(t, 16, got.SpansOmitted)
+	assert.Equal(t, 7, got.Exceptions[0].Occurrences, "occurrences count only the spans Tempo returned")
+}
+
+func TestAggregateExceptionsOmitsNothingWhenEverySpanCameBack(t *testing.T) {
+	tests := map[string]tempo.SpanSet{
+		"matched equals returned":   {Matched: 1, Spans: []tempo.SpanHit{spanMsg("boom", "E")}},
+		"matched is unknown":        {Spans: []tempo.SpanHit{spanMsg("boom", "E"), spanMsg("boom", "E")}},
+		"matched is below returned": {Matched: 1, Spans: []tempo.SpanHit{spanMsg("boom", "E"), spanMsg("boom", "E")}},
+	}
+	for name, set := range tests {
+		t.Run(name, func(t *testing.T) {
+			resp := &tempo.SpanSearchResponse{Traces: []tempo.SpanSearchTrace{{
+				StartTimeUnixNano: "100",
+				SpanSets:          []tempo.SpanSet{set},
+			}}}
+			assert.Zero(t, tempo.AggregateExceptions(resp, "{ status = error }", 300).SpansOmitted)
+		})
+	}
+}
+
 func TestAggregateExceptionsGroupsLikeTheExceptionsTab(t *testing.T) {
 	longA := "Payment failed while processing customer alpha request due to timeout in upstream dependency"
 	longB := "Payment failed while processing customer bravo request due to timeout in upstream dependency"

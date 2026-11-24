@@ -54,6 +54,9 @@ type SpanSearchTrace struct {
 type SpanSet struct {
 	Attributes []SpanAttribute `json:"attributes,omitempty"`
 	Spans      []SpanHit       `json:"spans"`
+	// Matched counts every span in the trace that matched, which can exceed
+	// len(Spans) because Tempo returns at most spss of them.
+	Matched int `json:"matched,omitempty"`
 }
 
 // SpanHit is one span in a search span set.
@@ -118,12 +121,16 @@ type ExceptionGroup struct {
 // Tempo returned as many traces as --limit. Truncated means that trace sample
 // was capped, not that exception groups were withheld. Returned counts the
 // groups in the sample. Continue raises --limit up to ExceptionsTraceLimit.
+//
+// SpansOmitted counts matching spans Tempo left out of its span sets, so
+// occurrences are lower bounds. Raising --limit does not recover them.
 type ExceptionsResult struct {
 	Query         string           `json:"query"`
 	TraceLimit    int              `json:"trace_limit"`
 	SpansPerTrace int              `json:"spans_per_trace"`
 	TracesSampled int              `json:"traces_sampled"`
 	SpansSampled  int              `json:"spans_sampled"`
+	SpansOmitted  int              `json:"spans_omitted"`
 	Exceptions    []ExceptionGroup `json:"exceptions"`
 	ListMeta      *cmdio.ListMeta  `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
@@ -165,7 +172,7 @@ func AggregateExceptions(resp *SpanSearchResponse, query string, traceLimit int)
 		return result
 	}
 	result.TracesSampled = len(resp.Traces)
-	result.SpansSampled, result.Exceptions = groupExceptions(resp)
+	result.SpansSampled, result.SpansOmitted, result.Exceptions = groupExceptions(resp)
 	return result
 }
 
@@ -225,13 +232,13 @@ type exceptionAcc struct {
 	seen    map[string]struct{}
 }
 
-func groupExceptions(resp *SpanSearchResponse) (int, []ExceptionGroup) {
+func groupExceptions(resp *SpanSearchResponse) (int, int, []ExceptionGroup) {
 	traces := slices.Clone(resp.Traces)
 	slices.SortStableFunc(traces, func(a, b SpanSearchTrace) int {
 		return cmp.Compare(b.StartTimeUnixNano.uint(), a.StartTimeUnixNano.uint())
 	})
 
-	var sampled int
+	var sampled, omitted int
 	order := []string{}
 	groups := map[string]*exceptionAcc{}
 	for _, tr := range traces {
@@ -240,6 +247,7 @@ func groupExceptions(resp *SpanSearchResponse) (int, []ExceptionGroup) {
 			sets = []SpanSet{*tr.SpanSet}
 		}
 		for _, set := range sets {
+			omitted += max(0, int(set.Matched)-len(set.Spans))
 			for _, span := range set.Spans {
 				sampled++
 				attrs := map[string]string{}
@@ -293,7 +301,7 @@ func groupExceptions(resp *SpanSearchResponse) (int, []ExceptionGroup) {
 			GroupedMessages: group.raw,
 		})
 	}
-	return sampled, out
+	return sampled, omitted, out
 }
 
 var spaceRE = regexp.MustCompile(`\s+`)

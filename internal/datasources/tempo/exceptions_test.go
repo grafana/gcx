@@ -87,24 +87,63 @@ func TestExceptionsCmd_GroupsSpanSample(t *testing.T) {
 	assert.Contains(t, tableOut, "2")
 }
 
+// serveTempoSearch starts a Grafana stand-in whose Tempo search proxy answers
+// every call with body, and returns its URL.
+func serveTempoSearch(t *testing.T, body string) string {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case "/api/datasources/proxy/uid/tempo-uid/api/search":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(body))
+			assert.NoError(t, err)
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func TestExceptionsCmd_WarnsWhenTempoLeavesSpansOut(t *testing.T) {
+	// One trace matched 18 spans and Tempo returned 1 of them.
+	const cutOff = `{"traces":[{"traceID":"t1","startTimeUnixNano":"200","spanSets":[{"matched":18,"spans":[
+		{"spanID":"s1","startTimeUnixNano":"200","attributes":[
+			{"key":"resource.service.name","value":{"stringValue":"checkout"}},
+			{"key":"event.exception.message","value":{"stringValue":"boom"}},
+			{"key":"event.exception.type","value":{"stringValue":"TimeoutError"}}
+		]}
+	]}]}]}`
+	const complete = `{"traces":[{"traceID":"t1","startTimeUnixNano":"200","spanSets":[{"matched":1,"spans":[
+		{"spanID":"s1","startTimeUnixNano":"200","attributes":[
+			{"key":"resource.service.name","value":{"stringValue":"checkout"}},
+			{"key":"event.exception.message","value":{"stringValue":"boom"}},
+			{"key":"event.exception.type","value":{"stringValue":"TimeoutError"}}
+		]}
+	]}]}]}`
+	args := []string{"exceptions", `{ resource.service.name = "checkout" }`, "--since", "1h", "-o", "json"}
+
+	t.Run("reports the shortfall in the result and on stderr", func(t *testing.T) {
+		stdout, stderr, err := execTempoCmd(tempo.ExceptionsCmd(tempoLoader(t, serveTempoSearch(t, cutOff))), args)
+		require.NoError(t, err)
+		assert.Contains(t, stdout, `"spans_omitted": 17`)
+		assert.Contains(t, stderr, "left out 17 matching spans")
+		assert.Contains(t, stderr, "at most 10 per trace")
+		assert.Contains(t, stderr, "a larger --limit will not help", "raising --limit must not be offered as the fix")
+		assert.NotContains(t, stderr, "See a larger sample", "a trace-limit hint would point at the wrong remedy")
+	})
+
+	t.Run("stays quiet when every matching span came back", func(t *testing.T) {
+		stdout, stderr, err := execTempoCmd(tempo.ExceptionsCmd(tempoLoader(t, serveTempoSearch(t, complete))), args)
+		require.NoError(t, err)
+		assert.Contains(t, stdout, `"spans_omitted": 0`)
+		assert.NotContains(t, stderr, "left out")
+	})
+}
+
 func TestExceptionsCmd_ErrorOnEmpty(t *testing.T) {
-	serve := func(t *testing.T, body string) string {
-		t.Helper()
-		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/bootdata":
-				http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
-			case "/api/datasources/proxy/uid/tempo-uid/api/search":
-				w.Header().Set("Content-Type", "application/json")
-				_, err := w.Write([]byte(body))
-				assert.NoError(t, err)
-			default:
-				t.Fatalf("unexpected request path: %s", r.URL.Path)
-			}
-		}))
-		t.Cleanup(srv.Close)
-		return srv.URL
-	}
 	const empty = `{"traces":[]}`
 	const oneException = `{"traces":[{"traceID":"t1","startTimeUnixNano":"200","spanSets":[{"spans":[
 		{"spanID":"s1","startTimeUnixNano":"200","attributes":[
@@ -120,7 +159,7 @@ func TestExceptionsCmd_ErrorOnEmpty(t *testing.T) {
 	// stdout on any error and hides what the command itself wrote.
 	exceptionsCmd := func(t *testing.T, body string) *cobra.Command {
 		t.Helper()
-		cmd := tempo.ExceptionsCmd(tempoLoader(t, serve(t, body)))
+		cmd := tempo.ExceptionsCmd(tempoLoader(t, serveTempoSearch(t, body)))
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
 		return cmd

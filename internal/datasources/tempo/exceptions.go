@@ -45,7 +45,8 @@ TRACEQL is an optional spanset such as '{ resource.service.name = "checkout" }'.
 Omit it to include every service. The command adds status = error, samples at
 most --limit traces (default 300, 10 spans each), and groups messages the way
 the Exceptions tab does, with one row per service. Counts are occurrences of
-that row.
+that row. If Tempo omits matching spans, the counts are lower bounds; narrow
+the spanset rather than raising --limit.
 
 Each row links to the Exceptions tab for that service and exception type.
 With no time flags, the window is the last hour. Use --share-link or --open
@@ -188,6 +189,7 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 		return err
 	}
 	emitExceptionSampleHint(cmd.ErrOrStderr(), result)
+	emitOmittedSpansHint(cmd.ErrOrStderr(), result)
 
 	return emptyErr
 }
@@ -234,6 +236,17 @@ func attachExceptionLinks(groups []tempo.ExceptionGroup, host, datasourceUID, fi
 		}
 		groups[i].URL = url
 	}
+}
+
+// emitOmittedSpansHint warns when Tempo omitted matching spans. A larger
+// --limit does not fix this, so the hint points at narrowing the spanset.
+func emitOmittedSpansHint(w io.Writer, result *tempo.ExceptionsResult) {
+	if result == nil || result.SpansOmitted == 0 {
+		return
+	}
+	cmdio.EmitHint(w, fmt.Sprintf(
+		"Tempo left out %d matching spans (it returns at most %d per trace), so counts are lower bounds. Narrow the spanset; a larger --limit will not help",
+		result.SpansOmitted, result.SpansPerTrace), "")
 }
 
 func emitExceptionSampleHint(w io.Writer, result *tempo.ExceptionsResult) {
