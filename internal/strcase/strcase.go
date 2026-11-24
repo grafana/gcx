@@ -5,6 +5,7 @@ package strcase
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // splitWords splits s into words by detecting transitions between
@@ -69,7 +70,10 @@ func ToKebabCase(s string) string { return toLowerDelimited(s, "-") }
 func ToPascalCase(s string) string {
 	words := splitWords(s)
 	for i, w := range words {
-		words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+		// Split on the first rune, not the first byte: slicing a multi-byte
+		// leading character would produce invalid UTF-8.
+		first, size := utf8.DecodeRuneInString(w)
+		words[i] = string(unicode.ToUpper(first)) + strings.ToLower(w[size:])
 	}
 
 	return strings.Join(words, "")

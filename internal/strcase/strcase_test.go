@@ -2,6 +2,7 @@ package strcase_test
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/strcase"
 	"github.com/stretchr/testify/assert"
@@ -61,5 +62,17 @@ func TestToPascalCase(t *testing.T) {
 		t.Run(tt.input, func(t *testing.T) {
 			assert.Equal(t, tt.want, strcase.ToPascalCase(tt.input))
 		})
+	}
+}
+
+func TestToPascalCase_multibyteLeadingRune(t *testing.T) {
+	for in, want := range map[string]string{
+		"élan-vital": "ÉlanVital",
+		"my_ñandú":   "MyÑandú",
+	} {
+		got := strcase.ToPascalCase(in)
+		if !utf8.ValidString(got) || got != want {
+			t.Errorf("ToPascalCase(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
