@@ -247,7 +247,7 @@ func groupExceptions(resp *SpanSearchResponse) (int, int, []ExceptionGroup) {
 			sets = []SpanSet{*tr.SpanSet}
 		}
 		for _, set := range sets {
-			omitted += max(0, int(set.Matched)-len(set.Spans))
+			omitted += max(0, set.Matched-len(set.Spans))
 			for _, span := range set.Spans {
 				sampled++
 				attrs := map[string]string{}

@@ -163,15 +163,16 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 	// only that error. Printing the empty result first would give scripts two
 	// values to parse. Links still run, as they only write to stderr or open a
 	// browser.
+	failsOnEmpty := opts.ErrorOnEmpty && len(result.Exceptions) == 0
 	var emptyErr error
-	if opts.ErrorOnEmpty {
+	if failsOnEmpty {
 		emptyErr = dsquery.ErrorOnEmptyWithContext(result, dsquery.EmptyResultContext{
 			Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
 		})
 	}
 
 	if err := dsquery.EncodeAndHandleExplore(cmd, func() error {
-		if emptyErr != nil {
+		if failsOnEmpty {
 			return nil
 		}
 		return opts.IO.Encode(cmd.OutOrStdout(), result)
