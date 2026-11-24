@@ -156,7 +156,22 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 		OrgID:          dsquery.OrgID(cfgCtx),
 	}, opts.Limit)
 	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("exception sample")
+
+	// With --error-on-empty an empty sample is the failure, so stdout must carry
+	// only that error. Printing the empty result first would give scripts two
+	// values to parse. Links still run, as they only write to stderr or open a
+	// browser.
+	var emptyErr error
+	if opts.ErrorOnEmpty {
+		emptyErr = dsquery.ErrorOnEmptyWithContext(result, dsquery.EmptyResultContext{
+			Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+		})
+	}
+
 	if err := dsquery.EncodeAndHandleExplore(cmd, func() error {
+		if emptyErr != nil {
+			return nil
+		}
 		return opts.IO.Encode(cmd.OutOrStdout(), result)
 	}, *share, dsquery.ExploreLink{
 		URL:            exploreURL,
@@ -174,12 +189,7 @@ func (opts *exceptionsOpts) run(cmd *cobra.Command, args []string, loader *provi
 	}
 	emitExceptionSampleHint(cmd.ErrOrStderr(), result)
 
-	if opts.ErrorOnEmpty {
-		return dsquery.ErrorOnEmptyWithContext(result, dsquery.EmptyResultContext{
-			Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
-		})
-	}
-	return nil
+	return emptyErr
 }
 
 func (opts *exceptionsOpts) Validate() error {

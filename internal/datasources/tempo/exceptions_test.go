@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -84,6 +85,71 @@ func TestExceptionsCmd_GroupsSpanSample(t *testing.T) {
 	assert.Contains(t, tableOut, "timeout for user <num>")
 	assert.Contains(t, tableOut, "TimeoutError")
 	assert.Contains(t, tableOut, "2")
+}
+
+func TestExceptionsCmd_ErrorOnEmpty(t *testing.T) {
+	serve := func(t *testing.T, body string) string {
+		t.Helper()
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/bootdata":
+				http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			case "/api/datasources/proxy/uid/tempo-uid/api/search":
+				w.Header().Set("Content-Type", "application/json")
+				_, err := w.Write([]byte(body))
+				assert.NoError(t, err)
+			default:
+				t.Fatalf("unexpected request path: %s", r.URL.Path)
+			}
+		}))
+		t.Cleanup(srv.Close)
+		return srv.URL
+	}
+	const empty = `{"traces":[]}`
+	const oneException = `{"traces":[{"traceID":"t1","startTimeUnixNano":"200","spanSets":[{"spans":[
+		{"spanID":"s1","startTimeUnixNano":"200","attributes":[
+			{"key":"resource.service.name","value":{"stringValue":"checkout"}},
+			{"key":"event.exception.message","value":{"stringValue":"boom"}},
+			{"key":"event.exception.type","value":{"stringValue":"TimeoutError"}}
+		]}
+	]}]}]}`
+	args := func(extra ...string) []string {
+		return append([]string{"exceptions", `{ resource.service.name = "checkout" }`, "--since", "1h", "-o", "json"}, extra...)
+	}
+	// The real root command sets SilenceUsage; without it cobra prints usage to
+	// stdout on any error and hides what the command itself wrote.
+	exceptionsCmd := func(t *testing.T, body string) *cobra.Command {
+		t.Helper()
+		cmd := tempo.ExceptionsCmd(tempoLoader(t, serve(t, body)))
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		return cmd
+	}
+
+	t.Run("empty sample prints no result, only the error", func(t *testing.T) {
+		stdout, _, err := execTempoCmd(exceptionsCmd(t, empty), args("--error-on-empty"))
+		require.ErrorIs(t, err, dsquery.ErrNoResult)
+		assert.Empty(t, stdout, "stdout must not carry a result before the error")
+	})
+
+	t.Run("empty sample still links to Explore", func(t *testing.T) {
+		stdout, stderr, err := execTempoCmd(exceptionsCmd(t, empty), args("--error-on-empty", "--share-link"))
+		require.ErrorIs(t, err, dsquery.ErrNoResult)
+		assert.Empty(t, stdout)
+		assert.Contains(t, stderr, "Explore link:")
+	})
+
+	t.Run("empty sample is printed without the flag", func(t *testing.T) {
+		stdout, _, err := execTempoCmd(exceptionsCmd(t, empty), args())
+		require.NoError(t, err)
+		assert.Contains(t, stdout, `"exceptions"`)
+	})
+
+	t.Run("non-empty sample is printed with the flag", func(t *testing.T) {
+		stdout, _, err := execTempoCmd(exceptionsCmd(t, oneException), args("--error-on-empty"))
+		require.NoError(t, err)
+		assert.Contains(t, stdout, `"type": "TimeoutError"`)
+	})
 }
 
 func TestExceptionsCmd_RejectsPipelineBeforeIO(t *testing.T) {
