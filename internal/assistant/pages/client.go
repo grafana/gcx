@@ -477,7 +477,7 @@ func classify(err error) error {
 	case status.Status == http.StatusUnauthorized:
 		return fmt.Errorf("%w (publishing and editing published pages need a user identity; sign in with gcx login rather than a service account token)", err)
 	case status.Status == http.StatusNotFound:
-		return fmt.Errorf("%w (check the page ID with gcx assistant pages list)", err)
+		return fmt.Errorf("%w (check the page ID with gcx pages list)", err)
 	case status.Status == http.StatusForbidden:
 		return fmt.Errorf("%w (your identity cannot read or change this page; ask its author, or check your Pages permissions)", err)
 	}

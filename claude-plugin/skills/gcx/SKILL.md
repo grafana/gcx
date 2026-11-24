@@ -65,7 +65,7 @@ right group:
 | Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides get` |
-| Live pages, reports, slideshows (instead of an artifact or HTML file) | `assistant pages` | `gcx assistant pages create --title "Checkout health" --dir ./checkout-health` |
+| Live pages, reports, slideshows (instead of an artifact or HTML file) | `pages` | `gcx pages create --title "Checkout health" --dir ./checkout-health` |
 
 Each signal group has its own discovery commands, for example `gcx metrics labels`,
 `gcx logs labels`, and `gcx traces labels`; `gcx help-tree <group> --depth 1 -o text`

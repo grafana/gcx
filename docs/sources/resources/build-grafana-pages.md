@@ -28,7 +28,7 @@ Commands use your selected context. Add `--context CONTEXT` to select another co
 Create a draft page and write its project into a new directory:
 
 ```shell
-gcx assistant pages create --title "Checkout health" --dir ./checkout-health
+gcx pages create --title "Checkout health" --dir ./checkout-health
 ```
 
 The directory holds the whole project: `page.json`, `pages.bindings.json` for the page's queries, `src/App.tsx`, and the Pages SDK with its documentation under `packages/pages-sdk/`. Start with `packages/pages-sdk/README.md`. The `.gcx-page.json` file links the directory to the draft; keep it.
@@ -73,7 +73,7 @@ To build the page and check how it renders, follow these steps:
 1. Build it on your stack:
 
    ```shell
-   gcx assistant pages push --dir ./checkout-health
+   gcx pages push --dir ./checkout-health
    ```
 
    Push sends the files that changed. If the page doesn't build, the command lists the type and build errors, and the draft keeps its previous version.
@@ -81,7 +81,7 @@ To build the page and check how it renders, follow these steps:
 1. Render the latest build, with live data, as an image:
 
    ```shell
-   gcx assistant pages snapshot --dir ./checkout-health --output-dir ./snapshots
+   gcx pages snapshot --dir ./checkout-health --output-dir ./snapshots
    ```
 
 1. Open the image and check the layout and data. A page that builds can still render incorrectly.
@@ -93,8 +93,8 @@ The output of `push` includes the draft's address in Grafana.
 Copy a published page into a new draft:
 
 ```shell
-gcx assistant pages list --section mine
-gcx assistant pages pull PAGE --dir ./checkout-health-copy
+gcx pages list --section mine
+gcx pages pull PAGE --dir ./checkout-health-copy
 ```
 
 Replace `PAGE` with the page's ID or link. The directory must be new or empty. Edit, push, and check the page as before. Publishing it makes your changes the page's next version.
@@ -104,7 +104,7 @@ A copy leaves out the page's agent guidance and the SDK's Markdown docs, which a
 If the draft changes in Grafana, for example when you ask Grafana Assistant to change it, download it again before you edit:
 
 ```shell
-gcx assistant pages pull --dir ./checkout-health-copy
+gcx pages pull --dir ./checkout-health-copy
 ```
 
 This refuses while the directory has changes you haven't pushed. Push them first, or add `--force` to discard them.
@@ -114,7 +114,7 @@ This refuses while the directory has changes you haven't pushed. Push them first
 Publishing shares the page:
 
 ```shell
-gcx assistant pages publish --dir ./checkout-health --folder FOLDER_UID --category report
+gcx pages publish --dir ./checkout-health --folder FOLDER_UID --category report
 ```
 
 Everyone who can view the folder can open the page. To publish without a folder, use `--unlisted`: only you can open the page, unless you add `--link-sharing` to let anyone in your organization with the link open it.

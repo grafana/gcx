@@ -1,5 +1,5 @@
-// Package pages exposes Grafana Pages commands: find published pages, and
-// write a page as a local React project that the stack builds and hosts.
+// Package pages provides gcx pages: find published Grafana Pages, and write
+// a page as a local React project that the stack builds and hosts.
 package pages
 
 import (
@@ -26,8 +26,9 @@ import (
 
 var sections = []string{"discover", "mine", "starred", "unlisted"} //nolint:gochecknoglobals // Closed vocabulary for --section.
 
-// Commands returns the experimental Pages subtree.
-func Commands(loader *providers.ConfigLoader) *cobra.Command {
+// Commands returns the experimental gcx pages tree.
+func Commands() *cobra.Command {
+	loader := &providers.ConfigLoader{}
 	cmd := &cobra.Command{
 		Use:   "pages",
 		Short: "Write, build and publish Grafana Pages.",
@@ -40,12 +41,13 @@ files, push to build it, snapshot to see it, and publish it to share it.
 Requires Grafana Pages on the stack and a Grafana Assistant that accepts
 gcx's Pages commands. These commands write files and build pages without
 running Grafana Assistant.`,
-		Example: `  gcx assistant pages create --title "Checkout health" --dir ./checkout-health
-  gcx assistant pages push --dir ./checkout-health
-  gcx assistant pages snapshot --dir ./checkout-health
-  gcx assistant pages publish --dir ./checkout-health --folder ops`,
+		Example: `  gcx pages create --title "Checkout health" --dir ./checkout-health
+  gcx pages push --dir ./checkout-health
+  gcx pages snapshot --dir ./checkout-health
+  gcx pages publish --dir ./checkout-health --folder ops`,
 	}
 	agent.MarkExperimental(cmd)
+	loader.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newListCommand(loader), newGetCommand(loader), newCreateCommand(loader), newPullCommand(loader), newPushCommand(loader), newSnapshotCommand(loader), newPublishCommand(loader))
 	return cmd
 }
@@ -123,8 +125,8 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "List published Grafana Pages.",
 		Long:  "List the published pages in the page catalog that you can open, newest first. Use --section mine for your own pages. Draft pages that live only in a conversation are not listed.",
 		Args:  cobra.NoArgs,
-		Example: `  gcx assistant pages list --section mine
-  gcx assistant pages list --search checkout -o json`,
+		Example: `  gcx pages list --section mine
+  gcx pages list --search checkout -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -201,8 +203,8 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Get a published Grafana Page and its queries.",
 		Long:  "Read a published page by ID or link: its details, its named queries (the bindings it runs as each viewer) and, with --source, its source text. To change the page, pull it into a directory instead.",
 		Args:  cobra.ExactArgs(1),
-		Example: `  gcx assistant pages get checkout-health-0a1b2c3d4e5f
-  gcx assistant pages get https://example.grafana.net/a/grafana-assistant-app/pages/checkout-health-0a1b2c3d4e5f --source -o json`,
+		Example: `  gcx pages get checkout-health-0a1b2c3d4e5f
+  gcx pages get https://example.grafana.net/a/grafana-assistant-app/pages/checkout-health-0a1b2c3d4e5f --source -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -285,8 +287,8 @@ packages/pages-sdk/) into a local directory. Edit the files, then push.
 
 The draft is private to you until you publish it. No Assistant turn runs.`,
 		Args: cobra.NoArgs,
-		Example: `  gcx assistant pages create --title "Checkout health"
-  gcx assistant pages create --title "Q3 review" --dir ./q3-review --style keynote`,
+		Example: `  gcx pages create --title "Checkout health"
+  gcx pages create --title "Q3 review" --dir ./q3-review --style keynote`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -323,7 +325,7 @@ func renderDraft(w io.Writer, value any) error {
 	if len(d.Omitted) > 0 {
 		fmt.Fprintf(w, "Left out %d file(s) of its author's agent guidance and SDK docs, which another person may have written; the stack builds with the template's.\n", len(d.Omitted))
 	}
-	fmt.Fprintf(w, "\nRead %s, edit src/App.tsx and pages.bindings.json, then: gcx assistant pages push --dir %s\n", filepath.Join(d.Dir, "packages/pages-sdk/README.md"), d.Dir)
+	fmt.Fprintf(w, "\nRead %s, edit src/App.tsx and pages.bindings.json, then: gcx pages push --dir %s\n", filepath.Join(d.Dir, "packages/pages-sdk/README.md"), d.Dir)
 	return nil
 }
 
@@ -351,8 +353,8 @@ Publishing from that directory makes your changes the page's next version.
 Without PAGE, download the draft's current version into its directory
 again, for changes made to it in Grafana, such as by Grafana Assistant.`,
 		Args: cobra.MaximumNArgs(1),
-		Example: `  gcx assistant pages pull checkout-health-0a1b2c3d4e5f --dir ./checkout-health
-  gcx assistant pages pull --dir ./checkout-health`,
+		Example: `  gcx pages pull checkout-health-0a1b2c3d4e5f --dir ./checkout-health
+  gcx pages pull --dir ./checkout-health`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -416,8 +418,8 @@ previous version.
 
 Push changes only your draft. Publish shares it.`,
 		Args: cobra.NoArgs,
-		Example: `  gcx assistant pages push --dir ./checkout-health
-  gcx assistant pages push -o json`,
+		Example: `  gcx pages push --dir ./checkout-health
+  gcx pages push -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -439,7 +441,7 @@ Push changes only your draft. Publish shares it.`,
 					Summary: "The page did not build",
 					Details: result.Errors,
 					Suggestions: []string{
-						"Fix the files and lines the errors name, then run gcx assistant pages push --dir " + opts.Dir + " again; only the changed files are sent",
+						"Fix the files and lines the errors name, then run gcx pages push --dir " + opts.Dir + " again; only the changed files are sent",
 						"The draft keeps showing its previous version until a build compiles",
 					},
 				}
@@ -524,9 +526,9 @@ write the image (PNG or JPEG, at most 1568 pixels on its longer side) into
 compiles can still render wrongly. A page that failed to render shows why
 in the image and fails the command.`,
 		Args: cobra.NoArgs,
-		Example: `  gcx assistant pages snapshot --dir ./checkout-health
-  gcx assistant pages snapshot --dir ./checkout-health --theme light --width 800
-  gcx assistant pages snapshot --dir ./q3-review --click '[aria-label="Next slide"]'`,
+		Example: `  gcx pages snapshot --dir ./checkout-health
+  gcx pages snapshot --dir ./checkout-health --theme light --width 800
+  gcx pages snapshot --dir ./q3-review --click '[aria-label="Next slide"]'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -656,9 +658,9 @@ history. A new page needs --folder, or --unlisted.
 Publishing shares the page with other people. Publish only when the user
 asked for that. It needs a user identity (gcx login), not a service account.`,
 		Args: cobra.NoArgs,
-		Example: `  gcx assistant pages publish --dir ./checkout-health --folder ops-reports --category report
-  gcx assistant pages publish --dir ./q3-review --unlisted --link-sharing
-  gcx assistant pages publish --dir ./checkout-health`,
+		Example: `  gcx pages publish --dir ./checkout-health --folder ops-reports --category report
+  gcx pages publish --dir ./q3-review --unlisted --link-sharing
+  gcx pages publish --dir ./checkout-health`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -672,7 +674,7 @@ asked for that. It needs a user identity (gcx login), not a service account.`,
 				return err
 			}
 			if !diff.Empty() {
-				cmdio.Warning(cmd.ErrOrStderr(), "%d local change(s) are not pushed; publishing the last version that built. Run gcx assistant pages push first to include them.", len(diff.Changed)+len(diff.Deleted))
+				cmdio.Warning(cmd.ErrOrStderr(), "%d local change(s) are not pushed; publishing the last version that built. Run gcx pages push first to include them.", len(diff.Changed)+len(diff.Deleted))
 			}
 			meta, sharing, err := opts.publication(link)
 			if err != nil {

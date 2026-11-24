@@ -40,7 +40,7 @@ Check that Pages is available before you start:
 
 ```bash
 gcx config current-context
-gcx assistant pages list --section mine --limit 1
+gcx pages list --section mine --limit 1
 ```
 
 Fall back to an artifact or a local file, and say why in one sentence, when:
@@ -83,7 +83,7 @@ Page possible; ask the user.
 New page:
 
 ```bash
-gcx assistant pages create --title "Checkout health" --dir ./checkout-health
+gcx pages create --title "Checkout health" --dir ./checkout-health
 ```
 
 This opens a draft in a new conversation on the stack, builds the starter and
@@ -94,9 +94,9 @@ shared.
 Existing page, to change it:
 
 ```bash
-gcx assistant pages list --section mine
-gcx assistant pages get <page-id-or-url>
-gcx assistant pages pull <page-id-or-url> --dir ./checkout-health
+gcx pages list --section mine
+gcx pages get <page-id-or-url>
+gcx pages pull <page-id-or-url> --dir ./checkout-health
 ```
 
 `pull` copies the published page into a new draft, as Edit does in Grafana;
@@ -111,7 +111,7 @@ When someone changed the draft in Grafana (for example with Grafana Assistant),
 refresh the directory before you edit:
 
 ```bash
-gcx assistant pages pull --dir ./checkout-health
+gcx pages pull --dir ./checkout-health
 ```
 
 ### 2. Read the project's docs, then find the data
@@ -149,7 +149,7 @@ every build sees the files the next one imports. The contract is in
 ### 4. Push to build
 
 ```bash
-gcx assistant pages push --dir ./checkout-health
+gcx pages push --dir ./checkout-health
 ```
 
 Push sends only the files that changed since the last push or pull. The stack
@@ -162,9 +162,9 @@ build, such as `AGENTS.md`.
 ### 5. Snapshot and look
 
 ```bash
-gcx assistant pages snapshot --dir ./checkout-health --output-dir ./snapshots
-gcx assistant pages snapshot --dir ./checkout-health --theme light --width 800 --output-dir ./snapshots
-gcx assistant pages snapshot --dir ./q3-review --click '[aria-label="Next slide"]' --output-dir ./snapshots
+gcx pages snapshot --dir ./checkout-health --output-dir ./snapshots
+gcx pages snapshot --dir ./checkout-health --theme light --width 800 --output-dir ./snapshots
+gcx pages snapshot --dir ./q3-review --click '[aria-label="Next slide"]' --output-dir ./snapshots
 ```
 
 Open the image with your image-reading tool; don't only report its path. A
@@ -186,9 +186,9 @@ Give the user the draft link (`url` in the result of `create`, `push` and
 its limits. Only the author can open a draft. Publish when they ask:
 
 ```bash
-gcx assistant pages publish --dir ./checkout-health --folder <folder-uid> --category report
-gcx assistant pages publish --dir ./checkout-health --unlisted --link-sharing
-gcx assistant pages publish --dir ./checkout-health
+gcx pages publish --dir ./checkout-health --folder <folder-uid> --category report
+gcx pages publish --dir ./checkout-health --unlisted --link-sharing
+gcx pages publish --dir ./checkout-health
 ```
 
 `publish` returns the published page's `url`, which is the link to share. A
