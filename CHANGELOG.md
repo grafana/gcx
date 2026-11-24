@@ -25,20 +25,13 @@
   them out: a label on each node, or, for an unlabeled node `n`, a filter on
   its label after a WITH, as in `WITH n, labels(n)[0] AS type WHERE type <> '<label>'`,
   because a WHERE on `labels(n)` right after MATCH can time out on a large
-  graph. It is detected from returned nodes, also inside paths, lists and
-  maps, and from columns that project a `labels(...)` call at any depth,
-  with or without an alias, such as `labels(a)[0]` or
-  `coalesce(head(labels(a)), 'none')`, also under a key of a map literal or
-  map projection, as in `{t: labels(a)[0]}`, and through aliases that WITH
-  gives such a call, as in
-  `MATCH (a) WITH labels(a) AS ls, count(a) AS c RETURN ls[0] AS type, c LIMIT 50`.
-  A catalog label the query names itself is not counted: as a label in a
-  pattern or a label predicate, or in a string compared with a `labels(...)`
-  expression or an alias of one, also through the variable of a list
-  predicate, as in `any(l IN labels(n) WHERE l = '<label>')`, outside
-  comments. A string compared with a property, as in `n.name <> '<label>'`,
-  does not name a label, and a query that filters out one catalog label is
-  still warned about the others. Rows are unchanged.
+  graph. It is detected from the labels of returned nodes, also inside paths,
+  lists and maps, and, in a query that calls `labels(...)`, from returned
+  strings equal to a catalog label. A catalog label the query names itself,
+  after a colon or in a quoted string, is not counted, and a query that
+  filters out one catalog label is still warned about the others. The warning
+  is a hint: it reads the response, not a parse of the query. Rows are
+  unchanged.
 - `gcx kg graph query --json list` now prints the response fields, `warnings`
   included, without running the query. The command's help now says that its
   default output is a table, or the agents format (JSON) in agent mode; it
