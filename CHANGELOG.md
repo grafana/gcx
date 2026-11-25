@@ -1,16 +1,5 @@
 ## Unreleased
 
-- `gcx kg insights sources` now retries once with the insight's category when
-  a lookup returns an empty array and the labels have an `alertname` but no
-  `asserts_alert_category`. Alert-rule and change insights are matched on
-  that label, which `kg entities inspect` shows as a timeline entry's
-  `category` rather than among its labels. The category comes from the
-  entity's insight timeline over the same window and scope, and is used only
-  when the insight's entries there have exactly one. A lookup that returns
-  metrics the first time sends no extra request. The help now says to copy
-  every label of the timeline entry with `--label`, plus the entry's category
-  for alert-rule and change insights, and that `gcx alert rules get` shows the
-  rule of a timeline entry that carries `grafana_rule_uid`.
 - `gcx kg meta logs`, `traces` and `profiles` no longer fail with
   "fetch ... configs: EOF" when the server answers with an empty body. They
   exit 0, print no configs, and add a `notes` entry for the section that says
