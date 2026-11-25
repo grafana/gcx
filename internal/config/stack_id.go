@@ -201,6 +201,13 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 		return 0, err
 	}
 
+	// The bootdata request targets the Grafana server itself, so configured
+	// headers (e.g. behind a gateway that requires one) apply here too,
+	// host-scoping by construction.
+	for name, value := range cfg.Headers {
+		req.Header.Set(name, value)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
