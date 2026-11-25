@@ -261,7 +261,7 @@ automatically:
 Resolution order:
 1. A configured `stack-id` is authoritative → namespace `stacks-N` without a
    discovery request.
-2. Otherwise, try the memoized `/bootdata` discovery call.
+2. Otherwise, try the memoized discovery call (`whoami`, falling back to `/bootdata`).
    → success: use discovered stack-id → namespace `stacks-N` (even when an
    `org-id` is configured)
 3. If discovery fails and `org-id != 0` → namespace `org-N`.
@@ -412,5 +412,5 @@ gcx config set stacks.cloud.grafana.server https://myorg.grafana.net
 gcx config set stacks.cloud.grafana.token glsa_yyyy
 gcx config set contexts.cloud.stack cloud
 gcx config use-context cloud
-# stack-id is resolved automatically from /bootdata at runtime
+# stack-id is resolved automatically (whoami, /bootdata fallback) at runtime
 ```

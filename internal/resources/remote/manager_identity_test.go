@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/gcx/internal/resources/remote"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,8 +39,8 @@ func (c *identityCheckingPushClient) Update(_ context.Context, _ resources.Descr
 	if c.live == nil {
 		return nil, errors.New("update without a live resource")
 	}
-	liveIdentity := c.live.GetAnnotations()[utils.AnnoKeyManagerIdentity]
-	outgoingIdentity := obj.GetAnnotations()[utils.AnnoKeyManagerIdentity]
+	liveIdentity := c.live.GetAnnotations()[grafanameta.AnnoKeyManagerIdentity]
+	outgoingIdentity := obj.GetAnnotations()[grafanameta.AnnoKeyManagerIdentity]
 	if liveIdentity != "" && outgoingIdentity != "" && liveIdentity != outgoingIdentity {
 		return nil, errManagerIdentityChanged
 	}
@@ -79,10 +79,10 @@ func identityTestObject(group, name string, annotations map[string]string) *unst
 	return obj
 }
 
-func identityAnnotations(kind utils.ManagerKind, identity string) map[string]string {
+func identityAnnotations(kind grafanameta.ManagerKind, identity string) map[string]string {
 	return map[string]string{
-		utils.AnnoKeyManagerKind:     string(kind),
-		utils.AnnoKeyManagerIdentity: identity,
+		grafanameta.AnnoKeyManagerKind:     string(kind),
+		grafanameta.AnnoKeyManagerIdentity: identity,
 	}
 }
 
@@ -127,9 +127,9 @@ func TestPusherPreservesLiveKubectlManagerIdentity(t *testing.T) {
 				require.NotNil(t, client.gotUpdate)
 				require.Equal(t, "remote-id", client.gotUpdate.GetName())
 				require.Equal(t, "42", client.gotUpdate.GetResourceVersion())
-				require.Equal(t, liveIdentity, client.gotUpdate.GetAnnotations()[utils.AnnoKeyManagerIdentity])
-				require.Equal(t, string(resources.ResourceManagerKind), client.gotUpdate.GetAnnotations()[utils.AnnoKeyManagerKind])
-				require.Equal(t, "true", client.gotUpdate.GetAnnotations()[utils.AnnoKeyManagerAllowsEdits])
+				require.Equal(t, liveIdentity, client.gotUpdate.GetAnnotations()[grafanameta.AnnoKeyManagerIdentity])
+				require.Equal(t, string(resources.ResourceManagerKind), client.gotUpdate.GetAnnotations()[grafanameta.AnnoKeyManagerKind])
+				require.Equal(t, "true", client.gotUpdate.GetAnnotations()[grafanameta.AnnoKeyManagerAllowsEdits])
 				require.Equal(t, 1, client.getCalls)
 				if match == "natural-key" {
 					require.Equal(t, 1, client.listCalls)
@@ -171,14 +171,14 @@ func TestPusherManagerIdentityBoundaries(t *testing.T) {
 		},
 		{
 			name:          "foreign live manager is not copied",
-			liveManager:   identityAnnotations(utils.ManagerKindTerraform, "terraform-owner"),
+			liveManager:   identityAnnotations(grafanameta.ManagerKindTerraform, "terraform-owner"),
 			appendManager: true,
 			wantIdentity:  "gcx",
 			wantError:     errManagerIdentityChanged,
 		},
 		{
 			name:          "foreign outgoing manager is not replaced",
-			localManager:  identityAnnotations(utils.ManagerKindTerraform, "terraform-source"),
+			localManager:  identityAnnotations(grafanameta.ManagerKindTerraform, "terraform-source"),
 			liveManager:   identityAnnotations(resources.ResourceManagerKind, "grafanactl"),
 			appendManager: true,
 			wantIdentity:  "terraform-source",
@@ -186,7 +186,7 @@ func TestPusherManagerIdentityBoundaries(t *testing.T) {
 		},
 		{
 			name:          "empty live identity does not replace gcx",
-			liveManager:   map[string]string{utils.AnnoKeyManagerKind: string(resources.ResourceManagerKind)},
+			liveManager:   map[string]string{grafanameta.AnnoKeyManagerKind: string(resources.ResourceManagerKind)},
 			appendManager: true,
 			wantIdentity:  "gcx",
 		},
@@ -197,7 +197,7 @@ func TestPusherManagerIdentityBoundaries(t *testing.T) {
 		},
 		{
 			name:         "incomplete outgoing manager stays unchanged",
-			localManager: map[string]string{utils.AnnoKeyManagerKind: string(resources.ResourceManagerKind)},
+			localManager: map[string]string{grafanameta.AnnoKeyManagerKind: string(resources.ResourceManagerKind)},
 			liveManager:  identityAnnotations(resources.ResourceManagerKind, "grafanactl"),
 			wantIdentity: "",
 		},
@@ -227,7 +227,7 @@ func TestPusherManagerIdentityBoundaries(t *testing.T) {
 				require.Nil(t, client.gotCreate)
 			}
 			require.NotNil(t, sent)
-			require.Equal(t, test.wantIdentity, sent.GetAnnotations()[utils.AnnoKeyManagerIdentity])
+			require.Equal(t, test.wantIdentity, sent.GetAnnotations()[grafanameta.AnnoKeyManagerIdentity])
 			require.Equal(t, 1, client.getCalls)
 		})
 	}

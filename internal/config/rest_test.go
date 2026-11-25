@@ -214,19 +214,23 @@ func TestNamespacedRESTConfig_StackID(t *testing.T) {
 
 func TestNewNamespacedRESTConfig_DiscoversAndCachesStackID(t *testing.T) {
 	var hits int
-	bootdataServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	whoamiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"settings": map[string]any{
-				"namespace": "stacks-77777",
-			},
-		})
+		if r.URL.Path != "/apis/iam.grafana.app/v0alpha1/whoami" {
+			t.Errorf("unexpected discovery request: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("whoami must carry the configured token, got %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"namespace": "stacks-77777"})
 	}))
-	defer bootdataServer.Close()
+	defer whoamiServer.Close()
 
-	// No StackID/OrgID configured: the stack ID is discovered via /bootdata.
+	// No StackID/OrgID configured: the stack ID is discovered via whoami.
 	ctx := config.Context{
-		Grafana: &config.GrafanaConfig{Server: bootdataServer.URL},
+		Grafana: &config.GrafanaConfig{Server: whoamiServer.URL, APIToken: "test-token"},
 	}
 
 	for i := range 2 {

@@ -60,7 +60,7 @@ func TestQueryCmd_LimitValidation(t *testing.T) {
 			var gotQuery map[string]any
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
-				case r.Method == http.MethodGet && r.URL.Path == "/bootdata":
+				case r.Method == http.MethodGet && (r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 					http.NotFound(w, r)
 				case r.Method == http.MethodGet && r.URL.Path == "/api/datasources/uid/loki-uid":
 					_, _ = w.Write([]byte(`{"id":1,"uid":"loki-uid","name":"Loki","type":"loki"}`))

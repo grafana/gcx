@@ -159,15 +159,24 @@ namespace string.
 **Stack ID auto-discovery** (`internal/config/stack_id.go`):
 
 ```
-GET {server}/bootdata
-→ { "settings": { "namespace": "stacks-98765" } }
+GET {server}/apis/iam.grafana.app/v0alpha1/whoami
+→ { "namespace": "stacks-98765", ... }
 → parse "stacks-98765" → StackID = 98765
 → namespace = "stacks-98765"
+
+fallback (whoami non-200 / unparseable):
+GET {server}/bootdata
+→ { "settings": { "namespace": "stacks-98765" } }
 ```
 
-Uses a dedicated 5-second-timeout HTTP client (separate from the main client).
-If the endpoint returns non-200 or an on-prem namespace (e.g., `"grafana"`),
-discovery fails and the configured values are used as-is.
+Uses a dedicated 5-second-timeout, no-retry HTTP client (separate from the
+main client) that attaches the selected credentials directly instead of going
+through the OAuth refresh transport. A whoami answer with a non-stack namespace
+(e.g. `"default"`) falls through to `/bootdata`; if that also yields no stack
+ID, discovery fails and the configured values are used as-is. A network-level
+whoami failure (connection error, timeout) skips `/bootdata` outside OAuth mode,
+since it targets the same host.
+See [Stack ID Auto-Discovery](config-system.md#stack-id-auto-discovery).
 
 ### Layer 3: `NamespacedClient` — Primary CRUD Client
 

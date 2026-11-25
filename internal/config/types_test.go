@@ -164,6 +164,19 @@ func TestGrafanaConfig_Validate_MismatchedStackID(t *testing.T) {
 	req.ErrorContains(err, "stacks.ctx.grafana.stack-id")
 }
 
+// A memoized "not a cloud stack" entry (stored as 0) is not a discovered stack
+// ID, so it must not trip the mismatch check against a configured StackID.
+func TestGrafanaConfig_Validate_NotCloudStackCacheIsNotMismatch(t *testing.T) {
+	cfg := config.GrafanaConfig{
+		Server:  "https://not-cloud.example.net",
+		StackID: 54321,
+	}
+	restore := config.SeedStackIDCacheForTest(cfg.Server, 0)
+	defer restore()
+
+	require.NoError(t, cfg.Validate(context.Background(), "ctx"))
+}
+
 func TestGrafanaConfig_Validate_MissingStackWhenBootdataUnavailable(t *testing.T) {
 	req := require.New(t)
 

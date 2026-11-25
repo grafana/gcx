@@ -98,7 +98,11 @@ func scratchEnv(t *testing.T) string {
 }
 
 func (f *fakeET) serve(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/bootdata" {
+	switch r.URL.Path {
+	case "/apis/iam.grafana.app/v0alpha1/whoami":
+		_, _ = io.WriteString(w, `{"namespace":"stacks-123"}`)
+		return
+	case "/bootdata":
 		_, _ = io.WriteString(w, `{"settings":{"namespace":"stacks-123"}}`)
 		return
 	}
