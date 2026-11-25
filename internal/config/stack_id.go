@@ -15,9 +15,13 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 )
 
-var errBootdataNonOK = errors.New("bootdata request failed")
+var (
+	errBootdataNonOK = errors.New("bootdata request failed")
+	errWhoamiNonOK   = errors.New("whoami request failed")
+	errNotCloudStack = errors.New("whoami namespace is not a cloud stack")
+)
 
-// stackIDCache memoizes successful /bootdata stack-ID discoveries per server for
+// stackIDCache memoizes successful stack-ID discoveries per server for
 // the lifetime of the process, so repeated REST-config builds in a single
 // invocation don't repay the network round-trip.
 //
@@ -30,7 +34,7 @@ var (
 // StackID returns the Grafana Cloud stack ID encoded in the resolved namespace
 // (e.g. "stacks-12345" -> 12345), or 0 when the namespace is not a cloud stack
 // namespace (on-prem org namespaces, or an unresolved/empty namespace). It lets
-// callers recover the discovered stack ID without a second /bootdata round-trip.
+// callers recover the discovered stack ID without a second discovery round-trip.
 func (n *NamespacedRESTConfig) StackID() int64 {
 	info, err := authlib.ParseNamespace(n.Namespace)
 	if err != nil {
@@ -41,9 +45,9 @@ func (n *NamespacedRESTConfig) StackID() int64 {
 
 // resolveNamespace returns the Kubernetes namespace for a Grafana context.
 // A configured StackID is authoritative and resolves locally with no network
-// call. Otherwise the cloud stack ID is discovered via /bootdata (memoized per
-// server), with OrgID as the on-prem fallback when discovery fails.
-func resolveNamespace(ctx context.Context, cfg GrafanaConfig) string {
+// call. Otherwise the cloud stack ID is discovered (memoized per server), with
+// OrgID as the on-prem fallback when discovery fails.
+func resolveNamespace(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMode) string {
 	// A configured StackID is authoritative; Validate already guards mismatches
 	// against discovery, so trust it here and skip the network round-trip.
 	if cfg.StackID != 0 {
@@ -52,7 +56,7 @@ func resolveNamespace(ctx context.Context, cfg GrafanaConfig) string {
 
 	// No StackID configured: discover it (cached). Discovery takes precedence
 	// over OrgID, matching prior behavior.
-	if discoveredStackID, err := discoverStackIDCached(ctx, cfg); err == nil {
+	if discoveredStackID, err := discoverStackIDCached(ctx, cfg, mode); err == nil {
 		return authlib.CloudNamespaceFormatter(discoveredStackID)
 	}
 
@@ -63,7 +67,7 @@ func resolveNamespace(ctx context.Context, cfg GrafanaConfig) string {
 }
 
 // cachedStackID peeks the process-lifetime discovery cache for a server without
-// issuing a /bootdata round-trip. ok is false when no successful discovery has
+// issuing a network round-trip. ok is false when no successful discovery has
 // been memoized for the server yet.
 func cachedStackID(server string) (int64, bool) {
 	key := strings.TrimSuffix(server, "/")
@@ -73,10 +77,16 @@ func cachedStackID(server string) (int64, bool) {
 	return id, ok
 }
 
-// discoverStackIDCached wraps DiscoverStackID with a process-lifetime positive
+// discoverStackIDCached discovers the stack ID with a process-lifetime positive
 // cache keyed by server URL. Failures are not cached so a transient error does
 // not pin a missing stack ID for the rest of the process.
-func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig) (int64, error) {
+//
+// The authenticated whoami endpoint is tried first; the unauthenticated
+// /bootdata endpoint is only used when whoami is unavailable (older Grafana,
+// missing or expired credentials, or a non-stack namespace). A non-stack whoami
+// namespace is not treated as final: /bootdata still gets the last word so a
+// deployment answering whoami with an org namespace keeps resolving its stack.
+func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMode) (int64, error) {
 	key := strings.TrimSuffix(cfg.Server, "/")
 
 	stackIDCacheMu.Lock()
@@ -86,7 +96,10 @@ func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig) (int64, error
 		return cached, nil
 	}
 
-	id, err := DiscoverStackID(ctx, cfg)
+	id, err := discoverStackIDWhoami(ctx, cfg, mode)
+	if err != nil {
+		id, err = DiscoverStackID(ctx, cfg)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -97,7 +110,80 @@ func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig) (int64, error
 	return id, nil
 }
 
-// DiscoverStackID attempts to discover a Grafana Cloud stack namespace via the /bootdata endpoint.
+const whoamiPath = "/apis/iam.grafana.app/v0alpha1/whoami"
+
+// discoverStackIDWhoami resolves the cloud stack ID from the authenticated
+// iam.grafana.app whoami endpoint, whose "namespace" field is "stacks-<id>" on
+// Grafana Cloud. A successful response with a non-stack namespace returns an
+// error wrapping errNotCloudStack.
+//
+// The request carries the selected credentials directly rather than going
+// through the OAuth RefreshTransport: token-persistence hooks are only wired
+// after the REST config is built, so a refresh here would rotate the refresh
+// token without saving it. An expired access token simply fails the probe.
+func discoverStackIDWhoami(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMode) (int64, error) {
+	base := strings.TrimSuffix(cfg.Server, "/")
+	if mode == grafanaAuthOAuth {
+		if cfg.OAuthToken == "" || cfg.ProxyEndpoint == "" {
+			return 0, errors.New("whoami: no OAuth access token")
+		}
+		base = strings.TrimSuffix(cfg.ProxyEndpoint, "/") + "/api/cli/v1/proxy"
+	}
+
+	client, err := newDiscoveryHTTPClient(cfg)
+	if err != nil {
+		return 0, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+whoamiPath, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	switch mode {
+	case grafanaAuthOAuth:
+		req.Header.Set("Authorization", "Bearer "+cfg.OAuthToken)
+	case grafanaAuthToken:
+		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
+	case grafanaAuthBasic:
+		req.SetBasicAuth(cfg.User, cfg.Password)
+	case grafanaAuthMTLS, grafanaAuthUnknown:
+		// Client certificate (if any) is carried by the TLS config.
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("%w: status %d", errWhoamiNonOK, resp.StatusCode)
+	}
+
+	var payload struct {
+		Namespace string `json:"namespace"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, err
+	}
+	namespace := strings.TrimSpace(payload.Namespace)
+	if namespace == "" {
+		// Not a whoami payload we understand; let the caller fall back.
+		return 0, errors.New("whoami: empty namespace")
+	}
+	ns, err := authlib.ParseNamespace(namespace)
+	if err != nil {
+		return 0, err
+	}
+	if ns.StackID == 0 {
+		return 0, fmt.Errorf("%w: %q", errNotCloudStack, namespace)
+	}
+	return ns.StackID, nil
+}
+
+// DiscoverStackID attempts to discover a Grafana Cloud stack namespace via the
+// unauthenticated /bootdata endpoint (legacy fallback for whoami).
 // It returns the parsed stack ID when the response matches the expected format.
 func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 	bootdataURL, err := buildBootdataURL(cfg.Server)
@@ -105,7 +191,7 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 		return 0, err
 	}
 
-	client, err := newBootdataHTTPClient(cfg)
+	client, err := newDiscoveryHTTPClient(cfg)
 	if err != nil {
 		return 0, err
 	}
@@ -166,7 +252,7 @@ func buildBootdataURL(server string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func newBootdataHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
+func newDiscoveryHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
 	// No retry: discovery is optional (callers fall back to the org
 	// namespace) and runs on most commands, so it must fail fast.
 	opts := httputils.ClientOpts{Timeout: 5 * time.Second, DisableRetry: true}

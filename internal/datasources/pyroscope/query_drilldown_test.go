@@ -20,7 +20,7 @@ const emptyFlamegraph = `{"flamegraph":{"names":[],"levels":[],"total":"0","maxS
 func TestQueryCmd_ExploreAndDrilldownLinks(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/uid/pyro-uid":
 			w.Header().Set("Content-Type", "application/json")

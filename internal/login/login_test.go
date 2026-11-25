@@ -1840,16 +1840,22 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 }
 
 // TestRun_PersistsDiscoveredStackID verifies that the cloud stack ID discovered
-// while building the REST config (via /bootdata) is written to the saved
+// while building the REST config (via whoami) is written to the saved
 // context, so later commands skip the discovery round-trip.
 func TestRun_PersistsDiscoveredStackID(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		switch r.URL.Path {
+		case "/apis/iam.grafana.app/v0alpha1/whoami":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"settings": map[string]any{"namespace": "stacks-777"},
+				"identity":  map[string]any{"type": "user", "name": "u1"},
+				"namespace": "stacks-777",
 			})
+			return
+		case "/bootdata":
+			t.Errorf("whoami succeeded; /bootdata must not be called")
+			http.NotFound(w, r)
 			return
 		}
 		w.WriteHeader(http.StatusOK)

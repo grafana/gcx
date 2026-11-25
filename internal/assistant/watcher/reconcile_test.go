@@ -263,7 +263,7 @@ func TestReconcileRefusesBeforeSources(t *testing.T) {
 		enrollment watchers.Enrollment
 	}{
 		{"unknown webhook setting", `{"webhook":{"futureOption":"private"}}`, watchers.Enrollment{}},
-		{"custom schedule", `{}`, watchers.Enrollment{ScheduleCron: "0 1 * * *"}},
+		{"custom schedule", `{}`, watchers.Enrollment{Enabled: true, ScheduleCron: "0 1 * * *"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -278,7 +278,7 @@ func TestReconcileRefusesBeforeSources(t *testing.T) {
 			require.NoError(t, err)
 			fixture.RawDetails = map[string]json.RawMessage{"id": detail}
 			client := clientForServer(t, fixture.ServeHTTP)
-			w := WatcherFromResponse(raw, false)
+			w := WatcherFromResponse(raw, tt.enrollment.Enabled)
 			w.Notifications.Webhook.URL = &SecretInput{FromFile: "/must-not-read"}
 			_, err = reconcile(t.Context(), client, w, raw.ID)
 			require.ErrorContains(t, err, "unrepresented")
