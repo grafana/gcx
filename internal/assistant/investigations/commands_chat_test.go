@@ -3,7 +3,9 @@ package investigations_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/assistant/investigations"
 	"github.com/stretchr/testify/assert"
@@ -152,4 +154,27 @@ func TestToolsTableCodec_Encode(t *testing.T) {
 	t.Run("wrong type", func(t *testing.T) {
 		require.Error(t, (&investigations.ToolsTableCodec{}).Encode(&bytes.Buffer{}, "wrong"))
 	})
+}
+
+func TestChatThreadTextCodec_TruncatesOnRuneBoundary(t *testing.T) {
+	long := strings.Repeat("é", 400)
+	toolResult, err := json.Marshal([]map[string]string{{"type": "text", "text": long}})
+	require.NoError(t, err)
+	toolInput, err := json.Marshal(map[string]string{"query": long})
+	require.NoError(t, err)
+
+	messages := []investigations.ChatThreadMessage{
+		{Role: "assistant", Content: []investigations.ChatContentBlock{
+			{Type: "tool_use", ToolID: "tu_1", ToolName: "search", ToolInput: toolInput},
+			{Type: "tool_result", ToolUseID: "tu_1", ToolResult: toolResult},
+		}},
+	}
+
+	for _, wide := range []bool{false, true} {
+		var buf bytes.Buffer
+		require.NoError(t, (&investigations.ChatThreadTextCodec{Wide: wide}).Encode(&buf, messages))
+		out := buf.String()
+		assert.True(t, utf8.ValidString(out), "wide=%v output must be valid UTF-8", wide)
+		assert.Contains(t, out, "...")
+	}
 }

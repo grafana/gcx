@@ -530,11 +530,17 @@ func parseA2ASSEEvent(data string) (*JSONRPCResponse, error) {
 	return &response, nil
 }
 
+// truncate shortens s to at most maxLen characters, appending "..." when it
+// cuts. It cuts on a rune boundary so multi-byte text stays valid UTF-8.
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	r := []rune(s)
+	if len(r) <= maxLen {
+		return s
+	}
+	return string(r[:maxLen]) + "..."
 }
 
 func containsText(slice []string, text string) bool {
