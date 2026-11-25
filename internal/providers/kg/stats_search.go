@@ -45,11 +45,18 @@ func searchInsightCarriers(ctx context.Context, errOut io.Writer, client *Client
 
 // searchTypePages reads one entity type's insight-carrying entities page by
 // page. It reports false when the rows are incomplete: the page bound was
-// reached, the server said it hit its result limit, or a page failed with an
+// reached, the server's result limit cut the result, or a page failed with an
 // error that skippedSearchError accepts.
+//
+// A page that reports the server's result limit (MaxLimitHit) does not end
+// the read by itself: the flag says the page reached the server's per-page
+// cap, not that nothing follows. The read goes on to the next page and counts
+// the limit as a cut only when that page is empty, or when the page that hit
+// the limit is also the last one.
 func searchTypePages(ctx context.Context, errOut io.Writer, client *Client, entityType string, sc *ScopeCriteria, startMs, endMs int64) ([]SearchResult, bool, error) {
 	seen := map[string]bool{}
 	var rows []SearchResult
+	capped := false // the previous page hit the server's result limit
 	for pageNum := range statsMaxSearchPages {
 		page, err := client.Search(ctx, SearchRequest{
 			TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
@@ -81,12 +88,13 @@ func searchTypePages(ctx context.Context, errOut io.Writer, client *Client, enti
 			seen[k] = true
 			rows = append(rows, r)
 		}
-		if page.MaxLimitHit {
-			return rows, false, nil
+		if len(page.Entities) == 0 {
+			return rows, !capped && !page.MaxLimitHit, nil
 		}
-		if page.LastPage || len(page.Entities) == 0 {
-			return rows, true, nil
+		if page.LastPage {
+			return rows, !page.MaxLimitHit, nil
 		}
+		capped = page.MaxLimitHit
 	}
 	return rows, false, nil
 }

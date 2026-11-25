@@ -572,6 +572,30 @@ func TestStatsCommand(t *testing.T) {
 			wantIncomplete: []any{"TypeX"},
 		},
 		{
+			name: "a page at the server's result limit is followed by the next page",
+			pages: map[string][]statsPage{
+				"TypeX": {
+					{entities: []map[string]any{statsEntity("TypeX", "x-1", amend)}, limitHit: true},
+					{entities: []map[string]any{statsEntity("TypeX", "x-2", errInsight)}, last: true},
+				},
+				"TypeY": {yPage},
+			},
+			wantSearched:   allTypes,
+			wantInsights:   3,
+			wantByCategory: map[string]float64{"amend": 1, "error": 2},
+		},
+		{
+			name: "an empty page after a page at the result limit marks the type",
+			pages: map[string][]statsPage{
+				"TypeX": {{entities: []map[string]any{statsEntity("TypeX", "x-1", amend)}, limitHit: true}},
+				"TypeY": {yPage},
+			},
+			wantSearched:   allTypes,
+			wantInsights:   2,
+			wantByCategory: map[string]float64{"amend": 1, "error": 1},
+			wantIncomplete: []any{"TypeX"},
+		},
+		{
 			name:         "a schema that cannot be read leaves out only the catalog record types",
 			schemaStatus: http.StatusInternalServerError,
 			pages: map[string][]statsPage{
