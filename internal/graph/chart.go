@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	"github.com/NimbleMarkets/ntcharts/v2/barchart"
@@ -56,7 +57,7 @@ func RenderPercentageBars(w io.Writer, title string, items []PercentageBarItem, 
 	// Find max label width for alignment.
 	maxLabelWidth := 0
 	for _, item := range items {
-		n := min(len(item.Name), 30)
+		n := min(utf8.RuneCountInString(item.Name), maxLabelRunes)
 		if n > maxLabelWidth {
 			maxLabelWidth = n
 		}
@@ -70,10 +71,7 @@ func RenderPercentageBars(w io.Writer, title string, items []PercentageBarItem, 
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 
 	for i, item := range items {
-		name := item.Name
-		if len(name) > 30 {
-			name = name[:27] + "..."
-		}
+		name := truncateLabel(item.Name)
 
 		fillRatio := item.Value / 100.0
 		fillRatio = max(0, min(1, fillRatio))
@@ -144,10 +142,7 @@ func RenderBarChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 			continue
 		}
 		color := seriesColor(series, i)
-		label := series.Name
-		if len(label) > 30 {
-			label = label[:27] + "..."
-		}
+		label := truncateLabel(series.Name)
 		barData = append(barData, barchart.BarData{
 			Label: label,
 			Values: []barchart.BarValue{{
@@ -385,10 +380,7 @@ func renderLegend(series []Series) string {
 			color = ColorForIndex(i)
 		}
 		colorBox := lipgloss.NewStyle().Foreground(color).Render("●")
-		name := s.Name
-		if len(name) > 30 {
-			name = name[:27] + "..."
-		}
+		name := truncateLabel(s.Name)
 		legendParts = append(legendParts, fmt.Sprintf("%s %s", colorBox, name))
 	}
 
@@ -408,10 +400,7 @@ func renderBarLegend(series []Series) string {
 		}
 		color := seriesColor(s, i)
 		colorBox := lipgloss.NewStyle().Foreground(color).Render("●")
-		name := s.Name
-		if len(name) > 30 {
-			name = name[:27] + "..."
-		}
+		name := truncateLabel(s.Name)
 		legendParts = append(legendParts, fmt.Sprintf("%s %s: %.2f", colorBox, name, s.Points[0].Value))
 	}
 
@@ -451,4 +440,17 @@ func seriesColor(s Series, i int) color.Color {
 		return s.Color
 	}
 	return ColorForIndex(i)
+}
+
+// maxLabelRunes is the widest series or item label rendered in a chart.
+const maxLabelRunes = 30
+
+// truncateLabel shortens s to maxLabelRunes characters, ending in "..." when
+// it is cut. It counts and cuts on rune boundaries so multi-byte names stay
+// valid UTF-8 and are not shortened early.
+func truncateLabel(s string) string {
+	if utf8.RuneCountInString(s) <= maxLabelRunes {
+		return s
+	}
+	return string([]rune(s)[:maxLabelRunes-3]) + "..."
 }
