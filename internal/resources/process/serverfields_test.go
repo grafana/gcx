@@ -3,9 +3,9 @@ package process_test
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/process"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -36,14 +36,14 @@ func TestServerFieldsStripper_Process(t *testing.T) {
 					"resourceVersion":   "1",
 					"creationTimestamp": "2021-01-01T00:00:00Z",
 					"annotations": map[string]any{
-						utils.AnnoKeyCreatedBy:        "test",
-						utils.AnnoKeyUpdatedBy:        "test",
-						utils.AnnoKeyUpdatedTimestamp: "2021-01-01T00:00:00Z",
-						"test-annotation":             "test",
+						grafanameta.AnnoKeyCreatedBy:        "test",
+						grafanameta.AnnoKeyUpdatedBy:        "test",
+						grafanameta.AnnoKeyUpdatedTimestamp: "2021-01-01T00:00:00Z",
+						"test-annotation":                   "test",
 					},
 					"labels": map[string]any{
-						utils.LabelKeyDeprecatedInternalID: "test",
-						"test-label":                       "test",
+						grafanameta.LabelKeyDeprecatedInternalID: "test",
+						"test-label":                             "test",
 					},
 				},
 				"spec": map[string]any{
