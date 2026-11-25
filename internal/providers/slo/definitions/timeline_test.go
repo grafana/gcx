@@ -470,6 +470,18 @@ func TestParseTimelineTime(t *testing.T) {
 		{name: "empty defaults to now", input: "", want: now},
 		{name: "RFC3339", input: "2026-03-01T00:00:00Z", want: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)},
 		{name: "invalid", input: "garbage", wantErr: true},
+		{name: "now-1y", input: "now-1y", want: now.Add(-365 * 24 * time.Hour)},
+		{name: "unix timestamp", input: "1772755200", want: time.Unix(1772755200, 0)},
+		{name: "fractional unix timestamp", input: "1.5", want: time.Unix(1, 500000000)},
+		{name: "negative unix timestamp", input: "-86400", want: time.Unix(-86400, 0)},
+		{name: "NaN timestamp", input: "NaN", wantErr: true},
+		{name: "infinite timestamp", input: "Inf", wantErr: true},
+		{name: "negative infinite timestamp", input: "-Inf", wantErr: true},
+		{name: "timestamp beyond int64", input: "1e30", wantErr: true},
+		{name: "years overflow duration", input: "now-9999999999y", wantErr: true},
+		{name: "days overflow duration", input: "now-9223372036854775807d", wantErr: true},
+		{name: "future years overflow duration", input: "now+9999999999y", wantErr: true},
+		{name: "offset beyond int", input: "now-99999999999999999999h", wantErr: true},
 	}
 
 	for _, tt := range tests {
