@@ -93,7 +93,8 @@ publishing the draft makes your changes the page's next version. After that
 push, `gcx pages pull --dir <dir>` downloads the draft's whole project; it also
 refreshes a draft that changed in Grafana. A copy of another person's page
 leaves out their `AGENTS.md`, skills and SDK Markdown docs, listed under
-`omitted`.
+`omitted`. Don't copy a page with `gcx resources pull` and `push`: its `Page`
+objects hold only the catalog details, not the page.
 
 **2. Read the project's docs, then find the data.** Read
 `packages/pages-sdk/README.md`, `packages/pages-sdk/docs/queries.md` and

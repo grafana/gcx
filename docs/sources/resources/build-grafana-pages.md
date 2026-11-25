@@ -117,6 +117,8 @@ gcx pages pull --dir ./checkout-health-copy
 
 This refuses while the directory has changes you haven't pushed. Push them first, or add `--force` to discard them.
 
+`gcx resources pull` also downloads published pages, as `Page` objects, but those hold only a page's catalog details: its title, description, category, and tags. To copy or change a page, use `gcx pages pull` and `gcx pages push`, not `gcx resources push`.
+
 ## Publish the page
 
 Publishing shares the page:

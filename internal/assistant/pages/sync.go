@@ -86,6 +86,9 @@ type PushResult struct {
 	Ignored []string `json:"ignored,omitempty"`
 	// Errors are the type, build or startup errors of a failed build.
 	Errors string `json:"errors,omitempty"`
+	// DraftCreated reports that this push built the directory's draft from
+	// its published page, the first push after a pull.
+	DraftCreated bool `json:"draftCreated,omitempty"`
 }
 
 // Create starts a draft page from the Pages template in a new conversation,
@@ -289,7 +292,7 @@ func (c *Client) Push(ctx context.Context, dir string, link *Link) (*PushResult,
 		if err := save(); err != nil {
 			return nil, err
 		}
-		out.URL = c.DraftURL(link.ChatID, link.PageID)
+		out.URL, out.DraftCreated = c.DraftURL(link.ChatID, link.PageID), true
 	}
 	var last *WorkspaceResult
 	for _, change := range diff.Changed {

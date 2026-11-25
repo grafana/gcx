@@ -12,9 +12,10 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 	providers.Register(&PagesProvider{})
 }
 
-// PagesProvider builds and publishes Grafana Pages. It is commands-only:
-// pages are not resources of the push/pull pipeline, so it registers no
-// adapters and needs no configuration of its own.
+// PagesProvider builds and publishes Grafana Pages. It is commands-only.
+// Grafana serves Page objects (pages.v0alpha1.assistant.ext.grafana.app),
+// but they hold only a page's catalog details, not the page itself, so it
+// registers no adapter for them and needs no configuration of its own.
 type PagesProvider struct{}
 
 // Name returns the unique identifier for this provider.
@@ -32,5 +33,6 @@ func (p *PagesProvider) Validate(_ map[string]string) error { return nil }
 // ConfigKeys returns the configuration keys used by this provider.
 func (p *PagesProvider) ConfigKeys() []providers.ConfigKey { return nil }
 
-// TypedRegistrations returns no adapters: pages are commands-only.
+// TypedRegistrations returns no adapters: Page objects hold only catalog
+// details.
 func (p *PagesProvider) TypedRegistrations() []adapter.Registration { return nil }

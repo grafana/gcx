@@ -1,7 +1,9 @@
 package pages //nolint:testpackage // Verify flag validation and publish audience rules on unexported options.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -150,4 +152,77 @@ func TestInvalidFlagsAreUsageErrors(t *testing.T) {
 			require.ErrorAs(t, err, &usage)
 		})
 	}
+}
+
+func TestMutationsUseTheSharedResult(t *testing.T) {
+	for name, tt := range map[string]struct {
+		result any
+		want   string
+	}{
+		"create": {
+			result: newCreateResult(&clientpages.LocalPage{ChatID: "chat-1", PageID: "draft-1", Title: "Checkout health", URL: "https://example.grafana.net/draft", Dir: "checkout-health", Files: 3}),
+			want: `{"type":"gcx.mutation","schema_version":"1","action":"created","target":{"kind":"Page","id":"draft-1"},"changed":true,
+				"chatId":"chat-1","pageId":"draft-1","title":"Checkout health","url":"https://example.grafana.net/draft","dir":"checkout-health","files":3}`,
+		},
+		"first push of a pulled page": {
+			result: newPushResult(&clientpages.PushResult{Status: clientpages.StatusBuilt, URL: "https://example.grafana.net/draft", ReleaseID: "rel-2", Written: []string{"src/App.tsx"}, Deleted: []string{}, DraftCreated: true}, "draft-1"),
+			want: `{"type":"gcx.mutation","schema_version":"1","action":"built","target":{"kind":"Page","id":"draft-1"},"changed":true,
+				"status":"built","url":"https://example.grafana.net/draft","releaseId":"rel-2","written":["src/App.tsx"],"deleted":[],"draftCreated":true}`,
+		},
+		"push with nothing to send": {
+			result: newPushResult(&clientpages.PushResult{Status: clientpages.StatusUnchanged, URL: "https://example.grafana.net/draft", Written: []string{}, Deleted: []string{}}, "draft-1"),
+			want: `{"type":"gcx.mutation","schema_version":"1","action":"unchanged","target":{"kind":"Page","id":"draft-1"},"changed":false,
+				"status":"unchanged","url":"https://example.grafana.net/draft","written":[],"deleted":[]}`,
+		},
+		"publish": {
+			result: newPublishResult(&clientpages.Entry{ID: "pub-1", Title: "Checkout health", Category: "report", FolderUID: "ops", Version: 4, Published: true, URL: "https://example.grafana.net/pub-1"}),
+			want: `{"type":"gcx.mutation","schema_version":"1","action":"published","target":{"kind":"Page","name":"pub-1"},"changed":true,
+				"id":"pub-1","title":"Checkout health","description":"","category":"report","tags":null,"folderUid":"ops","revisionId":"","version":4,
+				"published":true,"views":0,"updatedAt":"0001-01-01T00:00:00Z","url":"https://example.grafana.net/pub-1"}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := json.Marshal(tt.result)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestMutationsRenderForPeople(t *testing.T) {
+	for name, tt := range map[string]struct {
+		render func(io.Writer, any) error
+		result any
+		want   []string
+	}{
+		"create": {
+			render: renderCreated,
+			result: newCreateResult(&clientpages.LocalPage{ChatID: "chat-1", PageID: "draft-1", Title: "Checkout health", URL: "https://example.grafana.net/draft", Dir: "checkout-health", Files: 3}),
+			want:   []string{"Checkout health: 3 files in checkout-health", "Draft: https://example.grafana.net/draft"},
+		},
+		"first push of a pulled page": {
+			render: renderPush,
+			result: newPushResult(&clientpages.PushResult{Status: clientpages.StatusBuilt, URL: "https://example.grafana.net/draft", Written: []string{"src/App.tsx"}, DraftCreated: true}, "draft-1"),
+			want:   []string{"Started a draft from the published page", "Built: 1 file(s) written", "Draft: https://example.grafana.net/draft"},
+		},
+		"publish": {
+			render: renderPublished,
+			result: newPublishResult(&clientpages.Entry{ID: "pub-1", Title: "Checkout health", Version: 4, URL: "https://example.grafana.net/pub-1"}),
+			want:   []string{"Published Checkout health as version 4.", "https://example.grafana.net/pub-1"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			require.NoError(t, tt.render(&out, tt.result))
+			for _, want := range tt.want {
+				assert.Contains(t, out.String(), want)
+			}
+		})
+	}
+}
+
+func TestPullValidatesForceAgainstPage(t *testing.T) {
+	opts := bound(&pullOpts{}, func(o *pullOpts) { o.Force = true })
+	require.ErrorContains(t, opts.Validate(true), "--force applies only when refreshing")
+	require.NoError(t, opts.Validate(false))
 }

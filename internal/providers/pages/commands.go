@@ -89,6 +89,18 @@ func bindIO(opts *cmdio.Options, flags *pflag.FlagSet, render func(io.Writer, an
 	opts.BindFlags(flags)
 }
 
+// pageKind is the kind the Assistant registers for pages in
+// assistant.ext.grafana.app.
+const pageKind = "Page"
+
+// mutation is the shared result of a command that changes a page on the
+// stack; each command keeps its own fields beside it.
+func mutation(action string, target cmdio.MutationTarget, changed bool) cmdio.SingleMutation {
+	result := cmdio.NewSingleMutation(action, target)
+	result.Changed = new(changed)
+	return result
+}
+
 type listOpts struct {
 	IO      cmdio.Options
 	Section string
@@ -244,6 +256,8 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Source, "source", false, "Include the page's source text (bindings and src/, without the SDK)")
 }
 
+func (o *getOpts) Validate() error { return o.IO.Validate() }
+
 func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
@@ -254,7 +268,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Example: `  gcx pages get checkout-health-0a1b2c3d4e5f
   gcx pages get https://example.grafana.net/a/grafana-assistant-app/pages/checkout-health-0a1b2c3d4e5f --source -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return usageError(cmd, err)
 			}
 			client, err := newClient(cmd, loader)
@@ -309,7 +323,7 @@ type createOpts struct {
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
-	bindIO(&o.IO, flags, renderLocalPage)
+	bindIO(&o.IO, flags, renderCreated)
 	flags.StringVar(&o.Title, "title", "", "The page's title (required)")
 	flags.StringVar(&o.Dir, "dir", "", "Directory to write the page's project into; must be new or empty. Default: a folder named after the title")
 	flags.StringVar(&o.Style, "style", "", "A style pack from the SDK, such as keynote, newsroom or grafana-native")
@@ -353,12 +367,34 @@ The draft is private to you until you publish it. No Assistant turn runs.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), draft)
+			return opts.IO.Encode(cmd.OutOrStdout(), newCreateResult(draft))
 		},
 	}
 	agent.MarkExperimental(cmd)
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// createResult is the draft that create started, in the shared mutation
+// shape.
+type createResult struct {
+	cmdio.SingleMutation
+	*clientpages.LocalPage
+}
+
+func newCreateResult(draft *clientpages.LocalPage) createResult {
+	return createResult{
+		SingleMutation: mutation("created", cmdio.MutationTarget{Kind: pageKind, ID: draft.PageID}, true),
+		LocalPage:      draft,
+	}
+}
+
+func renderCreated(w io.Writer, value any) error {
+	r, ok := value.(createResult)
+	if !ok {
+		return errors.New("invalid data type for created page")
+	}
+	return renderLocalPage(w, r.LocalPage)
 }
 
 func renderLocalPage(w io.Writer, value any) error {
@@ -396,6 +432,13 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.Force, "force", false, "Without PAGE, discard unpushed local changes")
 }
 
+func (o *pullOpts) Validate(hasPage bool) error {
+	if hasPage && o.Force {
+		return errors.New("--force applies only when refreshing a directory without PAGE")
+	}
+	return o.IO.Validate()
+}
+
 func newPullCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
@@ -414,11 +457,8 @@ published version while it has no draft.`,
 		Example: `  gcx pages pull checkout-health-0a1b2c3d4e5f --dir ./checkout-health
   gcx pages pull --dir ./checkout-health`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(len(args) == 1); err != nil {
 				return usageError(cmd, err)
-			}
-			if len(args) == 1 && opts.Force {
-				return usageError(cmd, errors.New("--force applies only when refreshing a directory without PAGE"))
 			}
 			client, err := newClient(cmd, loader)
 			if err != nil {
@@ -463,6 +503,8 @@ func (o *dirOpts) setup(flags *pflag.FlagSet, render func(io.Writer, any) error)
 	flags.StringVar(&o.Dir, "dir", ".", "The page's project directory")
 }
 
+func (o *dirOpts) Validate() error { return o.IO.Validate() }
+
 func newPushCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &dirOpts{}
 	cmd := &cobra.Command{
@@ -480,7 +522,7 @@ Push changes only your draft. Publish shares it.`,
 		Example: `  gcx pages push --dir ./checkout-health
   gcx pages push -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return usageError(cmd, err)
 			}
 			link, err := clientpages.ReadLink(opts.Dir)
@@ -491,21 +533,21 @@ Push changes only your draft. Publish shares it.`,
 			if err != nil {
 				return err
 			}
-			result, err := client.Push(cmd.Context(), opts.Dir, link)
+			pushed, err := client.Push(cmd.Context(), opts.Dir, link)
 			if err != nil {
 				return err
 			}
-			if result.Status == clientpages.StatusFailed {
+			if pushed.Status == clientpages.StatusFailed {
 				return gcxerrors.DetailedError{
 					Summary: "The page did not build",
-					Details: result.Errors,
+					Details: pushed.Errors,
 					Suggestions: []string{
 						"Fix the files and lines the errors name, then run gcx pages push --dir " + opts.Dir + " again; only the changed files are sent",
 						"The draft keeps showing its previous version until a build compiles",
 					},
 				}
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.OutOrStdout(), newPushResult(pushed, link.PageID))
 		},
 	}
 	agent.MarkExperimental(cmd)
@@ -513,10 +555,27 @@ Push changes only your draft. Publish shares it.`,
 	return cmd
 }
 
+// pushResult is a push in the shared mutation shape: its action is the
+// push's status.
+type pushResult struct {
+	cmdio.SingleMutation
+	*clientpages.PushResult
+}
+
+func newPushResult(pushed *clientpages.PushResult, pageID string) pushResult {
+	return pushResult{
+		SingleMutation: mutation(pushed.Status, cmdio.MutationTarget{Kind: pageKind, ID: pageID}, pushed.Status != clientpages.StatusUnchanged),
+		PushResult:     pushed,
+	}
+}
+
 func renderPush(w io.Writer, value any) error {
-	r, ok := value.(*clientpages.PushResult)
+	r, ok := value.(pushResult)
 	if !ok {
 		return errors.New("invalid data type for push result")
+	}
+	if r.DraftCreated {
+		fmt.Fprintf(w, "Started a draft from the published page; publishing it makes these changes the page's next version.\n")
 	}
 	switch r.Status {
 	case clientpages.StatusUnchanged:
@@ -571,7 +630,7 @@ func (o *snapshotOpts) Validate() error {
 	if len(o.Clicks) > 16 {
 		return errors.New("--click can be repeated at most 16 times")
 	}
-	return o.IO.Validate()
+	return o.dirOpts.Validate()
 }
 
 func newSnapshotCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -675,7 +734,7 @@ func (o *publishOpts) Validate() error {
 	if o.LinkSharing && !o.Unlisted {
 		return errors.New("--link-sharing requires --unlisted")
 	}
-	return o.IO.Validate()
+	return o.dirOpts.Validate()
 }
 
 // publication is what to publish: for a new page, its details and audience
@@ -747,7 +806,7 @@ asked for that. It needs a user identity (gcx login), not a service account.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), entry)
+			return opts.IO.Encode(cmd.OutOrStdout(), newPublishResult(entry))
 		},
 	}
 	agent.MarkExperimental(cmd)
@@ -755,8 +814,22 @@ asked for that. It needs a user identity (gcx login), not a service account.`,
 	return cmd
 }
 
+// publishResult is the published page in the shared mutation shape; its
+// target is the Page object the publication is.
+type publishResult struct {
+	cmdio.SingleMutation
+	*clientpages.Entry
+}
+
+func newPublishResult(entry *clientpages.Entry) publishResult {
+	return publishResult{
+		SingleMutation: mutation("published", cmdio.MutationTarget{Kind: pageKind, Name: entry.ID}, true),
+		Entry:          entry,
+	}
+}
+
 func renderPublished(w io.Writer, value any) error {
-	e, ok := value.(*clientpages.Entry)
+	e, ok := value.(publishResult)
 	if !ok {
 		return errors.New("invalid data type for published page")
 	}

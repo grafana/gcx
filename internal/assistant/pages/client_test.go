@@ -274,6 +274,7 @@ func TestPushWritesChangesInBuildOrderAndAcceptsTheBuild(t *testing.T) {
 	assert.Equal(t, []string{"pages.bindings.json", "src/Chart.tsx", "src/App.tsx"}, f.writes, "data, then modules, then the entry point")
 	assert.Equal(t, []string{"notes.txt"}, result.Ignored)
 	assert.Equal(t, f.release, result.ReleaseID)
+	assert.False(t, result.DraftCreated, "create made the draft")
 	assert.Len(t, f.accepted, 2)
 
 	again, err := client.Push(context.Background(), dir, mustLink(t, dir))
@@ -378,6 +379,7 @@ func TestFirstPushOfAPulledPageBuildsADraftAndPublishUpdatesThePage(t *testing.T
 	assert.ElementsMatch(t, []string{"page.json", "src/App.tsx"}, result.Written, "only the files changed since the pull")
 	assert.JSONEq(t, `{"apiVersion":"grafana.ai/v0alpha1","kind":"Page","metadata":{"name":"Checkout health, faster","uid":"`+pageID+`"}}`,
 		string(f.files["/workspace/pages/"+project+"/page.json"]), "the manifest names the draft, not the published page")
+	assert.True(t, result.DraftCreated)
 	assert.True(t, mustLink(t, dir).HasDraft())
 
 	entry, err := client.PublishDraft(context.Background(), dir, mustLink(t, dir), pages.Metadata{Description: "Errors and latency"}, nil)
