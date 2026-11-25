@@ -347,6 +347,20 @@ func (f *fakeRules) segmentRoute(w http.ResponseWriter, r *http.Request, tail, b
 		require.NoError(f.t, err)
 		writeRaw(w, http.StatusOK, string(out))
 		return
+	case parts[1] == "rules:batchWrite" && len(parts) == 2 && r.Method == http.MethodPost:
+		var req struct {
+			Operations []struct {
+				Metric string `json:"metric"`
+				Op     string `json:"op"`
+			} `json:"operations"`
+		}
+		if err := json.Unmarshal([]byte(body), &req); err != nil || len(req.Operations) != 1 || req.Operations[0].Op != "delete" || req.Operations[0].Metric == "" {
+			http.Error(w, "expected one delete operation", http.StatusBadRequest)
+			return
+		}
+		delete(segRules, req.Operations[0].Metric)
+		w.WriteHeader(http.StatusOK)
+		return
 	case parts[1] != "rules":
 		http.NotFound(w, r)
 		return
@@ -390,9 +404,6 @@ func (f *fakeRules) segmentRoute(w http.ResponseWriter, r *http.Request, tail, b
 		out, err := json.Marshal(rule)
 		require.NoError(f.t, err)
 		writeRaw(w, http.StatusOK, string(out))
-	case http.MethodDelete:
-		delete(segRules, metric)
-		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
