@@ -52,7 +52,7 @@ func EnforceLimit(sql string, limit, maxLimit int, bail func(string) bool) (stri
 		return sql, false
 	}
 
-	trimmed := strings.TrimRight(sql, "; \t\n")
+	trimmed := strings.TrimRight(sql, "; \t\r\n")
 	suffix := sql[len(trimmed):]
 
 	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {
@@ -113,7 +113,7 @@ func EnforceLimitSentinel(sql string, limit, maxLimit int, bail func(string) boo
 		return sql, eff, false
 	}
 
-	trimmed := strings.TrimRight(sql, "; \t\n")
+	trimmed := strings.TrimRight(sql, "; \t\r\n")
 	suffix := sql[len(trimmed):]
 
 	if m := limitClauseRe.FindStringSubmatchIndex(trimmed); m != nil {

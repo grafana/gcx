@@ -276,7 +276,7 @@ func hasUnclosedBlockComment(sql string) bool {
 // LIMIT n (comments inside the clause, etc.). The shared helper would miss it
 // and append a second LIMIT.
 func hasLimitWeCannotRewrite(sql string) bool {
-	trimmed := strings.TrimRight(sql, "; \t\n")
+	trimmed := strings.TrimRight(sql, "; \t\r\n")
 	if limitClauseRe.MatchString(trimmed) {
 		return false
 	}
@@ -304,7 +304,7 @@ func bail(sql string) bool {
 }
 
 func hasLimitBeforeTrailingComment(sql string) bool {
-	s := strings.TrimRight(stripQuotedLiterals(sql), "; \t\n")
+	s := strings.TrimRight(stripQuotedLiterals(sql), "; \t\r\n")
 	return limitBeforeTrailingCommentRe.MatchString(s)
 }
 
@@ -389,7 +389,7 @@ func queryLimitInfo(sql string) (*int, bool) {
 	if !limitKeywordRe.MatchString(scanned) {
 		return nil, false
 	}
-	trimmed := strings.TrimRight(scanned, "; \t\n")
+	trimmed := strings.TrimRight(scanned, "; \t\r\n")
 	m := limitClauseRe.FindStringSubmatch(trimmed)
 	if m == nil {
 		return nil, true

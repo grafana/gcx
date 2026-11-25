@@ -118,6 +118,8 @@ func TestEnforceLimit(t *testing.T) {
 		{"caps existing LIMIT exceeding max", "SELECT 1 LIMIT 5000", 100, "SELECT 1 LIMIT 1000", true},
 		{"requested limit above max is capped and reported", "SELECT 1", 5000, "SELECT 1 LIMIT 1000", true},
 		{"limit 0 disables enforcement", "SELECT 1", 0, "SELECT 1", false},
+		{"appends LIMIT before CRLF", "SELECT 1;\r\n", 100, "SELECT 1 LIMIT 100;\r\n", false},
+		{"caps existing LIMIT before CRLF", "SELECT 1 LIMIT 5000;\r\n", 100, "SELECT 1 LIMIT 1000;\r\n", true},
 		{"bail on UNION", "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000", 100, "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000", false},
 		{"bail on SET plus UNION", "SET useMultistageEngine = true;\nSELECT 1 FROM a\nUNION ALL\nSELECT 2 FROM b LIMIT 2000", 100, "SET useMultistageEngine = true;\nSELECT 1 FROM a\nUNION ALL\nSELECT 2 FROM b LIMIT 2000", false},
 		{"bail on LIMIT OFFSET", "SELECT * FROM t LIMIT 100 OFFSET 10", 100, "SELECT * FROM t LIMIT 100 OFFSET 10", false},
