@@ -46,7 +46,7 @@ func TestPullOmitsRegisteredFieldsFromFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.NotFound(w, r)
 		case "/api":
 			assert.NoError(t, json.NewEncoder(w).Encode(metav1.APIVersions{Versions: []string{}}))

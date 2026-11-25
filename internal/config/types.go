@@ -816,13 +816,13 @@ type GrafanaConfig struct {
 	PathfinderInstalled bool `json:"pathfinder-installed,omitempty" yaml:"pathfinder-installed,omitempty"`
 }
 
-func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string) error {
+func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string, mode grafanaAuthMode) error {
 	if grafana.OrgID != 0 {
 		return nil
 	}
 
 	// A configured StackID is authoritative (matching resolveNamespace). Don't pay
-	// a /bootdata round-trip on every command just to preflight it — only assert
+	// a discovery round-trip on every command just to preflight it — only assert
 	// against discovery when a value is already memoized this process. A wrong id
 	// still surfaces at the first real API call.
 	if grafana.StackID != 0 {
@@ -833,7 +833,7 @@ func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName 
 	}
 
 	// No StackID configured: discover it (cached, reused by resolveNamespace).
-	if _, err := discoverStackIDCached(ctx, grafana); err != nil {
+	if _, err := discoverStackIDCached(ctx, grafana, mode); err != nil {
 		return ValidationError{
 			Path:    fmt.Sprintf("$.stacks.'%s'.grafana", contextName),
 			Message: fmt.Sprintf("missing stacks.%[1]s.grafana.org-id or stacks.%[1]s.grafana.stack-id", contextName),
@@ -844,7 +844,6 @@ func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName 
 			},
 		}
 	}
-
 	return nil
 }
 
@@ -883,7 +882,7 @@ func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, cont
 
 	selectedGrafana := grafana
 	selectedGrafana.TLS = grafana.tlsForSelectedAuth(selection)
-	if err := selectedGrafana.validateNamespace(ctx, contextName); err != nil {
+	if err := selectedGrafana.validateNamespace(ctx, contextName, selection.mode); err != nil {
 		return err
 	}
 
