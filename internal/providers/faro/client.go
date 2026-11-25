@@ -284,7 +284,13 @@ func (c *Client) ListSourcemaps(ctx context.Context, appID string, limit int) ([
 
 // DeleteSourcemaps deletes sourcemap bundles for a Faro app.
 func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs []string) error {
-	path := fmt.Sprintf(sourcemapsBatchPathFmt, url.PathEscape(appID), strings.Join(bundleIDs, ","))
+	// Escape each ID on its own: the comma between IDs is the batch separator
+	// and must stay literal, while a comma inside an ID is escaped.
+	escaped := make([]string, len(bundleIDs))
+	for i, id := range bundleIDs {
+		escaped[i] = url.PathEscape(id)
+	}
+	path := fmt.Sprintf(sourcemapsBatchPathFmt, url.PathEscape(appID), strings.Join(escaped, ","))
 
 	log := logging.FromContext(ctx)
 	log.Info("Deleting sourcemap bundles", "app_id", appID, "bundle_count", len(bundleIDs))
