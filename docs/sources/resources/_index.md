@@ -57,7 +57,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Fleet Management** | Collectors and configuration pipelines | [`gcx fleet`](../cli-reference/#gcx-fleet) | |
 | **Folders** | Folders | [`gcx resources`](../cli-reference/#gcx-resources) | |
 | **Frontend Observability** | Frontend apps, source maps, and user sessions | [`gcx frontend`](../cli-reference/#gcx-frontend) | |
-| **Grafana Assistant** | Conversations, investigations, MCP servers, Assistant Watchers, and change review checks | [`gcx assistant`](../cli-reference/#gcx-assistant) | <ul><li>[Manage Assistant Watchers](./manage-assistant-watchers/)</li><li>[Manage Assistant change review checks](./manage-change-review-checks/)</li><li>[Check Assistant usage and limits](../guides/assistant-usage/)</li></ul> |
+| **Grafana Assistant** | Conversations, investigations, MCP servers, Watchers, and change review checks | [`gcx assistant`](../cli-reference/#gcx-assistant) | <ul><li>[Manage Watchers](./manage-assistant-watchers/)</li><li>[Manage Assistant change review checks](./manage-change-review-checks/)</li><li>[Check Assistant usage and limits](../guides/assistant-usage/)</li></ul> |
 | **Grafana Cloud platform** | Organization memberships and Grafana Cloud stacks | [`gcx cloud`](../cli-reference/#gcx-cloud) | |
 | **Instrumentation** | Kubernetes clusters, cluster apps, and monitored services | [`gcx instrumentation`](../cli-reference/#gcx-instrumentation) | |
 | **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../cli-reference/#gcx-irm-incidents), [`gcx resources`](../cli-reference/#gcx-resources) | [Incident descriptions](./manage-resources/#incident-descriptions) |
