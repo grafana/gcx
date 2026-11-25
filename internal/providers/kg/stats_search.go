@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // statsMaxSearchPages bounds how many search pages `kg stats` reads per
@@ -28,11 +27,6 @@ var statsMaxSearchPages = 50 //nolint:gochecknoglobals // Overridden only by tes
 // after the client's retries (both also reported on errOut). Any other error
 // fails the whole search.
 func searchInsightCarriers(ctx context.Context, errOut io.Writer, client *Client, entityTypes []string, sc *ScopeCriteria, startMs, endMs int64) ([]SearchResult, []string, error) {
-	if startMs == 0 && endMs == 0 {
-		now := time.Now().UnixMilli()
-		startMs = now - 3600000
-		endMs = now
-	}
 	all := []SearchResult{}
 	var incomplete []string
 	for _, et := range entityTypes {
