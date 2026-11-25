@@ -19,13 +19,24 @@ var (
 	errBootdataNonOK = errors.New("bootdata request failed")
 	errWhoamiNonOK   = errors.New("whoami request failed")
 	errNotCloudStack = errors.New("whoami namespace is not a cloud stack")
+
+	// errDiscoveryUnreachable wraps network-level failures (connection
+	// refused, DNS, TLS, timeout) where the server never answered.
+	errDiscoveryUnreachable = errors.New("discovery request failed")
+	// errDiscoveryTransient marks HTTP answers that may succeed on retry
+	// (5xx, 429), so they are never memoized as "not a cloud stack".
+	errDiscoveryTransient = errors.New("discovery request failed transiently")
+	// errNoCloudStack is returned for servers memoized as not being a cloud
+	// stack.
+	errNoCloudStack = errors.New("server is not a Grafana Cloud stack")
 )
 
-// stackIDCache memoizes successful stack-ID discoveries per server for
-// the lifetime of the process, so repeated REST-config builds in a single
-// invocation don't repay the network round-trip.
+// stackIDCache memoizes stack-ID discoveries per server for the lifetime of
+// the process, so repeated REST-config builds in a single invocation don't
+// repay the network round-trip. A zero value records that the server answered
+// both probes without a stack ID (e.g. on-prem Grafana).
 //
-//nolint:gochecknoglobals // process-wide positive cache; only successes stored.
+//nolint:gochecknoglobals // process-wide discovery cache.
 var (
 	stackIDCacheMu sync.Mutex
 	stackIDCache   = map[string]int64{}
@@ -67,25 +78,30 @@ func resolveNamespace(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMo
 }
 
 // cachedStackID peeks the process-lifetime discovery cache for a server without
-// issuing a network round-trip. ok is false when no successful discovery has
-// been memoized for the server yet.
+// issuing a network round-trip. ok is false when no stack ID has been memoized
+// for the server, including servers memoized as not being a cloud stack.
 func cachedStackID(server string) (int64, bool) {
 	key := strings.TrimSuffix(server, "/")
 	stackIDCacheMu.Lock()
 	defer stackIDCacheMu.Unlock()
 	id, ok := stackIDCache[key]
-	return id, ok
+	return id, ok && id != 0
 }
 
-// discoverStackIDCached discovers the stack ID with a process-lifetime positive
-// cache keyed by server URL. Failures are not cached so a transient error does
-// not pin a missing stack ID for the rest of the process.
+// discoverStackIDCached discovers the stack ID with a process-lifetime cache
+// keyed by server URL.
 //
 // The authenticated whoami endpoint is tried first; the unauthenticated
 // /bootdata endpoint is only used when whoami is unavailable (older Grafana,
 // missing or expired credentials, or a non-stack namespace). A non-stack whoami
 // namespace is not treated as final: /bootdata still gets the last word so a
 // deployment answering whoami with an org namespace keeps resolving its stack.
+//
+// When whoami cannot reach the server at all, /bootdata (same host, same
+// client) is skipped so an unreachable server fails after one timeout, not two.
+// When both probes get a definitive answer without a stack ID, that outcome is
+// memoized too; network errors and transient statuses (5xx, 429) are not, so a
+// blip does not pin a missing stack ID for the rest of the process.
 func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMode) (int64, error) {
 	key := strings.TrimSuffix(cfg.Server, "/")
 
@@ -93,15 +109,30 @@ func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 	cached, ok := stackIDCache[key]
 	stackIDCacheMu.Unlock()
 	if ok {
+		if cached == 0 {
+			return 0, errNoCloudStack
+		}
 		return cached, nil
 	}
 
-	id, err := discoverStackIDWhoami(ctx, cfg, mode)
-	if err != nil {
-		id, err = DiscoverStackID(ctx, cfg)
-	}
-	if err != nil {
-		return 0, err
+	id, whoamiErr := discoverStackIDWhoami(ctx, cfg, mode)
+	if whoamiErr != nil {
+		// In OAuth mode whoami goes through the assistant proxy, so an
+		// unreachable proxy says nothing about cfg.Server; still try /bootdata.
+		if mode != grafanaAuthOAuth && errors.Is(whoamiErr, errDiscoveryUnreachable) {
+			return 0, whoamiErr
+		}
+
+		var bootdataErr error
+		id, bootdataErr = DiscoverStackID(ctx, cfg)
+		if bootdataErr != nil {
+			if isDefinitiveDiscoveryFailure(whoamiErr) && isDefinitiveDiscoveryFailure(bootdataErr) {
+				stackIDCacheMu.Lock()
+				stackIDCache[key] = 0
+				stackIDCacheMu.Unlock()
+			}
+			return 0, bootdataErr
+		}
 	}
 
 	stackIDCacheMu.Lock()
@@ -151,14 +182,14 @@ func discoverStackIDWhoami(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 		// Client certificate (if any) is carried by the TLS config.
 	}
 
-	resp, err := client.Do(req)
+	resp, err := doDiscoveryRequest(client, req)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("%w: status %d", errWhoamiNonOK, resp.StatusCode)
+		return 0, fmt.Errorf("%w: %w", errWhoamiNonOK, discoveryStatusError(resp.StatusCode))
 	}
 
 	var payload struct {
@@ -201,14 +232,14 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 		return 0, err
 	}
 
-	resp, err := client.Do(req)
+	resp, err := doDiscoveryRequest(client, req)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("%w: status %d", errBootdataNonOK, resp.StatusCode)
+		return 0, fmt.Errorf("%w: %w", errBootdataNonOK, discoveryStatusError(resp.StatusCode))
 	}
 
 	var payload struct {
@@ -236,6 +267,32 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 	}
 
 	return ns.StackID, nil
+}
+
+// doDiscoveryRequest sends a discovery probe, wrapping network-level failures
+// in errDiscoveryUnreachable.
+func doDiscoveryRequest(client *http.Client, req *http.Request) (*http.Response, error) {
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errDiscoveryUnreachable, err)
+	}
+	return resp, nil
+}
+
+// discoveryStatusError describes a non-OK discovery status, wrapping
+// errDiscoveryTransient for statuses that may succeed on retry.
+func discoveryStatusError(status int) error {
+	if status >= http.StatusInternalServerError || status == http.StatusTooManyRequests {
+		return fmt.Errorf("%w: status %d", errDiscoveryTransient, status)
+	}
+	return fmt.Errorf("status %d", status)
+}
+
+// isDefinitiveDiscoveryFailure reports whether a failed probe reflects a real
+// answer from the server (safe to memoize) rather than a network error or a
+// transient status.
+func isDefinitiveDiscoveryFailure(err error) bool {
+	return !errors.Is(err, errDiscoveryUnreachable) && !errors.Is(err, errDiscoveryTransient)
 }
 
 func buildBootdataURL(server string) (*url.URL, error) {
