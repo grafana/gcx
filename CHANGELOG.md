@@ -1,13 +1,3 @@
-## Unreleased
-
-- `gcx kg meta logs`, `traces` and `profiles` no longer fail with
-  "fetch ... configs: EOF" when the server answers with an empty body. They
-  exit 0, print no configs, and add a `notes` entry for the section that says
-  the server returned no drill-down configs. `kg meta all` records such a
-  section under `notes` instead of `errors`, and `kg diagnose` reports it as
-  "no ... drilldown configs" instead of an API error. Connection errors, error
-  statuses, bodies cut short and malformed JSON are still errors.
-
 ## v1.8.0 (2026-11-17)
 
 ### Breaking changes
