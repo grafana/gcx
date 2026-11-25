@@ -62,3 +62,13 @@ func TestAppRuntimeOmission(t *testing.T) {
 		})
 	}
 }
+
+func TestToAPI_ExtraLogLabelsSortedByLabel(t *testing.T) {
+	app := FaroApp{ExtraLogLabels: map[string]string{"zeta": "1", "alpha": "2", "mid": "3", "beta": "4", "omega": "5"}}
+	want := []LogLabel{{"alpha", "2"}, {"beta", "4"}, {"mid", "3"}, {"omega", "5"}, {"zeta", "1"}}
+	for range 20 {
+		got, err := app.toAPI()
+		require.NoError(t, err)
+		require.Equal(t, want, got.ExtraLogLabels)
+	}
+}

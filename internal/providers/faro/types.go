@@ -3,6 +3,7 @@ package faro
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -171,8 +172,9 @@ func settingsFromAPI(m map[string]string) *FaroAppSettings {
 // toAPI converts FaroApp to API wire format.
 func (app *FaroApp) toAPI() (faroAppAPI, error) {
 	labels := make([]LogLabel, 0, len(app.ExtraLogLabels))
-	for k, v := range app.ExtraLogLabels {
-		labels = append(labels, LogLabel{Label: k, Value: v})
+	// Sort by label so the request body is the same on every call.
+	for _, k := range slices.Sorted(maps.Keys(app.ExtraLogLabels)) {
+		labels = append(labels, LogLabel{Label: k, Value: app.ExtraLogLabels[k]})
 	}
 	var id int64
 	if app.ID != "" {
