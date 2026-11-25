@@ -139,7 +139,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			// For yaml/json output, marshal typed objects that pass the filter.
-			var objs []unstructured.Unstructured
+			objs := make([]unstructured.Unstructured, 0, len(typedObjs))
 			for _, typedObj := range typedObjs {
 				cr := typedObj.Spec
 				c := Check{

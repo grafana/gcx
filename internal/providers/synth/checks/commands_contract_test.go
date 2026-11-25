@@ -1339,3 +1339,21 @@ func TestChecksTimelineContract(t *testing.T) {
 		assert.Contains(t, stderr, "window adjusted to match")
 	})
 }
+
+// TestChecksListEmptyJSON pins that a list with no matching checks encodes as
+// an empty JSON array rather than null.
+func TestChecksListEmptyJSON(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+		},
+	}
+	srv := newCheckServer(t, st)
+
+	stdout, _, err := runChecks(t, srv.URL, false, "", "list", "-o", "json", "--job", "no-such-job")
+	require.NoError(t, err)
+	doc, ok := decodeSingleJSONValue(t, stdout).([]any)
+	require.True(t, ok, "empty list must encode as a JSON array, got: %q", stdout)
+	assert.Empty(t, doc)
+}
