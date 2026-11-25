@@ -37,7 +37,7 @@ func TestUpsertUploadDomainRunsInChild(t *testing.T) {
 			http.Error(w, "no tunnels here", http.StatusForbidden)
 			return
 		}
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			if os.Getenv("ET_DOMAIN_NO_STACK_ID") != "" {
 				http.NotFound(w, r)
 				return

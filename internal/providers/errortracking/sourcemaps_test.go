@@ -183,7 +183,7 @@ func newUpsertEnv(t *testing.T) *upsertEnv {
 			return
 		}
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			_, _ = io.WriteString(w, `{"settings":{"namespace":"stacks-123"}}`)
 		case etPrefix + "projects":
 			_, _ = io.WriteString(w, `{"projects":[{"id":314,"name":"Checkout API"}]}`)
@@ -217,7 +217,7 @@ stacks:
 func (e *upsertEnv) calls() []string {
 	var out []string
 	for _, s := range e.seen {
-		if s != "grafana GET /bootdata" {
+		if s != "grafana GET /bootdata" && s != "grafana GET /apis/iam.grafana.app/v0alpha1/whoami" {
 			out = append(out, s)
 		}
 	}
@@ -384,7 +384,7 @@ func TestUpsert(t *testing.T) {
 			assert.Equal(t, "Bearer 123:tok", e.got.Header.Get("Authorization"))
 			assert.JSONEq(t, okMap, string(e.body))
 			assert.Equal(t, int64(len(okMap)), e.got.ContentLength)
-			assert.Equal(t, "grafana GET /bootdata", e.seen[0])
+			assert.Equal(t, "grafana GET /apis/iam.grafana.app/v0alpha1/whoami", e.seen[0])
 			assert.JSONEq(t, e.mutation(one, ""), out)
 			assert.Empty(t, e.stderr.String())
 		}},
@@ -653,7 +653,7 @@ func TestUpsertUploadURL(t *testing.T) {
 	defer up.Close()
 	field := ""
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			_, _ = io.WriteString(w, `{"settings":{"namespace":"stacks-123"}}`)
 			return
 		}
@@ -804,7 +804,7 @@ func TestUpsertCloudAuth(t *testing.T) {
 			defer gcom.Close()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
-				case r.URL.Path != "/bootdata":
+				case r.URL.Path != "/bootdata" && r.URL.Path != "/apis/iam.grafana.app/v0alpha1/whoami":
 					grafana = append(grafana, r.Method+" "+r.URL.Path)
 					_, _ = io.WriteString(w, `{"id":314,"name":"web","sourceMapUploadUrl":"`+up.URL+`"}`)
 				case tc.bootdata == "":
