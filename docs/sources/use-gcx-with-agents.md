@@ -19,12 +19,8 @@ weight: 9
 
 With `gcx`, your AI coding agent can use production data to troubleshoot issues and make better implementation decisions. For example, the agent can examine traces alongside your code to identify which operation to optimize, or ask Grafana Assistant to investigate a potential issue.
 
-Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to [agent mode](#how-agent-mode-works).
+Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to **agent mode**.
 
-## Before you begin
-
-- [Install `gcx`](../installation/) where your agent runs.
-- [Authenticate `gcx`](../authentication/). If the agent runs without a person present, refer to [Sign in for agents](#sign-in-for-agents).
 
 ## How agent mode works
 
@@ -37,15 +33,27 @@ The main differences between modes are the following:
 | Default output | Readable tables | Compact JSON (spills to a temp file above 100 KiB) |
 | Color and table truncation | On in a terminal | Off |
 | Errors | A readable message on `stderr` | A JSON error document on `stdout` |
+| Status messages and hints | Text on `stderr` | Text on `stderr`, with hints as JSON lines, so `stdout` carries only the result |
 | Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Approve destructive operations](#approve-destructive-operations). |
 
-In agent mode, `gcx` also writes data to `stdout` and hints and progress messages to `stderr`, so an agent can parse `stdout` without filtering. Outside agent mode, you can get the same plain output with `--no-color` and `--no-truncate`, for example on a CI runner that reports a terminal.
+You can override these defaults with explicit flags. For example, `-o json` prints JSON without agent mode, and `--no-color` and `--no-truncate` give plain output. For details, refer to [How agents read `gcx` output](#how-agents-read-gcx-output) and [Configure agent mode](#configure-agent-mode).
 
-You can override these defaults with explicit flags. For example, `-o text` prints a table in agent mode, and `-o json` prints JSON without agent mode. For manual overrides and output details, refer to [Customize detection, output, and error handling](#customize-detection-output-and-error-handling).
+Agents also rely on `gcx` features that are available in both modes:
 
-## Sign in for agents
+| Feature | How agents use it |
+| --- | --- |
+| `--dry-run` | [Preview changes](#preview-changes) |
+| `gcx resources push` | [Retry safely](#retry-safely) after a failure |
+| Exit codes and JSON errors | [Handle errors and exit codes](#handle-errors-and-exit-codes) |
+| `--on-error` | [Handle batch failures](#handle-batch-failures) |
+| `--json` and `--jq` | [Select fields and filter results](#select-fields-and-filter-results) to get only the data they need |
+| `--limit` and `list_meta` | [Detect incomplete lists](#detect-incomplete-lists) to continue processing results |
 
-An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
+## Before you begin
+
+[Install `gcx`](../installation/) in the environment where your agent runs.
+
+### Authenticate `gcx` for your agent
 
 **When a person is present**, use browser-based OAuth. `gcx` opens a browser and waits for you to approve the sign-in:
 
@@ -62,7 +70,15 @@ gcx login my-stack --server https://my-stack.grafana.net --oauth
 gcx login my-stack --server https://my-stack.grafana.net --token <SERVICE_ACCOUNT_TOKEN> --yes
 ```
 
-## Install `gcx` skills for agents
+For additional details, refer to [Authenticate `gcx`](../authentication/).
+
+{{< admonition type="caution" >}}
+
+Your agent can perform any action its `gcx` credential allows. Use a credential with only the permissions the agent needs for its tasks. Refer to [Roles and permissions](../permissions/).
+
+{{< /admonition >}}
+
+### Install `gcx` agent skills
 
 `gcx` ships agent skills: task-specific instructions that teach an agent common workflows, such as setting up `gcx`, creating dashboards, investigating alerts, and managing SLOs. For the full list, refer to the [skill inventory](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skills).
 
@@ -154,7 +170,7 @@ Ask your agent to check with you before it adds `--force`, and avoid setting `GC
 
 ## How agents read `gcx` output
 
-In agent mode, `gcx` returns structured output that agents can parse, and tells them when a result is incomplete or a command failed.
+In agent mode, `gcx` returns structured output that agents can parse, and tells them when a result is incomplete or a command failed. It writes data to `stdout` and status messages and hints to `stderr`, so an agent can parse `stdout` without filtering.
 
 ### Select fields and filter results
 
@@ -170,6 +186,8 @@ gcx resources get dashboards --json metadata.name,spec.title
 # Transform the output with a jq expression
 gcx resources get dashboards --jq '.items | length'
 ```
+
+When an agent doesn't use these flags, `gcx` prints a one-line hint to `stderr` that suggests them.
 
 ### Detect incomplete lists
 
