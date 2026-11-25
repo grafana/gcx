@@ -302,7 +302,7 @@ func TestRejectFlagLikeInsight(t *testing.T) {
 func TestEntitiesListCommandPageBound(t *testing.T) {
 	rows := make([]SearchResult, 0, 60)
 	for i := range 60 {
-		rows = append(rows, scoped(fmt.Sprintf("s%02d", i), "prod", "other"))
+		rows = append(rows, scoped(fmt.Sprintf("s%02d", i), "other"))
 	}
 	readMore := "pass --limit N or --limit 0 to read up to 50 pages"
 	tests := []struct {

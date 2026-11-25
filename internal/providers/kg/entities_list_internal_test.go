@@ -184,11 +184,8 @@ func svc(name, class string) SearchResult {
 	return SearchResult{Name: name, Type: "Service", Properties: map[string]any{"class": class}}
 }
 
-func scoped(name, env, namespace string) SearchResult {
-	sc := map[string]string{}
-	if env != "" {
-		sc["env"] = env
-	}
+func scoped(name, namespace string) SearchResult {
+	sc := map[string]string{"env": "prod"}
 	if namespace != "" {
 		sc["namespace"] = namespace
 	}
@@ -807,7 +804,7 @@ func TestSearchByTypesAllPagesSkipsRepeats(t *testing.T) {
 		},
 		{
 			name: "by type, name and scope without an id", limit: 0,
-			rows:      []SearchResult{scoped("a", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns1"), scoped("b", "prod", "ns2")},
+			rows:      []SearchResult{scoped("a", "ns1"), scoped("b", "ns1"), scoped("b", "ns1"), scoped("b", "ns2")},
 			wantNames: []string{"a", "b", "b"}, wantPages: 2,
 			wantHint: "returned 1 row that an earlier page had already returned",
 		},
