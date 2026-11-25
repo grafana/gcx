@@ -88,6 +88,22 @@ func TestSummarizeEntityCounts(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "an empty schema splits out only the catalog record types, as without the schema",
+			counts: map[string]int64{
+				"TypeX": 3, "RecordTypeA": 5,
+				"Account": 2, "EntityType": 6, "Env": 4, "Schema": 8,
+			},
+			listed: map[string]bool{},
+			want: kg.EntitiesSummary{
+				Total:  8,
+				ByType: map[string]int64{"TypeX": 3, "RecordTypeA": 5},
+				Internal: &kg.EntityCount{
+					Total:  20,
+					ByType: map[string]int64{"Account": 2, "EntityType": 6, "Env": 4, "Schema": 8},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -115,6 +131,8 @@ func TestIsCatalogType(t *testing.T) {
 		{name: "without the schema entity-type records still are", typ: "EntityType", listed: nil, want: true},
 		{name: "without the schema environment records still are", typ: "Env", listed: nil, want: true},
 		{name: "without the schema the Schema records still are", typ: "Schema", listed: nil, want: true},
+		{name: "an empty schema lists no type, so an unknown type is not a catalog type", typ: "RecordTypeA", listed: map[string]bool{}, want: false},
+		{name: "an empty schema leaves a catalog record type a catalog type", typ: "Schema", listed: map[string]bool{}, want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

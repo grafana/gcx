@@ -44,17 +44,29 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 }
 
 func TestBuildEntityOverview_WithoutSchemaExcludesOnlyCatalogRecordTypes(t *testing.T) {
-	in := kg.OrientationInput{
-		EntityCounts: map[string]int64{
-			"TypeX": 10, "RecordTypeA": 5,
-			"Account": 1, "EntityType": 18, "Env": 3, "Schema": 30,
-		},
+	tests := []struct {
+		name        string
+		schemaTypes map[string]bool
+	}{
+		{name: "schema could not be read", schemaTypes: nil},
+		{name: "schema lists no types", schemaTypes: map[string]bool{}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := kg.OrientationInput{
+				EntityCounts: map[string]int64{
+					"TypeX": 10, "RecordTypeA": 5,
+					"Account": 1, "EntityType": 18, "Env": 3, "Schema": 30,
+				},
+				SchemaTypes: tt.schemaTypes,
+			}
 
-	overview := kg.BuildEntityOverview(in)
+			overview := kg.BuildEntityOverview(in)
 
-	assert.Equal(t, int64(15), overview.Total, "without the schema only the catalog record types are left out")
-	assert.Equal(t, map[string]int64{"TypeX": 10, "RecordTypeA": 5}, overview.ByType)
+			assert.Equal(t, int64(15), overview.Total, "without the schema only the catalog record types are left out")
+			assert.Equal(t, map[string]int64{"TypeX": 10, "RecordTypeA": 5}, overview.ByType)
+		})
+	}
 }
 
 func TestBuildScopeSummary(t *testing.T) {

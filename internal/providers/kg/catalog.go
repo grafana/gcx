@@ -42,11 +42,12 @@ func listedSchemaTypes(resp GraphSchemaResponse) map[string]bool {
 // isCatalogType reports whether a counted entity type holds the graph's own
 // catalog records: a catalog record type (see isCatalogRecordType), or a
 // type that listed (the types `kg meta schema` lists for the same window,
-// see listedSchemaTypes) does not contain. A nil listed means the schema
-// could not be read; then only the catalog record types are.
+// see listedSchemaTypes) does not contain. A nil or empty listed means the
+// schema could not be read or lists no types, which would mark every counted
+// type as a catalog type; then only the catalog record types are.
 func isCatalogType(t string, listed map[string]bool) bool {
 	if isCatalogRecordType(t) {
 		return true
 	}
-	return listed != nil && !listed[t]
+	return len(listed) > 0 && !listed[t]
 }

@@ -208,8 +208,8 @@ type OrientationInput struct {
 
 	// SchemaTypes is the set of entity types the graph schema lists for
 	// the same window (see listedSchemaTypes). It tells the catalog meta
-	// types in EntityCounts apart (see isCatalogType). Nil when the schema
-	// could not be read.
+	// types in EntityCounts apart (see isCatalogType). Nil or empty when the
+	// schema could not be read or lists no types.
 	SchemaTypes map[string]bool
 
 	// Scopes is the ListEntityScopes response (env / site / namespace
