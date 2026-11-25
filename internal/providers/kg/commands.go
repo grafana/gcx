@@ -3443,11 +3443,11 @@ func drillDownNote(signal, backend string) string {
 
 // drillDownSection describes one of kg meta logs, traces and profiles.
 type drillDownSection struct {
+	// use is the command name and the section's notes key.
 	use, short string
-	// backend names the datasource in notes (Loki, Tempo, Pyroscope), signal
-	// names the configs (log, trace, profile), and key is
-	// the section's notes key.
-	backend, signal, key string
+	// backend names the datasource in notes (Loki, Tempo, Pyroscope) and
+	// signal names the configs (log, trace, profile).
+	backend, signal string
 	// fetch reads the section's configs and reports whether there were none.
 	fetch func(ctx context.Context, client *Client) (out KGMetadataOutput, empty bool, err error)
 }
@@ -3474,7 +3474,7 @@ func newDrillDownCmd(loader RESTConfigLoader, sec drillDownSection) *cobra.Comma
 				return err
 			}
 			if empty {
-				out.Notes = map[string]string{sec.key: drillDownNote(sec.signal, sec.backend)}
+				out.Notes = map[string]string{sec.use: drillDownNote(sec.signal, sec.backend)}
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
@@ -3486,7 +3486,7 @@ func newDrillDownCmd(loader RESTConfigLoader, sec drillDownSection) *cobra.Comma
 func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
 	return newDrillDownCmd(loader, drillDownSection{
 		use: "logs", short: "Show Loki label mappings for log drilldown.",
-		backend: "Loki", signal: "log", key: "logs",
+		backend: "Loki", signal: "log",
 		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
 			resp, err := client.FetchLogConfigs(ctx)
 			return KGMetadataOutput{Logs: resp.LogDrilldownConfigs}, len(resp.LogDrilldownConfigs) == 0, err
@@ -3497,7 +3497,7 @@ func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
 func newDescribeTracesCmd(loader RESTConfigLoader) *cobra.Command {
 	return newDrillDownCmd(loader, drillDownSection{
 		use: "traces", short: "Show Tempo label mappings for trace drilldown.",
-		backend: "Tempo", signal: "trace", key: "traces",
+		backend: "Tempo", signal: "trace",
 		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
 			resp, err := client.FetchTraceConfigs(ctx)
 			return KGMetadataOutput{Traces: resp.TraceDrilldownConfigs}, len(resp.TraceDrilldownConfigs) == 0, err
@@ -3508,7 +3508,7 @@ func newDescribeTracesCmd(loader RESTConfigLoader) *cobra.Command {
 func newDescribeProfilesCmd(loader RESTConfigLoader) *cobra.Command {
 	return newDrillDownCmd(loader, drillDownSection{
 		use: "profiles", short: "Show Pyroscope label mappings for profile drilldown.",
-		backend: "Pyroscope", signal: "profile", key: "profiles",
+		backend: "Pyroscope", signal: "profile",
 		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
 			resp, err := client.FetchProfileConfigs(ctx)
 			return KGMetadataOutput{Profiles: resp.ProfileDrilldownConfigs}, len(resp.ProfileDrilldownConfigs) == 0, err
