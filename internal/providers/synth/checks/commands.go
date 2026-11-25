@@ -1259,19 +1259,30 @@ func updateNameInFile(filePath, newName string) error {
 
 	lines := strings.Split(string(data), "\n")
 	inMetadata := false
+	// childIndent is the indentation of the keys directly under metadata. Only
+	// a name at that depth is metadata.name; deeper ones belong to labels,
+	// annotations and the like.
+	childIndent := -1
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "metadata:" {
+		if trimmed == "metadata:" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
 			inMetadata = true
 			continue
 		}
 		if inMetadata {
-			if strings.HasPrefix(trimmed, "name:") {
-				lines[i] = strings.Replace(line, trimmed, "name: "+strconv.Quote(newName), 1)
-				break
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
 			}
 			// Stop searching if we leave the metadata block (new top-level key).
-			if len(trimmed) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+				break
+			}
+			indent := len(line) - len(strings.TrimLeft(line, " \t"))
+			if childIndent < 0 {
+				childIndent = indent
+			}
+			if indent == childIndent && strings.HasPrefix(trimmed, "name:") {
+				lines[i] = strings.Replace(line, trimmed, "name: "+strconv.Quote(newName), 1)
 				break
 			}
 		}
