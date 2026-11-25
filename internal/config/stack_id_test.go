@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -98,33 +99,57 @@ const whoamiTestPath = "/apis/iam.grafana.app/v0alpha1/whoami"
 
 // discoveryServer records discovery hits and answers whoami/bootdata with the
 // supplied handlers (nil -> 404).
+//
+// Handlers record under mu and tests read through snapshot: a handler that
+// drops the connection sends no response to order its writes before the
+// test's reads.
 type discoveryServer struct {
+	mu   sync.Mutex
+	hits discoveryHits
+}
+
+type discoveryHits struct {
 	whoamiHits, bootdataHits, otherHits int
 	authHeader                          string
 }
 
+func (d *discoveryServer) record(fn func(*discoveryHits)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	fn(&d.hits)
+}
+
+func (d *discoveryServer) snapshot() discoveryHits {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.hits
+}
+
 func newDiscoveryServer(t *testing.T, whoami, bootdata http.HandlerFunc) (*httptest.Server, *discoveryServer) {
 	t.Helper()
+	t.Cleanup(config.ResetStackIDCacheForTest)
 	rec := &discoveryServer{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, whoamiTestPath):
-			rec.whoamiHits++
-			rec.authHeader = r.Header.Get("Authorization")
+			rec.record(func(h *discoveryHits) {
+				h.whoamiHits++
+				h.authHeader = r.Header.Get("Authorization")
+			})
 			if whoami == nil {
 				http.NotFound(w, r)
 				return
 			}
 			whoami(w, r)
 		case r.URL.Path == "/bootdata":
-			rec.bootdataHits++
+			rec.record(func(h *discoveryHits) { h.bootdataHits++ })
 			if bootdata == nil {
 				http.NotFound(w, r)
 				return
 			}
 			bootdata(w, r)
 		default:
-			rec.otherHits++
+			rec.record(func(h *discoveryHits) { h.otherHits++ })
 			http.NotFound(w, r)
 		}
 	}))
@@ -195,10 +220,10 @@ func TestNamespaceDiscovery_Whoami(t *testing.T) {
 			restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantNamespace, restCfg.Namespace)
-			assert.Equal(t, 1, rec.whoamiHits)
-			assert.Equal(t, "Bearer tok", rec.authHeader)
-			assert.Equal(t, tc.wantBootdata, rec.bootdataHits)
-			assert.Zero(t, rec.otherHits)
+			assert.Equal(t, 1, rec.snapshot().whoamiHits)
+			assert.Equal(t, "Bearer tok", rec.snapshot().authHeader)
+			assert.Equal(t, tc.wantBootdata, rec.snapshot().bootdataHits)
+			assert.Zero(t, rec.snapshot().otherHits)
 		})
 	}
 }
@@ -213,7 +238,7 @@ func TestNamespaceDiscovery_BasicAuth(t *testing.T) {
 	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "stacks-5", restCfg.Namespace)
-	assert.True(t, strings.HasPrefix(rec.authHeader, "Basic "), "got %q", rec.authHeader)
+	assert.True(t, strings.HasPrefix(rec.snapshot().authHeader, "Basic "), "got %q", rec.snapshot().authHeader)
 }
 
 // OAuth discovery goes through the assistant proxy with the current access
@@ -261,8 +286,8 @@ func TestGrafanaConfig_Validate_UsesWhoami(t *testing.T) {
 	cfg := config.GrafanaConfig{Server: srv.URL, APIToken: "tok"}
 
 	require.NoError(t, cfg.Validate(t.Context(), "ctx"))
-	assert.Equal(t, 1, rec.whoamiHits)
-	assert.Zero(t, rec.bootdataHits)
+	assert.Equal(t, 1, rec.snapshot().whoamiHits)
+	assert.Zero(t, rec.snapshot().bootdataHits)
 }
 
 // whoami answers anonymous callers with the stack namespace too, so discovery
@@ -278,6 +303,109 @@ func TestNamespaceDiscovery_AnonymousWhoami(t *testing.T) {
 	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "stacks-35611", restCfg.Namespace)
-	assert.Empty(t, rec.authHeader)
-	assert.Zero(t, rec.bootdataHits)
+	assert.Empty(t, rec.snapshot().authHeader)
+	assert.Zero(t, rec.snapshot().bootdataHits)
+}
+
+// dropConnection closes the connection without a response, simulating a
+// network-level failure.
+func dropConnection(w http.ResponseWriter, _ *http.Request) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		panic("response writer does not support hijacking")
+	}
+	conn, _, err := hj.Hijack()
+	if err == nil {
+		_ = conn.Close()
+	}
+}
+
+func TestNamespaceDiscovery_UnreachableWhoamiSkipsBootdata(t *testing.T) {
+	srv, rec := newDiscoveryServer(t, dropConnection, bootdataNamespace("stacks-1"))
+	ctx := config.Context{
+		Name:    "test",
+		Grafana: &config.GrafanaConfig{Server: srv.URL, APIToken: "tok", OrgID: 1},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "default", restCfg.Namespace)
+	assert.Equal(t, 1, rec.snapshot().whoamiHits)
+	assert.Zero(t, rec.snapshot().bootdataHits)
+}
+
+// In OAuth mode whoami goes through the proxy, so an unreachable proxy must
+// not stop /bootdata on the Grafana server itself.
+func TestNamespaceDiscovery_UnreachableOAuthProxyFallsBackToBootdata(t *testing.T) {
+	srv, rec := newDiscoveryServer(t, nil, bootdataNamespace("stacks-4545"))
+	proxy := httptest.NewServer(http.HandlerFunc(dropConnection))
+	t.Cleanup(proxy.Close)
+
+	ctx := config.Context{
+		Name: "test",
+		Grafana: &config.GrafanaConfig{
+			Server:        srv.URL,
+			ProxyEndpoint: proxy.URL,
+			OAuthToken:    "gat_current",
+		},
+	}
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "stacks-4545", restCfg.Namespace)
+	assert.Equal(t, 1, rec.snapshot().bootdataHits)
+}
+
+func TestNamespaceDiscovery_NotCloudStackCache(t *testing.T) {
+	unavailable := func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}
+	tests := []struct {
+		name         string
+		whoami       http.HandlerFunc
+		bootdata     http.HandlerFunc
+		wantRequests int // per probe, across both lookups
+	}{
+		{
+			name:         "on-prem answer is memoized",
+			whoami:       whoamiNamespace("default"),
+			bootdata:     bootdataNamespace(""),
+			wantRequests: 1,
+		},
+		{
+			name:         "missing endpoints are memoized",
+			whoami:       nil,
+			bootdata:     nil,
+			wantRequests: 1,
+		},
+		{
+			name:         "transient bootdata failure is not memoized",
+			whoami:       whoamiNamespace("default"),
+			bootdata:     unavailable,
+			wantRequests: 2,
+		},
+		{
+			name:         "transient whoami failure is not memoized",
+			whoami:       unavailable,
+			bootdata:     nil,
+			wantRequests: 2,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, rec := newDiscoveryServer(t, tc.whoami, tc.bootdata)
+			ctx := config.Context{
+				Name:    "test",
+				Grafana: &config.GrafanaConfig{Server: srv.URL, APIToken: "tok", OrgID: 1},
+			}
+
+			for range 2 {
+				restCfg, err := config.NewNamespacedRESTConfig(t.Context(), ctx)
+				require.NoError(t, err)
+				assert.Equal(t, "default", restCfg.Namespace)
+			}
+			assert.Equal(t, tc.wantRequests, rec.snapshot().whoamiHits)
+			assert.Equal(t, tc.wantRequests, rec.snapshot().bootdataHits)
+		})
+	}
 }
