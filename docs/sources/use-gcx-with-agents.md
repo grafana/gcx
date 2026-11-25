@@ -39,6 +39,8 @@ The main differences between modes are the following:
 | Errors | A readable message on `stderr` | A JSON error document on `stdout` |
 | Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Allow destructive operations](#allow-destructive-operations). |
 
+Agent mode also writes data to `stdout` and hints and progress messages to `stderr`, so an agent can parse `stdout` without filtering. To get the same plain output outside agent mode, for example on a CI runner that reports a terminal, pass `--no-color` and `--no-truncate`.
+
 You can override these defaults with explicit flags. For example, `-o text` prints a table in agent mode, and `-o json` prints JSON without agent mode. For manual overrides and output details, refer to [Customize detection, output, and error handling](#customize-detection-output-and-error-handling).
 
 ## Install agent skills
@@ -88,6 +90,8 @@ gcx help-tree resources -o text
 gcx commands
 ```
 
+Commands follow the grammar `gcx <area> <noun> <verb>`, for example `gcx slo definitions list`, so an agent can predict commands it hasn't seen. Every command also has `--help` text with commented examples.
+
 ## Sign in for agents
 
 An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
@@ -117,6 +121,48 @@ Agent mode never approves a destructive operation by itself. Commands that requi
 `gcx resources delete` uses its own guard instead of a prompt: deleting every resource of a type requires `--force` or `--yes`.
 
 Ask your agent to check with you before it adds `--force`, and avoid setting `GCX_AUTO_APPROVE` in a shell that people also use.
+
+## Make agent runs predictable
+
+These features help an agent preview changes, retry safely, and detect incomplete results.
+
+### Preview changes with `--dry-run`
+
+Commands that change resources, such as `gcx resources push` and `gcx resources delete`, accept `--dry-run`. The command simulates the operation and reports what it would do, without making changes:
+
+```bash
+gcx resources push dashboards --dry-run
+```
+
+Not every command that changes data has `--dry-run`. Run `gcx <command> --help` to check.
+
+### Retry safely
+
+`gcx resources push` creates a resource if it doesn't exist and updates it if it does. An agent can run the same push again after a failure without creating duplicates.
+
+### Control batch failures
+
+When a command processes several resources, use `--on-error` to choose what happens when one fails:
+
+| Value | Behavior |
+| --- | --- |
+| `fail` (default) | Process all resources, then exit with code `4` if any failed. |
+| `ignore` | Process all resources and exit with code `0`. |
+| `abort` | Stop at the first error and exit with a non-zero code. |
+
+Use `--max-concurrent` to limit how many operations run at once. The default is 10.
+
+### Detect truncated lists
+
+List commands never truncate results silently. Use `--limit` to set the number of items to return, or `--limit 0` to return all items. For example, `gcx resources get` returns up to 50 items for each resource type by default.
+
+When a command returns only part of the results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output:
+
+```json
+"list_meta": {"truncated": true, "returned": 50, "continue": "gcx ... list --limit 100"}
+```
+
+The `continue` field contains the command to run next. If an agent sees `list_meta`, the result is incomplete.
 
 ## Customize detection, output, and error handling
 
@@ -195,6 +241,20 @@ In agent mode, a failed command writes one JSON error document to `stdout`, and 
 ```
 
 The `error` object can also include `details`, `suggestions`, and `docsLink`. When a batch operation partly succeeds, the document has the type `gcx.partial_result` and includes the successful `items` alongside the `error`.
+
+Use the process exit code to decide what to do next:
+
+| Code | Meaning | Typical agent response |
+| --- | --- | --- |
+| `0` | Success | Continue. |
+| `1` | General error | Read the error `summary` and `suggestions`. |
+| `2` | Usage error, such as a bad flag or selector | Fix the command. |
+| `3` | Authentication or authorization failure | Stop and ask the user to sign in or change permissions. |
+| `4` | Partial failure | Read the `gcx.partial_result` document and retry the failed items. |
+| `5` | Cancelled | Don't retry without asking the user. |
+| `6` | Grafana version not supported | Stop and report the version. |
+
+Run `gcx help exit-codes` for descriptions and examples of each code.
 
 To record failed agent-mode calls locally for debugging, enable `diagnostics.agent-invocation-log` in your [configuration](../configuration/#configuration-reference):
 
