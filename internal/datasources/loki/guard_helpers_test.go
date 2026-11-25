@@ -20,7 +20,7 @@ func newGuardTestServer(t *testing.T, indexStatsRequests, otherRequests *int) *h
 	t.Helper()
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/bootdata":
+		case (r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		// Checked before the datasource-lookup prefix below: the index-stats
 		// path also starts with "/api/datasources/uid/".

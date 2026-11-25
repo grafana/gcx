@@ -162,7 +162,7 @@ func TestQueryCmd_ErrorOnEmptyPprofValidationRunsBeforeConfigIO(t *testing.T) {
 func TestQueryCmd_DotV1FallbackErrorOnEmpty(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		case "/api/datasources/uid/pyro-uid":

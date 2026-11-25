@@ -75,7 +75,7 @@ func newReadOnlyCommandFixture(t *testing.T, kind string) *readOnlyCommandFixtur
 		}
 		var result any
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.NotFound(w, r)
 			return
 		case "/api":

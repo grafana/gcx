@@ -97,7 +97,7 @@ func TestProfileDiffCmd_RequestOutputAndLinks(t *testing.T) {
 	bodies := make(chan map[string]map[string]string, 8)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.NotFound(w, r)
 		case "/api/datasources/uid/pyro-uid":
 			_, _ = w.Write([]byte(`{"uid":"pyro-uid","type":"grafana-pyroscope-datasource"}`))

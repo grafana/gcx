@@ -456,7 +456,7 @@ func kgRegressionServer(t *testing.T) *httptest.Server {
 			w.WriteHeader(http.StatusOK)
 		case strings.Contains(r.URL.Path, "grafana-asserts-app/resources"):
 			w.WriteHeader(http.StatusNotFound)
-		case r.URL.Path == "/bootdata":
+		case (r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		default:
 			w.Header().Set("Content-Type", "application/json")

@@ -48,7 +48,7 @@ func newSearchTestRoot(t *testing.T, ndjson string) (*cobra.Command, *bytes.Buff
 		capturedQuery url.Values
 	)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}
@@ -754,7 +754,7 @@ func TestSearchMetricNamesCmd_FeatureNotEnabled(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/bootdata" {
+				if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 					http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 					return
 				}
@@ -819,7 +819,7 @@ func TestSearchMetricNamesCmd_ExposesHasMoreAsListMeta(t *testing.T) {
 	}, "\n") + "\n"
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}
@@ -861,7 +861,7 @@ func TestSearchMetricNamesCmd_LimitZeroTruncatedIsCapBoundedNotContinuable(t *te
 	}, "\n") + "\n"
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}
@@ -903,7 +903,7 @@ func TestSearchMetricNamesCmd_IncompleteStreamWithPositiveLimitIsCapBounded(t *t
 	ndjson := `{"results":[{"name":"up"},{"name":"up2"}]}` + "\n"
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}
@@ -941,7 +941,7 @@ func TestSearchMetricNamesCmd_CompleteResultSetHasNoListMeta(t *testing.T) {
 	}, "\n") + "\n"
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
+		if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}
@@ -1000,7 +1000,7 @@ func TestSearchMetricNamesCmd_EmitsWarningsToStderr(t *testing.T) {
 			ndjson := strings.Join(tc.frames, "\n") + "\n"
 
 			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/bootdata" {
+				if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 					http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 					return
 				}

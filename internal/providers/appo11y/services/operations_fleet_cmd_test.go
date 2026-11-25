@@ -243,7 +243,7 @@ func TestFleetOperationsList_KGAnnotationIsOneBulkCall(t *testing.T) {
 			searchHits++
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":{"entities":[{"type":"Service","name":"checkout"}],"lastPage":true}}`))
-		case r.URL.Path == "/bootdata":
+		case (r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		default:
 			w.Header().Set("Content-Type", "application/json")
@@ -310,7 +310,7 @@ func TestFleetOperationsList_GroupByLimitTruncates(t *testing.T) {
 		switch r.URL.Path {
 		case activationEndpoint:
 			w.WriteHeader(http.StatusOK)
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		default:
 			w.Header().Set("Content-Type", "application/json")

@@ -468,7 +468,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	})
 
 	// Persist the cloud stack ID discovered while building the REST config so
-	// subsequent commands resolve the namespace locally and skip the /bootdata
+	// subsequent commands resolve the namespace locally and skip the discovery
 	// round-trip. On-prem (org) namespaces yield 0 and are left unset. Done
 	// before validation so it also applies on the --force save-anyway path.
 	if sid := restCfg.StackID(); sid != 0 {
@@ -713,7 +713,7 @@ func tlsAwareClient(ctx context.Context, tlsCfg *config.TLS) (*http.Client, erro
 //
 // For on-prem targets, OrgID defaults to 1 when unset. This keeps fresh
 // on-prem logins from tripping over config.GrafanaConfig.validateNamespace
-// (which attempts DiscoverStackID against /bootdata and hard-fails on OSS).
+// (which attempts stack discovery and hard-fails on OSS).
 func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (string, *config.GrafanaConfig, error) {
 	// Cache hit: StagedContext already has Grafana resolved (previous
 	// retry), reuse without re-running OAuth/token auth.
@@ -822,7 +822,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 	}
 
 	// Default OrgID=1 for fresh on-prem logins. Without this, validateNamespace
-	// calls DiscoverStackID (hits /bootdata) which fails on OSS Grafana and
+	// runs stack discovery (whoami, then /bootdata), which fails on OSS Grafana and
 	// produces a confusing hard error on an otherwise valid setup. Cloud
 	// logins leave OrgID=0 so StackID discovery runs normally.
 	if target == TargetOnPrem && grafanaCfg.OrgID == 0 {
