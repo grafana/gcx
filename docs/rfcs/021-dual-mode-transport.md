@@ -95,7 +95,7 @@ The canonical surface stays `gcx synthetic-monitoring checks|probes …`. No new
   (proxy, `cfg.Host`) and `httputils.NewDefaultClient` (direct, external domain).
   This is a documented carve-out to the CONSTITUTION "external APIs use httputils"
   invariant; both usages remain consistent with that rule's `cfg.Host`-vs-external
-  logic. Adaptive Metrics rules now follows the same split; see ARCHITECTURE.md.
+  logic. Adaptive Metrics rules now follows the same split; see CONSTITUTION.md.
 - `register/install` token acquisition stays on the direct/fallback path; it is
   not proxied (only `register/save` and `register/viewer-token` are).
 
