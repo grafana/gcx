@@ -17,7 +17,9 @@ weight: 9
 
 # Use `gcx` with AI agents
 
-Both people and AI coding agents use the same `gcx` commands. However, when `gcx` detects that an agent is running it, it switches to agent mode, which has different defaults, such as the output format and how confirmation prompts behave. 
+With `gcx`, your AI coding agent can use production data to troubleshoot issues and make better implementation decisions. For example, the agent can examine traces alongside your code to identify which operation to optimize, or ask Grafana Assistant to investigate a potential issue.
+
+Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to [agent mode](#how-agent-mode-works).
 
 ## Before you begin
 
