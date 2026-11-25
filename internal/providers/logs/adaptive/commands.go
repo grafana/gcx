@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
@@ -460,10 +461,10 @@ func (c *patternsTableCodec) writePatternRow(t *style.TableBuilder, rec LogRecom
 }
 
 func truncate(s string, limit int) string {
-	if len(s) <= limit {
+	if utf8.RuneCountInString(s) <= limit {
 		return s
 	}
-	return s[:limit-3] + "..."
+	return string([]rune(s)[:limit-3]) + "..."
 }
 
 // rightAlign left-pads s with spaces so the string has byte length width (for tabular numeric columns).

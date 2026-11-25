@@ -1529,8 +1529,8 @@ func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
 			recConfigID = *s.RecommendationConfigurationID
 		}
 		selector := s.Selector
-		if !c.wide && len(selector) > 60 {
-			selector = selector[:57] + "..."
+		if r := []rune(selector); !c.wide && len(r) > 60 {
+			selector = string(r[:57]) + "..."
 		}
 		if c.wide {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%s\n",
