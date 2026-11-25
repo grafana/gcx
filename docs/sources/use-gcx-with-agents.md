@@ -21,12 +21,14 @@ With `gcx`, your AI coding agent can use production data to troubleshoot issues 
 
 Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to **agent mode**.
 
+Agent mode **reduces token usage**. `gcx` keeps output compact, lets the agent request only the fields it needs, and keeps large results out of the agent's context window.
+
 
 ## How agent mode works
 
 `gcx` turns on agent mode automatically when it finds an environment variable set by a supported agent tool, such as Claude Code, Cursor, GitHub Copilot, Codex, or Gemini CLI.
 
-The main differences between modes are the following:
+The main differences between modes are the following. Most of them reduce the tokens an agent spends reading output:
 
 | | Without agent mode | In agent mode |
 | --- | --- | --- |
@@ -170,11 +172,11 @@ Ask your agent to check with you before it adds `--force`, and avoid setting `GC
 
 ## How agents read `gcx` output
 
-In agent mode, `gcx` returns structured output that agents can parse, and tells them when a result is incomplete or a command failed. It writes data to `stdout` and status messages and hints to `stderr`, so an agent can parse `stdout` without filtering.
+In agent mode, `gcx` returns compact, structured output that agents can parse without spending tokens on formatting, and tells them when a result is incomplete or a command failed. It writes data to `stdout` and status messages and hints to `stderr`, so an agent can parse `stdout` without filtering.
 
 ### Select fields and filter results
 
-Agents can shape the output inside `gcx` with `--json` and `--jq`, instead of piping it to other tools. This keeps unneeded data out of the agent's context:
+Agents can shape the output inside `gcx` with `--json` and `--jq`, instead of piping it to other tools. This saves tokens by keeping unneeded data out of the agent's context:
 
 ```bash
 # List the fields that the command can return
@@ -191,7 +193,7 @@ When an agent doesn't use these flags, `gcx` prints a one-line hint to `stderr` 
 
 ### Detect incomplete lists
 
-List commands never truncate results silently. The `--limit` flag sets how many items a command returns, and `--limit 0` returns all items. For example, `gcx resources get` returns up to 50 items for each resource type by default.
+List commands never truncate results silently. The `--limit` flag sets how many items a command returns, and `--limit 0` returns all items. For example, `gcx resources get` returns up to 50 items for each resource type by default, which keeps results small.
 
 When a command returns only part of the results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output, so an agent can tell that the result is incomplete and which command to run next:
 
@@ -201,7 +203,7 @@ When a command returns only part of the results, it prints a hint to `stderr` wi
 
 ### Handle large results
 
-When a result is larger than 100 KiB, `gcx` writes the full result to a temporary file named `gcx-results-*.json` and prints a short receipt to `stdout` instead:
+A large result can fill an agent's context window. When a result is larger than 100 KiB, `gcx` writes the full result to a temporary file named `gcx-results-*.json` and prints a short receipt to `stdout` instead:
 
 ```json
 {
