@@ -58,7 +58,7 @@ func newVersionListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		}
 		return runVersionList(cmd, client, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "medium"
 	cmd.Annotations[agent.AnnotationLLMHint] = "One retained-history page; narrow with --limit and --json version,createdAt,changeSummary. Coverage and the continuation cursor remain visible under field selection."
 	opts.setup(cmd.Flags())
@@ -80,7 +80,7 @@ func parseVersion(name, value string) (int64, error) {
 }
 func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{Use: "versions", Short: "Inspect, compare and restore retained Watcher definitions.", Long: "Read retained finalized definitions and compare their definition fields. Restore requires a non-archived inactive Watcher (draft, paused or ready) and an explicit current-version guard; it never starts monitoring."}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.AddCommand(newVersionGetCommand(loader), newVersionDiffCommand(loader), newVersionRestoreCommand(loader))
 	return cmd
 }
@@ -104,7 +104,7 @@ func newVersionGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		}
 		return runVersionGet(cmd, client, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "large"
 	cmd.Annotations[agent.AnnotationLLMHint] = "One retained definition may contain many checks; prefer list-versions for summaries or --json version.version,version.changeSummary for metadata."
 	opts.setup(cmd.Flags())
@@ -139,7 +139,7 @@ func newVersionDiffCommand(loader *providers.ConfigLoader) *cobra.Command {
 		}
 		return runVersionDiff(cmd, client, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "large"
 	cmd.Annotations[agent.AnnotationLLMHint] = "Compares only two retained definitions; large changed arrays can produce large output. Use --json path,operation to narrow each change while retaining version and definition-only scope metadata."
 	opts.setup(cmd.Flags())
@@ -189,7 +189,7 @@ func newVersionRestoreCommand(loader *providers.ConfigLoader) *cobra.Command {
 		}
 		return runVersionRestore(cmd, client, opts)
 	}}
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "medium"
 	cmd.Annotations[agent.AnnotationLLMHint] = "Requires inactive draft/paused/ready state and the caller's current-version guard. Reports saved versus uncertain restore and readback separately; inspect status/history before retrying an uncertain result."
 	opts.setup(cmd.Flags())
