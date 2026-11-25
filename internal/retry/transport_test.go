@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -65,6 +66,39 @@ func TestTransport_429WithRetryAfterSeconds(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, int32(2), attempts.Load())
+}
+
+func TestTransport_429WithHugeRetryAfterWaitsForCap(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) == 1 {
+			// More seconds than a time.Duration can hold.
+			w.Header().Set("Retry-After", "10000000000")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	const maxRetryAfter = 300 * time.Millisecond
+	client := &http.Client{
+		Transport: &retry.Transport{
+			Base:          http.DefaultTransport,
+			MinBackoff:    time.Millisecond,
+			MaxBackoff:    2 * time.Millisecond,
+			MaxRetryAfter: maxRetryAfter,
+		},
+	}
+
+	start := time.Now()
+	resp, err := client.Do(newGetRequest(t, srv.URL))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, int32(2), attempts.Load())
+	assert.GreaterOrEqual(t, time.Since(start), maxRetryAfter-50*time.Millisecond)
 }
 
 func TestTransport_429WithRetryAfterHTTPDate(t *testing.T) {
@@ -409,6 +443,7 @@ func TestParseRetryAfter(t *testing.T) {
 		{name: "zero seconds", val: "0", want: 0},
 		{name: "negative", val: "-1", want: 0},
 		{name: "garbage", val: "not-a-number", want: 0},
+		{name: "overflows duration", val: "10000000000", want: math.MaxInt64},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
