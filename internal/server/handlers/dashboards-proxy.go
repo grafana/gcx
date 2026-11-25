@@ -12,11 +12,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -225,7 +225,7 @@ func (c *DashboardProxy) dashboardJSONPostHandler() http.HandlerFunc {
 			return
 		}
 
-		metaAccessor, _ := utils.MetaAccessor(object)
+		metaAccessor, _ := grafanameta.MetaAccessor(object)
 		resource.Raw = metaAccessor
 
 		httputils.WriteJSON(r, w, object)

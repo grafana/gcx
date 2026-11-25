@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
+	"github.com/grafana/gcx/internal/grafanameta"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -16,7 +16,7 @@ import (
 const (
 	// ResourceManagerKind is the manager kind used for gcx.
 	// TODO: change once we have a proper manager kind for gcx.
-	ResourceManagerKind = utils.ManagerKindKubectl
+	ResourceManagerKind = grafanameta.ManagerKindKubectl
 	// AnnotationSavedFromUI is the annotation key for resources saved from the UI.
 	// TODO: move this to grafana/grafana.
 	AnnotationSavedFromUI = "grafana.app/saved-from-ui"
@@ -30,7 +30,7 @@ type ResourceRef string
 
 // Resource is a resource in the Grafana API.
 type Resource struct {
-	Raw    utils.GrafanaMetaAccessor
+	Raw    *grafanameta.Accessor
 	Object unstructured.Unstructured
 	Source SourceInfo
 }
@@ -55,7 +55,7 @@ func MustFromUnstructured(obj *unstructured.Unstructured) *Resource {
 
 // FromUnstructured creates a new Resource from an unstructured object.
 func FromUnstructured(obj *unstructured.Unstructured) (*Resource, error) {
-	meta, err := utils.MetaAccessor(obj)
+	meta, err := grafanameta.MetaAccessor(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (r *Resource) IsEmpty() bool {
 
 // SetUnstructured sets the resource to the given unstructured object.
 func (r *Resource) SetUnstructured(obj *unstructured.Unstructured) error {
-	metaAccessor, err := utils.MetaAccessor(obj)
+	metaAccessor, err := grafanameta.MetaAccessor(obj)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,7 @@ func (r *Resource) IsManaged() bool {
 }
 
 // GetManagerKind returns the kind of the manager that manages the resource.
-func (r *Resource) GetManagerKind() utils.ManagerKind {
+func (r *Resource) GetManagerKind() grafanameta.ManagerKind {
 	m, ok := r.Raw.GetManagerProperties()
 	if !ok {
 		// If the manager properties are not set,
