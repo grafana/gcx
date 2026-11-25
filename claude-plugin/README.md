@@ -190,7 +190,7 @@ queries before reporting the result.
 > "Make me a one-page report on checkout errors this week that I can share with the team."
 
 Claude will invoke `grafana-pages`, check that the stack has Pages, discover the
-datasources and queries, start a page with `gcx pages create`, write
+datasources and queries, start a page with `gcx pages drafts create`, write
 its bindings and React code, build it with `push`, look at a `snapshot`, and
 hand back the draft link, publishing only when asked.
 

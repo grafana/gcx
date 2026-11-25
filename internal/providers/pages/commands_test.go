@@ -135,12 +135,12 @@ func TestListPagesReportsADegradedCatalogAsPartial(t *testing.T) {
 
 func TestInvalidFlagsAreUsageErrors(t *testing.T) {
 	for _, args := range [][]string{
-		{"snapshot", "--width", "100"},
-		{"list", "--limit", "-1"},
-		{"create", "--title", ""},
-		{"publish", "--folder", "ops", "--unlisted"},
-		{"pull", "page-1", "--force"},
-		{"get", "page-1", "-o", "xml"},
+		{"drafts", "snapshot", "--width", "100"},
+		{"catalog", "list", "--limit", "-1"},
+		{"drafts", "create", "--title", ""},
+		{"drafts", "publish", "--folder", "ops", "--unlisted"},
+		{"drafts", "pull", "page-1", "--force"},
+		{"catalog", "get", "page-1", "-o", "xml"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			cmd := Commands()

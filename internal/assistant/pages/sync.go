@@ -376,7 +376,7 @@ func (c *Client) finishPending(ctx context.Context, link *Link) error {
 			return nil
 		}
 		link.PendingCandidate = ""
-		return errors.New("the version an earlier push built was replaced by a newer build of the draft; pull the draft with gcx pages pull --dir, or change a file and push again")
+		return errors.New("the version an earlier push built was replaced by a newer build of the draft; pull the draft with gcx pages drafts pull --dir, or change a file and push again")
 	}
 	return fmt.Errorf("the conversation no longer has page %s (%s)", link.PageID, link.Title)
 }
@@ -406,7 +406,7 @@ func (c *Client) PublishDraft(ctx context.Context, dir string, link *Link, meta 
 		return nil, errNoDraft
 	}
 	if link.PendingCandidate != "" {
-		return nil, fmt.Errorf("the last push built a version that is not the draft's version yet; run gcx pages push --dir %s to finish it, then publish", dir)
+		return nil, fmt.Errorf("the last push built a version that is not the draft's version yet; run gcx pages drafts push --dir %s to finish it, then publish", dir)
 	}
 	req := PublishRequest{PageID: link.PageID, ReleaseID: link.ReleaseID, Metadata: meta, Sharing: sharing}
 	if link.Publication != nil {

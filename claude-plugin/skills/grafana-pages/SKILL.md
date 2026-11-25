@@ -32,7 +32,7 @@ and needs no hosting or API keys. Check first:
 
 ```bash
 gcx config current-context
-gcx pages list --section mine --limit 1
+gcx pages catalog list --section mine --limit 1
 ```
 
 Fall back to an artifact or a file, and say why in one sentence, when no context
@@ -70,8 +70,8 @@ don't:
 | `AGENTS.md` says | Through gcx |
 |------------------|-------------|
 | `pnpm add` a package | Not possible; use what `package.json` has |
-| `pages create`, `pages rename`, `pages build` | `gcx pages create`; rename with `metadata.name` in `page.json`; `push` builds |
-| The screenshot tool, `pages perf` | `gcx pages snapshot`; no performance probe |
+| `pages create`, `pages rename`, `pages build` | `gcx pages drafts create`; rename with `metadata.name` in `page.json`; `push` builds |
+| The screenshot tool, `pages perf` | `gcx pages drafts snapshot`; no performance probe |
 | `grafana_exec`, the demo browser, `/workspace/.attachments` | Not available; find data with gcx, copy files into `src/assets/` yourself |
 
 ## Workflow
@@ -79,19 +79,19 @@ don't:
 **1. Start or pull the project.**
 
 ```bash
-gcx pages create --title "Checkout health" --dir ./checkout-health
-gcx pages pull <page-id-or-url> --dir ./checkout-health-copy
+gcx pages drafts create --title "Checkout health" --dir ./checkout-health
+gcx pages drafts pull <page-id-or-url> --dir ./checkout-health-copy
 ```
 
 `create` opens a private draft in a new conversation, builds the starter and
 writes the whole project, with `.gcx-page.json` linking it to the draft; keep
 that file. `pull` only reads: it writes a published page's source (find the
-page with `gcx pages list --section mine`) as text, without the SDK under
-`packages/` and the stylesheets, which stay on the stack; don't recreate them.
-The first `push` from that directory builds a draft from the page, and
+page with `gcx pages catalog list --section mine`) as text, without the SDK
+under `packages/` and the stylesheets, which stay on the stack; don't recreate
+them. The first `push` from that directory builds a draft from the page, and
 publishing the draft makes your changes the page's next version. After that
-push, `gcx pages pull --dir <dir>` downloads the draft's whole project; it also
-refreshes a draft that changed in Grafana. A copy of another person's page
+push, `gcx pages drafts pull --dir <dir>` downloads the draft's whole project;
+it also refreshes a draft that changed in Grafana. A copy of another person's page
 leaves out their `AGENTS.md`, skills and SDK Markdown docs, listed under
 `omitted`. Don't copy a page with `gcx resources pull` and `push`: its `Page`
 objects hold only the catalog details, not the page.
@@ -115,7 +115,7 @@ every build sees what the next one imports.
 **4. Push to build.**
 
 ```bash
-gcx pages push --dir ./checkout-health
+gcx pages drafts push --dir ./checkout-health
 ```
 
 Push sends the changed files and the stack type-checks and builds the page.
@@ -127,8 +127,8 @@ the build.
 **5. Snapshot and look.**
 
 ```bash
-gcx pages snapshot --dir ./checkout-health --output-dir ./snapshots
-gcx pages snapshot --dir ./q3-review --theme light --click '[aria-label="Next slide"]' --output-dir ./snapshots
+gcx pages drafts snapshot --dir ./checkout-health --output-dir ./snapshots
+gcx pages drafts snapshot --dir ./q3-review --theme light --click '[aria-label="Next slide"]' --output-dir ./snapshots
 ```
 
 Open the image; don't only report its path. Check the title and scope,
@@ -142,8 +142,8 @@ image.
 shows, how to use it and its limits.
 
 ```bash
-gcx pages publish --dir ./checkout-health --folder <folder-uid> --category report
-gcx pages publish --dir ./checkout-health --unlisted --link-sharing
+gcx pages drafts publish --dir ./checkout-health --folder <folder-uid> --category report
+gcx pages drafts publish --dir ./checkout-health --unlisted --link-sharing
 ```
 
 `publish` returns the page's `url`, the link to share. A new page needs

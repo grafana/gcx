@@ -128,7 +128,7 @@ func ReadLink(dir string) (*Link, error) {
 	defer root.Close()
 	link, err := readLink(root)
 	if errors.Is(err, errNotLinked) {
-		return nil, fmt.Errorf("%s has no %s; start a page with gcx pages create --dir %s, or pull one with gcx pages pull PAGE --dir %s", dir, LinkFile, dir, dir)
+		return nil, fmt.Errorf("%s has no %s; start a page with gcx pages drafts create --dir %s, or pull one with gcx pages drafts pull PAGE --dir %s", dir, LinkFile, dir, dir)
 	}
 	return link, err
 }

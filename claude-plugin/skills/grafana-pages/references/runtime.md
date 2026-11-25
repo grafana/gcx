@@ -1,6 +1,6 @@
 # How a Grafana Page is built and run
 
-What happens between `gcx pages push` and a viewer seeing the page,
+What happens between `gcx pages drafts push` and a viewer seeing the page,
 so you can tell a code problem from a platform rule. The SDK hides the bridge:
 pages call SDK functions, never `postMessage` themselves. How queries and
 bindings work is in [data.md](data.md).

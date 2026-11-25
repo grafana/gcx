@@ -24,10 +24,15 @@ func TestProviderRegistration(t *testing.T) {
 	assert.Equal(t, agent.StabilityExperimental, root.Annotations[agent.AnnotationStability])
 	assert.NotNil(t, root.PersistentFlags().Lookup("config"), "--config is bound on the group")
 
-	names := make([]string, 0, len(root.Commands()))
-	for _, sub := range root.Commands() {
-		names = append(names, sub.Name())
-		assert.Equal(t, agent.StabilityExperimental, sub.Annotations[agent.AnnotationStability], sub.Name())
+	tree := map[string][]string{}
+	for _, group := range root.Commands() {
+		assert.Equal(t, agent.StabilityExperimental, group.Annotations[agent.AnnotationStability], group.Name())
+		for _, sub := range group.Commands() {
+			tree[group.Name()] = append(tree[group.Name()], sub.Name())
+			assert.Equal(t, agent.StabilityExperimental, sub.Annotations[agent.AnnotationStability], group.Name()+" "+sub.Name())
+		}
 	}
-	assert.ElementsMatch(t, []string{"list", "get", "create", "pull", "push", "snapshot", "publish"}, names)
+	assert.Len(t, tree, 2)
+	assert.ElementsMatch(t, []string{"list", "get"}, tree["catalog"], "published pages")
+	assert.ElementsMatch(t, []string{"create", "pull", "push", "snapshot", "publish"}, tree["drafts"], "local projects")
 }
