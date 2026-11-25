@@ -1,0 +1,93 @@
+{
+  "folders": [
+    {
+      "name": "apps",
+      "title": "Applications",
+      "created": "2026-01-01T12:00:00Z",
+      "updated": "2026-01-01T12:00:00Z",
+      "folders": [],
+      "dashboards": [
+        {
+          "name": "ha",
+          "title": "Home Assistant",
+          "created": "2026-01-06T12:00:00Z",
+          "updated": "2026-01-20T12:00:00Z"
+        },
+        {
+          "name": "static",
+          "title": "Static Pages / Overview",
+          "created": "2026-01-07T12:00:00Z",
+          "updated": "2026-01-08T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "infra",
+      "title": "Infrastructure",
+      "created": "2026-01-02T12:00:00Z",
+      "updated": "2026-01-02T12:00:00Z",
+      "folders": [
+        {
+          "name": "ceph",
+          "title": "Ceph",
+          "created": "2026-01-03T12:00:00Z",
+          "updated": "2026-01-03T12:00:00Z",
+          "folders": [],
+          "dashboards": [
+            {
+              "name": "ceph-cluster",
+              "title": "Ceph - Cluster",
+              "created": "2026-01-09T12:00:00Z",
+              "updated": "2026-01-09T12:00:00Z"
+            },
+            {
+              "name": "osd",
+              "title": "OSD Overview",
+              "created": "2026-01-10T12:00:00Z",
+              "updated": "2026-01-30T12:00:00Z"
+            }
+          ]
+        },
+        {
+          "name": "pi",
+          "title": "Raspberry Pi",
+          "created": "2026-01-04T12:00:00Z",
+          "updated": "2026-01-04T12:00:00Z",
+          "folders": [],
+          "dashboards": [
+            {
+              "name": "fleet",
+              "title": "Raspberry Pi Fleet",
+              "created": "2026-01-11T12:00:00Z",
+              "updated": "2026-01-11T12:00:00Z"
+            }
+          ]
+        }
+      ],
+      "dashboards": [
+        {
+          "name": "tailscale",
+          "title": "Tailscale",
+          "created": "2026-01-12T12:00:00Z",
+          "updated": "2026-01-12T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "k6",
+      "title": "Performance Testing",
+      "created": "2026-01-05T12:00:00Z",
+      "updated": "2026-01-05T12:00:00Z",
+      "folders": [],
+      "dashboards": []
+    }
+  ],
+  "dashboards": [
+    {
+      "name": "incidents",
+      "title": "Incident Insights",
+      "created": "2026-01-13T12:00:00Z",
+      "updated": "2026-01-13T12:00:00Z"
+    }
+  ]
+}

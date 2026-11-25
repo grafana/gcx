@@ -1,0 +1,60 @@
+dashboards:
+- created: "2026-01-13T12:00:00Z"
+  name: incidents
+  title: Incident Insights
+  updated: "2026-01-13T12:00:00Z"
+folders:
+- created: "2026-01-01T12:00:00Z"
+  dashboards:
+  - created: "2026-01-06T12:00:00Z"
+    name: ha
+    title: Home Assistant
+    updated: "2026-01-20T12:00:00Z"
+  - created: "2026-01-07T12:00:00Z"
+    name: static
+    title: Static Pages / Overview
+    updated: "2026-01-08T12:00:00Z"
+  folders: []
+  name: apps
+  title: Applications
+  updated: "2026-01-01T12:00:00Z"
+- created: "2026-01-02T12:00:00Z"
+  dashboards:
+  - created: "2026-01-12T12:00:00Z"
+    name: tailscale
+    title: Tailscale
+    updated: "2026-01-12T12:00:00Z"
+  folders:
+  - created: "2026-01-03T12:00:00Z"
+    dashboards:
+    - created: "2026-01-09T12:00:00Z"
+      name: ceph-cluster
+      title: Ceph - Cluster
+      updated: "2026-01-09T12:00:00Z"
+    - created: "2026-01-10T12:00:00Z"
+      name: osd
+      title: OSD Overview
+      updated: "2026-01-30T12:00:00Z"
+    folders: []
+    name: ceph
+    title: Ceph
+    updated: "2026-01-03T12:00:00Z"
+  - created: "2026-01-04T12:00:00Z"
+    dashboards:
+    - created: "2026-01-11T12:00:00Z"
+      name: fleet
+      title: Raspberry Pi Fleet
+      updated: "2026-01-11T12:00:00Z"
+    folders: []
+    name: pi
+    title: Raspberry Pi
+    updated: "2026-01-04T12:00:00Z"
+  name: infra
+  title: Infrastructure
+  updated: "2026-01-02T12:00:00Z"
+- created: "2026-01-05T12:00:00Z"
+  dashboards: []
+  folders: []
+  name: k6
+  title: Performance Testing
+  updated: "2026-01-05T12:00:00Z"

@@ -1,0 +1,9 @@
+https://example.grafana.net
+├── Incident Insights
+├── Applications
+│   ├── Home Assistant
+│   └── Static Pages / Overview
+├── Infrastructure  [3 entries exceed the file limit, not opening folder]
+└── Performance Testing
+
+3 folders, 3 dashboards

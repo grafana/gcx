@@ -242,6 +242,7 @@
  "gcx dashboards list-versions": "finite",
  "gcx dashboards search": "finite",
  "gcx dashboards snapshot": "finite",
+ "gcx dashboards tree": "finite",
  "gcx dashboards update": "finite",
  "gcx dashboards versions restore": "finite",
  "gcx datasources athena describe-table": "finite",

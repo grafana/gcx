@@ -29,6 +29,7 @@ func commands() []*cobra.Command {
 	loader.BindFlags(dashCmd.PersistentFlags())
 
 	dashCmd.AddCommand(newListCommand(loader))
+	dashCmd.AddCommand(newTreeCommand(loader))
 	dashCmd.AddCommand(newGetCommand(loader))
 	dashCmd.AddCommand(newCreateCommand(loader))
 	dashCmd.AddCommand(newUpdateCommand(loader))

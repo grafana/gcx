@@ -51,7 +51,7 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../cli-reference/#gcx-alert), [`gcx resources`](../cli-reference/#gcx-resources) | <ul><li>[Lint resources](./lint-resources/)</li><li>[Use gcx to manage alerting resources](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/alerting/set-up/provision-alerting-resources/gcx-provisioning/)</li></ul> |
 | **Annotations** | Annotations on dashboards and panels, organization-wide annotations, and annotation tags | [`gcx annotations`](../cli-reference/#gcx-annotations) | |
 | **Application Observability** | Monitored services and their settings | [`gcx appo11y`](../cli-reference/#gcx-appo11y) | |
-| **Dashboards** | Dashboards, their version history, and rendered snapshots | [`gcx dashboards`](../cli-reference/#gcx-dashboards), [`gcx resources`](../cli-reference/#gcx-resources) | <ul><li>[Dashboards as code](./dashboards-as-code/)</li><li>[Lint resources](./lint-resources/)</li></ul> |
+| **Dashboards** | Dashboards, their folder hierarchy, version history, and rendered snapshots | [`gcx dashboards`](../cli-reference/#gcx-dashboards), [`gcx resources`](../cli-reference/#gcx-resources) | <ul><li>[Dashboards as code](./dashboards-as-code/)</li><li>[Lint resources](./lint-resources/)</li></ul> |
 | **Data sources** | Data source configurations and health checks | [`gcx datasources`](../cli-reference/#gcx-datasources) | |
 | **Database Observability** | Monitored database instances | [`gcx dbo11y`](../cli-reference/#gcx-dbo11y) | |
 | **Fleet Management** | Collectors and configuration pipelines | [`gcx fleet`](../cli-reference/#gcx-fleet) | |

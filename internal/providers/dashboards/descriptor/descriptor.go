@@ -63,3 +63,29 @@ func Resolve(ctx context.Context, cfg config.NamespacedRESTConfig, apiVersion st
 
 	return filters[0].Descriptor, nil
 }
+
+// ResolveFolders resolves the Kubernetes resource descriptor for the folder
+// resource at the server's preferred version. Dashboard commands use it when
+// they need folder metadata (titles, parents) alongside dashboards.
+func ResolveFolders(ctx context.Context, cfg config.NamespacedRESTConfig) (resources.Descriptor, error) {
+	reg, err := discovery.NewDefaultRegistry(ctx, cfg)
+	if err != nil {
+		return resources.Descriptor{}, fmt.Errorf("discovery failed: %w", err)
+	}
+
+	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
+		Selectors: resources.Selectors{{
+			Type:             resources.FilterTypeAll,
+			GroupVersionKind: resources.PartialGVK{Group: "folder.grafana.app", Resource: "folders"},
+		}},
+		PreferredVersionOnly: true,
+	})
+	if err != nil {
+		return resources.Descriptor{}, fmt.Errorf("server does not expose the folders resource: %w", err)
+	}
+	if len(filters) == 0 {
+		return resources.Descriptor{}, errors.New("server does not expose the folders resource")
+	}
+
+	return filters[0].Descriptor, nil
+}

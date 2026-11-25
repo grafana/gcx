@@ -1,0 +1,15 @@
+https://example.grafana.net
+├── Applications
+│   ├── Home Assistant
+│   └── Static Pages / Overview
+├── Infrastructure
+│   ├── Ceph
+│   │   ├── Ceph - Cluster
+│   │   └── OSD Overview
+│   ├── Raspberry Pi
+│   │   └── Raspberry Pi Fleet
+│   └── Tailscale
+├── Performance Testing
+└── Incident Insights
+
+5 folders, 7 dashboards
