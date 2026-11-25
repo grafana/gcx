@@ -38,7 +38,17 @@ CONFIGS = ("without-graph", "with-graph")
 PER_CONFIG = {"runs", "correct", "partly", "wrong", "no_answer", "failed",
               "median_seconds", "median_output_tokens", "median_fresh_input_tokens",
               "median_gcx_calls", "median_graph_calls"}
-KNOWN_TYPES = {"callers", "dependencies", "blast-radius", "finding-the-right-system", "control"}
+def _template_types():
+    """Question types from the skill's own template, so the two can't drift apart.
+    The template ships with the skill, so its type names carry no user data."""
+    try:
+        with open(os.path.join(os.path.dirname(HERE), "questions.example.json")) as fh:
+            return {q["type"] for q in json.load(fh).get("questions", []) if isinstance(q.get("type"), str)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return set()
+
+
+KNOWN_TYPES = {"callers", "dependencies", "blast-radius", "finding-the-right-system", "control"} | _template_types()
 HEALTH = {"green", "amber", "red", "not-checked"}
 # Version and model strings are short and made of these characters only.
 SAFE_META = re.compile(r"^[A-Za-z0-9 ._:()/+\-]{0,200}$")

@@ -14,13 +14,24 @@ usage:
 
 Python 3.9+ and the standard library only.
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 KIT = os.path.dirname(os.path.abspath(__file__))
 WRAPPER_DIR = os.path.join(KIT, "bin")
 CONFIGS = ("without-graph", "with-graph")
+# gcx's error when its OAuth login can't be refreshed. A run that hit it couldn't
+# query the stack, so it is rerun next time instead of kept. Same pattern in score.py.
+LOGIN_EXPIRED = re.compile(r"token refresh failed: .{0,120}re-authentication required")
+
+
+def login_expired(stream_path):
+    try:
+        with open(stream_path) as fh:
+            return bool(LOGIN_EXPIRED.search(fh.read()))
+    except OSError:
+        return False
 
 FORMAT = {
     "set": "End your answer with the list you found, one item per line, between a line that says ANSWER and a line that says END.",
@@ -112,7 +123,9 @@ def run_one(job, spec, args, real_gcx):
     stream_path = os.path.join(runs_dir, run_id + ".stream.jsonl")
     meta_path = os.path.join(runs_dir, run_id + ".meta.json")
     if os.path.exists(meta_path) and not args.force:
-        return run_id, "skipped (already done)"
+        if not login_expired(stream_path):
+            return run_id, "skipped (already done)"
+        print(f"{run_id}: rerunning, the gcx login expired during the last attempt", flush=True)
     workdir = tempfile.mkdtemp(prefix="kgkit-")
     prompt = build_prompt(spec, q, config)
     env = child_env(real_gcx, config, os.path.join(runs_dir, run_id + ".gcx.log"), spec.get("gcx_context"), workdir)
@@ -153,7 +166,8 @@ def main():
                          "make more use of the graph, so a weaker one understates what it adds")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--parallel", type=int, default=1,
-                    help="runs at a time; keep at 1 on a production stack so the test doesn't add noticeable query load")
+                    help="runs at a time; keep at 1 on a production stack so the test doesn't add noticeable query load. "
+                         "At 2, gcx's OAuth login has been seen to expire mid-run and fail most runs")
     ap.add_argument("--pause", type=int, default=15, help="seconds to wait after each run, to spread query load")
     ap.add_argument("--budget-usd", type=float, default=3.0, help="hard cap per run")
     ap.add_argument("--timeout", type=int, default=1800, help="seconds per run")
@@ -168,6 +182,10 @@ def main():
                          "what the graph adds when used; available: say it exists and leave the choice to the agent; "
                          "none: say nothing, to test whether gcx's own help leads the agent to the graph")
     args = ap.parse_args()
+    # Each agent runs in its own temp directory, and the wrapper writes its log to a
+    # path under --out. A relative --out would resolve inside that temp directory, the
+    # log would never land, and score.py would discard every run as a leak.
+    args.out = os.path.abspath(args.out)
     SOURCES["with-graph"] = GRAPH_PROMPTS[args.graph_prompt]
 
     spec = json.load(open(args.questions))

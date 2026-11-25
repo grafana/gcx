@@ -16,8 +16,10 @@ Scoring, per run:
   partly    some must-include items are named and no must-not-include item is
   wrong     none of the must-include items, or any must-not-include item
   no answer the run ended without an ANSWER ... END block
-  failed    the agent process failed or timed out before answering
-Runs that reached the graph in the without-graph configuration are discarded.
+  failed    the agent process failed or timed out before answering, or gcx's
+            login expired during the run so it couldn't query the stack
+Runs that reached the graph in the without-graph configuration, or ran shell
+commands the wrapper didn't log, are discarded.
 
 Tokens: every run records input, output, cache-write and cache-read tokens.
 Totals are dominated by cache reads, which say little about effort, so the
@@ -28,6 +30,8 @@ from collections import defaultdict
 
 GRAPH_TOKENS = {"kg", "knowledge-graph"}
 DENIED = "Permission to use Bash has been denied"
+# gcx's error when its OAuth login can't be refreshed (same pattern in run.py)
+LOGIN_EXPIRED = re.compile(r"token refresh failed: .{0,120}re-authentication required")
 
 
 # ---------- reading one run ----------
@@ -102,7 +106,7 @@ def audit(commands, gcx_rows, config):
         "leak": False, "leak_reason": "",
     }
     if config == "without-graph" and out["gcx_graph_calls"]:
-        out["leak"], out["leak_reason"] = True, "graph command reached gcx"
+        out["leak"], out["leak_reason"] = True, "a graph command reached gcx"
     # a shell command that isn't gcx counts as a leak unless every part of it is a
     # read-only local helper (Claude Code allows these without asking, e.g. `which gcx`)
     safe = {"which", "echo", "ls", "pwd", "cat", "head", "tail", "grep", "wc", "sed", "sort", "uniq",
@@ -253,7 +257,10 @@ def read_runs(args, qs):
         aud = audit(commands, read_gcx_log(base + ".gcx.log"), meta["config"])
         q = qs[meta["question_id"]]
         text = (final or {}).get("result", "")
-        if final:
+        login_expired = any(LOGIN_EXPIRED.search(c["result"]) for c in commands)
+        if login_expired:
+            verdict, detail = "failed", {}  # it couldn't query the stack, so its answer says nothing
+        elif final:
             verdict, detail = score_answer(q, text)
         elif meta.get("status") in ("failed", "timeout"):
             verdict, detail = "failed", {}
@@ -264,7 +271,7 @@ def read_runs(args, qs):
         fresh = None
         if usage.get("input_tokens") is not None:
             fresh = (usage.get("input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)
-        runs.append({**meta, **aud, "verdict": verdict, "detail": detail,
+        runs.append({**meta, **aud, "verdict": verdict, "detail": detail, "login_expired": login_expired,
                      "seconds": ((final or {}).get("duration_ms") or meta["wall_seconds"] * 1000) / 1000,
                      "turns": (final or {}).get("num_turns"),
                      "model_id": (final or {}).get("model_id"),
@@ -293,6 +300,15 @@ def group(kept):
 
 def plural(n, word):
     return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def discarded_text(runs):
+    """Which runs were discarded and why, e.g. '1 with-graph run because more shell commands ran than the wrapper logged'."""
+    gone = defaultdict(int)
+    for r in runs:
+        if r["leak"]:
+            gone[(r["config"], r["leak_reason"].split(":")[0])] += 1
+    return "; ".join(f"{plural(n, c + ' run')} because {reason}" for (c, reason), n in sorted(gone.items()))
 
 
 def graph_used(per_q, qid):
@@ -392,13 +408,17 @@ def write_summary(path, spec, plan, health, qs, per_q, runs, kept):
     failed = sum(r["verdict"] == "failed" for r in runs)
     if failed:
         cav.append(f"- **{plural(failed, 'run')} failed** before answering, and {'is' if failed == 1 else 'are'} left out of time and tokens. Check `report.md` before reading the results.")
+    expired = sum(r.get("login_expired", False) for r in runs)
+    if expired:
+        cav.append(f"- **The gcx login expired in {plural(expired, 'run')}.** Run `gcx login`, then the same run.py command again: "
+                   "it reruns only those.")
     refused = [r for r in kept if r["config"] == "without-graph" and r.get("gcx_blocked")]
     if refused:
         n = sum(r["gcx_blocked"] for r in refused)
         cav.append(f"- **{plural(n, 'command')} refused in {plural(len(refused), 'without-graph run')}**, "
                    "where the agent reached for graph data. Each refusal costs a turn, which slows that side a little.")
     if len(runs) - len(kept):
-        cav.append(f"- **{plural(len(runs) - len(kept), 'without-graph run')} discarded** for reaching the graph.")
+        cav.append(f"- **{plural(len(runs) - len(kept), 'run')} discarded:** {discarded_text(runs)}. Discarded runs are left out of every count.")
     if health:
         cav.append(f"- **Graph health: {health['rating']}.** {health['summary']}")
         for p in health.get("groups", []):
@@ -443,8 +463,9 @@ def main():
     lines = [f"# Knowledge Graph agent test skill: full results", "",
              f"Stack: {spec.get('stack')}. Window: {spec['window']['from']} to {spec['window']['to']}.",
              f"Agent: Claude Code {plan.get('claude_version', '?')}, model {', '.join(sorted({r['model_id'] or plan.get('model', '?') for r in runs})) or plan.get('model', '?')}, effort {plan.get('effort', '?')}. gcx: {plan.get('gcx_version', '?')}. Graph prompt: {plan.get('graph_prompt', '?')}.",
-             f"Runs: {len(runs)} recorded, {len(runs) - len(kept)} discarded for reaching the graph in the without-graph configuration, "
-             f"{sum(r['verdict'] == 'failed' for r in runs)} failed.", ""]
+             f"Runs: {len(runs)} recorded, {len(runs) - len(kept)} discarded"
+             + (f" ({discarded_text(runs)})" if len(runs) - len(kept) else "")
+             + f", {sum(r['verdict'] == 'failed' for r in runs)} failed.", ""]
     if health:
         lines += [f"Graph health: **{health['rating']}**. {health['summary']}", ""]
     lines += ["## Per question", "",
@@ -466,7 +487,7 @@ def main():
                      f"{r['gcx_calls']} | {r['gcx_graph_calls']} | {r['gcx_blocked']} | {r['denied_commands']} | {r['leak_reason'] or 'no'} | {ans[:160]} |")
     lines += ["", "## Answer keys", ""]
     for q in qs.values():
-        lines.append(f"- **{q['id']} ({q['type']})** {q['question']} Source: {q.get('source', '')}")
+        lines.append(f"- **{q['id']} ({q['type']})** {q['question']} Source: {q.get('source') or 'not given in the questions file'}")
     with open(os.path.join(args.out, "report.md"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
 
