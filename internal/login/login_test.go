@@ -1190,6 +1190,143 @@ func TestRun_PersistsOAuthRotationPerformedDuringValidation(t *testing.T) {
 	require.Equal(t, "2099-02-01T00:00:00Z", grafana.OAuthRefreshExpiresAt)
 }
 
+type stubOIDCFlow struct {
+	result *auth.OIDCResult
+}
+
+func (s *stubOIDCFlow) Run(_ context.Context) (*auth.OIDCResult, error) {
+	return s.result, nil
+}
+
+func TestRun_OIDCDiscoversProviderFromGrafana(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
+	dir := t.TempDir()
+	var gotOpts auth.OIDCOptions
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			ContextName:  "onprem",
+			UseOIDC:      true,
+			OIDCProvider: "azuread",
+			Target:       login.TargetOnPrem,
+			Yes:          true,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			DiscoverOIDCFn: func(_ context.Context, server, provider string) (*auth.GrafanaOIDCProvider, error) {
+				assert.Equal(t, "https://grafana.example.com", server)
+				assert.Equal(t, "azuread", provider)
+				return &auth.GrafanaOIDCProvider{Provider: "azuread", Issuer: "https://idp.example.com/t/v2.0", ClientID: "discovered", Scopes: []string{"openid", "profile", "email"}}, nil
+			},
+			NewOIDCFlow: func(o auth.OIDCOptions) login.OIDCFlow {
+				gotOpts = o
+				return &stubOIDCFlow{result: &auth.OIDCResult{IDToken: "id-token", RefreshToken: "refresh-token"}}
+			},
+			ValidateFn: noopValidate,
+		},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, "https://idp.example.com/t/v2.0", gotOpts.Issuer)
+	assert.Equal(t, "discovered", gotOpts.ClientID)
+	assert.Equal(t, []string{"openid", "offline_access", "profile", "email"}, gotOpts.Scopes)
+
+	loaded, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+	grafana := loaded.Contexts["onprem"].Grafana
+	assert.Equal(t, "https://idp.example.com/t/v2.0", grafana.OIDCIssuer)
+	assert.Equal(t, "discovered", grafana.OIDCClientID)
+	assert.Equal(t, "openid offline_access profile email", grafana.OIDCScopes)
+}
+
+func TestRun_OIDCRejectedTokenIsNotOfferedForUnvalidatedSave(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+	t.Setenv("GCX_AGENT_MODE", "0")
+	agent.ResetForTesting()
+	t.Cleanup(func() { agent.ResetForTesting() })
+
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			ContextName:  "onprem",
+			UseOIDC:      true,
+			OIDCIssuer:   "https://idp.example.com",
+			OIDCClientID: "client",
+			Target:       login.TargetOnPrem,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(t.TempDir()),
+			NewOIDCFlow: func(auth.OIDCOptions) login.OIDCFlow {
+				return &stubOIDCFlow{result: &auth.OIDCResult{IDToken: "id-token", RefreshToken: "refresh-token"}}
+			},
+			ValidateFn: func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+				return "", &login.OIDCTokenRejectedError{Server: "https://grafana.example.com", Issuer: "https://idp.example.com", Cause: errors.New("401")}
+			},
+		},
+	}
+	_, err := login.Run(context.Background(), &opts)
+	_, ok := errors.AsType[*login.OIDCTokenRejectedError](err)
+	assert.True(t, ok, "got %T: %v", err, err)
+}
+
+func TestRun_OIDCPersistsIDTokenAndProvider(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
+	dir := t.TempDir()
+	var gotOpts auth.OIDCOptions
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:               "https://grafana.example.com",
+			ContextName:          "onprem",
+			UseOIDC:              true,
+			OIDCIssuer:           "https://login.example.com/tenant/v2.0",
+			OIDCClientID:         "client",
+			OAuthCallbackPort:    8400,
+			Target:               login.TargetOnPrem,
+			Yes:                  true,
+			RuntimeProxyEndpoint: "https://ignored-proxy.example.com",
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			NewOIDCFlow: func(o auth.OIDCOptions) login.OIDCFlow {
+				gotOpts = o
+				return &stubOIDCFlow{result: &auth.OIDCResult{
+					IDToken:      "id-token",
+					RefreshToken: "refresh-token",
+					ExpiresAt:    "2099-01-01T00:00:00Z",
+					Email:        "jane@example.com",
+				}}
+			},
+			ValidateFn: func(_ context.Context, _ login.Options, restCfg config.NamespacedRESTConfig) (string, error) {
+				assert.False(t, restCfg.IsOAuthProxy())
+				assert.Equal(t, "https://grafana.example.com", restCfg.Host)
+				return "12.0.0", nil
+			},
+		},
+	}
+
+	result, err := login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, "oidc", result.AuthMethod)
+	assert.Equal(t, "https://login.example.com/tenant/v2.0", gotOpts.Issuer)
+	assert.Equal(t, "client", gotOpts.ClientID)
+	assert.Equal(t, 8400, gotOpts.Port)
+
+	loaded, err := config.Load(context.Background(), configSource(dir))
+	require.NoError(t, err)
+	grafana := loaded.Contexts["onprem"].Grafana
+	assert.Equal(t, "oidc", grafana.AuthMethod)
+	assert.Equal(t, "https://login.example.com/tenant/v2.0", grafana.OIDCIssuer)
+	assert.Equal(t, "client", grafana.OIDCClientID)
+	assert.Equal(t, "id-token", grafana.OAuthToken)
+	assert.Equal(t, "refresh-token", grafana.OAuthRefreshToken)
+	assert.Equal(t, "2099-01-01T00:00:00Z", grafana.OAuthTokenExpiresAt)
+	assert.Empty(t, grafana.ProxyEndpoint)
+	assert.Equal(t, int64(1), grafana.OrgID)
+}
+
 func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 
@@ -2033,4 +2170,44 @@ func TestRun_ManualOAuthWithoutReaderFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reader")
 	assert.False(t, called, "the auth flow must not start without a reader")
+}
+
+func TestRun_WebSelectsLoginByTarget(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
+	for _, tt := range []struct {
+		target     login.Target
+		wantMethod string
+	}{
+		{login.TargetOnPrem, "oidc"},
+		{login.TargetCloud, "oauth"},
+	} {
+		t.Run(tt.wantMethod, func(t *testing.T) {
+			opts := login.Options{
+				Inputs: login.Inputs{
+					Server:      "https://grafana.example.com",
+					ContextName: "web",
+					UseWeb:      true,
+					Target:      tt.target,
+					Yes:         true,
+				},
+				Hooks: login.Hooks{
+					ConfigSource: configSource(t.TempDir()),
+					NewAuthFlow: func(string, auth.Options) login.AuthFlow {
+						return &stubAuthFlow{result: &auth.Result{Token: "gat", RefreshToken: "gar", APIEndpoint: "https://proxy.grafana.net"}}
+					},
+					DiscoverOIDCFn: func(context.Context, string, string) (*auth.GrafanaOIDCProvider, error) {
+						return &auth.GrafanaOIDCProvider{Provider: "azuread", Issuer: "https://idp.example.com", ClientID: "c"}, nil
+					},
+					NewOIDCFlow: func(auth.OIDCOptions) login.OIDCFlow {
+						return &stubOIDCFlow{result: &auth.OIDCResult{IDToken: "id", RefreshToken: "r"}}
+					},
+					ValidateFn: noopValidate,
+				},
+			}
+			result, err := login.Run(context.Background(), &opts)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantMethod, result.AuthMethod)
+		})
+	}
 }

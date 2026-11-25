@@ -90,8 +90,11 @@ func ValidateDevProxyAuth(cfg *config.Context) error {
 	if err != nil {
 		return err
 	}
-	if authMethod == "oauth" {
+	switch authMethod {
+	case "oauth":
 		return errors.New("OAuth authentication is not supported by `gcx dev serve` because refreshed credentials cannot be persisted safely; run `gcx login --token <token>` for this context or select a token, Basic, or mTLS context")
+	case "oidc":
+		return errors.New("OIDC authentication is not supported by `gcx dev serve` because refreshed credentials cannot be persisted safely; run `gcx login --token <token>` for this context or select a token, Basic, or mTLS context")
 	}
 	return nil
 }

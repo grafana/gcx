@@ -17,12 +17,15 @@ const (
 	grafanaAuthToken
 	grafanaAuthBasic
 	grafanaAuthMTLS
+	grafanaAuthOIDC
 )
 
 func (mode grafanaAuthMode) String() string {
 	switch mode {
 	case grafanaAuthOAuth:
 		return "oauth"
+	case grafanaAuthOIDC:
+		return "oidc"
 	case grafanaAuthToken:
 		return "token"
 	case grafanaAuthBasic:
@@ -54,6 +57,8 @@ func selectGrafanaAuth(grafana *GrafanaConfig, stack *StackConfig, contextName s
 		switch strings.ToLower(explicit) {
 		case "oauth":
 			return grafanaAuthSelection{mode: grafanaAuthOAuth, explicit: true}, nil
+		case "oidc":
+			return grafanaAuthSelection{mode: grafanaAuthOIDC, explicit: true}, nil
 		case "token":
 			return grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}, nil
 		case "basic":
@@ -65,7 +70,7 @@ func selectGrafanaAuth(grafana *GrafanaConfig, stack *StackConfig, contextName s
 				Path:    fmt.Sprintf("$.stacks.'%s'.grafana.auth-method", contextName),
 				Message: fmt.Sprintf("unsupported auth-method %q", explicit),
 				Suggestions: []string{
-					"Use one of: oauth, token, basic, mtls",
+					"Use one of: oauth, oidc, token, basic, mtls",
 					"Or remove auth-method to use legacy credential inference",
 				},
 			}
@@ -279,6 +284,18 @@ func (grafana GrafanaConfig) validateSelectedAuth(selection grafanaAuthSelection
 				Suggestions: []string{
 					"Run `gcx login --oauth` to complete the OAuth flow",
 					"Or remove partial OAuth fields and choose another auth-method",
+				},
+			}
+		}
+	case grafanaAuthOIDC:
+		if strings.TrimSpace(grafana.OIDCIssuer) == "" || strings.TrimSpace(grafana.OIDCClientID) == "" ||
+			(strings.TrimSpace(grafana.OAuthToken) == "" && strings.TrimSpace(grafana.OAuthRefreshToken) == "") {
+			return ValidationError{
+				Path:    path,
+				Message: `auth-method "oidc" requires oidc-issuer, oidc-client-id and at least one of oauth-token or oauth-refresh-token`,
+				Suggestions: []string{
+					"Run `gcx login --oidc-issuer <issuer-url> --oidc-client-id <client-id>` to complete the OIDC login",
+					"Or choose another auth-method",
 				},
 			}
 		}

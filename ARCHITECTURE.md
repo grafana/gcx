@@ -197,11 +197,12 @@ Multiple auth mechanisms for different tiers.
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
 | **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
+| **OIDC ID token** | Self-hosted Grafana with OIDC SSO and `[auth.jwt]` (`gcx login --web`) | `internal/auth/oidc*.go` — PKCE login at the identity provider; the same refresh transport renews the ID token at the provider |
 | **Basic auth** | Self-hosted Grafana, including server administration | `gcx login --basic-auth`; username/password in `rest.Config`, verified via `/api/user` before saving |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
-**Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,
-`basic`, or `mtls`) is authoritative, and stale fields for other methods are
+**Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `oidc`,
+`token`, `basic`, or `mtls`) is authoritative, and stale fields for other methods are
 not attached to the request. Legacy entries without `auth-method` infer OAuth
 proxy > service-account token > user/password > mTLS/anonymous; partial or
 rejected higher-priority credentials fail before network use instead of falling
