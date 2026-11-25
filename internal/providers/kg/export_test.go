@@ -253,3 +253,6 @@ func NewCypherCommand(loader RESTConfigLoader) *cobra.Command { return newCypher
 func NewGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 	return newGraphQueryCommand(loader)
 }
+
+// ScopesFromMap exposes scopesFromMap for tests.
+func ScopesFromMap(m map[string][]string) []Scope { return scopesFromMap(m) }

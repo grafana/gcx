@@ -90,3 +90,23 @@ func TestKGProvider_TypedRegistrations(t *testing.T) {
 		assert.True(t, found, "kind %q not found in registrations", kind)
 	}
 }
+
+func TestScopesFromMap_OrderedByName(t *testing.T) {
+	scopeMap := map[string][]string{
+		"namespace": {"ns-a"},
+		"env":       {"prod", "dev"},
+		"site":      {"eu"},
+		"cluster":   {"c1"},
+		"region":    {"us"},
+	}
+	want := []string{"cluster", "env", "namespace", "region", "site"}
+	for range 50 {
+		got := kg.ScopesFromMap(scopeMap)
+		names := make([]string, 0, len(got))
+		for _, s := range got {
+			names = append(names, s.Name)
+		}
+		require.Equal(t, want, names)
+	}
+	assert.Empty(t, kg.ScopesFromMap(nil))
+}
