@@ -222,14 +222,9 @@ When a result is larger than 100 KiB, `gcx` writes the full result to a temporar
 }
 ```
 
-For list responses, `preview_sample` contains only the first 3 items (or sorted top-level keys for objects)—never the complete result. Read the file at `spilled_to` for the full data. When `--jq` is combined with `-o agents`, oversized `jq` streams spill to `gcx-results-*.jsonl` with `content_format` set to `"jsonl"`, `total_values` instead of `total_items`, and `preview_sample` set to `null`.
+The receipt includes a short `preview_sample`, never the complete result. The agent reads the file in `spilled_to` for the full data.
 
-You can control this behavior in the following ways:
-
-- Agents can pass `-o json` to write the full JSON to `stdout` without spilling.
-- Agents can redirect `stdout` to a file, for example `gcx resources get dashboards > dashboards.json`, to write the full result to that file.
-- Set `GCX_AGENT_SPILL_BYTES` in the agent's environment to change the threshold in bytes. Set it to `0` to turn off spilling.
-- Run `gcx agent prune` to remove spill files older than 30 minutes, for example at the end of an agent session. Agents can also run it themselves.
+To avoid spilling, agents can pass `-o json` or redirect `stdout` to a file. To change the threshold, set `GCX_AGENT_SPILL_BYTES` in the agent's environment (`0` turns spilling off). To remove spill files older than 30 minutes, run `gcx agent prune`.
 
 ### Handle errors and exit codes
 
