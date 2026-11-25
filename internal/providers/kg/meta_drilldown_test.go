@@ -103,7 +103,7 @@ func TestFetchDrillDownConfigs(t *testing.T) {
 		{name: "document with an empty list", answer: answerBody(http.StatusOK, `{"logDrilldownConfigs":[],"traceDrilldownConfigs":[],"profileDrilldownConfigs":[]}`)},
 		{name: "error status stays an error", answer: answerBody(http.StatusInternalServerError, `{"message":"down"}`), wantErr: "down"},
 		{name: "malformed JSON stays an error", answer: answerBody(http.StatusOK, `{"logDrilldownConfigs":[`), wantErr: "EOF"},
-		{name: "body cut short stays an error", answer: answerTruncated(), wantErr: "read response"},
+		{name: "body cut short stays an error", answer: answerTruncated(), wantErr: "unexpected EOF"},
 		{name: "connection closed before a response stays an error", answer: answerHangUp(), wantErr: "execute request"},
 	}
 	fetchers := []struct {

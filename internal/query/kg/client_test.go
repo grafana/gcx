@@ -85,6 +85,87 @@ func TestClient_GetJSON(t *testing.T) {
 	}
 }
 
+func TestClient_GetJSONAllowEmpty(t *testing.T) {
+	hijack := func(t *testing.T, w http.ResponseWriter) {
+		t.Helper()
+		hj, ok := w.(http.Hijacker)
+		require.True(t, ok)
+		conn, _, err := hj.Hijack()
+		require.NoError(t, err)
+		_ = conn.Close()
+	}
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    map[string]string
+		wantErr string
+	}{
+		{
+			name:    "decodes response",
+			handler: func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, map[string]string{"foo": "bar"}) },
+			want:    map[string]string{"foo": "bar"},
+		},
+		{
+			name:    "empty body leaves the value unchanged",
+			handler: func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) },
+		},
+		{
+			name: "whitespace-only body leaves the value unchanged",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte("\n  \n"))
+			},
+		},
+		{
+			name:    "no content leaves the value unchanged",
+			handler: func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		},
+		{
+			name: "error status stays an error",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte("boom"))
+			},
+			wantErr: "boom",
+		},
+		{
+			name: "malformed JSON stays an error",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"foo":`))
+			},
+			wantErr: "unexpected EOF",
+		},
+		{
+			name: "body cut short stays an error",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Length", "4096")
+				_, _ = w.Write([]byte(`{"foo"`))
+				hijack(t, w)
+			},
+			wantErr: "unexpected EOF",
+		},
+		{
+			name:    "connection closed before a response stays an error",
+			handler: func(w http.ResponseWriter, _ *http.Request) { hijack(t, w) },
+			wantErr: "execute request",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+			client := newTestClient(t, server)
+			var v map[string]string
+			err := client.GetJSONAllowEmpty(t.Context(), "/some/path", &v)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, v)
+		})
+	}
+}
+
 func TestClient_PostJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)

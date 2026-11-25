@@ -843,7 +843,7 @@ func (c *Client) FetchGraphSchema(ctx context.Context, startMs, endMs int64) (Gr
 // answers with an empty body yields an empty response, not an error.
 func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error) {
 	var resp LogConfigsResponse
-	if err := c.getConfigJSON(ctx, v2LogConfigPath, &resp); err != nil {
+	if err := c.GetJSONAllowEmpty(ctx, v2LogConfigPath, &resp); err != nil {
 		return LogConfigsResponse{}, fmt.Errorf("kg: fetch log configs: %w", err)
 	}
 	return resp, nil
@@ -853,7 +853,7 @@ func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error
 // that answers with an empty body yields an empty response, not an error.
 func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, error) {
 	var resp TraceConfigsResponse
-	if err := c.getConfigJSON(ctx, v2TraceConfigPath, &resp); err != nil {
+	if err := c.GetJSONAllowEmpty(ctx, v2TraceConfigPath, &resp); err != nil {
 		return TraceConfigsResponse{}, fmt.Errorf("kg: fetch trace configs: %w", err)
 	}
 	return resp, nil
@@ -863,40 +863,10 @@ func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, e
 // stack that answers with an empty body yields an empty response, not an error.
 func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsResponse, error) {
 	var resp ProfileConfigsResponse
-	if err := c.getConfigJSON(ctx, v2ProfileConfigPath, &resp); err != nil {
+	if err := c.GetJSONAllowEmpty(ctx, v2ProfileConfigPath, &resp); err != nil {
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
-}
-
-// getConfigJSON GETs a drill-down config endpoint and decodes its JSON body
-// into v, like GetJSON, except that a successful answer with an empty (or
-// whitespace-only) body leaves v unchanged and returns nil: some stacks answer
-// 200 with no body instead of a configs document. Transport errors, error
-// statuses, a body that cannot be read to the end and malformed JSON are
-// still errors.
-func (c *Client) getConfigJSON(ctx context.Context, path string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Host()+path, nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("kg: read response: %w", err)
-	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return nil
-	}
-	return json.NewDecoder(bytes.NewReader(body)).Decode(v)
 }
 
 // CypherQuery executes a bounded read-only query and preserves its projected rows.
