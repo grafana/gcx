@@ -132,7 +132,7 @@ func TestBaselineCmd_PartialSeedConstructsSearchRequestAndReportsWarnings(t *tes
 	var gotQuery, gotStart, gotEnd, gotLimit string
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/" + seedID:
 			w.Header().Set("Content-Type", "application/json")

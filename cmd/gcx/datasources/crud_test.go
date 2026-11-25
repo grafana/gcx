@@ -44,7 +44,7 @@ func newCRUDServer(t *testing.T, store map[string]map[string]any, calls *crudCal
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
-		case path == "/apis" || path == "/bootdata":
+		case path == "/apis" || (path == "/bootdata" || path == "/apis/iam.grafana.app/v0alpha1/whoami"):
 			http.NotFound(w, r)
 		case r.Method == http.MethodPost && path == "/api/datasources":
 			calls.create++

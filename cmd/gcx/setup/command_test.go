@@ -481,7 +481,7 @@ func TestSetupStatus_InstrumentationProbeOutcome(t *testing.T) {
 				var monitoringCalled atomic.Bool
 				stdout, stderr, err := runStatusMode(t, func(w http.ResponseWriter, r *http.Request) {
 					switch r.URL.Path {
-					case "/bootdata":
+					case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 						w.WriteHeader(http.StatusNotFound)
 					case "/api/plugins/grafana-collector-app/settings":
 						writeJSON(w, map[string]any{"id": "grafana-collector-app", "enabled": true})

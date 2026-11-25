@@ -148,7 +148,8 @@ gcx config check
 
 A successful check prints the active context name and server URL without
 errors. For Grafana Cloud, the stack ID (namespace) is auto-discovered from
-the server's `/bootdata` endpoint -- you do not need to set `grafana.stack-id`
+the server's `/apis/iam.grafana.app/v0alpha1/whoami` endpoint (falling back
+to `/bootdata` on older servers) -- you do not need to set `grafana.stack-id`
 manually unless auto-discovery fails.
 
 If the discovered stack ID conflicts with a manually configured
@@ -429,7 +430,7 @@ The server URL is unreachable.
 gcx resolves the API namespace (Kubernetes namespace for all calls) in
 this order:
 
-1. Attempt auto-discovery via `/bootdata` HTTP call to the server
+1. Attempt auto-discovery via the `whoami` endpoint (`/bootdata` as fallback)
 2. If discovery fails and `org-id` is non-zero: use `org-<id>` namespace
 3. If discovery fails and `org-id` is zero: use configured `stack-id`
 
@@ -441,7 +442,7 @@ gcx config unset stacks.<name>.grafana.stack-id
 ```
 
 If you see a "missing namespace" error and auto-discovery is failing (e.g.,
-the server does not expose `/bootdata`), set the namespace manually:
+the server exposes neither `whoami` nor `/bootdata`), set the namespace manually:
 
 ```bash
 # On-premise

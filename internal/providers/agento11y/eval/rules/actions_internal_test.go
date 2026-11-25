@@ -116,7 +116,7 @@ action_config: {kind: add_to_collection, collection_ids: [review]}
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/bootdata" {
+				if r.URL.Path == "/bootdata" || r.URL.Path == "/apis/iam.grafana.app/v0alpha1/whoami" {
 					assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"user": map[string]any{"orgId": 1}}))
 					return
 				}

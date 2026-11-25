@@ -168,7 +168,7 @@ func TestCommandValidationAndExperimental(t *testing.T) {
 	require.Contains(t, list.Long, "failed or skipped")
 	for _, cmd := range append([]*cobra.Command{root}, root.Commands()...) {
 		require.True(t, strings.HasPrefix(cmd.Short, "[experimental]"))
-		require.True(t, strings.HasPrefix(cmd.Long, "This command is experimental."))
+		require.True(t, strings.HasPrefix(cmd.Long, agent.ExperimentalPreamble))
 		require.Equal(t, agent.StabilityExperimental, cmd.Annotations[agent.AnnotationStability])
 	}
 }

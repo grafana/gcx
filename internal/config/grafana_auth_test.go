@@ -288,7 +288,7 @@ func TestLegacyPartialOAuthDoesNotFallThroughToToken(t *testing.T) {
 	}
 }
 
-func TestExplicitNonMTLSAuthStripsClientIdentityFromBootdataDiscovery(t *testing.T) {
+func TestExplicitNonMTLSAuthStripsClientIdentityFromNamespaceDiscovery(t *testing.T) {
 	material := newTestTLSMaterial(t)
 	tests := map[string]func(*testing.T, *config.Context) error{
 		"context validation": func(t *testing.T, ctx *config.Context) error {
@@ -311,9 +311,7 @@ func TestExplicitNonMTLSAuthStripsClientIdentityFromBootdataDiscovery(t *testing
 				if r.TLS != nil {
 					peerCertificateSent.Store(len(r.TLS.PeerCertificates) > 0)
 				}
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"settings": map[string]any{"namespace": "stacks-12345"},
-				})
+				_ = json.NewEncoder(w).Encode(map[string]any{"namespace": "stacks-12345"})
 			}))
 			server.TLS = &tls.Config{
 				MinVersion: tls.VersionTLS12,
@@ -337,7 +335,7 @@ func TestExplicitNonMTLSAuthStripsClientIdentityFromBootdataDiscovery(t *testing
 			}
 			require.NoError(t, operation(t, ctx))
 			assert.Equal(t, int32(1), hits.Load())
-			assert.False(t, peerCertificateSent.Load(), "explicit token auth must not send a stale client certificate during bootdata discovery")
+			assert.False(t, peerCertificateSent.Load(), "explicit token auth must not send a stale client certificate during namespace discovery")
 		})
 	}
 }

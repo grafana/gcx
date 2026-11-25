@@ -522,7 +522,7 @@ Namespace resolution order in `resolveNamespace` (`stack_id.go`):
 
 ```
 1. Configured StackID != 0 → use "stacks-N" locally without discovery
-2. Otherwise try DiscoverStackID() via the memoized /bootdata call
+2. Otherwise try the memoized discovery: whoami first, /bootdata fallback
    → success: use discovered "stacks-N" (including when OrgID is configured)
 3. Discovery failure with OrgID != 0 → use "org-N"
 4. No usable ID → unresolved cloud namespace
@@ -610,19 +610,32 @@ contexts:
 
 ## Stack ID Auto-Discovery
 
-For Grafana Cloud instances, the stack ID can be automatically discovered from
-the `/bootdata` endpoint, avoiding the need to configure it manually.
+For Grafana Cloud instances, the stack ID is discovered automatically from the
+`iam.grafana.app` **whoami** endpoint, avoiding the need to configure it
+manually. The legacy `/bootdata` endpoint is kept only as a fallback.
 
-Flow (`internal/config/stack_id.go`):
+Flow (`discoverStackIDCached` in `internal/config/stack_id.go`):
 
 ```
-DiscoverStackID(ctx, GrafanaConfig)
-  1. Build URL: server + "/bootdata"  (strips trailing slash, clears query/fragment)
-  2. HTTP GET with 5s timeout, respects TLS config
-  3. Parse JSON: { "settings": { "namespace": "stacks-12345" } }
-  4. authlib.ParseNamespace("stacks-12345") → extracts StackID=12345
-  5. Return int64(12345)
+1. GET {server}/apis/iam.grafana.app/v0alpha1/whoami
+     OAuth: {proxy-endpoint}/api/cli/v1/proxy/apis/iam.grafana.app/v0alpha1/whoami
+     5s timeout, no retry, respects TLS config, selected credentials attached
+2. Parse top-level JSON: { "namespace": "stacks-12345", ... }
+     "stacks-N"            → StackID=N (done)
+     other / non-200 / empty / err → fall back to step 3
+3. GET {server}/bootdata → { "settings": { "namespace": "stacks-12345" } }
 ```
+
+Credentials are attached directly (bearer token, basic auth, or the current
+OAuth access token) rather than through the OAuth `RefreshTransport`. Token
+persistence hooks are only wired after the REST config is built, so a refresh
+during discovery would rotate the refresh token without saving it. An expired
+access token simply fails the whoami probe and discovery falls back to
+`/bootdata`. whoami also answers anonymous callers with the namespace, so
+discovery works without credentials.
+
+Successful results are memoized per server for the process lifetime;
+failures are not cached.
 
 Validation behavior (`types.go`):
 - `OrgID != 0` → skip discovery entirely (short-circuit, no HTTP call)

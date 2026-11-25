@@ -105,8 +105,6 @@ Codec Pipeline               table (default) | graph (terminal chart) | json | y
 
 **Dual command mounting**: Datasource commands are accessible via two paths — top-level signal commands (`gcx metrics query`) and the `datasources` subgroup (`gcx datasources prometheus query`). Both paths call the same exported command constructors in `internal/datasources/{kind}/`. Signal command shape (shared config flags, root hook chaining, command metadata, adaptive subtree mounting) and signal-backed datasource provider wiring are centralized in `internal/signals/`. Top-level signal providers use `signals.Command(...)`; built-in datasource providers use `signals.DatasourceProvider(...)` and self-register via `init()` in `internal/datasources/providers/` (blank-imported from `cmd/gcx/root/command.go`).
 
-**Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared, GCOM-resolved Basic auth.
-
 **Graph rendering:** `internal/graph/` converts query responses to terminal charts via ntcharts + lipgloss. Available as `-o graph` on all query commands and SLO/synth timeline commands.
 
 ### 4. Developer Tooling (`gcx dev`)

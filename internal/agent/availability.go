@@ -28,6 +28,7 @@ var cloudOnlyPaths = []string{
 	"gcx k6",                   // Grafana Cloud k6 — cloud load testing service
 	"gcx fleet",                // Fleet Management — Grafana Cloud service
 	"gcx assistant",            // Grafana Assistant — Grafana Cloud
+	"gcx pages",                // Grafana Pages — Grafana Cloud (built and hosted by Grafana Assistant)
 	"gcx kg",                   // Knowledge Graph / Asserts — Grafana Cloud
 	"gcx frontend",             // Frontend Observability — Grafana Cloud
 	"gcx error-tracking",       // Error Tracking — Grafana Cloud

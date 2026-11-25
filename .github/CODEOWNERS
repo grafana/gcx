@@ -29,6 +29,7 @@
 /internal/query/kg/ @grafana/grafana-gcx @grafana/asserts-team @grafana/app-o11y-visualizations
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
 /internal/providers/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/internal/providers/pages/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/dbo11y/ @grafana/grafana-gcx @grafana/db-o11y-squad
 /internal/providers/alert/ @grafana/grafana-gcx @grafana/alerting-squad
@@ -93,6 +94,8 @@
 
 /docs/sources/resources/manage-assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/sources/resources/manage-change-review-checks* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/sources/resources/build-grafana-pages* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/claude-plugin/skills/grafana-pages/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /docs/rfcs/027-provider-owned-resource-hooks.md @grafana/grafana-gcx @grafana/grafana-assistant-loop

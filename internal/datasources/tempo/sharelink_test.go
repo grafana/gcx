@@ -20,7 +20,7 @@ func TestGetCmd_ShareLinkRequiresExplicitTimeRange(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/trace-123":
 			traceCalls++
@@ -67,7 +67,7 @@ func TestSearchCmd_ShareLinkRequiresExplicitTimeRange(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/search":
 			searchCalls++
@@ -113,7 +113,7 @@ func TestSearchCmd_ShareLinkRejectsUnlimitedResultLinks(t *testing.T) {
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/search":
 			searchCalls++
@@ -156,7 +156,7 @@ current-context: default
 func TestSearchCmd_DrilldownLink(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/bootdata":
+		case "/bootdata", "/apis/iam.grafana.app/v0alpha1/whoami":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		case "/api/datasources/proxy/uid/tempo-uid/api/search":
 			w.Header().Set("Content-Type", "application/json")
