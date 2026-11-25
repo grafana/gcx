@@ -3437,7 +3437,7 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 // returned no configs for.
 func drillDownNote(signal, backend string) string {
 	return "the server returned no " + signal + " drill-down configs for this stack " +
-		"(an empty answer, not a failed request), so there is no entity-property to " +
+		"(not a failed request), so there is no entity-property to " +
 		backend + " label mapping to show"
 }
 
