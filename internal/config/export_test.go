@@ -88,9 +88,13 @@ func SeedStackIDCacheForTest(server string, stackID int64) func() {
 	stackIDCacheMu.Lock()
 	stackIDCache[strings.TrimSuffix(server, "/")] = stackID
 	stackIDCacheMu.Unlock()
-	return func() {
-		stackIDCacheMu.Lock()
-		stackIDCache = map[string]int64{}
-		stackIDCacheMu.Unlock()
-	}
+	return ResetStackIDCacheForTest
+}
+
+// ResetStackIDCacheForTest clears the process-lifetime stack-ID discovery
+// cache, including memoized "not a cloud stack" entries.
+func ResetStackIDCacheForTest() {
+	stackIDCacheMu.Lock()
+	stackIDCache = map[string]int64{}
+	stackIDCacheMu.Unlock()
 }

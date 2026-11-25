@@ -636,10 +636,10 @@ access token simply fails the whoami probe and discovery falls back to
 discovery works without credentials.
 
 Results are memoized per server for the process lifetime. A stack ID is
-cached on success; when both probes get a definitive answer without one
+cached on success; when both probes get an HTTP response without one
 (e.g. on-prem Grafana), that "not a cloud stack" outcome is cached too, so
-later lookups make no requests. Network errors and transient statuses (5xx,
-429) are not cached.
+later lookups make no requests. Network errors, transient statuses (5xx,
+429) and local failures (such as a bad TLS config) are not cached.
 
 Validation behavior (`types.go`):
 - `OrgID != 0` → skip discovery entirely (short-circuit, no HTTP call)

@@ -26,9 +26,12 @@ var (
 	// errDiscoveryTransient marks HTTP answers that may succeed on retry
 	// (5xx, 429), so they are never memoized as "not a cloud stack".
 	errDiscoveryTransient = errors.New("discovery request failed transiently")
-	// errNoCloudStack is returned for servers memoized as not being a cloud
-	// stack.
-	errNoCloudStack = errors.New("server is not a Grafana Cloud stack")
+	// errDiscoveryAnswered marks a probe that got a non-transient HTTP
+	// response without a stack ID. Only these failures are memoized.
+	errDiscoveryAnswered = errors.New("server answered without a stack ID")
+	// errCachedNotCloudStack is returned for servers memoized as not being a
+	// cloud stack.
+	errCachedNotCloudStack = errors.New("server is memoized as not a Grafana Cloud stack")
 )
 
 // stackIDCache memoizes stack-ID discoveries per server for the lifetime of
@@ -99,9 +102,10 @@ func cachedStackID(server string) (int64, bool) {
 //
 // When whoami cannot reach the server at all, /bootdata (same host, same
 // client) is skipped so an unreachable server fails after one timeout, not two.
-// When both probes get a definitive answer without a stack ID, that outcome is
-// memoized too; network errors and transient statuses (5xx, 429) are not, so a
-// blip does not pin a missing stack ID for the rest of the process.
+// When both probes get an HTTP response without a stack ID, that outcome is
+// memoized too. Network errors, transient statuses (5xx, 429) and local
+// failures (such as a bad TLS config) are not, so a blip does not pin a
+// missing stack ID for the rest of the process.
 func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaAuthMode) (int64, error) {
 	key := strings.TrimSuffix(cfg.Server, "/")
 
@@ -110,7 +114,7 @@ func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 	stackIDCacheMu.Unlock()
 	if ok {
 		if cached == 0 {
-			return 0, errNoCloudStack
+			return 0, errCachedNotCloudStack
 		}
 		return cached, nil
 	}
@@ -126,7 +130,7 @@ func discoverStackIDCached(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 		var bootdataErr error
 		id, bootdataErr = DiscoverStackID(ctx, cfg)
 		if bootdataErr != nil {
-			if isDefinitiveDiscoveryFailure(whoamiErr) && isDefinitiveDiscoveryFailure(bootdataErr) {
+			if errors.Is(whoamiErr, errDiscoveryAnswered) && errors.Is(bootdataErr, errDiscoveryAnswered) {
 				stackIDCacheMu.Lock()
 				stackIDCache[key] = 0
 				stackIDCacheMu.Unlock()
@@ -188,6 +192,10 @@ func discoverStackIDWhoami(ctx context.Context, cfg GrafanaConfig, mode grafanaA
 	}
 	defer resp.Body.Close()
 
+	return markAnswered(parseWhoamiResponse(resp))
+}
+
+func parseWhoamiResponse(resp *http.Response) (int64, error) {
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("%w: %w", errWhoamiNonOK, discoveryStatusError(resp.StatusCode))
 	}
@@ -238,6 +246,10 @@ func DiscoverStackID(ctx context.Context, cfg GrafanaConfig) (int64, error) {
 	}
 	defer resp.Body.Close()
 
+	return markAnswered(parseBootdataResponse(resp))
+}
+
+func parseBootdataResponse(resp *http.Response) (int64, error) {
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("%w: %w", errBootdataNonOK, discoveryStatusError(resp.StatusCode))
 	}
@@ -288,11 +300,13 @@ func discoveryStatusError(status int) error {
 	return fmt.Errorf("status %d", status)
 }
 
-// isDefinitiveDiscoveryFailure reports whether a failed probe reflects a real
-// answer from the server (safe to memoize) rather than a network error or a
-// transient status.
-func isDefinitiveDiscoveryFailure(err error) bool {
-	return !errors.Is(err, errDiscoveryUnreachable) && !errors.Is(err, errDiscoveryTransient)
+// markAnswered wraps a failure parsing an HTTP response in
+// errDiscoveryAnswered, unless the status was transient.
+func markAnswered(id int64, err error) (int64, error) {
+	if err != nil && !errors.Is(err, errDiscoveryTransient) {
+		return 0, fmt.Errorf("%w: %w", errDiscoveryAnswered, err)
+	}
+	return id, err
 }
 
 func buildBootdataURL(server string) (*url.URL, error) {
