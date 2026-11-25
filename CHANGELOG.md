@@ -14,33 +14,21 @@
   filled in, since a key the type lacks matches nothing. The examples used
   to name specific types, relationship types and properties that not every
   stack has, and a copied query matched nothing there without an error.
-- `gcx kg graph query` now adds a `warnings` entry to its agents, `-o json`
-  and `-o yaml` output, and writes the same warning to stderr in every format,
-  when returned rows hold the graph's own catalog records: nodes labeled
-  `Account`, `EntityType`, `Env` or `Schema`, which are not observed entities.
-  A node pattern without a label matches them too, so a query such as
-  `MATCH (n) RETURN labels(n)[0] AS type, count(n) AS c ORDER BY c DESC LIMIT 100`
-  returned catalog groups next to real ones with nothing telling them apart.
-  The warning counts those rows, names their labels and says how to leave
-  them out: a label on each node, or, for an unlabeled node `n`, a filter on
-  its label after a WITH, as in `WITH n, labels(n)[0] AS type WHERE type <> '<label>'`,
-  because a WHERE on `labels(n)` right after MATCH can time out on a large
-  graph. It is detected from the labels of returned nodes, also inside paths,
-  lists and maps, and, in a query that calls `labels(...)`, from returned
-  strings equal to a catalog label. A catalog label the query names itself,
-  after a colon or in a quoted string, is not counted, and a query that
-  filters out one catalog label is still warned about the others. The warning
-  is a hint: it reads the response, not a parse of the query. Rows are
-  unchanged.
-- `gcx kg graph query --json list` now prints the response fields, `warnings`
-  included, without running the query. The command's help now says that its
+- The `gcx kg graph query` help now says that the graph also holds its own
+  catalog records, nodes labeled `Account`, `EntityType`, `Env` and `Schema`
+  that `gcx kg meta schema` does not list, and that a node pattern without a
+  label matches them next to observed entities. A query such as
+  `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r) LIMIT 100`
+  returned catalog groups next to real ones with nothing in the help to tell
+  them apart.
+- `gcx kg graph query --json list` now prints the response fields without
+  running the query. The command's help now says that its
   default output is a table, or the agents format (JSON) in agent mode; it
   said only a table.
 - The `gcx kg diagnose` entity overview now also leaves `Account` records out
   of its entity total and per-type counts, as it already did `EntityType`,
-  `Env` and `Schema` records. `gcx kg meta schema`, `gcx kg graph query` and
-  the diagnose overview now share one list of the graph's catalog record
-  types.
+  `Env` and `Schema` records. `gcx kg meta schema` and the diagnose overview
+  now share one list of the graph's catalog record types.
 
 ## v1.8.0 (2026-11-17)
 

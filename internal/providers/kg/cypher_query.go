@@ -32,10 +32,7 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "query <cypher-query>",
 		Short: "Run a read-only Cypher query and return its columns and rows.",
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
-The response has columns, rows and stats (rowCount, columnCount, elapsedMs),
-plus warnings when gcx finds rows that hold the graph's own catalog records
-rather than observed entities. Warnings are part of the agents, json and yaml
-output and are written to stderr in every format.
+The response has columns, rows and stats (rowCount, columnCount, elapsedMs).
 Each row is an array aligned with columns, values keep their JSON shape, and
 node/relationship refs are local to one response. Output is a table by
 default and the agents format (JSON) in agent mode; -o picks table, json, yaml
@@ -92,6 +89,10 @@ nothing. Types, properties and relationships differ between stacks and
 windows. A relationship is stored in the direction the schema lists; the
 undirected form '(a)-[r:TYPE]-(b)' matches it from either end, so one query
 returns both directions, and startNode(r)/endNode(r) return its stored ends.
+The graph also holds its own catalog records, nodes labeled Account,
+EntityType, Env and Schema that the schema does not list: a node pattern
+without a label matches them next to observed entities, and a label on each
+node leaves them out.
 
 Queries are not checked against the schema. A label, property, relationship
 type, direction or scope value that does not exist matches nothing, and a
@@ -126,9 +127,9 @@ if several entities match, it fails with one command per candidate.`,
 				return err
 			}
 			if opts.IO.JSONDiscovery {
-				// The fields are the same for every query, warnings included,
-				// so field discovery lists them without running the query.
-				return opts.IO.Encode(cmd.OutOrStdout(), &CypherQueryResponse{Warnings: []string{""}})
+				// The fields are the same for every query, so field discovery
+				// lists them without running the query.
+				return opts.IO.Encode(cmd.OutOrStdout(), &CypherQueryResponse{})
 			}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
@@ -142,16 +143,7 @@ if several entities match, it fails with one command per candidate.`,
 			if err != nil {
 				return err
 			}
-			if warning := catalogRowsWarning(opts.query, resp); warning != "" {
-				resp.Warnings = append(resp.Warnings, warning)
-			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
-				return err
-			}
-			for _, warning := range resp.Warnings {
-				cmdio.EmitWarn(cmd.ErrOrStderr(), warning)
-			}
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())

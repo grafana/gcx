@@ -8,9 +8,8 @@ package kg
 
 // isCatalogRecordType reports whether t is the type, or node label, of the
 // graph's own catalog records rather than of observed entities.
-// processGraphSchema leaves these types out of `kg meta schema`, the diagnose
-// entity overview does not count them, and `kg graph query` warns about rows
-// that hold them (see catalogRowsWarning).
+// processGraphSchema leaves these types out of `kg meta schema`, and the
+// diagnose entity overview does not count them.
 func isCatalogRecordType(t string) bool {
 	switch t {
 	case "Account", "EntityType", "Env", "Schema":
