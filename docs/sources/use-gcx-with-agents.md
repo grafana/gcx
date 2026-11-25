@@ -37,13 +37,32 @@ The main differences between modes are the following:
 | Default output | Readable tables | Compact JSON (spills to a temp file above 100 KiB) |
 | Color and table truncation | On in a terminal | Off |
 | Errors | A readable message on `stderr` | A JSON error document on `stdout` |
-| Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Allow destructive operations](#allow-destructive-operations). |
+| Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Approve destructive operations](#approve-destructive-operations). |
 
-Agent mode also writes data to `stdout` and hints and progress messages to `stderr`, so an agent can parse `stdout` without filtering. To get the same plain output outside agent mode, for example on a CI runner that reports a terminal, pass `--no-color` and `--no-truncate`.
+In agent mode, `gcx` also writes data to `stdout` and hints and progress messages to `stderr`, so an agent can parse `stdout` without filtering. Outside agent mode, you can get the same plain output with `--no-color` and `--no-truncate`, for example on a CI runner that reports a terminal.
 
 You can override these defaults with explicit flags. For example, `-o text` prints a table in agent mode, and `-o json` prints JSON without agent mode. For manual overrides and output details, refer to [Customize detection, output, and error handling](#customize-detection-output-and-error-handling).
 
-## Install agent skills
+## Sign in for agents
+
+An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
+
+**When a person is present**, use browser-based OAuth. `gcx` opens a browser and waits for you to approve the sign-in:
+
+```bash
+gcx login my-stack --server https://my-stack.grafana.net --oauth
+```
+
+- If the agent's environment can't receive the browser callback, add `--oauth-manual`. `gcx` prints the URL, and you paste back the redirect URL.
+- If the agent runs `gcx` in a sandbox that blocks writes to the operating system credential store, `gcx` stops before the browser opens. Approve the command to run outside the sandbox. Refer to [Restricted execution sessions](../keychain/#restricted-execution-sessions).
+
+**When no person is present**, such as in CI or a scheduled job, use a [service account token](../authentication/#service-account-token). Set it with [environment variables](../authentication/#environment-variables), or save it to a context:
+
+```bash
+gcx login my-stack --server https://my-stack.grafana.net --token <SERVICE_ACCOUNT_TOKEN> --yes
+```
+
+## Install `gcx` skills for agents
 
 `gcx` ships agent skills: task-specific instructions that teach an agent common workflows, such as setting up `gcx`, creating dashboards, investigating alerts, and managing SLOs. For the full list, refer to the [skill inventory](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skills).
 
@@ -72,7 +91,7 @@ gcx agent skills uninstall <SKILL>
 
 `gcx agent skills update` doesn't add skills that are new in the bundle. To add them, run `gcx agent skills install --all` again.
 
-### Discover skills and commands on demand
+#### How agents discover skills and commands
 
 If your tool doesn't use the Claude Code plugin or `~/.agents/skills` (for example in Cursor, GitHub Copilot, or a custom agent integration), you don't need to install any files. Your agent can read bundled skills on demand and discover commands progressively:
 
@@ -90,28 +109,39 @@ gcx help-tree resources -o text
 gcx commands
 ```
 
-Commands follow the grammar `gcx <area> <noun> <verb>`, for example `gcx slo definitions list`, so an agent can predict commands it hasn't seen. Every command also has `--help` text with commented examples.
+Commands follow a consistent `gcx <area> <noun> <verb>` grammar, for example `gcx slo definitions list`, so agents can predict commands they haven't seen. Every command also has `--help` text with commented examples that agents can read to learn the syntax.
 
-## Sign in for agents
+## How agents manage resources safely
 
-An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
+`gcx` includes features that let an agent preview changes, retry safely, and recover from partial failures. You decide which destructive operations an agent can run.
 
-**When a person is present**, use browser-based OAuth. `gcx` opens a browser and waits for you to approve the sign-in:
+### Preview changes
 
-```bash
-gcx login my-stack --server https://my-stack.grafana.net --oauth
-```
-
-- If the agent's environment can't receive the browser callback, add `--oauth-manual`. `gcx` prints the URL, and you paste back the redirect URL.
-- If the agent runs `gcx` in a sandbox that blocks writes to the operating system credential store, `gcx` stops before the browser opens. Approve the command to run outside the sandbox. Refer to [Restricted execution sessions](../keychain/#restricted-execution-sessions).
-
-**When no person is present**, such as in CI or a scheduled job, use a [service account token](../authentication/#service-account-token). Set it with [environment variables](../authentication/#environment-variables), or save it to a context:
+Agents use `--dry-run` to preview a change before they make it. Commands that change resources, such as `gcx resources push` and `gcx resources delete`, support the flag. With `--dry-run`, the command simulates the operation and reports what it would do, without making changes:
 
 ```bash
-gcx login my-stack --server https://my-stack.grafana.net --token <SERVICE_ACCOUNT_TOKEN> --yes
+gcx resources push dashboards --dry-run
 ```
 
-## Allow destructive operations
+Not every command that changes data has `--dry-run`. Run `gcx <command> --help` to check.
+
+### Retry safely
+
+`gcx resources push` is idempotent: it creates a resource if it doesn't exist and updates it if it does. An agent can run the same push again after a failure without creating duplicates.
+
+### Handle batch failures
+
+When a command processes several resources, agents can use the `--on-error` flag to control what happens if one fails:
+
+| Value | Behavior |
+| --- | --- |
+| `fail` (default) | Processes all resources, then exits with code `4` if any failed. |
+| `ignore` | Processes all resources and exits with code `0`. |
+| `abort` | Stops at the first error and exits with a non-zero code. |
+
+The `--max-concurrent` flag limits how many operations run at once. The default is 10.
+
+### Approve destructive operations
 
 Agent mode never approves a destructive operation by itself. Commands that require a confirmation prompt to a person fail in agent mode unless you allow the operation in one of these ways:
 
@@ -122,72 +152,13 @@ Agent mode never approves a destructive operation by itself. Commands that requi
 
 Ask your agent to check with you before it adds `--force`, and avoid setting `GCX_AUTO_APPROVE` in a shell that people also use.
 
-## Make agent runs predictable
+## How agents read `gcx` output
 
-These features help an agent preview changes, retry safely, and detect incomplete results.
+In agent mode, `gcx` returns structured output that agents can parse, and tells them when a result is incomplete or a command failed.
 
-### Preview changes with `--dry-run`
+### Select fields and filter results
 
-Commands that change resources, such as `gcx resources push` and `gcx resources delete`, accept `--dry-run`. The command simulates the operation and reports what it would do, without making changes:
-
-```bash
-gcx resources push dashboards --dry-run
-```
-
-Not every command that changes data has `--dry-run`. Run `gcx <command> --help` to check.
-
-### Retry safely
-
-`gcx resources push` creates a resource if it doesn't exist and updates it if it does. An agent can run the same push again after a failure without creating duplicates.
-
-### Control batch failures
-
-When a command processes several resources, use `--on-error` to choose what happens when one fails:
-
-| Value | Behavior |
-| --- | --- |
-| `fail` (default) | Process all resources, then exit with code `4` if any failed. |
-| `ignore` | Process all resources and exit with code `0`. |
-| `abort` | Stop at the first error and exit with a non-zero code. |
-
-Use `--max-concurrent` to limit how many operations run at once. The default is 10.
-
-### Detect truncated lists
-
-List commands never truncate results silently. Use `--limit` to set the number of items to return, or `--limit 0` to return all items. For example, `gcx resources get` returns up to 50 items for each resource type by default.
-
-When a command returns only part of the results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output:
-
-```json
-"list_meta": {"truncated": true, "returned": 50, "continue": "gcx ... list --limit 100"}
-```
-
-The `continue` field contains the command to run next. If an agent sees `list_meta`, the result is incomplete.
-
-## Customize detection, output, and error handling
-
-### Override agent mode detection
-
-If your tool isn't detected automatically, set `GCX_AGENT_NAME` to a supported label in the agent's command environment:
-
-```bash
-GCX_AGENT_NAME=crush gcx resources get dashboards
-```
-
-Set the label only in the agent's environment, not in a shell that people also use. Supported labels for `GCX_AGENT_NAME` (and the shared `AI_AGENT` variable) are `aider`, `amazon-q`, `amp`, `augment`, `claude-code`, `cline`, `codex`, `crush`, `cursor`, `devin`, `factory-droid`, `gemini-cli`, `github-copilot`, `goose`, `hermes`, `junie`, `kilo-code`, `kiro`, `openclaw`, `opencode`, `openhands`, `pi`, and `qwen-code`. Refer to [Environment variables](../cli-reference/#environment-variables) for variable details and precedence.
-
-To turn agent mode on or off regardless of detection:
-
-| To | Use |
-| --- | --- |
-| Turn agent mode on | `--agent` or `GCX_AGENT_MODE=1` |
-| Turn agent mode off | `--agent=false` or `GCX_AGENT_MODE=0` |
-
-The `--agent` flag takes precedence over environment variables. `GCX_AGENT_MODE` accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off. Other values, such as `off`, are ignored.
-
-### Select fields instead of parsing output
-
-Use `--json` and `--jq` to shape the output inside `gcx`, instead of piping it to other tools:
+Agents can shape the output inside `gcx` with `--json` and `--jq`, instead of piping it to other tools. This keeps unneeded data out of the agent's context:
 
 ```bash
 # List the fields that the command can return
@@ -200,7 +171,17 @@ gcx resources get dashboards --json metadata.name,spec.title
 gcx resources get dashboards --jq '.items | length'
 ```
 
-### Large results
+### Detect incomplete lists
+
+List commands never truncate results silently. The `--limit` flag sets how many items a command returns, and `--limit 0` returns all items. For example, `gcx resources get` returns up to 50 items for each resource type by default.
+
+When a command returns only part of the results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output, so an agent can tell that the result is incomplete and which command to run next:
+
+```json
+"list_meta": {"truncated": true, "returned": 50, "continue": "gcx ... list --limit 100"}
+```
+
+### Handle large results
 
 When a result is larger than 100 KiB, `gcx` writes the full result to a temporary file named `gcx-results-*.json` and prints a short receipt to `stdout` instead:
 
@@ -225,14 +206,14 @@ When a result is larger than 100 KiB, `gcx` writes the full result to a temporar
 
 For list responses, `preview_sample` contains only the first 3 items (or sorted top-level keys for objects)—never the complete result. Read the file at `spilled_to` for the full data. When `--jq` is combined with `-o agents`, oversized `jq` streams spill to `gcx-results-*.jsonl` with `content_format` set to `"jsonl"`, `total_values` instead of `total_items`, and `preview_sample` set to `null`.
 
-To control this behavior:
+You can control this behavior in the following ways:
 
-- Pass `-o json` to write the full JSON to `stdout` without spilling.
-- Redirect `stdout` to a file, for example `gcx resources get dashboards > dashboards.json`, to write the full result to that file.
-- Set `GCX_AGENT_SPILL_BYTES` to change the threshold in bytes. Set it to `0` to turn off spilling.
-- Run `gcx agent prune` to remove spill files older than 30 minutes, for example at the end of an agent session.
+- Agents can pass `-o json` to write the full JSON to `stdout` without spilling.
+- Agents can redirect `stdout` to a file, for example `gcx resources get dashboards > dashboards.json`, to write the full result to that file.
+- Set `GCX_AGENT_SPILL_BYTES` in the agent's environment to change the threshold in bytes. Set it to `0` to turn off spilling.
+- Run `gcx agent prune` to remove spill files older than 30 minutes, for example at the end of an agent session. Agents can also run it themselves.
 
-### Errors
+### Handle errors and exit codes
 
 In agent mode, a failed command writes one JSON error document to `stdout`, and the `exitCode` field matches the process exit code:
 
@@ -242,19 +223,42 @@ In agent mode, a failed command writes one JSON error document to `stdout`, and 
 
 The `error` object can also include `details`, `suggestions`, and `docsLink`. When a batch operation partly succeeds, the document has the type `gcx.partial_result` and includes the successful `items` alongside the `error`.
 
-Use the process exit code to decide what to do next:
+Agents use the process exit code to decide what to do next:
 
-| Code | Meaning | Typical agent response |
+| Code | Meaning | What an agent can do |
 | --- | --- | --- |
 | `0` | Success | Continue. |
 | `1` | General error | Read the error `summary` and `suggestions`. |
-| `2` | Usage error, such as a bad flag or selector | Fix the command. |
-| `3` | Authentication or authorization failure | Stop and ask the user to sign in or change permissions. |
+| `2` | Usage error, such as a bad flag or selector | Correct the command. |
+| `3` | Authentication or authorization failure | Stop and ask you to sign in or change permissions. |
 | `4` | Partial failure | Read the `gcx.partial_result` document and retry the failed items. |
-| `5` | Cancelled | Don't retry without asking the user. |
+| `5` | Cancelled | Ask you before it retries. |
 | `6` | Grafana version not supported | Stop and report the version. |
 
 Run `gcx help exit-codes` for descriptions and examples of each code.
+
+## Configure agent mode
+
+### Override agent mode detection
+
+If your tool isn't detected automatically, set `GCX_AGENT_NAME` to a supported label in the agent's command environment:
+
+```bash
+GCX_AGENT_NAME=crush gcx resources get dashboards
+```
+
+Set the label only in the agent's environment, not in a shell that people also use. Supported labels for `GCX_AGENT_NAME` (and the shared `AI_AGENT` variable) are `aider`, `amazon-q`, `amp`, `augment`, `claude-code`, `cline`, `codex`, `crush`, `cursor`, `devin`, `factory-droid`, `gemini-cli`, `github-copilot`, `goose`, `hermes`, `junie`, `kilo-code`, `kiro`, `openclaw`, `opencode`, `openhands`, `pi`, and `qwen-code`. Refer to [Environment variables](../cli-reference/#environment-variables) for variable details and precedence.
+
+To turn agent mode on or off regardless of detection:
+
+| To | Use |
+| --- | --- |
+| Turn agent mode on | `--agent` or `GCX_AGENT_MODE=1` |
+| Turn agent mode off | `--agent=false` or `GCX_AGENT_MODE=0` |
+
+The `--agent` flag takes precedence over environment variables. `GCX_AGENT_MODE` accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off. Other values, such as `off`, are ignored.
+
+### Log failed agent calls
 
 To record failed agent-mode calls locally for debugging, enable `diagnostics.agent-invocation-log` in your [configuration](../configuration/#configuration-reference):
 
