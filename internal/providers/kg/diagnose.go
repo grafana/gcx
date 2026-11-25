@@ -1428,7 +1428,7 @@ func (c *DiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
 // renderOrientation writes the Orientation block above the per-check table.
 // Layout, in order:
 //   - One-line pipeline health verdict and scope hint.
-//   - Entity overview: total entities (excluding meta types) and the
+//   - Entity overview: total entities (excluding catalog records) and the
 //     traced-services-over-total ratio.
 //   - Scope overview: env list (with "none" called out when present) and
 //     namespace count.

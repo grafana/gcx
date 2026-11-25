@@ -61,10 +61,10 @@ const (
 // how many of them are emitting traces. All numbers are computed from the
 // existing entity-count and metric-check responses in DiagnoseResult.
 type EntityOverview struct {
-	// Total entities across all types, EXCLUDING catalog meta types
-	// (see isCatalogRecordType). Those types describe the catalog itself,
-	// not the user's workloads, and inflate the count without informational
-	// value.
+	// Total entities across all types, EXCLUDING the graph's catalog
+	// records (see isCatalogRecordType). Those types describe the catalog
+	// itself, not the user's workloads, and inflate the count without
+	// informational value.
 	Total int64 `json:"total"`
 
 	// ByType is the per-type breakdown that drove Total. Same exclusion
@@ -202,7 +202,7 @@ type OrientationInput struct {
 	StackEnabled bool
 
 	// EntityCounts is the raw per-type count map returned by
-	// CountEntityTypes. Includes meta types; the detector filters them
+	// CountEntityTypes. Includes catalog records; the detector filters them
 	// out when computing the user-facing total.
 	EntityCounts map[string]int64
 
@@ -289,7 +289,7 @@ func computeOrientation(in OrientationInput, scope *scopeFlags) Orientation {
 	}
 }
 
-// buildEntityOverview filters meta types out of EntityCounts and computes
+// buildEntityOverview filters catalog records out of EntityCounts and computes
 // the totals the user-facing block needs.
 func buildEntityOverview(in OrientationInput) EntityOverview {
 	out := EntityOverview{
