@@ -37,7 +37,7 @@ Each row is an array aligned with columns, values keep their JSON shape, and
 node/relationship refs are local to one response. Output is a table by
 default and the agents format (JSON) in agent mode; -o picks table, json, yaml
 or agents, and unlike kg meta, there is no -o text. --json list prints the
-response fields without running the query.
+response fields without running the query, which it still takes as an argument.
 
 Time window. Every query runs over a window: --since (ending now) or both
 --from and --to, the last hour by default. A node or relationship matches if
