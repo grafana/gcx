@@ -1,35 +1,3 @@
-## Unreleased
-
-- The `gcx kg graph query` help now states that a variable-length
-  relationship needs an upper bound of at most 5 hops, the maximum the
-  endpoint accepts, and its path example uses `*1..5`. The help listed
-  unbounded paths as refused but did not give the maximum, so a query such as
-  `[:TYPE*1..6]` was refused with `CYPHER_UNBOUNDED_PATH` before the user
-  narrowed it.
-- The `gcx kg graph query` examples and the pattern in its Scope paragraph now
-  write entity types, relationship types and properties as placeholders
-  (`<Type>`, `<TypeA>`, `<TypeB>`, `<REL>`, `<prop1>`, `<prop2>`), and the
-  help says they stand for what `gcx kg meta schema` lists. It also says to
-  keep only the scope keys (`env`, `namespace`) the schema lists for the type
-  filled in, since a key the type lacks matches nothing. The examples used
-  to name specific types, relationship types and properties that not every
-  stack has, and a copied query matched nothing there without an error.
-- The `gcx kg graph query` help now says that the graph also holds its own
-  catalog records, nodes labeled `Account`, `EntityType`, `Env` and `Schema`
-  that `gcx kg meta schema` does not list, and that a node pattern without a
-  label matches them next to observed entities. A query such as
-  `MATCH (a)-[r]->(b) RETURN labels(a)[0], type(r), labels(b)[0], count(r) LIMIT 100`
-  returned catalog groups next to real ones with nothing in the help to tell
-  them apart.
-- `gcx kg graph query --json list` now prints the response fields without
-  running the query. The command's help now says that its
-  default output is a table, or the agents format (JSON) in agent mode; it
-  said only a table.
-- The `gcx kg diagnose` entity overview now also leaves `Account` records out
-  of its entity total and per-type counts, as it already did `EntityType`,
-  `Env` and `Schema` records. `gcx kg meta schema` and the diagnose overview
-  now share one list of the graph's catalog record types.
-
 ## v1.8.0 (2026-11-17)
 
 ### Breaking changes
