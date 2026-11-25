@@ -1029,8 +1029,8 @@ func EnvVarTable() cmdio.Table[EnvVar] {
 		{Header: "ID", Content: func(e EnvVar) string { return strconv.Itoa(e.ID) }},
 		{Header: "NAME", Content: func(e EnvVar) string { return e.Name }},
 		{Header: "VALUE", Content: func(e EnvVar) string {
-			if len(e.Value) > 40 {
-				return e.Value[:37] + "..."
+			if r := []rune(e.Value); len(r) > 40 {
+				return string(r[:37]) + "..."
 			}
 			return e.Value
 		}},
