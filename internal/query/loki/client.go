@@ -108,7 +108,7 @@ func (c *Client) MetricQuery(ctx context.Context, datasourceUID string, req Quer
 		return nil, err
 	}
 
-	return convertMetricResponse(grafanaResp), nil
+	return convertMetricResponse(grafanaResp, req.IsRange()), nil
 }
 
 // buildLogQueryBody builds the request body for a log query. Loki rejects
@@ -743,12 +743,19 @@ func toString(v any) string {
 }
 
 // convertMetricResponse converts a Grafana query response to a MetricQueryResponse
-// for metric LogQL queries (time-series data frames).
-func convertMetricResponse(grafanaResp *GrafanaQueryResponse) *MetricQueryResponse {
+// for metric LogQL queries (time-series data frames). The result type follows
+// the request, not the shape of the data: a range query is always a matrix
+// (even when empty, or when a series has a single point), an instant query a
+// vector. Deriving it from point counts mixed Value and Values in one result.
+func convertMetricResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *MetricQueryResponse {
+	resultType := "vector"
+	if isRange {
+		resultType = "matrix"
+	}
 	result := &MetricQueryResponse{
 		Status: "success",
 		Data: MetricQueryData{
-			ResultType: "vector",
+			ResultType: resultType,
 			Result:     []MetricQuerySample{},
 		},
 	}
@@ -790,8 +797,7 @@ func convertMetricResponse(grafanaResp *GrafanaQueryResponse) *MetricQueryRespon
 			Metric: labels,
 		}
 
-		if len(timeValues) > 1 {
-			result.Data.ResultType = "matrix"
+		if isRange {
 			sample.Values = make([][]any, len(timeValues))
 			for i := range timeValues {
 				ts := toFloat64(timeValues[i]) / 1000.0

@@ -450,7 +450,11 @@ func TestMetricQueryPreservesSampleValues(t *testing.T) {
 				defer server.Close()
 				client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 				require.NoError(t, err)
-				resp, err := client.MetricQuery(context.Background(), "uid", loki.QueryRequest{Query: "count_over_time({app=\"api\"}[5m])"})
+				req := loki.QueryRequest{Query: "count_over_time({app=\"api\"}[5m])"}
+				if count == 2 {
+					req.Start, req.End, req.Step = time.Unix(0, 0), time.Unix(3600, 0), time.Minute
+				}
+				resp, err := client.MetricQuery(context.Background(), "uid", req)
 				require.NoError(t, err)
 				_, rows, err := resp.CSVRecords()
 				require.NoError(t, err)
@@ -504,4 +508,47 @@ func TestClientIndexStats(t *testing.T) {
 
 	_, err = client.IndexStats(context.Background(), "uid", `{app="x"}`, now, now.Add(-time.Hour))
 	require.Error(t, err)
+}
+
+func TestMetricQueryResultTypeFollowsRequest(t *testing.T) {
+	twoFrames := `{"results":{"A":{"frames":[` +
+		`{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number","labels":{"app":"a"}}]},"data":{"values":[[1000,2000],[1,2]]}},` +
+		`{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number","labels":{"app":"b"}}]},"data":{"values":[[1000],[3]]}}]}}}`
+	empty := `{"results":{"A":{"frames":[]}}}`
+	end := time.Unix(3600, 0)
+	rangeReq := loki.QueryRequest{Query: "rate({app=~\".+\"}[1m])", Start: end.Add(-time.Hour), End: end, Step: time.Minute}
+	instantReq := loki.QueryRequest{Query: "rate({app=~\".+\"}[1m])"}
+
+	tests := []struct {
+		name       string
+		body       string
+		req        loki.QueryRequest
+		wantType   string
+		wantSeries int
+	}{
+		{"range with mixed point counts", twoFrames, rangeReq, "matrix", 2},
+		{"range with no data", empty, rangeReq, "matrix", 0},
+		{"instant with no data", empty, instantReq, "vector", 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, tc.body)
+			}))
+			defer server.Close()
+			client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+			require.NoError(t, err)
+
+			resp, err := client.MetricQuery(context.Background(), "uid", tc.req)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantType, resp.Data.ResultType)
+			require.Len(t, resp.Data.Result, tc.wantSeries)
+			for _, sample := range resp.Data.Result {
+				if tc.wantType == "matrix" {
+					assert.NotEmpty(t, sample.Values, "range samples carry Values")
+					assert.Empty(t, sample.Value)
+				}
+			}
+		})
+	}
 }
