@@ -104,7 +104,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			// Filter out groups with no rules to avoid empty groups in JSON/YAML output.
-			var nonEmpty []RuleGroup
+			nonEmpty := []RuleGroup{}
 			for _, g := range resp.Data.Groups {
 				if len(g.Rules) > 0 {
 					nonEmpty = append(nonEmpty, g)
