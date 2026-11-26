@@ -357,8 +357,7 @@ func (*dummyCodec) Encode(_ goio.Writer, _ any) error { return nil }
 func (*dummyCodec) Decode(_ goio.Reader, _ any) error { return nil }
 func (*dummyCodec) Format() format.Format             { return "text" }
 
-// Every format the -o help lists must have a codec, so the menu (built without
-// constructing codecs) stays in step with codecFor.
+// The -o help lists exactly the builtin formats, and each one validates.
 func TestBindFlags_ListedFormatsAllValidate(t *testing.T) {
 	opts := &cmdio.Options{}
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)

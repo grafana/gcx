@@ -788,13 +788,14 @@ var commandAnnotations = map[string]annotation{
 // registry entries only fill in missing keys. Call this after the full command
 // tree is assembled.
 func ApplyAnnotations(root *cobra.Command) {
-	applyAnnotations(root, root.CommandPath())
+	applyAnnotations(root, root.CommandPath(), false)
 }
 
 // applyAnnotations annotates cmd, whose CommandPath is path, and its subtree.
 // It builds each child's path from its parent's rather than calling
-// CommandPath, which walks back to the root for every command.
-func applyAnnotations(cmd *cobra.Command, path string) {
+// CommandPath, which walks back to the root for every command. cloudOnly says
+// whether the parent is cloud-only, which makes its whole subtree cloud-only.
+func applyAnnotations(cmd *cobra.Command, path string, cloudOnly bool) {
 	set := func(key, value string) {
 		if cmd.Annotations == nil {
 			cmd.Annotations = make(map[string]string)
@@ -820,12 +821,13 @@ func applyAnnotations(cmd *cobra.Command, path string) {
 
 	// Mark Grafana Cloud-only commands. Derived from the command path so the
 	// whole subtree of each cloud-only product group is covered at once.
-	if IsCloudOnlyPath(path) {
+	cloudOnly = cloudOnly || IsCloudOnlyPath(path)
+	if cloudOnly {
 		set(AnnotationAvailability, AvailabilityCloudOnly)
 	}
 
 	for _, sub := range cmd.Commands() {
-		applyAnnotations(sub, path+" "+sub.Name())
+		applyAnnotations(sub, path+" "+sub.Name(), cloudOnly)
 	}
 }
 
