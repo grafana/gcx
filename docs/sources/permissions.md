@@ -72,7 +72,7 @@ To learn more about roles and permissions for dashboards, folders, and data sour
 
 ### Adaptive Telemetry
 
-Adaptive Metrics rules, the analyzed metrics catalog, `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role for reads or **Rules Editor** for writes. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
+Adaptive Metrics rules, the analyzed metrics catalog (`gcx metrics adaptive metrics`), `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role (`grafana-adaptive-metrics-app.rules:read`) for reads or **Rules Editor** (`grafana-adaptive-metrics-app.rules:write`) for writes. Deleting a rule counts as a write. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
 
 Adaptive Metrics `recommendations list`, segments, and exemptions always use the direct Cloud API. Adaptive Logs, Logs Archive, and Adaptive Traces also use the direct Cloud API. These APIs use a Grafana Cloud credential.
 
@@ -94,7 +94,7 @@ To learn more about roles and permissions for Adaptive Telemetry, refer to [Graf
 | --- | --- |
 | View agents, model cards, generations, evaluation results, and experiments (`gcx agento11y agents`, `model-cards`, `generations`, `experiments`) | `grafana-agento11y-app.data:read` (Agent Observability Data Reader role or higher) |
 | View conversations (`gcx agento11y conversations list`, `get`, `search`, `list-annotations`) | `grafana-agento11y-app.conversations:read` (Agent Observability Reader role or higher) |
-| Annotate conversations (`gcx agento11y conversations annotate`) | `grafana-agento11y-app.feedback:write` (Agent Observability Feedback Writer role or higher) |
+| Annotate conversations and submit human reviews (`gcx agento11y conversations annotate`, `gcx agento11y reviews create`) | `grafana-agento11y-app.feedback:write` (Agent Observability Feedback Writer role or higher) |
 | Manage evaluators, evaluation rules, templates, experiments, test suites, collections, and saved conversations | `grafana-agento11y-app.eval:write` (Agent Observability Admin role) |
 | Create, update, or delete guards (`gcx agento11y guards`) | `grafana-agento11y-app.guards:write` (Agent Observability Admin role) |
 | Create or delete model rates (`gcx agento11y model-rates create`, `delete`) | `grafana-agento11y-app.pricing:write` (Agent Observability Admin role) |
@@ -190,6 +190,12 @@ To learn more about roles and permissions for Frontend Observability, refer to [
 | Read investigations (`gcx assistant investigations list`) | `grafana-assistant-app.investigations:read` (included in the Assistant Investigation User role) |
 | View investigations started automatically by alerts or Grafana Incident Response and Management (IRM) webhooks | `grafana-assistant-app.investigations.system:read` (Assistant System Investigation Viewer role) |
 | View organization-wide Assistant usage and limits (`gcx assistant usage get`) | `grafana-assistant-app.usage:read` (included in the Assistant Admin role and Admin basic role) |
+| View change review checks, their pull requests, and review statistics (`gcx assistant change-review checks list`, `get`, `list-pull-requests`, and `gcx assistant change-review stats`) | `grafana-assistant-app.github:read` |
+| Create, update, or delete change review checks (`gcx assistant change-review checks create`, `update`, `delete`) | `grafana-assistant-app.github:write` |
+
+`gcx pages` commands also use the Grafana Assistant app. You can only read or change pages that your identity has access to.
+
+<!-- REVIEW: Confirm the Assistant roles that include grafana-assistant-app.github:read and :write, and the actions or roles gcx pages needs. -->
 
 #### Troubleshoot Assistant permission errors
 
@@ -241,6 +247,8 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 | `gcx irm oncall schedules`, `gcx irm oncall shifts` | Read: `plugins:grafana-irm-app:schedules-reader`; Write: `plugins:grafana-irm-app:schedules-editor` |
 | `gcx irm oncall webhooks` | Read: `plugins:grafana-irm-app:outgoing-webhooks-reader`; Write: `plugins:grafana-irm-app:outgoing-webhooks-editor` |
 
+<!-- REVIEW: Confirm the granular IRM role for team working hours (gcx irm oncall teams get-team-hours, update-team-hours), and add a row. -->
+
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
@@ -283,6 +291,21 @@ To learn more about roles and permissions for Knowledge Graph, refer to [Grafana
 | Create, update, or delete forecast jobs, holidays, outlier detectors, and their alerts | `plugins:grafana-ml-app:ml-editor` (Editor or Admin basic role) |
 
 To learn more about roles and permissions for Machine Learning, refer to [Configure RBAC permissions](https://grafana.com/docs/grafana-cloud/ai-tools/machine-learning/additional-configuration/rbac/).
+
+### SCIM
+
+`gcx scim settings` and `gcx scim endpoint` use your Grafana sign-in. `gcx scim users` doesn't: it calls the SCIM API with a SCIM service account token that you pass with `--token-file`.
+
+<!-- REVIEW: Confirm the RBAC action or role for reading and updating SCIM settings. The Grafana SCIM docs only mention "the authentication settings permission". -->
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Read or update SCIM sync settings, and get the SCIM endpoint (`gcx scim settings`, `gcx scim endpoint`) | Permission to manage SCIM authentication settings |
+| List, get, create, update, or deactivate SCIM users (`gcx scim users`) | A SCIM service account token |
+
+To create, update, or deactivate users, user sync must be enabled in the SCIM settings.
+
+To learn more about SCIM, refer to [Configure SCIM provisioning](https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-scim-provisioning/).
 
 ### SLO
 
@@ -328,9 +351,9 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Stack discovery, which resolves the stack slug for all Grafana Cloud commands, plus `gcx k6` reads | `stacks:read` (required) |
 | Create or update stacks | `stacks:write` |
 | Delete stacks (`gcx cloud stacks delete`) | `stacks:delete` |
-| Read Adaptive Metrics rules or catalog entries, diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
+| Read Adaptive Metrics rules or analyzed metrics (`metrics list`, `metrics get`), diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
 | Create or update an Adaptive Metrics rule with `rules create` or `rules update` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
-| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
+| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write`. `gcx` 1.9.0 and later don't use `adaptive-metrics-rules:delete`. |
 | Apply Adaptive Metrics recommendations, including removals | `adaptive-metrics-rules:write`; also `adaptive-metrics-rules:read` for the preview unless you use `--force` |
 | List Adaptive Metrics recommendations with `recommendations list` | `adaptive-metrics-recommendations:read` |
 | Manage Adaptive Metrics segments or exemptions | Operation-specific `adaptive-metrics-segments` or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |
