@@ -53,16 +53,17 @@ jobs:
           install: true
           cache: true
 
+      # Also builds gcx-preinit.wasm, with the wasmtime that mise installs.
       - name: Build gcx.wasm
         run: experimental/sandbox/build.sh
 
-      # Compiling the module takes ~40s; the cache is only valid for the exact
+      # Compiling a module takes ~40s; the cache is only valid for the exact
       # module bytes.
       - name: Restore compiled module cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/gcx-sandbox/compiled
-          key: gcx-sandbox-compiled-${{ runner.os }}-${{ hashFiles('experimental/sandbox/gcx.wasm', 'experimental/sandbox/go.sum') }}
+          key: gcx-sandbox-compiled-${{ runner.os }}-${{ hashFiles('experimental/sandbox/gcx.wasm', 'experimental/sandbox/gcx-preinit.wasm', 'experimental/sandbox/go.sum') }}
 
       - name: Lint
         working-directory: experimental/sandbox
@@ -72,6 +73,7 @@ jobs:
         working-directory: experimental/sandbox
         env:
           GCX_SANDBOX_WASM: ${{ github.workspace }}/experimental/sandbox/gcx.wasm
+          GCX_SANDBOX_PREINIT_WASM: ${{ github.workspace }}/experimental/sandbox/gcx-preinit.wasm
         # The unit tests run under -race; -short skips the e2e tests there
         # (loadGCX), because the race detector slows wazero's cold compile of
         # the module (a cache miss on every change) from ~40s to several

@@ -72,6 +72,9 @@ type Runtime struct {
 	cacheDir  string                  // Config.CacheDir
 	cacheErr  error                   // why New compiled without Config.CacheDir
 	root      string                  // empty directory mounted read-only at /
+	// preinitialized is set for a pre-initialized module, one that exports
+	// preinitEntry: see Run.
+	preinitialized bool
 
 	// newRunMemory is the allocator for each Run's instance, and how to free
 	// what it allocated (see alloc_linux.go). Tests wrap it.
@@ -215,6 +218,7 @@ func (r *Runtime) init(ctx context.Context, wasm []byte) error {
 		return err
 	}
 	r.compiled, r.newRunMemory = compiled, runMemory
+	_, r.preinitialized = compiled.ExportedFunctions()[preinitEntry]
 	if release != nil {
 		r.releaseImage = release
 	}
@@ -319,6 +323,11 @@ type Result struct {
 	ExitCode int
 }
 
+// preinitEntry is the export that runs a command in a pre-initialized module
+// (gcx-preinit.wasm, see build.sh): a wizer snapshot taken after the module's
+// _initialize, which must not run again.
+const preinitEntry = "gcx_run"
+
 // Run executes one gcx command in a fresh instance. Cancelling ctx, or
 // reaching its deadline, stops the guest and returns ctx's error.
 func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
@@ -343,7 +352,9 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	}
 
 	// An empty root makes paths outside $HOME report ENOENT (as gcx
-	// expects for optional config files) instead of EBADF.
+	// expects for optional config files) instead of EBADF. preinit.sh
+	// snapshots with the same mounts in the same order, because the Go
+	// runtime in a pre-initialized module cached them by descriptor.
 	fsc := wazero.NewFSConfig().WithReadOnlyDirMount(r.root, "/")
 	if inv.HomeFS != nil {
 		fsc = fsc.WithFSMount(inv.HomeFS, "/home")
@@ -387,7 +398,13 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	alloc, freeMemory := r.newRunMemory()
 	ctx = experimental.WithMemoryAllocator(ctx, alloc)
 
+	if r.preinitialized {
+		cfg = cfg.WithStartFunctions()
+	}
 	mod, err := r.rt.InstantiateModule(ctx, r.compiled, cfg)
+	if err == nil && r.preinitialized {
+		_, err = mod.ExportedFunction(preinitEntry).Call(ctx)
+	}
 	if mod != nil {
 		_ = mod.Close(ctx)
 	}

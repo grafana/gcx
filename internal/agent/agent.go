@@ -94,6 +94,13 @@ func ResetForTesting() {
 	detectFromEnv()
 }
 
+// Redetect re-runs environment detection from current env vars. A
+// pre-initialized wasm module calls it for each command, because its init
+// ran before the command's environment existed.
+func Redetect() {
+	detectFromEnv()
+}
+
 // IsAgentMode reports whether gcx is running in agent mode.
 // The value is determined by environment variables (checked at init time)
 // and the --agent CLI flag (applied via [SetFlag]).

@@ -65,7 +65,8 @@ unmodified CLI, a fresh instance per command) with in-process isolation:
 - **Build** (`build.sh`). Vendors this repository's source, overlays `patches/`
   (wasip1 stubs for third-party modules that don't support it: clipboard,
   moby/term, bubbletea, Prometheus tsdb/fileutil, and a process-local file lock for gofrs/flock), and builds `gcx.wasm`
-  (~160 MB) with standard Go.
+  (~115 MB) with standard Go, and `gcx-preinit.wasm`, the same gcx
+  pre-initialized (see [Pre-initialized module](#pre-initialized-module)).
 - **Host** (this package). Runs `gcx.wasm` with WASI preview 1 plus the
   `gcx_http` module.
 
@@ -146,8 +147,8 @@ if err == nil && rt.CacheError() != nil {
 }
 ```
 
-Each image holds `/gcx.wasm`, `/gcx.commit`, and `/cache/`, which is wazero's
-compiled code for the module. With that cache, startup takes about 1 s instead
+Each image holds `/gcx.wasm`, `/gcx-preinit.wasm`, `/gcx.commit`, and `/cache/`,
+which is wazero's compiled code for both modules. With that cache, startup takes about 1 s instead
 of about 40 s, and the cache can stay read-only. Its files are world-readable,
 so the embedder can run as any user. If they can't be read, or the cache misses
 and can't be written, `New` compiles from scratch instead of failing, and
@@ -179,6 +180,54 @@ fails only when storing the first.
   `require`, so your build runs the old fork commit while reporting the new
   version, and wazero keys its cache on that version: it would load compiled
   code from the published cache that a different fork commit produced.
+
+## Pre-initialized module
+
+`gcx-preinit.wasm` runs the same commands as `gcx.wasm` in about half the time:
+each fresh instance of `gcx.wasm` spends about 50 ms starting the Go runtime and
+running every package init before gcx's own code runs (on one fast core: a
+`gcx version` takes ~105 ms from `gcx.wasm` and ~55 ms from `gcx-preinit.wasm`).
+Load it like `gcx.wasm`; `New` recognizes it by its `gcx_run` export, and the
+API doesn't change:
+
+```go
+wasm, _ := os.ReadFile("/usr/share/gcx/gcx-preinit.wasm")
+rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: "/usr/share/gcx/cache"})
+```
+
+`build.sh` builds gcx with `-buildmode=c-shared` and the `gcxpreinit` tag, so it
+is a WASI reactor with a `gcx_run` export (`cmd/gcx/preinit_wasip1.go`), and
+`preinit.sh` runs its `_initialize` under [wizer](https://github.com/bytecodealliance/wasmtime/tree/main/crates/wizer)
+(`wasmtime wizer`, pinned in `mise.toml`) and snapshots the result. `Run`
+starts each instance from the snapshot and calls `gcx_run` instead of `_start`.
+
+Everything init read from the host belongs to the snapshot, not to the
+command, so `gcx_run` reloads it before running gcx's `main`:
+
+- the arguments and environment, from WASI
+- `GOGC` and `GOMEMLIMIT`, which the runtime reads at startup
+- the runtime's random state (map hash seeds, `math/rand`, `hash/maphash`
+  seeds), from host entropy. Go has no API for this, so `build.sh` adds
+  `overlay/runtime/gcx_reseed_wasip1.go` to the runtime with `go build
+  -overlay`. It uses runtime internals: a Go upgrade that changes them breaks
+  the build, and `TestPreinitReseedsRandomness` checks the reseed still works.
+- the working directory, from `$PWD`
+- gcx's agent-mode detection and lipgloss's color profile
+
+Some state stays as the snapshot had it:
+
+- **WASI preopened directories.** The runtime caches them by descriptor, so
+  `preinit.sh` snapshots with `Run`'s mounts, in its order: `/`, then `/home`.
+  Change both together.
+- **Settings read only at init**: `GODEBUG`, OpenTelemetry's `OTEL_*` span
+  limits, the locale (`LANG`, `LC_*`, `RUNEWIDTH_EASTASIAN`) and dependencies'
+  debug switches such as `SWAGGER_DEBUG`. They take their defaults.
+- **Maps built during init** keep their snapshot hash seeds. They are gcx's own
+  registries, keyed by fixed names.
+
+`TestPreinitMatchesCommandModule` runs the same invocations through both modules
+and requires the same output and exit code. Init must not call the `gcx_http`
+imports, which wizer can't provide; the snapshot fails if it does.
 
 ## Security model
 

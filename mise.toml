@@ -2,6 +2,8 @@ min_version = "2024.1.0"
 
 [tools]
 go = "1.27"
+# For wasmtime wizer, which experimental/sandbox/build.sh uses to pre-initialize gcx.
+wasmtime = "51.0.0"
 golangci-lint = "2.15.0"
 goreleaser = "2.13.3"
 svu = "3.4.1"
