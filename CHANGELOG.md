@@ -1,3 +1,11 @@
+## v1.9.1 (2026-11-26)
+
+- `gcx api` can now stream server-sent event (SSE) responses.
+- Sandbox: ship a pre-initialized gcx WebAssembly module for faster startup.
+- Sandbox: each instance now gets its own random source.
+- Faster Grafana access: dropped the generated API client, so the binary is smaller.
+
+
 ## v1.9.0 (2026-11-26)
 
 ### Breaking changes
