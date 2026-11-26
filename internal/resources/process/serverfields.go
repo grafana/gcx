@@ -1,8 +1,8 @@
 package process
 
 import (
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -22,27 +22,27 @@ func (m *ServerFieldsStripper) Process(r *resources.Resource) error {
 
 	// Remove annotations set by the server.
 	annotations := r.Annotations()
-	delete(annotations, utils.AnnoKeyCreatedBy)
-	delete(annotations, utils.AnnoKeyUpdatedBy)
-	delete(annotations, utils.AnnoKeyUpdatedTimestamp)
+	delete(annotations, grafanameta.AnnoKeyCreatedBy)
+	delete(annotations, grafanameta.AnnoKeyUpdatedBy)
+	delete(annotations, grafanameta.AnnoKeyUpdatedTimestamp)
 
 	// Remove manager fields & source properties if the resource is managed by gcx,
 	// because these fields are automatically set on push.
 	p, ok := r.Raw.GetManagerProperties()
 	if ok && p.Kind == resources.ResourceManagerKind {
-		delete(annotations, utils.AnnoKeyManagerKind)
-		delete(annotations, utils.AnnoKeyManagerIdentity)
-		delete(annotations, utils.AnnoKeyManagerSuspended)
-		delete(annotations, utils.AnnoKeyManagerAllowsEdits)
+		delete(annotations, grafanameta.AnnoKeyManagerKind)
+		delete(annotations, grafanameta.AnnoKeyManagerIdentity)
+		delete(annotations, grafanameta.AnnoKeyManagerSuspended)
+		delete(annotations, grafanameta.AnnoKeyManagerAllowsEdits)
 
-		delete(annotations, utils.AnnoKeySourcePath)
-		delete(annotations, utils.AnnoKeySourceChecksum)
-		delete(annotations, utils.AnnoKeySourceTimestamp)
+		delete(annotations, grafanameta.AnnoKeySourcePath)
+		delete(annotations, grafanameta.AnnoKeySourceChecksum)
+		delete(annotations, grafanameta.AnnoKeySourceTimestamp)
 	}
 
 	// Remove labels set by the server.
 	labels := r.Labels()
-	delete(labels, utils.LabelKeyDeprecatedInternalID)
+	delete(labels, grafanameta.LabelKeyDeprecatedInternalID)
 
 	return r.SetUnstructured(&unstructured.Unstructured{
 		Object: map[string]any{

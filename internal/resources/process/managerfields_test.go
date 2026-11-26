@@ -3,10 +3,10 @@ package process_test
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/process"
 	"github.com/grafana/gcx/internal/version"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -60,10 +60,10 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity:    process.ManagerIdentity(),
-							utils.AnnoKeyManagerAllowsEdits: "true",
-							utils.AnnoKeySourcePath:         "file://some/test/path.json",
+							grafanameta.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
+							grafanameta.AnnoKeyManagerIdentity:    process.ManagerIdentity(),
+							grafanameta.AnnoKeyManagerAllowsEdits: "true",
+							grafanameta.AnnoKeySourcePath:         "file://some/test/path.json",
 						},
 					},
 					"spec": map[string]any{
@@ -82,9 +82,9 @@ func TestManagerFieldsAppender(t *testing.T) {
 					"name":      "example",
 					"namespace": "default",
 					"annotations": map[string]any{
-						utils.AnnoKeyManagerKind:     string(utils.ManagerKindTerraform),
-						utils.AnnoKeyManagerIdentity: "terraform-version-1",
-						utils.AnnoKeySourcePath:      "resource.tf",
+						grafanameta.AnnoKeyManagerKind:     string(grafanameta.ManagerKindTerraform),
+						grafanameta.AnnoKeyManagerIdentity: "terraform-version-1",
+						grafanameta.AnnoKeySourcePath:      "resource.tf",
 					},
 				},
 				"spec": map[string]any{
@@ -99,9 +99,9 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerKind:     string(utils.ManagerKindTerraform),
-							utils.AnnoKeyManagerIdentity: "terraform-version-1",
-							utils.AnnoKeySourcePath:      "resource.tf",
+							grafanameta.AnnoKeyManagerKind:     string(grafanameta.ManagerKindTerraform),
+							grafanameta.AnnoKeyManagerIdentity: "terraform-version-1",
+							grafanameta.AnnoKeySourcePath:      "resource.tf",
 						},
 					},
 					"spec": map[string]any{
@@ -121,9 +121,9 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerIdentity: "gcx", // stale value from a previous push
-							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
-							utils.AnnoKeySourcePath:      "file://some/test/path.json",
+							grafanameta.AnnoKeyManagerIdentity: "gcx", // stale value from a previous push
+							grafanameta.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
+							grafanameta.AnnoKeySourcePath:      "file://some/test/path.json",
 						},
 					},
 					"spec": map[string]any{
@@ -142,10 +142,10 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity:    process.ManagerIdentity(),
-							utils.AnnoKeyManagerAllowsEdits: "true",
-							utils.AnnoKeySourcePath:         "file://other/test/path.json",
+							grafanameta.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
+							grafanameta.AnnoKeyManagerIdentity:    process.ManagerIdentity(),
+							grafanameta.AnnoKeyManagerAllowsEdits: "true",
+							grafanameta.AnnoKeySourcePath:         "file://other/test/path.json",
 						},
 					},
 					"spec": map[string]any{

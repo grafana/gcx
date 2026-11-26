@@ -36,7 +36,7 @@ User input string
 ┌──────────────────────────────────────────────────────────┐
 │  Resource                                                │
 │                                                          │
-│  Raw    utils.GrafanaMetaAccessor  ←─ typed Grafana API │
+│  Raw    *grafanameta.Accessor      ←─ Grafana metadata  │
 │  Object unstructured.Unstructured  ←─ raw K8s object    │
 │  Source SourceInfo                 ←─ origin tracking   │
 └──────────────────────────────────────────────────────────┘
@@ -45,7 +45,7 @@ User input string
 `Resource` wraps two complementary representations:
 
 - **`Object`**: the raw `unstructured.Unstructured` map (`map[string]any`) from `k8s.io/apimachinery`. This is what gets serialized to JSON/YAML and sent to the API.
-- **`Raw`**: a `GrafanaMetaAccessor` — Grafana's typed accessor layer over the unstructured object. It provides methods like `GetManagerProperties()`, `SetManagerProperties()`, `GetSourceProperties()`, `GetFolder()` that would otherwise require manual map traversal.
+- **`Raw`**: a `*grafanameta.Accessor` (`internal/grafanameta`) over the same object. It reads and writes the `grafana.app/*` metadata, with methods like `GetManagerProperties()`, `SetManagerProperties()`, `SetSourceProperties()` and `GetFolder()` that would otherwise require manual map traversal. gcx keeps its own accessor rather than importing Grafana's `pkg/apimachinery/utils`, which is AGPL-3.0.
 
 ### SourceInfo
 
@@ -63,7 +63,7 @@ Every `Resource` carries a `SourceInfo` recording where it came from. This enabl
 
 ### Manager Metadata
 
-Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
+Resources carry manager metadata in annotations (via `grafanameta.Accessor`):
 - `grafana.app/managedBy` — manager kind (`kubectl` for gcx).
 - `grafana.app/managerId` — stable identity `gcx` for new resources.
 - `grafana.app/managerAllowsEdits` — set to `true` by the manager processor.
