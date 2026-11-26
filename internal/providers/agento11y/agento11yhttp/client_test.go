@@ -10,7 +10,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -100,6 +102,24 @@ func TestListAll_MultiplePages(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, items, 2)
 	assert.Equal(t, 2, callCount)
+}
+
+func TestListAll_RepeatedCursor(t *testing.T) {
+	var calls atomic.Int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		writeJSON(w, map[string]any{
+			"items":       []testItem{{ID: "1", Name: "first"}},
+			"next_cursor": "same",
+		})
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := agento11yhttp.ListAll[testItem](ctx, client, "/query/items", nil)
+	require.ErrorContains(t, err, `repeated cursor "same"`)
+	assert.EqualValues(t, 2, calls.Load())
 }
 
 func TestListAll_EmptyResponse(t *testing.T) {

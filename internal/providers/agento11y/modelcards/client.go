@@ -2,6 +2,7 @@ package modelcards
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -122,6 +123,7 @@ func (c *Client) List(ctx context.Context, q ListQuery, limit int) (ListResult, 
 	query.Set("limit", strconv.Itoa(pageSize))
 
 	result := ListResult{Cards: []Card{}}
+	seenCursors := map[string]struct{}{}
 	for {
 		page, err := agento11yhttp.DoJSON[any, listPage](ctx, c.base, http.MethodGet, listPath+"?"+query.Encode(), nil, http.StatusOK)
 		if err != nil {
@@ -140,6 +142,10 @@ func (c *Client) List(ctx context.Context, q ListQuery, limit int) (ListResult, 
 		if page.NextCursor == "" {
 			return result, nil
 		}
+		if _, repeated := seenCursors[page.NextCursor]; repeated {
+			return ListResult{}, fmt.Errorf("model card pagination repeated cursor %q", page.NextCursor)
+		}
+		seenCursors[page.NextCursor] = struct{}{}
 		query.Set("cursor", page.NextCursor)
 	}
 }

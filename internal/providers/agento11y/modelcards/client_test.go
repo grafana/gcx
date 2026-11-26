@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -138,6 +140,21 @@ func TestClient_List_Paging(t *testing.T) {
 			assert.Equal(t, tt.wantCursors, cursors)
 		})
 	}
+}
+
+func TestClient_List_RepeatedCursor(t *testing.T) {
+	var calls atomic.Int32
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		writeJSON(w, map[string]any{"data": []any{map[string]any{"model_key": "a"}}, "next_cursor": "same"})
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := client.List(ctx, modelcards.ListQuery{}, 0)
+	require.ErrorContains(t, err, `repeated cursor "same"`)
+	assert.EqualValues(t, 2, calls.Load())
 }
 
 func TestClient_List_ErrorStatus(t *testing.T) {
