@@ -10,7 +10,7 @@ import (
 // A team's business hours are a sub-resource that the Team object itself
 // cannot carry: they live behind teams/<id>/working_hours/. They therefore
 // appear as verbs on the teams noun, per the sub-resource rule in
-// CONSTITUTION.md.
+// DESIGN.md § CLI Grammar.
 
 func newTeamGetHoursCmd(loader OnCallConfigLoader) *cobra.Command {
 	opts := &teamHoursGetOpts{}

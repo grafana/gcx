@@ -181,7 +181,7 @@ gcx login
 
 `login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premise and adjusts the prompt accordingly. 
 
-Refer to [Authentication](/docs/sources/authentication) for the available paths and options to authenticate.
+Refer to [Authentication](docs/sources/authentication.md) for the available paths and options to authenticate.
 
 ## Use with your AI agent
 

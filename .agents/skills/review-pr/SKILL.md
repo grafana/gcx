@@ -17,7 +17,7 @@ It defines no checks of its own. Run the checks where they already live:
   the over-engineering rubric.
   [T5](../contribute/references/self-review.md#t5-shared-infrastructure)
   covers code that repeats something the repo already has.
-- AGENTS.md, for the compliance hierarchy. Check all four levels in order.
+- AGENTS.md, for the compliance hierarchy. Check every level in order.
 
 Authors run the same triggers before they push. Assume they did. Treat what you
 find as missed, not as dismissed.
@@ -43,7 +43,9 @@ gets the same treatment either way.
 The severity split matters more than any single finding. It decides what the
 author must act on. Reserve the blocking tier for four things.
 
-**A violation of `CONSTITUTION.md` or `DESIGN.md`.** Two cases recur. The agent
+**A violation of a rule in `ARCHITECTURE.md § Rules` or `DESIGN.md`.** A
+violation that the change copies from existing code still counts: existing
+violations are tracked debt, not precedent. Two cases recur. The agent
 output contract: a command declared `finite` in
 `cmd/gcx/root/testdata/output_classes.json` must write exactly one JSON value to
 stdout. A flag that writes a file and leaves stdout empty breaks that contract.
@@ -80,7 +82,7 @@ Use bold text for headings in the report, not markdown headings. Each section sh
 1. **Intent.** The problem, and how the change solves it. Say whether the
    approach is sound before you list what is wrong with it. Do not give an opinion non whether the approach is sound or not here - that will become obvious from the rest. Keep this as short as possible.
 2. **Blocking.** Fix before merge: correctness bugs, regressions to shipped
-   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md. Also: Behaviour that changes inside a described refactor. A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
+   behaviour, safety defects, and violations of the rules in ARCHITECTURE.md or DESIGN.md. Also: Behaviour that changes inside a described refactor. A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
 3. **Other findings.** Everything that does not block, worst first. Include
    documentation that contradicts the code it describes. Give each finding the
    space its argument needs and no more. Some take a paragraph. Most take a

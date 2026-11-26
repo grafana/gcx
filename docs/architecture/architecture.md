@@ -1,6 +1,6 @@
 # System Architecture
 
-gcx combines a Kubernetes-compatible resource pipeline with product-specific Grafana APIs. [ARCHITECTURE.md](../../ARCHITECTURE.md) is the entry point; this guide explains how the layers cooperate. [CONSTITUTION.md](../../CONSTITUTION.md) defines the invariants, and [DESIGN.md](../../DESIGN.md) defines the CLI contract.
+gcx combines a Kubernetes-compatible resource pipeline with product-specific Grafana APIs. [ARCHITECTURE.md](../../ARCHITECTURE.md) is the entry point; this guide explains how the layers cooperate. [ARCHITECTURE.md § Rules](../../ARCHITECTURE.md#rules) states the architecture rules, and [DESIGN.md](../../DESIGN.md) defines the CLI contract.
 
 ## Layered Structure
 

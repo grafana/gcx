@@ -40,7 +40,7 @@ This RFC decides how to fill those gaps.
 
 ### Sources
 
-- [CONSTITUTION.md](../../CONSTITUTION.md) — providers are self-registering plugins; K8s envelope is the file format
+- [ARCHITECTURE.md § Rules](../../ARCHITECTURE.md#rules) (formerly CONSTITUTION.md) — providers are self-registering plugins; K8s envelope is the file format
 - Existing precedent: [internal/providers/agento11y/eval/templates/commands.go](../../internal/providers/agento11y/eval/templates/commands.go) for `versions` sub-command shape
 - Current dashboards command tree: [internal/providers/dashboards/commands.go](../../internal/providers/dashboards/commands.go)
 - Resources pipeline entrypoints reused by the new provider: [internal/resources/dynamic/](../../internal/resources/dynamic) (K8s dynamic client — primary surface), [internal/resources/discovery/](../../internal/resources/discovery) (preferred-version resolution), [internal/resources/remote/](../../internal/resources/remote) (Pusher/Puller/Deleter — used by the declarative `resources push/pull` path, **not** by this provider's imperative CRUD), [internal/resources/adapter/typed.go](../../internal/resources/adapter/typed.go) (TypedCRUD[T])

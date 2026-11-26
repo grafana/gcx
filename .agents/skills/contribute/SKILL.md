@@ -44,7 +44,7 @@ For a capability or command change, read [capability implementation](references/
 - [Datasource implementation](references/datasource-implementation.md) for a new datasource kind, including shared queries, Explore links, codecs and routing.
 - [Distribution and gates](references/distribution-and-gates.md) when resource or datasource wiring, command annotations, or bundled skill coverage changes.
 
-Use the existing subsystem implementation for other changes. Resolve routine choices from repository evidence; ask about unresolved choices that materially change scope or behavior. Preserve CONSTITUTION, DESIGN and architecture rules.
+Use the existing subsystem implementation for other changes. Resolve routine choices from repository evidence; ask about unresolved choices that materially change scope or behavior. Preserve the rules in ARCHITECTURE.md, DESIGN.md and CONTRIBUTING.md; follow them even where existing code does not.
 
 ## 5. Verify and prepare review
 
