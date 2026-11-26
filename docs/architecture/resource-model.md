@@ -238,14 +238,14 @@ resolves, the same preferred/all-version policy applies to that group.
 
 ## 4. The Discovery System
 
-**Files:** `internal/resources/discovery/registry.go`, `registry_index.go`
+**Files:** `internal/resources/discovery/registry.go`, `registry_index.go`, `client.go` (the discovery HTTP client and its disk cache)
 
 ### Architecture
 
 ```
 Grafana API (/apis endpoint)
       |
-      v  k8s discovery.Client.ServerGroupsAndResources()
+      v  cachedClient.ServerGroupsAndResources() (client.go)
       |
 [APIGroup list]   [APIResourceList list]
       |

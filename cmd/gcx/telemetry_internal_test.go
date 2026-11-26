@@ -240,7 +240,7 @@ func TestBuildUsageEventReportsCanceledFromEmittedError(t *testing.T) {
 
 	err := fmt.Errorf("push: %w",
 		gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
-	exitCode := reportError(err, nil, nil)
+	exitCode := reportError(err, nil)
 	require.Equal(t, gcxerrors.ExitCancelled, exitCode)
 
 	event := buildUsageEvent(pushInfo(), time.Now(), exitCode)
@@ -477,7 +477,7 @@ func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			isolate(t)
 
-			exitCode := reportError(tc.err, nil, nil)
+			exitCode := reportError(tc.err, nil)
 
 			assert.Equal(t, tc.wantExit, exitCode, "the extraction must not move any exit code")
 			assert.Equal(t, tc.wantStatus, capture.CurrentHTTPStatus())
@@ -496,7 +496,7 @@ func TestReportErrorEmbedded200NeverReachesTheEvent(t *testing.T) {
 	t.Cleanup(func() { agent.SetFlag(false) })
 
 	err := queryerror.FromBody("loki", "query", 200, []byte(`{"results":{"A":{"error":"bad query","status":400}}}`))
-	exitCode := reportError(err, nil, nil)
+	exitCode := reportError(err, nil)
 
 	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), exitCode))
 	assert.NotContains(t, fields, "http_status",
