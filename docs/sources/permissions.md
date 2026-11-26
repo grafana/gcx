@@ -72,7 +72,7 @@ To learn more about roles and permissions for dashboards, folders, and data sour
 
 ### Adaptive Telemetry
 
-Adaptive Metrics rules, the analyzed metrics catalog (`gcx metrics adaptive metrics`), `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role (`grafana-adaptive-metrics-app.rules:read`) for reads or **Rules Editor** (`grafana-adaptive-metrics-app.rules:write`) for writes. Deleting a rule counts as a write. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
+Adaptive Metrics rules, the analyzed metrics catalog (`gcx metrics adaptive metrics`), `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role (`grafana-adaptive-metrics-app.rules:read`) for reads, or **Rules Editor** for writes. Creating, updating, or deleting a rule needs both `grafana-adaptive-metrics-app.rules:read` and `grafana-adaptive-metrics-app.rules:write`, because `gcx` reads the rule before it changes it. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
 
 Adaptive Metrics `recommendations list`, segments, and exemptions always use the direct Cloud API. Adaptive Logs, Logs Archive, and Adaptive Traces also use the direct Cloud API. These APIs use a Grafana Cloud credential.
 
