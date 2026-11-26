@@ -37,3 +37,26 @@ func TestEnforceLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterNames(t *testing.T) {
+	names := []string{"Events", "user_events", "users", "100%_done", "a_b", "axb", `back\slash`, "it's", "ITS"}
+
+	tests := []struct {
+		name   string
+		filter string
+		want   []string
+	}{
+		{"empty filter keeps everything", "", names},
+		{"case-insensitive on both sides", "EVENTS", []string{"Events", "user_events"}},
+		{"percent is literal", "%", []string{"100%_done"}},
+		{"underscore is literal, not single-char wildcard", "a_b", []string{"a_b"}},
+		{"backslash is literal", `\`, []string{`back\slash`}},
+		{"single quote is literal", "'", []string{"it's"}},
+		{"no match returns empty", "zzz", []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, athena.FilterNames(names, tt.filter))
+		})
+	}
+}
