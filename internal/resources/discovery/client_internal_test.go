@@ -169,13 +169,14 @@ func TestNewCachedClientHostWithoutScheme(t *testing.T) {
 }
 
 func TestResourcesFileStaysInCacheDir(t *testing.T) {
-	client := &cachedClient{dir: "/cache"}
+	dir := t.TempDir()
+	client := &cachedClient{dir: dir}
 	tests := []struct {
 		gv   string
 		want string
 	}{
-		{"v1", "/cache/v1/serverresources.json"},
-		{"a.grafana.app/v1", "/cache/a.grafana.app/v1/serverresources.json"},
+		{"v1", filepath.Join(dir, "v1", "serverresources.json")},
+		{"a.grafana.app/v1", filepath.Join(dir, "a.grafana.app", "v1", "serverresources.json")},
 		{"../../x/v1", ""},
 		{"/etc/v1", ""},
 	}
