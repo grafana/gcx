@@ -2,6 +2,7 @@ package alert
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/gcx/internal/config"
@@ -62,6 +63,9 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "List alert rules.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := validateLimit(opts.Limit); err != nil {
 				return err
 			}
 
@@ -193,4 +197,13 @@ func RuleDetailTable() cmdio.TableAdapter[*RuleStatus, RuleStatus] {
 		Table: RulesTable(),
 		Rows:  func(rule *RuleStatus) ([]RuleStatus, error) { return []RuleStatus{*rule}, nil },
 	}
+}
+
+// validateLimit rejects a negative --limit. A negative value would otherwise be
+// treated as no limit and return every item.
+func validateLimit(limit int64) error {
+	if limit < 0 {
+		return errors.New("--limit must not be negative")
+	}
+	return nil
 }

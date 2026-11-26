@@ -40,6 +40,7 @@ func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
+//nolint:dupl // The alert list commands share one shape and differ only in the client call.
 func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &groupsListOpts{}
 	cmd := &cobra.Command{
@@ -47,6 +48,9 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "List alert rule groups.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := validateLimit(opts.Limit); err != nil {
 				return err
 			}
 

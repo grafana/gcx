@@ -94,3 +94,28 @@ func RulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 func NewRoutingTreesCommandForTest(binding native.Binding) *cobra.Command {
 	return newRoutingTreesCommand(binding)
 }
+
+// NewTemplatesListCommandForTest wraps newTemplatesListCommand.
+func NewTemplatesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newTemplatesListCommand(loader)
+}
+
+// NewContactPointsListCommandForTest wraps newContactPointsListCommand.
+func NewContactPointsListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newContactPointsListCommand(loader)
+}
+
+// NewMuteTimingsListCommandForTest wraps newMuteTimingsListCommand.
+func NewMuteTimingsListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newMuteTimingsListCommand(loader)
+}
+
+// NewGroupsListCommandForTest wraps newGroupsListCommand.
+func NewGroupsListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newGroupsListCommand(loader)
+}
+
+// NewRulesListCommandForTest wraps newRulesListCommand.
+func NewRulesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newRulesListCommand(loader)
+}
