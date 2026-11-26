@@ -90,7 +90,7 @@ Your agent can perform any action its `gcx` credential allows. Use a credential 
 /plugin install gcx@gcx-marketplace
 ```
 
-**For other tools that use the `.agents` skill convention**, such as OpenAI Codex, OpenCode, and Pi, use `gcx agent skills`:
+**For other tools that use the `.agents` skill convention**, such as OpenAI Codex, OpenCode, and Pi, use [`gcx agent skills`](../cli-reference/#gcx-agent-skills):
 
 ```bash
 # List the bundled skills and whether they're installed
@@ -134,7 +134,7 @@ Commands follow a consistent `gcx <area> <noun> <verb>` grammar, for example `gc
 
 ### Preview changes
 
-Agents use `--dry-run` to preview a change before they make it. Commands that change resources, such as `gcx resources push` and `gcx resources delete`, support the flag. With `--dry-run`, the command simulates the operation and reports what it would do, without making changes:
+Agents use `--dry-run` to preview a change before they make it. Commands that change resources, such as [`gcx resources push`](../cli-reference/#gcx-resources-push) and [`gcx resources delete`](../cli-reference/#gcx-resources-delete), support the flag. With `--dry-run`, the command simulates the operation and reports what it would do, without making changes:
 
 ```bash
 gcx resources push dashboards --dry-run
@@ -163,7 +163,7 @@ With the default, an agent sees exit code `4` and knows that some resources succ
 Agent mode never approves a destructive operation by itself. Commands that require a confirmation prompt to a person fail in agent mode unless you allow the operation in one of these ways:
 
 - Pass `--force` to that command.
-- Set `GCX_AUTO_APPROVE=true` in the agent's environment. `GCX_AUTO_APPROVE` accepts `1`, `t`, or `true`. Other values, such as `yes`, make the command fail.
+- Set `GCX_AUTO_APPROVE=true` in the agent's environment. [`GCX_AUTO_APPROVE`](../cli-reference/#gcx_auto_approve) accepts `1`, `t`, or `true`. Other values, such as `yes`, make the command fail.
 
 `gcx resources delete` uses its own guard instead of a prompt: deleting every resource of a type requires `--force` or `--yes`.
 
@@ -200,7 +200,7 @@ In agent mode, `gcx` prints a one-line hint to `stderr` that suggests these flag
 
 List commands never truncate results silently.
 
-For example, `gcx resources get` returns up to 50 items for each resource type by default, which keeps results small.
+For example, [`gcx resources get`](../cli-reference/#gcx-resources-get) returns up to 50 items for each resource type by default, which keeps results small.
 
 When a command returns partial results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output, so an agent can tell that the result is incomplete and which command to run next:
 
@@ -278,10 +278,10 @@ To turn agent mode on or off regardless of detection:
 
 | To | Use |
 | --- | --- |
-| Turn agent mode on | `--agent` or `GCX_AGENT_MODE=1` |
+| Turn agent mode on | `--agent` or [`GCX_AGENT_MODE=1`](../cli-reference/#gcx_agent_mode) |
 | Turn agent mode off | `--agent=false` or `GCX_AGENT_MODE=0` |
 
-The `--agent` flag takes precedence over environment variables. [`GCX_AGENT_MODE`](../cli-reference/#gcx_agent_mode) accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off.
+The `--agent` flag takes precedence over environment variables. `GCX_AGENT_MODE` accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off.
 
 ### Log failed agent calls
 
