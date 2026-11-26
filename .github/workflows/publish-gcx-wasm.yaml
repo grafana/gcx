@@ -140,9 +140,12 @@ jobs:
         env:
           IMAGE_DIR: ${{ runner.temp }}/image
         # Both modules share one cache: wazero keys its entries by module bytes.
+        # A sandbox tag from before gcx-preinit.wasm builds only gcx.wasm.
         run: |
           go run ./internal/cmd/precompile "$IMAGE_DIR/gcx.wasm" "$IMAGE_DIR/cache"
-          go run ./internal/cmd/precompile "$IMAGE_DIR/gcx-preinit.wasm" "$IMAGE_DIR/cache"
+          if [ -f "$IMAGE_DIR/gcx-preinit.wasm" ]; then
+            go run ./internal/cmd/precompile "$IMAGE_DIR/gcx-preinit.wasm" "$IMAGE_DIR/cache"
+          fi
 
       - name: Push by digest
         env:
@@ -153,7 +156,9 @@ jobs:
           COMMIT: ${{ needs.build.outputs.commit }}
         run: |
           set -euo pipefail
-          printf 'FROM scratch\nCOPY gcx.wasm gcx-preinit.wasm gcx.commit /\nCOPY cache /cache\n' >"$IMAGE_DIR/Dockerfile"
+          modules=(gcx.wasm)
+          if [ -f "$IMAGE_DIR/gcx-preinit.wasm" ]; then modules+=(gcx-preinit.wasm); fi
+          printf 'FROM scratch\nCOPY %s gcx.commit /\nCOPY cache /cache\n' "${modules[*]}" >"$IMAGE_DIR/Dockerfile"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker buildx create --use --driver docker-container >/dev/null
           # zstd -19 roughly halves the gzip size (about 100 MB to 47 MB per

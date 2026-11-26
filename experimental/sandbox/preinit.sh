@@ -12,6 +12,10 @@ if [[ $# -ne 2 ]]; then
 	sed -n '6p' "$0" >&2
 	exit 2
 fi
+if ! command -v wasmtime >/dev/null; then
+	echo "preinit.sh: needs wasmtime for wizer; run mise install in the repository" >&2
+	exit 1
+fi
 
 # The Go runtime caches WASI's preopened directories at init, by descriptor,
 # so the snapshot must see the same mounts, in the same order, as each
@@ -22,8 +26,9 @@ trap 'rm -rf "$mounts"' EXIT
 mkdir "$mounts/root" "$mounts/home"
 
 # Init may not call gcx_http, which wizer can't provide: such a call traps
-# and fails the snapshot. No environment is passed, so nothing the
-# snapshot keeps depends on the build machine's.
+# and fails the snapshot. wasmtime passes the guest no environment of its
+# own, only HOME=/home as Run sets it, so nothing the snapshot keeps
+# depends on the build machine's environment.
 wasmtime wizer \
 	-S cli=y -W unknown-imports-trap=y \
 	--dir "$mounts/root::/" --dir "$mounts/home::/home" --env HOME=/home \

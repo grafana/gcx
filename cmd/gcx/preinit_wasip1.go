@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"os"
 	"runtime/debug"
+	"strings"
 	"unsafe"
 
 	"charm.land/lipgloss/v2"
@@ -57,10 +58,16 @@ func gcxInit() {}
 //go:wasmexport gcx_run
 func gcxRun() {
 	os.Args = wasiStrings(wasiArgsSizesGet, wasiArgsGet)
+	if len(os.Args) == 0 { // main expects a program name
+		os.Args = []string{"gcx"}
+	}
 	os.Clearenv()
 	for _, kv := range wasiStrings(wasiEnvironSizesGet, wasiEnvironGet) {
-		if k, v, ok := bytes.Cut([]byte(kv), []byte{'='}); ok {
-			_ = os.Setenv(string(k), string(v))
+		// The first of duplicate keys wins, as in Go's own environment.
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			if _, set := os.LookupEnv(k); !set {
+				_ = os.Setenv(k, v)
+			}
 		}
 	}
 	gcPercent, memoryLimit, err := gcSettings(os.Getenv("GOGC"), os.Getenv("GOMEMLIMIT"))

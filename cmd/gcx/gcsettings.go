@@ -19,9 +19,9 @@ func gcSettings(gogc, gomemlimit string) (*int, *int64, error) {
 	case "off":
 		percent = new(-1)
 	default:
-		n, err := strconv.Atoi(gogc)
-		if err != nil {
-			n = 100
+		n := 100
+		if p, err := strconv.ParseInt(gogc, 10, 32); err == nil {
+			n = int(p)
 		}
 		percent = &n
 	}

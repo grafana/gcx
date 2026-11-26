@@ -79,8 +79,9 @@ the guest polls and supplies its own buffers.
 ## Usage
 
 ```sh
-experimental/sandbox/build.sh                            # → experimental/sandbox/gcx.wasm
-(cd experimental/sandbox && go test ./...)               # end-to-end tests use it
+mise install                                             # Go, and wasmtime for wizer
+experimental/sandbox/build.sh                            # → gcx.wasm and gcx-preinit.wasm
+(cd experimental/sandbox && go test ./...)               # end-to-end tests use them
 ```
 
 ```go
@@ -224,6 +225,10 @@ Some state stays as the snapshot had it:
   debug switches such as `SWAGGER_DEBUG`. They take their defaults.
 - **Maps built during init** keep their snapshot hash seeds. They are gcx's own
   registries, keyed by fixed names.
+- **Random generators a dependency seeds during init**, rather than drawing
+  from the runtime when called, repeat in every instance: for example
+  `oklog/ulid`'s default entropy, reached through `go-openapi/strfmt`. gcx calls
+  none of them; reseed any it starts to use in `gcx_run`.
 
 `TestPreinitMatchesCommandModule` runs the same invocations through both modules
 and requires the same output and exit code. Init must not call the `gcx_http`
