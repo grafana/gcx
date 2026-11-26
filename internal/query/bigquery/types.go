@@ -170,13 +170,12 @@ func InfoSchemaPrefix(project, dataset string) string {
 // The LIMIT … OFFSET branch is deliberately unanchored — it must match anywhere.
 var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\A\s*(?:EXPLAIN|DESC(?:RIBE)?|SHOW|CREATE|DROP|ALTER|INSERT|UPDATE|DELETE|MERGE|TRUNCATE|BEGIN|DECLARE|CALL)\b)`)
 
-// trailingLineCommentRe matches a `--` or `#` line comment that runs to the end
-// of the statement. Appending "LIMIT n" as a bare suffix after one would land
-// inside the comment and be dropped, silently leaving the query unbounded.
-var trailingLineCommentRe = regexp.MustCompile(`(--|#)[^\r\n]*$`)
-
+// bail also skips statements ending in a line comment: appending "LIMIT n" after a `--` or `#` line comment
+// that runs to the end of the statement would land inside the comment and
+// leave the query unbounded. Markers inside quoted literals do not count.
 func bail(sql string) bool {
-	return limitBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\r\n"))
+	syntax := querysql.LineCommentSyntax{Hash: true, Quotes: "'\"`", BackslashEscapes: true}
+	return limitBailRe.MatchString(sql) || querysql.EndsInLineComment(sql, syntax)
 }
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports

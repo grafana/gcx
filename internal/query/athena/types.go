@@ -48,11 +48,10 @@ func EnforceLimitSentinel(sql string, limit, maxLimit int) (string, int, bool) {
 	return querysql.EnforceLimitSentinel(sql, limit, maxLimit, athenaBail)
 }
 
-// trailingLineCommentRe matches a `--` line comment that runs to the end of
-// the statement. Appending "LIMIT n" as a bare suffix after one would land
-// inside the comment and be dropped, silently leaving the query unbounded.
-// A bare "\r" ends a comment in Trino, so only "\r" and "\n" stop the match.
-var trailingLineCommentRe = regexp.MustCompile(`--[^\r\n]*$`)
+// athenaBail also skips statements ending in a line comment: appending "LIMIT n" after a `--` line comment that
+// runs to the end of the statement would land inside the comment and leave the
+// query unbounded. A bare "\r" ends a comment in Trino. Markers inside quoted
+// literals do not count.
 
 func athenaBail(sql string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(sql))
@@ -60,5 +59,5 @@ func athenaBail(sql string) bool {
 		return true
 	}
 	trimmed := strings.TrimRight(sql, "; \t\r\n")
-	return limitBailRe.MatchString(trimmed) || trailingLineCommentRe.MatchString(trimmed)
+	return limitBailRe.MatchString(trimmed) || querysql.EndsInLineComment(sql, querysql.LineCommentSyntax{Quotes: "'\""})
 }

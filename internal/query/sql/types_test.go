@@ -118,3 +118,34 @@ func TestTruncationHint(t *testing.T) {
 	assert.Contains(t, hint, "max 1000")
 	assert.Contains(t, hint, "--limit 0")
 }
+
+func TestEndsInLineComment(t *testing.T) {
+	bq := sql.LineCommentSyntax{Hash: true, Quotes: "'\"`", BackslashEscapes: true}
+	std := sql.LineCommentSyntax{Quotes: "'\""}
+	tests := []struct {
+		name string
+		sql  string
+		syn  sql.LineCommentSyntax
+		want bool
+	}{
+		{"trailing dashes", "SELECT 1 -- c", std, true},
+		{"trailing dashes before CRLF", "SELECT 1 -- c\r\n", std, true},
+		{"comment on earlier line", "SELECT 1 -- c\nFROM t", std, false},
+		{"comment ended by bare CR", "SELECT 1 -- c\rFROM t", std, false},
+		{"dashes in literal", "SELECT 'a--b'", std, false},
+		{"doubled quote stays in literal", "SELECT 'it''s --'", std, false},
+		{"hash ignored without Hash", "SELECT 1 # c", std, false},
+		{"trailing hash", "SELECT 1 # c", bq, true},
+		{"hash in literal", "SELECT '#fff'", bq, false},
+		{"backslash escaped quote", `SELECT 'a\'#b'`, bq, false},
+		{"unterminated literal", "SELECT 'abc --", std, false},
+		{"block comment hides marker", "SELECT 1 /* -- */", std, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sql.EndsInLineComment(tt.sql, tt.syn); got != tt.want {
+				t.Errorf("EndsInLineComment(%q) = %v, want %v", tt.sql, got, tt.want)
+			}
+		})
+	}
+}

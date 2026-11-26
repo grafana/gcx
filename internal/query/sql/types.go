@@ -153,3 +153,53 @@ func (r *QueryResponse) Truncate(eff int) bool {
 func TruncationHint(shown, maxLimit int) string {
 	return fmt.Sprintf("showing the first %d rows; more rows match. Raise --limit (max %d), pass --limit 0 to remove the cap, or add your own row limit to the query.", shown, maxLimit)
 }
+
+// LineCommentSyntax describes the lexical rules EndsInLineComment applies.
+type LineCommentSyntax struct {
+	// Hash treats "#" as a line comment marker in addition to "--".
+	Hash bool
+	// Quotes lists the quote characters that delimit string literals and
+	// quoted identifiers (e.g. "'\"`").
+	Quotes string
+	// BackslashEscapes lets a backslash escape the next character inside a
+	// quoted literal.
+	BackslashEscapes bool
+}
+
+// EndsInLineComment reports whether the statement ends inside a `--` (or `#`)
+// line comment, so that a bare "LIMIT n" suffix would land in the comment and
+// be dropped. Comment markers inside quoted literals (WHERE c = '#fff',
+// LIKE '%--%') and inside block comments do not count. A line comment ends at
+// a bare "\r" or "\n". Trailing semicolons and whitespace are ignored.
+func EndsInLineComment(sql string, syn LineCommentSyntax) bool {
+	s := strings.TrimRight(sql, "; \t\r\n")
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case strings.IndexByte(syn.Quotes, c) >= 0:
+			i++
+			for i < len(s) && s[i] != c {
+				if syn.BackslashEscapes && s[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++ // closing quote; a doubled quote reopens as an adjacent literal
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			end := strings.Index(s[i+2:], "*/")
+			if end < 0 {
+				return false // unterminated block comment: not a line comment
+			}
+			i += end + 4
+		case (c == '-' && i+1 < len(s) && s[i+1] == '-') || (syn.Hash && c == '#'):
+			nl := strings.IndexAny(s[i:], "\r\n")
+			if nl < 0 {
+				return true
+			}
+			i += nl + 1
+		default:
+			i++
+		}
+	}
+	return false
+}

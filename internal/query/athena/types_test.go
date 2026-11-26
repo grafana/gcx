@@ -33,6 +33,11 @@ func TestEnforceLimit(t *testing.T) {
 		{name: "bails on trailing line comment", sql: "SELECT 1 -- note", limit: 100, maxLimit: 1000, want: "SELECT 1 -- note"},
 		{name: "bails on trailing line comment before LF", sql: "SELECT 1 -- note\n", limit: 100, maxLimit: 1000, want: "SELECT 1 -- note\n"},
 		{name: "bails on trailing line comment before CRLF", sql: "SELECT 1 -- note\r\n", limit: 100, maxLimit: 1000, want: "SELECT 1 -- note\r\n"},
+		{name: "appends limit when dashes are inside a string literal", sql: "SELECT * FROM t WHERE c LIKE '%--%'", limit: 100, maxLimit: 1000, want: "SELECT * FROM t WHERE c LIKE '%--%' LIMIT 100"},
+		{name: "appends limit when dashes are inside a quoted identifier", sql: `SELECT "a--b" FROM t`, limit: 100, maxLimit: 1000, want: `SELECT "a--b" FROM t LIMIT 100`},
+		{name: "appends limit when hash is inside a string literal", sql: "SELECT * FROM t WHERE c = '#fff'", limit: 100, maxLimit: 1000, want: "SELECT * FROM t WHERE c = '#fff' LIMIT 100"},
+		{name: "bails on comment after string literal", sql: "SELECT '--' -- note", limit: 100, maxLimit: 1000, want: "SELECT '--' -- note"},
+		{name: "bails on comment containing a quote", sql: "SELECT 1 -- don't", limit: 100, maxLimit: 1000, want: "SELECT 1 -- don't"},
 		{name: "keeps limit when comment is on an earlier line", sql: "-- note\r\nSELECT 1\r\n", limit: 100, maxLimit: 1000, want: "-- note\r\nSELECT 1 LIMIT 100\r\n"},
 		{name: "bails on LIMIT OFFSET before CRLF", sql: "SELECT 1 LIMIT 10 OFFSET 5;\r\n", limit: 100, maxLimit: 1000, want: "SELECT 1 LIMIT 10 OFFSET 5;\r\n"},
 	}
