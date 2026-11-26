@@ -103,7 +103,8 @@ func (c *cachedClient) ServerGroupsAndResources() ([]*metav1.APIGroup, []*metav1
 	for i := range groups.Groups {
 		apiGroups = append(apiGroups, &groups.Groups[i])
 		for _, v := range groups.Groups[i].Versions {
-			// Fresh aggregated results take precedence over cached ones.
+			// When the groups were just fetched with aggregated discovery, use
+			// those resources rather than cached files.
 			var list metav1.APIResourceList
 			if file, ok := c.resourcesFile(v.GroupVersion); ok && len(live) == 0 && c.readCache(file, &list) {
 				byGV[v.GroupVersion] = &list
@@ -264,13 +265,31 @@ func (c *cachedClient) get(ctx context.Context, path, accept string, out any) (b
 		if json.Unmarshal(body, &status) == nil && status.Kind == "Status" {
 			return false, &apierrors.StatusError{ErrStatus: status}
 		}
-		return false, apierrors.NewGenericServerResponse(resp.StatusCode, http.MethodGet, schema.GroupResource{}, "", strings.TrimSpace(string(body)), 0, true)
+		return false, apierrors.NewGenericServerResponse(resp.StatusCode, http.MethodGet, schema.GroupResource{}, "", errorMessage(resp, body), 0, true)
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return false, fmt.Errorf("decoding %s: %w", path, err)
 	}
 	_, params, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	return params["g"] == "apidiscovery.k8s.io" && params["v"] == "v2" && params["as"] == "APIGroupDiscoveryList", nil
+}
+
+// maxErrorBodyLen caps how much of an error response becomes the error message.
+const maxErrorBodyLen = 2048
+
+// errorMessage returns a non-Status error body for the error message, as
+// client-go does: only a text body, and at most maxErrorBodyLen bytes of it, so
+// a binary body or a proxy's long error page doesn't become gcx's error.
+func errorMessage(resp *http.Response, body []byte) string {
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if !strings.HasPrefix(mediaType, "text/") {
+		return ""
+	}
+	msg := strings.TrimSpace(string(body))
+	if len(msg) > maxErrorBodyLen {
+		msg = msg[:maxErrorBodyLen]
+	}
+	return msg
 }
 
 // convertAPIGroup converts an aggregated discovery group, adding its versions'

@@ -79,6 +79,6 @@ See [configuration](config-system.md), [authentication](auth-system.md), and [lo
 | Datasource HTTP clients | Query construction and response conversion using the selected Grafana transport |
 | Product clients and adapters | Product-specific APIs and conversion to resource envelopes where reconciliation applies |
 
-Using Kubernetes client libraries avoids duplicating discovery, pagination, and API error machinery at the cost of a substantial dependency graph. Direct query clients bypass that machinery while reusing authentication. Unified datasource-query requests share transport and data-frame types instead of duplicating fallback and response-limit logic.
+Using Kubernetes client libraries avoids duplicating pagination and API error machinery at the cost of a substantial dependency graph. Discovery is the exception: gcx owns a small discovery client and its disk cache (`internal/resources/discovery/client.go`), because client-go's links `k8s.io/client-go/kubernetes/scheme`, whose registration of every built-in Kubernetes type costs each process tens of milliseconds at startup. Direct query clients bypass that machinery while reusing authentication. Unified datasource-query requests share transport and data-frame types instead of duplicating fallback and response-limit logic.
 
 See [client/API layer](client-api-layer.md) for transport construction and error translation, [CLI layer](cli-layer.md) for command lifecycle and output, and [project structure](project-structure.md) for module and build boundaries.

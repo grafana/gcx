@@ -186,3 +186,22 @@ func TestResourcesFileStaysInCacheDir(t *testing.T) {
 		assert.Equal(t, tc.want, file, tc.gv)
 	}
 }
+
+func TestErrorMessage(t *testing.T) {
+	long := strings.Repeat("x", maxErrorBodyLen+10)
+	tests := []struct {
+		name, contentType, body, want string
+	}{
+		{"text", "text/plain; charset=utf-8", " gateway timeout \n", "gateway timeout"},
+		{"html page", "text/html", "<html>bad gateway</html>", "<html>bad gateway</html>"},
+		{"json", "application/json", `{"message":"nope"}`, ""},
+		{"no content type", "", "binary", ""},
+		{"long text", "text/plain", long, long[:maxErrorBodyLen]},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{"Content-Type": {tc.contentType}}}
+			assert.Equal(t, tc.want, errorMessage(resp, []byte(tc.body)))
+		})
+	}
+}
