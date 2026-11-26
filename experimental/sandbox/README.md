@@ -205,15 +205,17 @@ starts each instance from the snapshot and calls `gcx_run` instead of `_start`.
 Everything init read from the host belongs to the snapshot, not to the
 command, so `gcx_run` reloads it before running gcx's `main`:
 
-- the arguments and environment, from WASI
+- the arguments and environment, which the runtime reads from WASI again
 - `GOGC` and `GOMEMLIMIT`, which the runtime reads at startup
 - the runtime's random state (map hash seeds, `math/rand`, `hash/maphash`
-  seeds), from host entropy. Go has no API for this, so `build.sh` adds
-  `overlay/runtime/gcx_reseed_wasip1.go` to the runtime with `go build
-  -overlay`. It uses runtime internals: a Go upgrade that changes them breaks
-  the build, and `TestPreinitReseedsRandomness` checks the reseed still works.
+  seeds), from host entropy
 - the working directory, from `$PWD`
 - gcx's agent-mode detection and lipgloss's color profile
+
+Go has no API for re-reading the arguments or reseeding, so `build.sh` adds
+`overlay/runtime/gcx_preinit_wasip1.go` to the runtime with `go build
+-overlay`. It uses runtime internals: a Go upgrade that changes them breaks the
+build, and the tests below check it still works.
 
 Some state stays as the snapshot had it:
 

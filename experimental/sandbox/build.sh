@@ -41,7 +41,7 @@ echo "built $out"
 # files without touching GOROOT), then snapshotted by preinit.sh.
 overlay=$here/build/overlay.json
 printf '{"Replace":{"%s":"%s"}}\n' \
-	"$(go env GOROOT)/src/runtime/gcx_reseed_wasip1.go" "$here/overlay/runtime/gcx_reseed_wasip1.go" >"$overlay"
+	"$(go env GOROOT)/src/runtime/gcx_preinit_wasip1.go" "$here/overlay/runtime/gcx_preinit_wasip1.go" >"$overlay"
 reactor=$here/build/gcx-reactor.wasm
 GOOS=wasip1 GOARCH=wasm go build -mod=vendor -trimpath -buildmode=c-shared -tags gcxpreinit \
 	-overlay="$overlay" -o "$reactor" ./cmd/gcx

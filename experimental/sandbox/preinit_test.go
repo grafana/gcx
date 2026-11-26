@@ -138,7 +138,7 @@ func buildPreinitGuest(t *testing.T) []byte {
 		t.Fatalf("go env GOROOT: %v", err)
 	}
 	overlay, err := json.Marshal(map[string]map[string]string{"Replace": {
-		filepath.Join(strings.TrimSpace(string(goroot)), "src", "runtime", "gcx_reseed_wasip1.go"): mustAbs(t, "overlay/runtime/gcx_reseed_wasip1.go"),
+		filepath.Join(strings.TrimSpace(string(goroot)), "src", "runtime", "gcx_preinit_wasip1.go"): mustAbs(t, "overlay/runtime/gcx_preinit_wasip1.go"),
 	}})
 	if err != nil {
 		t.Fatal(err)

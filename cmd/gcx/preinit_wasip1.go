@@ -15,28 +15,22 @@ package main
 // listed in experimental/sandbox/README.md.
 
 import (
-	"bytes"
 	"os"
 	"runtime/debug"
 	"strings"
-	"unsafe"
+	_ "unsafe" // for go:linkname
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/grafana/gcx/internal/agent"
 )
 
-//go:wasmimport wasi_snapshot_preview1 args_sizes_get
-func wasiArgsSizesGet(count, size unsafe.Pointer) uint32
-
-//go:wasmimport wasi_snapshot_preview1 args_get
-func wasiArgsGet(ptrs, buf unsafe.Pointer) uint32
-
-//go:wasmimport wasi_snapshot_preview1 environ_sizes_get
-func wasiEnvironSizesGet(count, size unsafe.Pointer) uint32
-
-//go:wasmimport wasi_snapshot_preview1 environ_get
-func wasiEnvironGet(ptrs, buf unsafe.Pointer) uint32
+// hostArgsEnv reads this instance's arguments and environment from WASI,
+// which the runtime read only at startup. build.sh adds it to the runtime
+// from experimental/sandbox/overlay.
+//
+//go:linkname hostArgsEnv runtime.gcxHostArgsEnv
+func hostArgsEnv() (args, env []string)
 
 // reseedRandom replaces the Go runtime's random state with fresh host
 // entropy: map hash seeds, math/rand and hash/maphash would otherwise repeat
@@ -57,12 +51,13 @@ func gcxInit() {}
 //
 //go:wasmexport gcx_run
 func gcxRun() {
-	os.Args = wasiStrings(wasiArgsSizesGet, wasiArgsGet)
+	args, env := hostArgsEnv()
+	os.Args = args
 	if len(os.Args) == 0 { // main expects a program name
 		os.Args = []string{"gcx"}
 	}
 	os.Clearenv()
-	for _, kv := range wasiStrings(wasiEnvironSizesGet, wasiEnvironGet) {
+	for _, kv := range env {
 		// The first of duplicate keys wins, as in Go's own environment.
 		if k, v, ok := strings.Cut(kv, "="); ok {
 			if _, set := os.LookupEnv(k); !set {
@@ -92,24 +87,4 @@ func gcxRun() {
 	lipgloss.Writer = colorprofile.NewWriter(os.Stdout, os.Environ())
 
 	main()
-}
-
-// wasiStrings reads a WASI string list, such as the arguments: sizes reports
-// the count and buffer size, and get fills an array of pointers and the
-// strings themselves, each NUL-terminated, in order.
-func wasiStrings(sizes, get func(unsafe.Pointer, unsafe.Pointer) uint32) []string {
-	var count, size uint32
-	if sizes(unsafe.Pointer(&count), unsafe.Pointer(&size)) != 0 || count == 0 {
-		return nil
-	}
-	ptrs := make([]uint32, count) // guest addresses: 32 bits on wasm
-	buf := make([]byte, size)
-	if get(unsafe.Pointer(&ptrs[0]), unsafe.Pointer(&buf[0])) != 0 {
-		return nil
-	}
-	out := make([]string, 0, count)
-	for s := range bytes.SplitSeq(bytes.TrimSuffix(buf, []byte{0}), []byte{0}) {
-		out = append(out, string(s))
-	}
-	return out
 }
