@@ -3,6 +3,7 @@ package output_test
 import (
 	"bytes"
 	goio "io"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -355,3 +356,20 @@ type dummyCodec struct{}
 func (*dummyCodec) Encode(_ goio.Writer, _ any) error { return nil }
 func (*dummyCodec) Decode(_ goio.Reader, _ any) error { return nil }
 func (*dummyCodec) Format() format.Format             { return "text" }
+
+// Every format the -o help lists must have a codec, so the menu (built without
+// constructing codecs) stays in step with codecFor.
+func TestBindFlags_ListedFormatsAllValidate(t *testing.T) {
+	opts := &cmdio.Options{}
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts.BindFlags(flags)
+
+	usage := flags.Lookup("output").Usage
+	_, list, ok := strings.Cut(usage, "One of: ")
+	require.True(t, ok, usage)
+	for name := range strings.SplitSeq(list, ", ") {
+		opts.OutputFormat = name
+		require.NoError(t, opts.Validate(), name)
+	}
+	assert.Equal(t, "agents, json, yaml", list)
+}

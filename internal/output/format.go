@@ -594,31 +594,38 @@ func reflectSliceFieldByKey(t reflect.Type, key string) []string {
 }
 
 // We have to return an interface here.
-func (opts *Options) codecFor(format string) format.Codec { //nolint:ireturn
-	if opts.customCodecs != nil && opts.customCodecs[format] != nil {
-		return opts.customCodecs[format]
+func (opts *Options) codecFor(name string) format.Codec { //nolint:ireturn
+	if opts.customCodecs != nil && opts.customCodecs[name] != nil {
+		return opts.customCodecs[name]
 	}
 
-	return opts.builtinCodecs()[format]
+	// Keep in step with builtinFormats.
+	switch name {
+	case "yaml":
+		return format.NewYAMLCodec()
+	case "json":
+		return format.NewJSONCodec()
+	case string(agentsFormat):
+		errWriter := opts.ErrWriter
+		if errWriter == nil {
+			errWriter = os.Stderr
+		}
+		return newAgentsCodec(errWriter)
+	}
+	return nil
 }
 
-func (opts *Options) builtinCodecs() map[string]format.Codec {
-	errWriter := opts.ErrWriter
-	if errWriter == nil {
-		errWriter = os.Stderr
-	}
-	return map[string]format.Codec{
-		"yaml":   format.NewYAMLCodec(),
-		"json":   format.NewJSONCodec(),
-		"agents": newAgentsCodec(errWriter),
-	}
+// builtinFormats names the formats codecFor builds without a custom codec, so
+// allowedCodecs can list them without constructing a codec for every command.
+func builtinFormats() []string {
+	return []string{"yaml", "json", string(agentsFormat)}
 }
 
 func (opts *Options) allowedCodecs() []string {
 	// Merge builtins and custom codecs into a set so that custom codecs
 	// that shadow a builtin name (e.g. a custom "json" codec) are not listed twice.
 	all := make(map[string]struct{})
-	for name := range opts.builtinCodecs() {
+	for _, name := range builtinFormats() {
 		all[name] = struct{}{}
 	}
 	for name := range opts.customCodecs {
