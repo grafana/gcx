@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Builds gcx from this repository as a wasip1 module: experimental/sandbox/gcx.wasm.
+# Builds gcx from this repository as wasip1 modules: experimental/sandbox/gcx.wasm,
+# and gcx-preinit.wasm next to it, the same gcx pre-initialized (see
+# preinit.sh and "Pre-initialized module" in README.md).
 # Usage: experimental/sandbox/build.sh [output path]
 #
 # Third-party modules without wasip1 support get stub files from patches/,
@@ -9,6 +11,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out=${1:-$here/gcx.wasm}
+preinit_out=${out%.wasm}-preinit.wasm
 src=$here/build/src
 
 mkdir -p "$src"
@@ -32,3 +35,15 @@ done
 
 GOOS=wasip1 GOARCH=wasm go build -mod=vendor -trimpath -o "$out" ./cmd/gcx
 echo "built $out"
+
+# The pre-initialized module: gcx as a WASI reactor, with gcx_run, and with
+# overlay/runtime added to the Go runtime (go build -overlay replaces or adds
+# files without touching GOROOT), then snapshotted by preinit.sh.
+overlay=$here/build/overlay.json
+printf '{"Replace":{"%s":"%s"}}\n' \
+	"$(go env GOROOT)/src/runtime/gcx_preinit_wasip1.go" "$here/overlay/runtime/gcx_preinit_wasip1.go" >"$overlay"
+reactor=$here/build/gcx-reactor.wasm
+GOOS=wasip1 GOARCH=wasm go build -mod=vendor -trimpath -buildmode=c-shared -tags gcxpreinit \
+	-overlay="$overlay" -o "$reactor" ./cmd/gcx
+"$here/preinit.sh" "$reactor" "$preinit_out"
+echo "built $preinit_out"
