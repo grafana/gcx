@@ -56,7 +56,7 @@ func TestReportError_EmittedError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := reportError(tc.err, nil, nil)
+			got := reportError(tc.err, nil)
 			if got != tc.want {
 				t.Fatalf("reportError() = %d, want %d", got, tc.want)
 			}
@@ -161,7 +161,7 @@ func TestReportErrorEmittedCancellationKeepsExitFive(t *testing.T) {
 	t.Cleanup(func() { agent.SetFlag(false) })
 
 	err := fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
-	if got := reportError(err, nil, nil); got != gcxerrors.ExitCancelled {
+	if got := reportError(err, nil); got != gcxerrors.ExitCancelled {
 		t.Fatalf("reportError() = %d, want %d", got, gcxerrors.ExitCancelled)
 	}
 }
@@ -325,7 +325,7 @@ func TestConfigSetPlaintextFallbackProcessHelper(_ *testing.T) {
 	preParseAgentFlag()
 	cmd := root.Command("test")
 	err := cmd.ExecuteContext(context.Background())
-	os.Exit(reportError(err, collectBoolFlags(cmd), collectSubCmds(cmd)))
+	os.Exit(reportError(err, cmd))
 }
 
 func TestConfigCheckProcessExit(t *testing.T) {
@@ -461,7 +461,7 @@ func TestConfigCheckProcessHelper(_ *testing.T) {
 	preParseAgentFlag()
 	cmd := root.Command("test")
 	err := cmd.ExecuteContext(context.Background())
-	os.Exit(reportError(err, collectBoolFlags(cmd), collectSubCmds(cmd)))
+	os.Exit(reportError(err, cmd))
 }
 
 func TestParsePseudoVersion(t *testing.T) {

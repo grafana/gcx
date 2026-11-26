@@ -246,6 +246,8 @@ func TestValidateArgs_SeparateTreePreservesRepeatableFlags(t *testing.T) {
 			cmd, tags, paths := build()
 			validationCmd, _, _ := build()
 			require.NoError(t, root.ValidateArgs(validationCmd, tc.args))
+			// main also checks the execution tree itself; that must not parse flags.
+			root.NeedsArgValidation(cmd, tc.args)
 			assert.Empty(t, *tags, "validation must not mutate the execution tree")
 			assert.Empty(t, *paths, "validation must not mutate the execution tree")
 			cmd.SetArgs(tc.args)
@@ -660,4 +662,67 @@ func TestF1_HelpTextMentionsCredentials(t *testing.T) {
 	flag := rootCmd.PersistentFlags().Lookup("insecure-log-http-payload")
 	require.NotNil(t, flag, "--insecure-log-http-payload flag must be registered")
 	require.Contains(t, flag.Usage, "credentials", "help text must mention credentials")
+}
+
+func TestNeedsArgValidation(t *testing.T) {
+	leaf := &cobra.Command{Use: "list", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	group := &cobra.Command{Use: "dashboards"}
+	group.PersistentFlags().String("config", "", "Config file")
+	group.AddCommand(leaf)
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "dashboards", commands: []*cobra.Command{group}}})
+
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"runnable leaf", []string{"dashboards", "list"}, false},
+		{"runnable leaf with flags", []string{"--config", "dashboards", "dashboards", "list", "--config=x"}, false},
+		{"version", []string{"version"}, false},
+		{"stray arg on group", []string{"dashboards", "nonesuch"}, true},
+		{"stray arg after flag value matching a command", []string{"--config", "dashboards", "dashboards", "nonesuch"}, true},
+		{"bare group", []string{"dashboards"}, true},
+		{"unknown top-level command", []string{"nonesuch"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, root.NeedsArgValidation(rootCmd, tc.args))
+		})
+	}
+}
+
+// TestNeedsArgValidation_SkipsOnlyWhatValidateArgsAccepts checks the invariant
+// main relies on: whenever NeedsArgValidation says validation can be skipped,
+// ValidateArgs on a fresh tree accepts the same args.
+func TestNeedsArgValidation_SkipsOnlyWhatValidateArgsAccepts(t *testing.T) {
+	build := func() *cobra.Command {
+		leaf := &cobra.Command{Use: "list", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+		leaf.Flags().BoolP("all", "a", false, "All")
+		leaf.Flags().IntP("limit", "l", 0, "Limit")
+		group := &cobra.Command{Use: "dashboards"}
+		group.PersistentFlags().StringP("config", "c", "", "Config file")
+		group.AddCommand(leaf)
+		return root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "dashboards", commands: []*cobra.Command{group}}})
+	}
+	for _, args := range [][]string{
+		{"dashboards", "list"},
+		{"dashboards", "list", "extra"},
+		{"dashboards", "nonesuch"},
+		{"dashboards", "-c", "x", "list"},
+		{"dashboards", "--config=x", "list"},
+		{"dashboards", "--config", "list", "list"},
+		{"dashboards", "--config", "list", "nonesuch"},
+		{"--config", "dashboards", "dashboards", "list"},
+		{"--agent", "dashboards", "list", "--limit", "5"},
+		{"dashboards", "list", "-l", "5", "-a"},
+		{"--limit", "5", "dashboards", "list"},
+		{"--all", "dashboards", "nonesuch"},
+		{"dashboards"},
+		{"version"},
+	} {
+		if root.NeedsArgValidation(build(), args) {
+			continue
+		}
+		assert.NoError(t, root.ValidateArgs(build(), args), "args %q skip validation but ValidateArgs rejects them", args)
+	}
 }
