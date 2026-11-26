@@ -100,12 +100,12 @@ func (c *YAMLCodec) Decode(src io.Reader, value any) error {
 	if c.BytesAsBase64 {
 		opts = append(opts, yaml.CustomUnmarshaler(func(dest *[]byte, raw []byte) error {
 			dst := make([]byte, base64.StdEncoding.DecodedLen(len(raw)))
-			_, err := base64.StdEncoding.Decode(dst, raw)
+			n, err := base64.StdEncoding.Decode(dst, raw)
 			if err != nil {
 				return err
 			}
 
-			*dest = dst
+			*dest = dst[:n]
 
 			return nil
 		}))
