@@ -243,7 +243,7 @@ In agent mode, a failed command writes one JSON error document to `stdout`, and 
 {"type": "gcx.error", "schema_version": "1", "error": {"summary": "Resource not found", "exitCode": 1}}
 ```
 
-The `error` object can also include `details`, `suggestions`, and `docsLink`. When a batch operation partly succeeds, the document has the type `gcx.partial_result` and includes the successful `items` alongside the `error`.
+The `error` object can also include `details`, `suggestions`, and `docsLink`. When some commands, such as `gcx resources get`, partly succeed, the document has the type `gcx.partial_result` and includes the successful `items` alongside the `error`.
 
 Agents use the process exit code to decide what to do next:
 
@@ -253,7 +253,7 @@ Agents use the process exit code to decide what to do next:
 | `1` | General error | Read the error `summary` and `suggestions`. |
 | `2` | Usage error, such as a bad flag or selector | Correct the command. |
 | `3` | Authentication or authorization failure | Stop and ask you to sign in or change permissions. |
-| `4` | Partial failure | Read the `gcx.partial_result` document and retry the failed items. |
+| `4` | Partial failure | Read the output to find the failed items, and retry them. |
 | `5` | Cancelled | Ask you before it retries. |
 | `6` | Grafana version not supported | Stop and report the version. |
 
