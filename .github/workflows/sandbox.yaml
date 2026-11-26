@@ -9,6 +9,7 @@ on:
       - "**/go.sum"
       - "experimental/sandbox/**"
       - "mise.toml"
+      - "mise.sandbox.toml"
       - ".github/workflows/sandbox.yaml"
   push:
     branches: [main]
@@ -18,6 +19,7 @@ on:
       - "**/go.sum"
       - "experimental/sandbox/**"
       - "mise.toml"
+      - "mise.sandbox.toml"
       - ".github/workflows/sandbox.yaml"
 
 permissions:
@@ -31,6 +33,8 @@ jobs:
   sandbox:
     name: Build gcx.wasm and test the sandbox
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: sandbox # also installs wasmtime, for gcx-preinit.wasm
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -53,7 +57,7 @@ jobs:
           install: true
           cache: true
 
-      # Also builds gcx-preinit.wasm, with the wasmtime that mise installs.
+      # Also builds gcx-preinit.wasm, with mise.sandbox.toml's wasmtime.
       - name: Build gcx.wasm
         run: experimental/sandbox/build.sh
 

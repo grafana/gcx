@@ -44,6 +44,8 @@ jobs:
     name: Build gcx.wasm
     if: github.repository == 'grafana/gcx'
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: sandbox # also installs wasmtime, for gcx-preinit.wasm
     outputs:
       commit: ${{ steps.source.outputs.commit }}
       ref: ${{ steps.source.outputs.ref }}

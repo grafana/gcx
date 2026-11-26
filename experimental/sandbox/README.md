@@ -79,7 +79,7 @@ the guest polls and supplies its own buffers.
 ## Usage
 
 ```sh
-mise install                                             # Go, and wasmtime for wizer
+MISE_ENV=sandbox mise install                            # Go, and wasmtime for wizer
 experimental/sandbox/build.sh                            # → gcx.wasm and gcx-preinit.wasm
 (cd experimental/sandbox && go test ./...)               # end-to-end tests use them
 ```
@@ -199,7 +199,7 @@ rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: "/usr/share/gcx/cache
 `build.sh` builds gcx with `-buildmode=c-shared` and the `gcxpreinit` tag, so it
 is a WASI reactor with a `gcx_run` export (`cmd/gcx/preinit_wasip1.go`), and
 `preinit.sh` runs its `_initialize` under [wizer](https://github.com/bytecodealliance/wasmtime/tree/main/crates/wizer)
-(`wasmtime wizer`, pinned in `mise.toml`) and snapshots the result. `Run`
+(`wasmtime wizer`, pinned in the repository's `mise.sandbox.toml`) and snapshots the result. `Run`
 starts each instance from the snapshot and calls `gcx_run` instead of `_start`.
 
 Everything init read from the host belongs to the snapshot, not to the

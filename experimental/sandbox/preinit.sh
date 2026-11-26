@@ -5,7 +5,8 @@
 # gcx_init and gcx_run (see cmd/gcx/preinit_wasip1.go).
 # Usage: experimental/sandbox/preinit.sh <reactor.wasm> <output.wasm>
 #
-# Needs wasmtime, which the repository's mise.toml pins.
+# Needs wasmtime, which the repository's mise.sandbox.toml pins: run
+# MISE_ENV=sandbox mise install.
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
@@ -13,7 +14,7 @@ if [[ $# -ne 2 ]]; then
 	exit 2
 fi
 if ! command -v wasmtime >/dev/null; then
-	echo "preinit.sh: needs wasmtime for wizer; run mise install in the repository" >&2
+	echo "preinit.sh: needs wasmtime for wizer; run MISE_ENV=sandbox mise install in the repository" >&2
 	exit 1
 fi
 
