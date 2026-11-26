@@ -91,6 +91,13 @@ func init() { //nolint:gochecknoinits
 // ResetForTesting re-runs environment detection from current env vars.
 // Exported for use in tests only.
 func ResetForTesting() {
+	Redetect()
+}
+
+// Redetect re-runs environment detection from current env vars. A
+// pre-initialized wasm module calls it for each command, because its init
+// ran before the command's environment existed.
+func Redetect() {
 	detectFromEnv()
 }
 

@@ -75,7 +75,7 @@ See [configuration](config-system.md), [authentication](auth-system.md), and [lo
 | Path | Responsibility |
 |---|---|
 | Kubernetes dynamic client | Native resource discovery and CRUD, including namespace and version handling |
-| Grafana OpenAPI client | Grafana-specific legacy API operations such as health/version probing |
+| Grafana `/api` requests | Plain HTTP requests for Grafana-specific checks: health/version probing and the signed-in user |
 | Datasource HTTP clients | Query construction and response conversion using the selected Grafana transport |
 | Product clients and adapters | Product-specific APIs and conversion to resource envelopes where reconciliation applies |
 

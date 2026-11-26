@@ -55,8 +55,9 @@ import (
 //
 // TLS, proxies and DNS are the host's business; ClientOpts.TLSConfig and
 // client-go TLS settings have no effect in this build.
-// --insecure-log-http-payload dumps whole response bodies, so it gives up
-// streaming: each body is read to its end before the caller sees it.
+// --insecure-log-http-payload dumps whole response bodies other than event
+// streams, so it gives up streaming for the rest: each such body is read to its
+// end before the caller sees it.
 
 //go:wasmimport gcx_http request_new
 func hostRequestNew(method, scheme, authority, pathWithQuery, headers, body string) uint32
@@ -87,7 +88,7 @@ func hostDrop(id uint32)
 
 func init() {
 	// Route clients that use http.DefaultTransport itself (directly, through a
-	// nil Base, or via a type assertion as grafana-openapi-client-go does) to
+	// nil Base, or by type-asserting http.DefaultTransport to *http.Transport) to
 	// the host. It must stay an *http.Transport for those type assertions.
 	// Clones do not inherit RegisterProtocol registrations, so a library that
 	// clones the default transport dials natively and fails; gcx's own

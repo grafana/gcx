@@ -2,9 +2,10 @@ name: Publish gcx.wasm
 # Publishes gcx built for wasip1, for embedding with experimental/sandbox, as
 # ghcr.io/grafana/gcx-wasm: FROM scratch images holding
 #
-#   /gcx.wasm     the module
-#   /gcx.commit   the gcx commit it was built from
-#   /cache/       wazero's compiled code for it (pass as sandbox Config.CacheDir)
+#   /gcx.wasm          the module
+#   /gcx-preinit.wasm  the same gcx, pre-initialized (experimental/sandbox/README.md)
+#   /gcx.commit        the gcx commit they were built from
+#   /cache/            wazero's compiled code for both (pass as sandbox Config.CacheDir)
 #
 # so a Dockerfile can `COPY --from` them and skip both building gcx and the
 # ~40 s compile at startup. The module is architecture-independent, but the
@@ -44,6 +45,8 @@ jobs:
     name: Build gcx.wasm
     if: github.repository == 'grafana/gcx'
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: sandbox # also installs wasmtime, for gcx-preinit.wasm
     outputs:
       commit: ${{ steps.source.outputs.commit }}
       ref: ${{ steps.source.outputs.ref }}
@@ -94,6 +97,7 @@ jobs:
           name: gcx-wasm
           path: |
             experimental/sandbox/gcx.wasm
+            experimental/sandbox/gcx-preinit.wasm
             experimental/sandbox/gcx.commit
           if-no-files-found: error
           retention-days: 1
@@ -138,7 +142,13 @@ jobs:
         working-directory: experimental/sandbox
         env:
           IMAGE_DIR: ${{ runner.temp }}/image
-        run: go run ./internal/cmd/precompile "$IMAGE_DIR/gcx.wasm" "$IMAGE_DIR/cache"
+        # Both modules share one cache: wazero keys its entries by module bytes.
+        # A sandbox tag from before gcx-preinit.wasm builds only gcx.wasm.
+        run: |
+          go run ./internal/cmd/precompile "$IMAGE_DIR/gcx.wasm" "$IMAGE_DIR/cache"
+          if [ -f "$IMAGE_DIR/gcx-preinit.wasm" ]; then
+            go run ./internal/cmd/precompile "$IMAGE_DIR/gcx-preinit.wasm" "$IMAGE_DIR/cache"
+          fi
 
       - name: Push by digest
         env:
@@ -149,11 +159,14 @@ jobs:
           COMMIT: ${{ needs.build.outputs.commit }}
         run: |
           set -euo pipefail
-          printf 'FROM scratch\nCOPY gcx.wasm gcx.commit /\nCOPY cache /cache\n' >"$IMAGE_DIR/Dockerfile"
+          modules=(gcx.wasm)
+          if [ -f "$IMAGE_DIR/gcx-preinit.wasm" ]; then modules+=(gcx-preinit.wasm); fi
+          printf 'FROM scratch\nCOPY %s gcx.commit /\nCOPY cache /cache\n' "${modules[*]}" >"$IMAGE_DIR/Dockerfile"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker buildx create --use --driver docker-container >/dev/null
-          # zstd -19 roughly halves the gzip size (about 100 MB to 47 MB per
-          # platform), and it is paid once here rather than on every pull.
+          # zstd -19 roughly halves the gzip size (about 165 MB to 93 MB per
+          # platform with both modules), and it is paid once here rather than
+          # on every pull.
           docker buildx build \
             --platform "$PLATFORM" \
             --provenance=false \
