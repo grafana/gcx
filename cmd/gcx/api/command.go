@@ -219,8 +219,10 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 	// A server-sent event stream may never end, so pass it through as it
 	// arrives instead of reading it whole.
 	if resp.StatusCode < 400 && isEventStream(resp) {
-		_, err := io.Copy(cmd.OutOrStdout(), resp.Body)
-		return err
+		if _, err := io.Copy(cmd.OutOrStdout(), resp.Body); err != nil {
+			return fmt.Errorf("failed to read response stream: %w", err)
+		}
+		return nil
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
