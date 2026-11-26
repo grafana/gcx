@@ -218,7 +218,8 @@ func preParseAgentFlag() {
 //
 // cmd is the command tree the invocation ran against; the agent invocation log
 // uses it to strip argument values. Walking the tree is costly, so it is only
-// walked when an entry is logged. Tests without a tree pass nil.
+// walked when an entry is logged, after execution, so it includes the help and
+// completion commands Cobra adds lazily. Tests without a tree pass nil.
 func reportError(err error, cmd *cobra.Command) int {
 	// On the raw error, before every short-circuit below: the AlreadyReported
 	// and EmittedError paths return without converting anything, and an
@@ -291,10 +292,10 @@ func reportError(err error, cmd *cobra.Command) int {
 
 // strippedArgs returns this invocation's arguments without their values, for
 // the agent invocation log. Without a tree it can't tell subcommands from
-// values, so it keeps positionals, as StripArgValues does for nil maps.
+// values, so it redacts every positional.
 func strippedArgs(cmd *cobra.Command) []string {
 	if cmd == nil {
-		return agentlog.StripArgValues(os.Args[1:], nil, nil)
+		return agentlog.StripArgValues(os.Args[1:], nil, map[string]bool{})
 	}
 	return agentlog.StripArgValues(os.Args[1:], collectBoolFlags(cmd), collectSubCmds(cmd))
 }
