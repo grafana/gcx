@@ -8,7 +8,7 @@ weight: 100
 
 # CLI reference
 
-This reference describes gcx **v1.8.0**. Run `gcx version` to check your installed version.
+This reference describes gcx **v1.9.0**. Run `gcx version` to check your installed version.
 
 Flag defaults below are for human mode. Agent mode changes defaults such as output format; explicit flags override those defaults.
 
@@ -1745,6 +1745,52 @@ Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx agento11y human-evaluators` {#gcx-agento11y-human-evaluators}
+
+List the human evaluators a review queue rubric can use.
+
+A human evaluator is an evaluator whose answers come from a reviewer instead of a model. Use the IDs listed here as the rubric_evaluator_ids of a 'gcx agento11y review-queues create' manifest, or as --rubric values for 'gcx agento11y review-queues update'. Manage the evaluator definitions themselves with 'gcx agento11y evaluators'.
+
+**Flags**
+
+```text
+  -h, --help   help for human-evaluators
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y human-evaluators list` {#gcx-agento11y-human-evaluators-list}
+
+List human evaluators at their latest version, sorted by ID.
+
+The command is only available for tenants with human review enabled; for other tenants the backend answers 404.
+
+```shell
+gcx agento11y human-evaluators list [flags]
+```
+
+**Examples**
+
+```shell
+# List the questions a review rubric can be built from.
+  gcx agento11y human-evaluators list -o json
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx agento11y judge` {#gcx-agento11y-judge}
 
 List LLM providers and models available for LLM-judge evaluators.
@@ -2095,6 +2141,239 @@ gcx agento11y model-rates resolve --provider openai --model gpt-5.5 -o json
       --model string      Model as recorded in telemetry (required)
   -o, --output string     Output format. One of: agents, json, yaml (default "json")
       --provider string   Provider as recorded in telemetry (required)
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y review-queues` {#gcx-agento11y-review-queues}
+
+Review conversations in a collection with human evaluators.
+
+A review queue is a collection marked for human review. Its rubric is a set of human evaluators (see 'gcx agento11y human-evaluators list'); a conversation counts as reviewed once every rubric question has an answer given in the queue. Create a queue from a manifest with 'gcx agento11y review-queues create -f review-queue.yaml'; record a reviewer's answers with 'gcx agento11y reviews create'.
+
+Review queues are only available for tenants with human review enabled; for other tenants the backend answers 404.
+
+**Flags**
+
+```text
+  -h, --help   help for review-queues
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y review-queues create` {#gcx-agento11y-review-queues-create}
+
+Create a human review queue for an existing collection from a JSON or YAML manifest (or - for stdin).
+
+The manifest has collection_id (the collection to review) and rubric_evaluator_ids (the human evaluators that make up the rubric). The command only creates the queue: it does not submit reviews or run judge inference. The backend rejects rubrics that are not human evaluators, and rejects a collection that is already a review queue. After an uncertain response, read the queue back before retrying.
+
+```shell
+gcx agento11y review-queues create -f FILE [flags]
+```
+
+**Examples**
+
+```shell
+# Review a collection against one human evaluator.
+  gcx agento11y review-queues create -f review-queue.yaml -o json
+
+  # review-queue.yaml
+  collection_id: my-collection
+  rubric_evaluator_ids:
+    - helpfulness-human
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the review queue manifest (use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y review-queues get` {#gcx-agento11y-review-queues-get}
+
+Get a review queue by its collection ID, with its rubric, progress and the answers given for each conversation.
+
+With --conversation the command returns a different, smaller document instead: the rubric and progress plus that one conversation's membership, position in the queue and answers. It stays correct for a conversation beyond a truncated queue read.
+
+```shell
+gcx agento11y review-queues get <collection-id> [flags]
+```
+
+**Examples**
+
+```shell
+# Read a whole queue.
+  gcx agento11y review-queues get my-collection -o json
+
+  # Read one conversation's answers in the queue.
+  gcx agento11y review-queues get my-collection --conversation conv-1 -o json
+```
+
+**Flags**
+
+```text
+      --conversation string   Read the queue as seen from this conversation ID: its membership, position and answers
+  -h, --help                  help for get
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string         Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y review-queues list` {#gcx-agento11y-review-queues-list}
+
+List review queues with their rubric and progress. Items are omitted: use 'get' for a queue's conversations.
+
+```shell
+gcx agento11y review-queues list [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y review-queues list-scores` {#gcx-agento11y-review-queues-list-scores}
+
+List every answer given in a review queue, read from the backend's scores.csv export.
+
+Cells are the export's text: a text cell that starts with =, +, - or @ carries a leading apostrophe added by the backend. The export is capped by the backend and --limit cannot reach past that cap; this command has no filters, so answers beyond the cap cannot be reached from the CLI. When the cap is what cuts the export, list_meta.cap in the payload says so; when --limit also trims the page, list_meta omits the cap and a warning on stderr reports it. Only one export per tenant runs at a time: if the backend answers 429, wait and retry.
+
+```shell
+gcx agento11y review-queues list-scores <collection-id> [flags]
+```
+
+**Examples**
+
+```shell
+# Export a queue's answers as JSON.
+  gcx agento11y review-queues list-scores my-collection -o json
+
+  # Only the first 20 answers.
+  gcx agento11y review-queues list-scores my-collection --limit 20 -o json
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list-scores
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int       Maximum number of answers to return. 0 returns every answer the backend exports, up to its row cap
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y review-queues update` {#gcx-agento11y-review-queues-update}
+
+Replace the rubric of an existing review queue with the given human evaluators.
+
+The --rubric list replaces the whole rubric, it is not merged with the current one. Answers already given are kept. The backend rejects rubrics that are not human evaluators and collections that are not review queues.
+
+```shell
+gcx agento11y review-queues update <collection-id> [flags]
+```
+
+**Examples**
+
+```shell
+# Make helpfulness-human the only question in the queue.
+  gcx agento11y review-queues update my-collection --rubric helpfulness-human -o json
+```
+
+**Flags**
+
+```text
+  -h, --help                 help for update
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string        Output format. One of: agents, json, yaml (default "json")
+      --rubric stringArray   Human evaluator ID (repeat for multiple rubrics; replaces the whole rubric)
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y reviews` {#gcx-agento11y-reviews}
+
+Record human reviews of conversations in a review queue.
+
+A review is one reviewer's answers to the queue's rubric for one conversation. Read a queue with 'gcx agento11y review-queues get'.
+
+**Flags**
+
+```text
+  -h, --help   help for reviews
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y reviews create` {#gcx-agento11y-reviews-create}
+
+Record the calling user's answers to a review queue's rubric for one conversation, from a JSON or YAML manifest (or - for stdin).
+
+The manifest has collection_id (the review queue), conversation_id, generation_id (the generation the answers are anchored to; use the conversation's final generation), an optional note applied to every answer, and answers: a list of {evaluator_id, evaluator_version, value}. value holds exactly one of number, bool or string. evaluator_version must be the question's current version (see 'review-queues get'); an answer to an outdated version is rejected. The backend stores all answers or none.
+
+Submitting records scores attributed to the calling user and is not idempotent: read the conversation back with 'review-queues get --conversation' after an uncertain response instead of retrying. Needs the feedback write permission, not eval write.
+
+```shell
+gcx agento11y reviews create -f FILE [flags]
+```
+
+**Examples**
+
+```shell
+# Submit answers from a file.
+  gcx agento11y reviews create -f review.yaml -o json
+
+  # review.yaml
+  collection_id: my-collection
+  conversation_id: conv-1
+  generation_id: gen-1
+  answers:
+    - evaluator_id: helpfulness-human
+      evaluator_version: v1
+      value:
+        number: 4
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the review manifest (use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
@@ -2459,6 +2738,37 @@ gcx agento11y saved-conversations collections <saved-id> [flags]
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx agento11y saved-conversations create` {#gcx-agento11y-saved-conversations-create}
+
+Create a manual test fixture from a JSON or YAML file (or - for stdin).
+
+Required top-level fields: saved_id, name and generations (tags is optional). Each generation needs generation_id, model {provider, name}, and at least one input and one output message. A message is {role, content}, where role is user, assistant, tool or system and content is non-empty. operation_name, mode (SYNC or STREAM), started_at and completed_at are optional. Use 'save &lt;conversation-id&gt;' to save an existing conversation instead. The command does not invoke a model or invent live telemetry. Keep the returned saved_id and read the fixture back after an uncertain response instead of retrying.
+
+```shell
+gcx agento11y saved-conversations create -f FILE [flags]
+```
+
+**Examples**
+
+```shell
+# Create a fixture from a file.
+  gcx agento11y saved-conversations create -f fixture.json -o json
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the manual conversation fixture (use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 Inherits `--config` from [`gcx agento11y`](#gcx-agento11y-flags).
@@ -5132,6 +5442,331 @@ made through gcx. See https://grafana.com/docs/grafana-cloud/platform/pricing-an
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx assistant change-review` {#gcx-assistant-change-review}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Configure the checks Grafana Assistant change review runs on GitHub pull
+requests, and see how they perform.
+
+Checks are stack-wide: built-in checks ship with change review and can be
+tuned or turned off; custom checks carry your own instructions. Saves are
+guarded by a revision: when another save lands while a command runs, the
+command applies its change to the latest checks if that save changed other
+checks, and fails without saving if it changed the same check.
+
+**Examples**
+
+```shell
+gcx assistant change-review checks list
+  gcx assistant change-review stats --since 7d
+```
+
+**Flags**
+
+```text
+  -h, --help   help for change-review
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks` {#gcx-assistant-change-review-checks}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List, inspect, create, update, and delete the checks change review runs on pull requests.
+
+**Flags**
+
+```text
+  -h, --help   help for checks
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks create` {#gcx-assistant-change-review-checks-create}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Create a custom change review check from flags or a file. Its ID is derived
+from its name. New checks are enabled and advisory unless --enabled=false or
+--blocking is given.
+
+Change review applies the check to pull requests opened or updated after the
+save; reviews already running keep the checks they started with.
+
+```shell
+gcx assistant change-review checks create [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review checks create --name "Migration safety" \
+    --instructions "Flag schema migrations that lock large tables." --path 'migrations/**'
+  gcx assistant change-review checks create -f check.yaml
+```
+
+**Flags**
+
+```text
+      --applies-to strings    Reviews that apply a custom check: plan, code, pr (comma-separated; default pr)
+      --blocking              Fail the GitHub Check on a confirmed finding; otherwise findings are advisory
+      --enabled               Run the check; --enabled=false turns it off (default true)
+  -f, --filename string       Read the check from a YAML or JSON file (- for stdin); flags override its fields
+  -h, --help                  help for create
+      --instructions string   What the reviewer should look for; on a built-in check, added to its own guidance
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string           Name shown on findings (custom checks only)
+  -o, --output string         Output format. One of: agents, json, yaml (default "yaml")
+      --path stringArray      File pattern the pull request must change for the check to run (repeatable; ** matches directories); --path '' runs it on every pull request
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks delete` {#gcx-assistant-change-review-checks-delete}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Delete a custom change review check. Built-in checks cannot be deleted; turn
+one off with update CHECK --enabled=false.
+
+The command prompts for confirmation by default. Use --force to bypass the
+prompt. GCX_AUTO_APPROVE also bypasses the prompt for non-interactive workflows.
+In agent mode, deletion requires --force or an enabled GCX_AUTO_APPROVE.
+
+```shell
+gcx assistant change-review checks delete CHECK [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review checks delete migration-safety
+  gcx assistant change-review checks delete migration-safety --force
+```
+
+**Flags**
+
+```text
+      --force           Delete without confirmation
+  -h, --help            help for delete
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks get` {#gcx-assistant-change-review-checks-get}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Get one change review check by ID, including its full instructions, paths,
+and repository overrides.
+
+The output is valid input for update -f, so get, edit, and update round-trip.
+
+```shell
+gcx assistant change-review checks get CHECK [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review checks get deploy-hazards
+  gcx assistant change-review checks get deploy-hazards -o json
+  gcx assistant change-review checks get my-check > check.yaml
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks list` {#gcx-assistant-change-review-checks-list}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List every change review check: each built-in check with the stack's settings
+for it, followed by the stack's custom checks.
+
+Use --output wide for where each check applies and its repository overrides,
+or get CHECK for a check's full instructions.
+
+```shell
+gcx assistant change-review checks list [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review checks list
+  gcx assistant change-review checks list -o wide
+  gcx assistant change-review checks list -o json
+```
+
+**Flags**
+
+```text
+  -h, --help            help for list
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, text, wide, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks list-pull-requests` {#gcx-assistant-change-review-checks-list-pull-requests}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List the pull requests whose published reviews raised findings from one
+check, or failed the GitHub Check because of it, most recently reviewed first,
+with that check's counts on each.
+
+Counts only; finding text is never returned. Use stats for every check's
+totals.
+
+```shell
+gcx assistant change-review checks list-pull-requests CHECK [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review checks list-pull-requests deploy-hazards
+  gcx assistant change-review checks list-pull-requests deploy-hazards --since 7d --repository grafana/gcx
+  gcx assistant change-review checks list-pull-requests deploy-hazards -o json
+```
+
+**Flags**
+
+```text
+      --from string         Start of the window (RFC3339, Unix seconds, or now-7d); empty is invalid
+  -h, --help                help for list-pull-requests
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, table, text, wide, yaml (default "text")
+      --repository string   Only reviews of this owner/name repository; empty is invalid
+      --since string        Window ending now (e.g. 7d, 30d; at most 90d); cannot be used with --from/--to (default "30d")
+      --to string           End of the window (RFC3339, Unix seconds, or now); defaults to now; empty is invalid
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review checks update` {#gcx-assistant-change-review-checks-update}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Update a built-in or custom change review check. Only the fields set by flags
+or present in the file change; the rest keep their values. An update that
+changes nothing saves nothing and reports changed: false.
+
+The revision guard covers the moment of the save, not the time since a file
+was exported: a file from get carries every field, so saving it later
+overwrites any edit made in between. Keep files to the fields you mean to
+change, or use flags.
+
+Built-in checks keep their name and guidance: --instructions adds to that
+guidance, and --enabled, --blocking, and --path tune where and how they run.
+
+```shell
+gcx assistant change-review checks update CHECK [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review checks update instrumentation --blocking
+  gcx assistant change-review checks update production-impact --enabled=false
+  gcx assistant change-review checks update my-check --path 'api/**' --path 'pkg/**'
+  gcx assistant change-review checks update my-check -f check.yaml
+```
+
+**Flags**
+
+```text
+      --applies-to strings    Reviews that apply a custom check: plan, code, pr (comma-separated; default pr)
+      --blocking              Fail the GitHub Check on a confirmed finding; otherwise findings are advisory
+      --enabled               Run the check; --enabled=false turns it off
+  -f, --filename string       Read the check from a YAML or JSON file (- for stdin); flags override its fields
+  -h, --help                  help for update
+      --instructions string   What the reviewer should look for; on a built-in check, added to its own guidance
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --name string           Name shown on findings (custom checks only)
+  -o, --output string         Output format. One of: agents, json, yaml (default "yaml")
+      --path stringArray      File pattern the pull request must change for the check to run (repeatable; ** matches directories); --path '' runs it on every pull request
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx assistant change-review stats` {#gcx-assistant-change-review-stats}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Summarize the stack's published change reviews in a window: totals, and per
+check the issues it confirmed, how many a later review found fixed or still
+present, and how many it ruled out.
+
+Counts only; finding text is never returned. Use checks list-pull-requests
+CHECK for the pull requests behind one check's counts. Reviews are kept only
+as long as their review chat, so older windows may be partial.
+
+```shell
+gcx assistant change-review stats [flags]
+```
+
+**Examples**
+
+```shell
+gcx assistant change-review stats
+  gcx assistant change-review stats --since 7d --repository grafana/gcx
+  gcx assistant change-review stats -o wide
+  gcx assistant change-review stats -o json
+```
+
+**Flags**
+
+```text
+      --from string         Start of the window (RFC3339, Unix seconds, or now-7d); empty is invalid
+  -h, --help                help for stats
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, table, text, wide, yaml (default "text")
+      --repository string   Only reviews of this owner/name repository; empty is invalid
+      --since string        Window ending now (e.g. 7d, 30d; at most 90d); cannot be used with --from/--to (default "30d")
+      --to string           End of the window (RFC3339, Unix seconds, or now); defaults to now; empty is invalid
+```
+
+Inherits `--config` from [`gcx assistant`](#gcx-assistant-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx assistant conversation` {#gcx-assistant-conversation}
 
 Fetch conversation metadata and message history without sending a new prompt.
@@ -5448,6 +6083,8 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 Change the autonomy mode of a running v2 investigation. Valid modes: low, medium, high.
 
+Deprecated: newer investigations do not support this and the server rejects it with HTTP 410 Gone. This command remains supported through v1.x.
+
 ```shell
 gcx assistant investigations mode <id> <mode> [flags]
 ```
@@ -5468,6 +6105,8 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx assistant investigations pause` {#gcx-assistant-investigations-pause}
 
 Pause a v2 investigation. Unlike cancel, paused investigations can be resumed.
+
+Deprecated: newer investigations do not support this and the server rejects it with HTTP 410 Gone. This command remains supported through v1.x. To stop an investigation, use `gcx assistant investigations cancel <id>`.
 
 ```shell
 gcx assistant investigations pause <id> [flags]
@@ -5492,6 +6131,8 @@ Resume a paused v2 investigation, which restarts its Grafana Assistant
 agents. Use it when the user asks to resume the investigation.
 
 Note: investigations run Grafana Assistant agents and consume Assistant tokens; see https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md for billing.
+
+Deprecated: newer investigations do not support this and the server rejects it with HTTP 410 Gone. This command remains supported through v1.x.
 
 ```shell
 gcx assistant investigations resume <id> [flags]
@@ -12157,7 +12798,9 @@ open it in your browser after the query succeeds. Share links require an
 explicit time range via --since or --from/--to. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Traces Drilldown URL (only
 available for a flat, &&-joined spanset of scope.tag comparisons; anything
-else falls back to the Explore URL).
+else falls back to the Explore URL). Add --drilldown-view exceptions to open
+the Exceptions tab instead of the trace list. The view requires
+--drilldown-link or --open-drilldown.
 
 **Aliases:** `search`
 
@@ -12180,6 +12823,9 @@ gcx datasources tempo query [TRACEQL] [flags]
   # Print a Grafana Traces Drilldown link for the query
   gcx datasources tempo query '{ span.http.status_code = 500 }' --drilldown-link
 
+  # Print a Traces Drilldown Exceptions tab link
+  gcx datasources tempo query '{ resource.service.name = "checkout" }' --since 1h --drilldown-link --drilldown-view exceptions
+
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
 
@@ -12190,22 +12836,23 @@ gcx datasources tempo query [TRACEQL] [flags]
 **Flags**
 
 ```text
-  -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
-      --drilldown-link      Print the Grafana Traces Drilldown URL for the executed query to stderr
-      --error-on-empty      Fail if the query returns no results
-      --expr string         Query expression (alternative to positional argument)
-      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for query
-      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of traces to return (0 means no limit) (default 20)
-      --open                Open the executed query in Grafana Explore
-      --open-drilldown      Open the executed query in Grafana Traces Drilldown
-  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
-      --share-link          Print the Grafana Explore URL for the executed query to stderr
-      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --step string         Query step (e.g., '15s', '1m')
-      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+  -d, --datasource string       Datasource UID (required unless datasources.tempo is configured)
+      --drilldown-link          Print the Grafana Traces Drilldown URL for the executed query to stderr
+      --drilldown-view string   Traces Drilldown tab for --drilldown-link and --open-drilldown: traceList (default) or exceptions
+      --error-on-empty          Fail if the query returns no results
+      --expr string             Query expression (alternative to positional argument)
+      --from string             Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                    help for query
+      --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int               Maximum number of traces to return (0 means no limit) (default 20)
+      --open                    Open the executed query in Grafana Explore
+      --open-drilldown          Open the executed query in Grafana Traces Drilldown
+  -o, --output string           Output format. One of: agents, csv, json, table, wide, yaml (default "table")
+      --share-link              Print the Grafana Explore URL for the executed query to stderr
+      --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string             Query step (e.g., '15s', '1m')
+      --to string               End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 Inherits `--config` from [`gcx datasources tempo`](#gcx-datasources-tempo-flags).
@@ -15387,24 +16034,40 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 
 ### `gcx irm oncall escalate` {#gcx-irm-oncall-escalate}
 
-Create a direct escalation.
+Page users or a team. Use --incident-id to associate the page with an existing incident.
+Incident participants, timeline activity, and context update asynchronously;
+do not repeat a successful page while waiting for those updates.
 
 ```shell
 gcx irm oncall escalate [flags]
 ```
 
+**Examples**
+
+```shell
+# Page a user
+  gcx irm oncall escalate --title "Database outage" --user-ids U123
+
+  # Page a team for an incident (IDs: gcx irm incidents list)
+  gcx irm oncall escalate --title "Database outage" --team T123 --incident-id 4
+
+  # Send an important page to multiple users for an incident
+  gcx irm oncall escalate --title "Database outage" --user-ids U123,U456 --important --incident-id 4
+```
+
 **Flags**
 
 ```text
-  -h, --help               help for escalate
-      --important          Mark as important
-      --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --message string     Message for the escalation
-  -o, --output string      Output format. One of: agents, json, text, yaml (default "text")
-      --team string        Team ID
-      --title string       Title of the escalation (required)
-      --user-ids strings   User IDs (comma-separated)
+  -h, --help                 help for escalate
+      --important            Mark as important
+      --incident-id string   Incident ID to associate with the page (optional, must not be blank when set)
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --message string       Message for the escalation
+  -o, --output string        Output format. One of: agents, json, text, yaml (default "text")
+      --team string          Team ID
+      --title string         Title of the escalation (required)
+      --user-ids strings     User IDs (comma-separated)
 ```
 
 Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
@@ -16959,6 +17622,37 @@ Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx irm oncall teams get-team-hours` {#gcx-irm-oncall-teams-get-team-hours}
+
+Get the business hours of a team.
+
+A team's business hours are a list of named intervals. Each interval holds up
+to three time ranges per weekday. A team is in business hours when the current
+time falls inside any of its intervals; the "pause escalation until team
+hours" escalation step waits for that moment.
+
+By default the command prints a weekly grid with one row per interval. Use
+-o yaml or -o json to emit the document {"team_hours": [...]} (the list
+is null when the team has no business hours). Edit that document, then pass it
+back through update-team-hours.
+
+```shell
+gcx irm oncall teams get-team-hours <id> [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get-team-hours
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx irm oncall teams list` {#gcx-irm-oncall-teams-list}
 
 List OnCall teams.
@@ -16974,6 +17668,54 @@ gcx irm oncall teams list [flags]
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
+```
+
+Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx irm oncall teams update-team-hours` {#gcx-irm-oncall-teams-update-team-hours}
+
+Replace the business hours of a team.
+
+The file holds the document that get-team-hours -o yaml emits. The intervals
+in it become the team's entire set: an interval that the file omits is deleted.
+To clear all hours, pass {"team_hours": null} or {"team_hours": []} and confirm.
+Use --force to skip confirmation, including when piping a clear document via -f -.
+
+Times are wall-clock times (HH:MM:SS) in the team's timezone. A weekday with no
+ranges is a day off, but every interval needs a time range on at least one
+weekday.
+
+Example file:
+
+  team_hours:
+    - name: Office hours
+      hours:
+        monday:    [{start: "09:00:00", end: "17:00:00"}]
+        tuesday:   [{start: "09:00:00", end: "17:00:00"}]
+        wednesday: [{start: "09:00:00", end: "17:00:00"}]
+        thursday:  [{start: "09:00:00", end: "17:00:00"}]
+        friday:    [{start: "09:00:00", end: "17:00:00"}]
+        saturday:  []
+        sunday:    []
+
+The command prints the stored hours as YAML by default. Use -o table for the
+weekly grid or -o json for JSON.
+
+```shell
+gcx irm oncall teams update-team-hours <id> [flags]
+```
+
+**Flags**
+
+```text
+  -f, --filename string   File containing the resource definition (JSON/YAML, use - for stdin)
+      --force             Skip confirmation when clearing all team hours
+  -h, --help              help for update-team-hours
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, table, yaml (default "yaml")
 ```
 
 Inherits `--config` from [`gcx irm`](#gcx-irm-flags).
@@ -18554,7 +19296,7 @@ gcx kg entities delete [Type--Name] [flags]
 **Flags**
 
 ```text
-      --domain string          Writable domain slug — a specific application domain such as 'irm' (required)
+      --domain string          Writable domain slug — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required)
       --force                  Skip confirmation prompt
   -h, --help                   help for delete
       --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
@@ -18753,13 +19495,14 @@ gcx kg entities upsert [flags]
 
 ```shell
 gcx kg entities upsert --domain myapp --type Service --name checkout --scope env=prod --ttl 1h
+  gcx kg entities upsert --domain tenant/github --type Repository --name my-repo
   gcx kg entities upsert -f entity.yaml
 ```
 
 **Flags**
 
 ```text
-      --domain string             Writable domain slug — a specific application domain such as 'irm' (required; 'kg' is reserved)
+      --domain string             Writable domain slug — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required; 'kg' is reserved)
   -f, --file string               Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags
   -h, --help                      help for upsert
       --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
@@ -19756,13 +20499,13 @@ gcx kg relationships delete --type CALLS \
 
 ```text
       --force                       Skip confirmation prompt
-      --from string                 Source entity ref as domain/Type/name (required)
+      --from string                 Source entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)
       --from-scope stringToString   Scope for --from as key=value (repeatable or comma-separated) (default [])
   -h, --help                        help for delete
       --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string               Output format. One of: agents, json, text, yaml (default "text")
-      --to string                   Target entity ref as domain/Type/name (required)
+      --to string                   Target entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)
       --to-scope stringToString     Scope for --to as key=value (repeatable or comma-separated) (default [])
       --type string                 Relationship type (identifier; required)
 ```
@@ -19800,16 +20543,16 @@ gcx kg relationships upsert --type CALLS --domain myapp \
 **Flags**
 
 ```text
-      --domain string               Writable domain slug for the edge — a specific application domain such as 'irm' (required)
+      --domain string               Writable domain slug for the edge — a specific application domain such as 'irm', or tenant/<name> for a schema the stack publishes itself (required)
   -f, --file string                 Input file (YAML/JSON), or '-' for stdin; mutually exclusive with flags
-      --from string                 Source entity ref as domain/Type/name (required)
+      --from string                 Source entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)
       --from-scope stringToString   Scope for --from as key=value (repeatable or comma-separated) (default [])
   -h, --help                        help for upsert
       --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string               Output format. One of: agents, json, table, yaml (default "json")
       --property stringToString     Property as key=value (repeatable or comma-separated) (default [])
-      --to string                   Target entity ref as domain/Type/name (required)
+      --to string                   Target entity ref as domain/Type/name, or tenant/<name>/Type/name for a tenant domain (required)
       --to-scope stringToString     Scope for --to as key=value (repeatable or comma-separated) (default [])
       --ttl string                  Time-to-live duration (e.g. 1h, 7d); omitted = never expire
       --type string                 Relationship type (identifier; required)
@@ -20168,7 +20911,7 @@ Auth sources (for non-interactive use):
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: https://grafana.com/docs/grafana/latest/administration/service-accounts.md
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
-                 See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md
+                 See: https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/security-and-access/authentication-and-permissions/access-policies/create-access-policies.md
 
 ```shell
 gcx login [CONTEXT_NAME] [flags]
@@ -21572,6 +22315,67 @@ Inherits `--config` from [`gcx metrics`](#gcx-metrics-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx metrics adaptive metrics` {#gcx-metrics-adaptive-metrics}
+
+Inspect analyzed metrics.
+
+**Flags**
+
+```text
+  -h, --help   help for metrics
+```
+
+Inherits `--config` from [`gcx metrics`](#gcx-metrics-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx metrics adaptive metrics get` {#gcx-metrics-adaptive-metrics-get}
+
+Get one analyzed metric's recommendation, current rule, recommended rule, and usage stats.
+
+```shell
+gcx metrics adaptive metrics get <metric> [flags]
+```
+
+**Flags**
+
+```text
+  -h, --help             help for get
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string    Output format. One of: agents, json, yaml (default "yaml")
+      --segment string   Segment ID
+```
+
+Inherits `--config` from [`gcx metrics`](#gcx-metrics-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx metrics adaptive metrics list` {#gcx-metrics-adaptive-metrics-list}
+
+List the segment's analyzed metrics, ranked by projected savings by default.
+
+```shell
+gcx metrics adaptive metrics list [flags]
+```
+
+**Flags**
+
+```text
+      --action stringArray   Filter by action: add, update, remove, keep, none (repeatable)
+  -h, --help                 help for list
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int            Maximum number of metrics to return. 0 means all results are returned (default 50)
+  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+      --segment string       Segment ID
+      --sort string          Sort by: projected-change, raw-series, current-reduction, metric (default "projected-change")
+```
+
+Inherits `--config` from [`gcx metrics`](#gcx-metrics-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx metrics adaptive recommendations` {#gcx-metrics-adaptive-recommendations}
 
 Manage metric recommendations.
@@ -21589,6 +22393,8 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx metrics adaptive recommendations apply` {#gcx-metrics-adaptive-recommendations-apply}
 
 Apply specific or all recommendations as rules.
+
+Listed metrics are applied together in one atomic write, at most 100 per call. --all applies every recommendation of the segment on the server.
 
 ```shell
 gcx metrics adaptive recommendations apply [<metric>...|--all] [flags]
@@ -21762,7 +22568,7 @@ gcx metrics adaptive rules list [flags]
   -h, --help             help for list
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int        Maximum number of rules to return (0 for no limit) (default 50)
+      --limit int        Maximum number of rules to return. 0 means all results are returned (default 50)
   -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
       --segment string   Segment ID
 ```
@@ -23444,6 +24250,360 @@ Inherits `--config` from [`gcx ml`](#gcx-ml-flags).
 
 Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
+### `gcx pages` {#gcx-pages}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+A Grafana Page is a live web page on Grafana data, such as a report, a
+dashboard-like view or a slideshow: a small React and TypeScript project
+that the stack builds in a sandbox and serves in Grafana, where its queries
+run as each viewer. The catalog holds the pages people published; a draft is
+a page you write in a local directory: create or pull it, edit its files,
+push to build it, snapshot to see it, and publish it to share it.
+
+Requires Grafana Pages on the stack and a Grafana Assistant that accepts
+gcx's Pages commands. These commands write files and build pages without
+running Grafana Assistant.
+
+**Examples**
+
+```shell
+gcx pages catalog list --section mine
+  gcx pages drafts create --title "Checkout health" --dir ./checkout-health
+  gcx pages drafts push --dir ./checkout-health
+  gcx pages drafts snapshot --dir ./checkout-health
+  gcx pages drafts publish --dir ./checkout-health --folder ops
+```
+
+**Flags**
+
+```text
+  -h, --help   help for pages
+```
+
+#### Shared flags {#gcx-pages-flags}
+
+```text
+      --config string   Path to the configuration file to use
+```
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages catalog` {#gcx-pages-catalog}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Find and read the pages published to the page catalog: their details, versions and named queries. To change a page, pull it with gcx pages drafts pull.
+
+**Examples**
+
+```shell
+gcx pages catalog list --section mine
+  gcx pages catalog get checkout-health-0a1b2c3d4e5f --source -o json
+```
+
+**Flags**
+
+```text
+  -h, --help   help for catalog
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages catalog get` {#gcx-pages-catalog-get}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Read a published page by ID or link: its details, its named queries (the bindings it runs as each viewer) and, with --source, its source text. To change the page, pull it into a directory instead.
+
+```shell
+gcx pages catalog get PAGE [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages catalog get checkout-health-0a1b2c3d4e5f
+  gcx pages catalog get https://example.grafana.net/a/grafana-assistant-app/pages/checkout-health-0a1b2c3d4e5f --source -o json
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --source          Include the page's source text (bindings and src/, without the SDK)
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages catalog list` {#gcx-pages-catalog-list}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List the published pages in the page catalog that you can open, newest first. Use --section mine for your own pages. Draft pages that live only in a conversation are not listed.
+
+```shell
+gcx pages catalog list [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages catalog list --section mine
+  gcx pages catalog list --search checkout -o json
+```
+
+**Flags**
+
+```text
+  -h, --help             help for list
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int        Maximum number of pages to return. 0 means all results are returned (default 30)
+  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+      --search string    Only pages whose title or description match
+      --section string   Which pages: discover, mine, starred, unlisted. Default lists every page you can find
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages drafts` {#gcx-pages-drafts}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+A draft is a private copy of a page that you write in a local directory
+and the stack builds. Create one from the template, or pull a published
+page; push to build it, snapshot to see it, and publish it to share it.
+
+**Examples**
+
+```shell
+gcx pages drafts create --title "Checkout health" --dir ./checkout-health
+  gcx pages drafts pull checkout-health-0a1b2c3d4e5f --dir ./checkout-health-copy
+  gcx pages drafts push --dir ./checkout-health
+```
+
+**Flags**
+
+```text
+  -h, --help   help for drafts
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages drafts create` {#gcx-pages-drafts-create}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Start a draft page from the Pages template in a new conversation on the
+stack, build the starter, and write its whole project (page.json,
+pages.bindings.json, src/, and the Pages SDK with its docs under
+packages/pages-sdk/) into a local directory. Edit the files, then push.
+
+The draft is private to you until you publish it. No Assistant turn runs.
+
+```shell
+gcx pages drafts create [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages drafts create --title "Checkout health"
+  gcx pages drafts create --title "Q3 review" --dir ./q3-review --style keynote
+```
+
+**Flags**
+
+```text
+      --dir string      Directory to write the page's project into; must be new or empty. Default: a folder named after the title
+  -h, --help            help for create
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+      --style string    A style pack from the SDK, such as keynote, newsroom or grafana-native
+      --title string    The page's title (required)
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages drafts publish` {#gcx-pages-drafts-publish}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Publish the draft's current version, the last push that built. A page
+pulled from the catalog, or published before, becomes that publication's
+next version, keeping its folder and sharing; earlier versions stay in its
+history. A new page needs --folder, or --unlisted.
+
+Publishing shares the page with other people. Publish only when the user
+asked for that. It needs a user identity (gcx login), not a service account.
+
+```shell
+gcx pages drafts publish [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages drafts publish --dir ./checkout-health --folder ops-reports --category report
+  gcx pages drafts publish --dir ./q3-review --unlisted --link-sharing
+  gcx pages drafts publish --dir ./checkout-health
+```
+
+**Flags**
+
+```text
+      --category string      One of overview, investigation, incident, report, story, presentation, architecture, exploration, other. Default for a new page: other
+      --description string   What the page shows, at most 2000 characters
+      --dir string           The page's project directory (default ".")
+      --folder string        First publish only: the folder UID that shares the page with everyone who can view the folder
+  -h, --help                 help for publish
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --link-sharing         With --unlisted: anyone in the organization who has the link can open the page
+  -o, --output string        Output format. One of: agents, json, text, yaml (default "text")
+      --tag strings          Tag the page; repeat or separate with commas, at most 12
+      --title string         Title in the catalog. Default: the page's title, or the publication's
+      --unlisted             First publish only: share with no folder; only you, and with --link-sharing anyone with the link, can open it
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages drafts pull` {#gcx-pages-drafts-pull}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+With PAGE (an ID or link), write a published page's source into a new
+directory: pages.bindings.json, page.json and src/, as text. It only reads;
+the SDK under packages/ and the stylesheets stay on the stack. The first push
+from the directory builds a draft from the page, and publishing that draft
+makes your changes the page's next version.
+
+Without PAGE, download the directory's page into it again, for changes made
+in Grafana, such as by Grafana Assistant: its draft's current version, or the
+published version while it has no draft.
+
+```shell
+gcx pages drafts pull [PAGE] [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages drafts pull checkout-health-0a1b2c3d4e5f --dir ./checkout-health
+  gcx pages drafts pull --dir ./checkout-health
+```
+
+**Flags**
+
+```text
+      --dir string      Directory to write the project into. With PAGE, it must be new or empty (default: a folder named after the page); without PAGE, the project to refresh (default: .)
+      --force           Without PAGE, discard unpushed local changes
+  -h, --help            help for pull
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages drafts push` {#gcx-pages-drafts-push}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Write the files that changed in a page's project directory into its
+sandbox on the stack, which type-checks and builds the page. The first push
+from a pulled directory builds a draft from its page. A build that
+compiles becomes the draft's version, which Grafana shows and snapshot
+captures; a failed build returns the compiler's errors and keeps the
+previous version.
+
+Push changes only your draft. Publish shares it.
+
+```shell
+gcx pages drafts push [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages drafts push --dir ./checkout-health
+  gcx pages drafts push -o json
+```
+
+**Flags**
+
+```text
+      --dir string      The page's project directory (default ".")
+  -h, --help            help for push
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx pages drafts snapshot` {#gcx-pages-drafts-snapshot}
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Render the draft's latest build on the stack's server, with live data, and
+write the image (PNG or JPEG, at most 1568 pixels on its longer side) into
+--output-dir. Look at the image after each meaningful push: a build that
+compiles can still render wrongly. A page that failed to render shows why
+in the image and fails the command.
+
+```shell
+gcx pages drafts snapshot [flags]
+```
+
+**Examples**
+
+```shell
+gcx pages drafts snapshot --dir ./checkout-health
+  gcx pages drafts snapshot --dir ./checkout-health --theme light --width 800
+  gcx pages drafts snapshot --dir ./q3-review --click '[aria-label="Next slide"]'
+```
+
+**Flags**
+
+```text
+      --click stringArray   CSS selector to click before the capture, such as a tab; repeat for several, in order
+      --dir string          The page's project directory (default ".")
+  -h, --help                help for snapshot
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
+      --output-dir string   Directory to write the image into (default ".")
+      --scroll-to string    CSS selector to scroll to before the capture
+      --theme string        light or dark. Default: the renderer's default (dark)
+      --width int           Page width in CSS pixels, 320 to 2400 (default 1200)
+```
+
+Inherits `--config` from [`gcx pages`](#gcx-pages-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
 ### `gcx profiles` {#gcx-profiles}
 
 Query Pyroscope datasources and manage continuous profiling.
@@ -24587,6 +25747,310 @@ gcx resources validate [RESOURCE_SELECTOR]... [flags]
 Inherits `--config`, `--context` from [`gcx resources`](#gcx-resources-flags).
 
 Inherits `--agent`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim` {#gcx-scim}
+
+Manage SCIM provisioning
+
+**Flags**
+
+```text
+  -h, --help   help for scim
+```
+
+#### Shared flags {#gcx-scim-flags}
+
+```text
+      --config string   Path to the configuration file to use
+```
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim endpoint` {#gcx-scim-endpoint}
+
+Show the SCIM tenant endpoint
+
+**Flags**
+
+```text
+  -h, --help   help for endpoint
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim endpoint get` {#gcx-scim-endpoint-get}
+
+Get the SCIM tenant base URL from the active Grafana server and the namespace returned by the SCIM config API. No token is included.
+
+```shell
+gcx scim endpoint get [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim endpoint get -o json
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim settings` {#gcx-scim-settings}
+
+Manage SCIM sync settings
+
+**Flags**
+
+```text
+  -h, --help   help for settings
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim settings get` {#gcx-scim-settings-get}
+
+Get SCIM sync settings
+
+```shell
+gcx scim settings get [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim settings get -o json
+```
+
+**Flags**
+
+```text
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim settings update` {#gcx-scim-settings-update}
+
+Update only the settings named by flags. Keep other settings unchanged.
+The update uses the current resource version. A conflict requires a new attempt.
+Use --dry-run to show current and proposed settings without a write.
+Enabling --reject-non-provisioned can block sign-in and requires confirmation; use --force to skip it.
+
+```shell
+gcx scim settings update [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim settings update --user-sync=true --dry-run
+```
+
+**Flags**
+
+```text
+      --dry-run                  Show current and proposed settings without a write
+      --force                    Skip confirmation when enabling rejection of users that SCIM did not provision
+      --group-sync               Set SCIM group sync; true enables, false disables; omit to keep unchanged
+  -h, --help                     help for update
+      --jq string                jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string              Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string            Output format. One of: agents, json, text, yaml (default "text")
+      --reject-non-provisioned   Set rejection of users that SCIM did not provision; true enables, false disables; omit to keep unchanged
+      --user-sync                Set SCIM user sync; true enables, false disables; omit to keep unchanged
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim users` {#gcx-scim-users}
+
+Manage users through the SCIM API with a service account token.
+Use organization user commands for organization membership.
+Grafana retains SCIM user records after deactivation.
+
+**Flags**
+
+```text
+  -h, --help   help for users
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim users create` {#gcx-scim-users-create}
+
+Create a SCIM user with a stable external ID. Grafana can link an existing account with the same email. The resulting SCIM record can be deactivated but cannot be deleted. Use --dry-run to show the request without a write.
+
+```shell
+gcx scim users create [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim users create --user-name test@example.com --external-id test-0001 --token-file ./scim-token --dry-run
+```
+
+**Flags**
+
+```text
+      --display-name string   User display name
+      --dry-run               Show the proposed request without a write
+      --email string          Work email address
+      --external-id string    Stable identity provider user ID (required for create)
+  -h, --help                  help for create
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string         Output format. One of: agents, json, text, yaml (default "text")
+      --token-file string     Read the SCIM service account token from a file (- for standard input; required)
+      --user-name string      SCIM user name (required for create)
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim users deactivate` {#gcx-scim-users-deactivate}
+
+Set active to false. Grafana keeps the user record. Use --dry-run to show the request without a write. Use --force for a non-interactive write.
+
+```shell
+gcx scim users deactivate <id> [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim users deactivate 12345 --token-file ./scim-token
+```
+
+**Flags**
+
+```text
+      --dry-run             Show the proposed request without a write
+      --force               Skip the deactivation confirmation
+  -h, --help                help for deactivate
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
+      --token-file string   Read the SCIM service account token from a file (- for standard input; required)
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim users get` {#gcx-scim-users-get}
+
+Get a SCIM user by ID
+
+```shell
+gcx scim users get <id> [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim users get 12345 --token-file ./scim-token
+```
+
+**Flags**
+
+```text
+  -h, --help                help for get
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, yaml (default "yaml")
+      --token-file string   Read the SCIM service account token from a file (- for standard input; required)
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim users list` {#gcx-scim-users-list}
+
+Fetch all SCIM user pages. Send --filter to Grafana as a SCIM expression. The command fails if it cannot verify that all matching users were returned.
+
+```shell
+gcx scim users list [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim users list --token-file ./scim-token
+```
+
+**Flags**
+
+```text
+      --filter string       SCIM filter expression sent to Grafana
+  -h, --help                help for list
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+      --token-file string   Read the SCIM service account token from a file (- for standard input; required)
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx scim users update` {#gcx-scim-users-update}
+
+Replace only the user attributes named by flags. Keep other attributes unchanged. Use --dry-run to show the request without a write.
+
+```shell
+gcx scim users update <id> [flags]
+```
+
+**Examples**
+
+```shell
+gcx scim users update 12345 --display-name 'Test User' --token-file ./scim-token --dry-run
+```
+
+**Flags**
+
+```text
+      --display-name string   User display name
+      --dry-run               Show the proposed request without a write
+      --email string          Work email address
+      --external-id string    Stable identity provider user ID (required for create)
+  -h, --help                  help for update
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string         Output format. One of: agents, json, text, yaml (default "text")
+      --token-file string     Read the SCIM service account token from a file (- for standard input; required)
+      --user-name string      SCIM user name (required for create)
+```
+
+Inherits `--config` from [`gcx scim`](#gcx-scim-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
 
 ### `gcx setup` {#gcx-setup}
 
@@ -26431,7 +27895,9 @@ open it in your browser after the query succeeds. Share links require an
 explicit time range via --since or --from/--to. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Traces Drilldown URL (only
 available for a flat, &&-joined spanset of scope.tag comparisons; anything
-else falls back to the Explore URL).
+else falls back to the Explore URL). Add --drilldown-view exceptions to open
+the Exceptions tab instead of the trace list. The view requires
+--drilldown-link or --open-drilldown.
 
 **Aliases:** `search`
 
@@ -26448,6 +27914,12 @@ gcx traces query [TRACEQL] [flags]
   # Print a Grafana Explore share link for the query
   gcx traces query '{ span.http.status_code >= 500 }' --share-link
 
+  # Print a Grafana Traces Drilldown link for the query
+  gcx traces query '{ span.http.status_code = 500 }' --drilldown-link
+
+  # Print a Traces Drilldown Exceptions tab link
+  gcx traces query '{ resource.service.name = "checkout" }' --since 1h --drilldown-link --drilldown-view exceptions
+
   # Output as JSON
   gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json
 ```
@@ -26455,22 +27927,23 @@ gcx traces query [TRACEQL] [flags]
 **Flags**
 
 ```text
-  -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
-      --drilldown-link      Print the Grafana Traces Drilldown URL for the executed query to stderr
-      --error-on-empty      Fail if the query returns no results
-      --expr string         Query expression (alternative to positional argument)
-      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for query
-      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of traces to return (0 means no limit) (default 20)
-      --open                Open the executed query in Grafana Explore
-      --open-drilldown      Open the executed query in Grafana Traces Drilldown
-  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
-      --share-link          Print the Grafana Explore URL for the executed query to stderr
-      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --step string         Query step (e.g., '15s', '1m')
-      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+  -d, --datasource string       Datasource UID (required unless datasources.tempo is configured)
+      --drilldown-link          Print the Grafana Traces Drilldown URL for the executed query to stderr
+      --drilldown-view string   Traces Drilldown tab for --drilldown-link and --open-drilldown: traceList (default) or exceptions
+      --error-on-empty          Fail if the query returns no results
+      --expr string             Query expression (alternative to positional argument)
+      --from string             Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                    help for query
+      --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int               Maximum number of traces to return (0 means no limit) (default 20)
+      --open                    Open the executed query in Grafana Explore
+      --open-drilldown          Open the executed query in Grafana Traces Drilldown
+  -o, --output string           Output format. One of: agents, csv, json, table, wide, yaml (default "table")
+      --share-link              Print the Grafana Explore URL for the executed query to stderr
+      --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string             Query step (e.g., '15s', '1m')
+      --to string               End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 Inherits `--config` from [`gcx traces`](#gcx-traces-flags).

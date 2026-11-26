@@ -788,49 +788,47 @@ var commandAnnotations = map[string]annotation{
 // registry entries only fill in missing keys. Call this after the full command
 // tree is assembled.
 func ApplyAnnotations(root *cobra.Command) {
-	WalkCommands(root, func(cmd *cobra.Command) {
-		a, ok := commandAnnotations[cmd.CommandPath()]
-		if !ok {
-			return
-		}
+	applyAnnotations(root, root.CommandPath(), false)
+}
+
+// applyAnnotations annotates cmd, whose CommandPath is path, and its subtree.
+// It builds each child's path from its parent's rather than calling
+// CommandPath, which walks back to the root for every command. cloudOnly says
+// whether the parent is cloud-only, which makes its whole subtree cloud-only.
+func applyAnnotations(cmd *cobra.Command, path string, cloudOnly bool) {
+	set := func(key, value string) {
 		if cmd.Annotations == nil {
 			cmd.Annotations = make(map[string]string)
 		}
-		if _, exists := cmd.Annotations[AnnotationTokenCost]; !exists && a.Cost != "" {
-			cmd.Annotations[AnnotationTokenCost] = a.Cost
+		if _, exists := cmd.Annotations[key]; !exists {
+			cmd.Annotations[key] = value
 		}
-		if _, exists := cmd.Annotations[AnnotationLLMHint]; !exists && a.Hint != "" {
-			cmd.Annotations[AnnotationLLMHint] = a.Hint
+	}
+
+	if a, ok := commandAnnotations[path]; ok {
+		if a.Cost != "" {
+			set(AnnotationTokenCost, a.Cost)
 		}
-	})
+		if a.Hint != "" {
+			set(AnnotationLLMHint, a.Hint)
+		}
+	}
 
 	// Set the related-skill annotation on each mapped area node.
-	WalkCommands(root, func(cmd *cobra.Command) {
-		skills, ok := commandSkills[cmd.CommandPath()]
-		if !ok || len(skills) == 0 {
-			return
-		}
-		if cmd.Annotations == nil {
-			cmd.Annotations = make(map[string]string)
-		}
-		if _, exists := cmd.Annotations[AnnotationSkill]; !exists {
-			cmd.Annotations[AnnotationSkill] = strings.Join(skills, ",")
-		}
-	})
+	if skills := commandSkills[path]; len(skills) > 0 {
+		set(AnnotationSkill, strings.Join(skills, ","))
+	}
 
 	// Mark Grafana Cloud-only commands. Derived from the command path so the
 	// whole subtree of each cloud-only product group is covered at once.
-	WalkCommands(root, func(cmd *cobra.Command) {
-		if !IsCloudOnlyPath(cmd.CommandPath()) {
-			return
-		}
-		if cmd.Annotations == nil {
-			cmd.Annotations = make(map[string]string)
-		}
-		if _, exists := cmd.Annotations[AnnotationAvailability]; !exists {
-			cmd.Annotations[AnnotationAvailability] = AvailabilityCloudOnly
-		}
-	})
+	cloudOnly = cloudOnly || IsCloudOnlyPath(path)
+	if cloudOnly {
+		set(AnnotationAvailability, AvailabilityCloudOnly)
+	}
+
+	for _, sub := range cmd.Commands() {
+		applyAnnotations(sub, path+" "+sub.Name(), cloudOnly)
+	}
 }
 
 // WalkCommands recursively calls fn on cmd and all its subcommands.

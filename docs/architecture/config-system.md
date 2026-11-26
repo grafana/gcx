@@ -622,6 +622,7 @@ Flow (`discoverStackIDCached` in `internal/config/stack_id.go`):
      5s timeout, no retry, respects TLS config, selected credentials attached
 2. Parse top-level JSON: { "namespace": "stacks-12345", ... }
      "stacks-N"            → StackID=N (done)
+     network error (non-OAuth)     → stop; /bootdata would hit the same host
      other / non-200 / empty / err → fall back to step 3
 3. GET {server}/bootdata → { "settings": { "namespace": "stacks-12345" } }
 ```
@@ -634,8 +635,11 @@ access token simply fails the whoami probe and discovery falls back to
 `/bootdata`. whoami also answers anonymous callers with the namespace, so
 discovery works without credentials.
 
-Successful results are memoized per server for the process lifetime;
-failures are not cached.
+Results are memoized per server for the process lifetime. A stack ID is
+cached on success; when both probes get an HTTP response without one
+(e.g. on-prem Grafana), that "not a cloud stack" outcome is cached too, so
+later lookups make no requests. Network errors, transient statuses (5xx,
+429) and local failures (such as a bad TLS config) are not cached.
 
 Validation behavior (`types.go`):
 - `OrgID != 0` → skip discovery entirely (short-circuit, no HTTP call)

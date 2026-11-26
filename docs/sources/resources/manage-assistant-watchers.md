@@ -1,8 +1,8 @@
 ---
 aliases:
   - ../guides/manage-assistant-watchers/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/manage-assistant-watchers/
-title: Manage Assistant Watchers
-description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, configure notifications, save reusable manifests, control monitoring, inspect run history, restore definition versions, and delete Watchers in Grafana Cloud.
+title: Manage Watchers
+description: Use gcx to create Watchers, follow calibration, review and update configuration, configure notifications, save reusable manifests, control monitoring, inspect run history, restore definition versions, and delete Watchers in Grafana Cloud.
 labels:
   products:
     - cloud
@@ -14,13 +14,13 @@ keywords:
 weight: 100
 ---
 
-# Manage Assistant Watchers
+# Manage Watchers
 
 Use `gcx` to create Watchers and keep their configuration in version control. **Watcher commands are experimental and require Grafana Cloud**.
 
 ## Before you begin
 
-- [Configure a gcx context](../../configuration/) for a Grafana Cloud stack with Assistant Watchers enabled.
+- [Configure a gcx context](../../configuration/) for a Grafana Cloud stack with Watchers enabled.
 - Make sure your identity can read and manage Watchers and access the data sources you want to monitor.
 
 Commands use your selected context. Add `--context CONTEXT` to select another context.
