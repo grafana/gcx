@@ -1,3 +1,26 @@
+## v1.9.0 (2026-11-26)
+
+- **Adaptive Metrics:** rules and recommendations now use the v2 API
+- **Adaptive Metrics (breaking):** deleting rules now requires write permission
+- **Pages (experimental):** new `gcx pages` commands to build and publish Grafana Pages
+- **Assistant:** new change-review `checks` and `stats` commands
+- **Assistant:** investigation `pause`, `resume` and `mode` are deprecated
+- **Assistant:** fix watcher updates when automatic recalibration is disabled
+- **Agent Observability:** add human review queues, human evaluators, manual fixtures
+- **IRM:** add team working hours for OnCall
+- **IRM:** add incident context to OnCall escalation policies
+- **SCIM:** manage sync settings, endpoint and users
+- **Traces:** open the Traces Drilldown Exceptions tab from a query
+- **Knowledge Graph:** accept `tenant/<name>` domains in entity and relationship writes
+- **Config:** discover stack namespace via `whoami` instead of `/bootdata`
+- **Config:** fail fast on unreachable `whoami` and cache non-cloud servers
+- **Skills:** new `map-source-code` skill links services to their repositories
+- **Skills:** new `grafana-pages` skill; updated `agento11y-instrument` guidance
+- **Licensing:** drop the AGPL-3.0 `grafana/grafana` apimachinery dependency
+- **Docs:** new "Use gcx with agents" guide and permissions consistency sweep
+- **Docs:** reorganised resource guides; "Assistant Watchers" renamed to "Watchers"
+
+
 ## v1.8.0 (2026-11-17)
 
 ### Breaking changes
