@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -105,7 +104,11 @@ func getJSON(ctx context.Context, cfgCtx *config.Context, path string, out any) 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return &StatusError{Path: apiPath, StatusCode: resp.StatusCode}
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBytes)
+	if err != nil {
+		return fmt.Errorf("reading GET %s: %w", apiPath, err)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("decoding GET %s: %w", apiPath, err)
 	}
 	return nil

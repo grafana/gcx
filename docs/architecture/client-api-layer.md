@@ -5,8 +5,9 @@
 gcx uses distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
 Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path makes
-plain HTTP requests to Grafana's `/api` for the two non-resource checks gcx
-needs: the health/version probe and the signed-in user. Direct HTTP
+plain HTTP requests to Grafana's `/api` for the non-resource checks gcx needs:
+the health/version probe, the signed-in user, and the anonymous frontend
+settings probe used to detect the target before login. Direct HTTP
 clients use `rest.HTTPClientFor` for datasource queries and global resource search
 against their respective `/apis` endpoints.
 
@@ -323,6 +324,9 @@ bodies can echo credentials.
 - `grafana.GetVersion()` — calls `GET /api/health` to check Grafana version
 - `grafana.SignedInUserID()` — calls `GET /api/user` to verify basic-auth
   credentials during login
+- `grafana.FetchAnonymousSettings()` — calls `GET /api/frontend/settings`
+  without credentials to detect the target (for example, Grafana Cloud) before
+  login
 
 **Does NOT use:**
 - `NamespacedRESTConfig` (completely separate connection setup)
