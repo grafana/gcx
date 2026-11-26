@@ -33,7 +33,7 @@ The main differences between modes are the following. Most of them reduce the to
 | | Without agent mode | In agent mode |
 | --- | --- | --- |
 | Default output | Readable tables | [Compact JSON](#parse-compact-json-by-default) |
-| Color and table truncation | Enabled | Disabled |
+| Color and table truncation | Enabled in a terminal | Disabled |
 | Errors | A readable message on `stderr` | A JSON error document on `stdout` |
 | Status messages and hints | Text on `stderr` | Text on `stderr`, with hints as JSON lines, so `stdout` carries only the result |
 | Large results | Printed in full | [Saved to a temporary file](#handle-large-results), with a short receipt on `stdout` |
