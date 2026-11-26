@@ -32,11 +32,12 @@ The main differences between modes are the following. Most of them reduce the to
 
 | | Without agent mode | In agent mode |
 | --- | --- | --- |
-| Default output | Readable tables | Compact JSON (spills to a temp file above 100 KiB) |
-| Color and table truncation | On in a terminal | Off |
+| Default output | Readable tables | [Compact JSON](#parse-compact-json-by-default) |
+| Color and table truncation | Enabled | Disabled |
 | Errors | A readable message on `stderr` | A JSON error document on `stdout` |
 | Status messages and hints | Text on `stderr` | Text on `stderr`, with hints as JSON lines, so `stdout` carries only the result |
-| Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Approve destructive operations](#approve-destructive-operations). |
+| Large results | Printed in full | [Saved to a temporary file](#handle-large-results), with a short receipt on `stdout` |
+| Destructive operations | An interactive confirmation prompt | [Rejected unless you allow them](#approve-destructive-operations) |
 
 Agents also rely on `gcx` features that are available in both modes:
 
@@ -170,7 +171,13 @@ Ask your agent to check with you before it adds `--force`, and avoid setting `GC
 
 ## How agents read `gcx` output
 
-In agent mode, `gcx` returns compact, structured output that agents can parse without spending tokens on formatting, and tells them when a result is incomplete or a command failed. It writes data to `stdout` and status messages and hints to `stderr`, so an agent can parse `stdout` without filtering.
+In agent mode, `gcx` returns structured output, reports incomplete results and errors, and suggests next steps.
+
+### Parse compact JSON by default
+
+The default output in agent mode is compact JSON instead of tables. It has no colors, no layout, and no truncated columns, so agents can parse it directly without spending tokens on formatting.
+
+`gcx` writes the data to `stdout` and status messages and hints to `stderr`. Agents can parse `stdout` without filtering out those messages.
 
 ### Select fields and filter results
 
