@@ -10,10 +10,12 @@
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-	sed -n '6p' "$0" >&2
+	echo "usage: preinit.sh <reactor.wasm> <output.wasm>" >&2
 	exit 2
 fi
-if ! command -v wasmtime >/dev/null; then
+# Run it rather than look it up: a mise shim exists even where mise has no
+# wasmtime to run.
+if ! wasmtime --version >/dev/null 2>&1; then
 	echo "preinit.sh: needs wasmtime for wizer; run MISE_ENV=sandbox mise install in the repository" >&2
 	exit 1
 fi

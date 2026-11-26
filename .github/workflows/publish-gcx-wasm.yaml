@@ -2,9 +2,10 @@ name: Publish gcx.wasm
 # Publishes gcx built for wasip1, for embedding with experimental/sandbox, as
 # ghcr.io/grafana/gcx-wasm: FROM scratch images holding
 #
-#   /gcx.wasm     the module
-#   /gcx.commit   the gcx commit it was built from
-#   /cache/       wazero's compiled code for it (pass as sandbox Config.CacheDir)
+#   /gcx.wasm          the module
+#   /gcx-preinit.wasm  the same gcx, pre-initialized (experimental/sandbox/README.md)
+#   /gcx.commit        the gcx commit they were built from
+#   /cache/            wazero's compiled code for both (pass as sandbox Config.CacheDir)
 #
 # so a Dockerfile can `COPY --from` them and skip both building gcx and the
 # ~40 s compile at startup. The module is architecture-independent, but the
@@ -163,8 +164,9 @@ jobs:
           printf 'FROM scratch\nCOPY %s gcx.commit /\nCOPY cache /cache\n' "${modules[*]}" >"$IMAGE_DIR/Dockerfile"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker buildx create --use --driver docker-container >/dev/null
-          # zstd -19 roughly halves the gzip size (about 100 MB to 47 MB per
-          # platform), and it is paid once here rather than on every pull.
+          # zstd -19 roughly halves the gzip size (about 165 MB to 93 MB per
+          # platform with both modules), and it is paid once here rather than
+          # on every pull.
           docker buildx build \
             --platform "$PLATFORM" \
             --provenance=false \

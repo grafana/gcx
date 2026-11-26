@@ -49,6 +49,10 @@ func TestPreinitMatchesCommandModule(t *testing.T) {
 		args []string
 		env  map[string]string
 		home fstest.MapFS
+		// runtimeAbort: gcx.wasm's runtime aborts at startup and prints a stack
+		// trace, which the pre-initialized module doesn't reproduce; compare
+		// stderr up to it.
+		runtimeAbort bool
 	}{
 		{name: "version in agent mode", args: []string{"version"}, env: map[string]string{"GCX_AGENT_MODE": "true"}},
 		{name: "version for a person", args: []string{"version"}, env: map[string]string{"GCX_AGENT_MODE": "false"}},
@@ -61,6 +65,11 @@ func TestPreinitMatchesCommandModule(t *testing.T) {
 		{name: "config from home", args: []string{"config", "view", "-o", "json"}, home: home},
 		{name: "GC settings", args: []string{"version"}, env: map[string]string{"GOGC": "400", "GOMEMLIMIT": "384MiB"}},
 		{name: "invalid GOGC", args: []string{"version"}, env: map[string]string{"GOGC": "lots"}},
+		// Go 1.27's runtime parses both with internal/strconv.ParseInt, which
+		// takes a leading +; a runtime that rejected it would abort gcx.wasm
+		// on the malformed GOMEMLIMIT.
+		{name: "signed GC settings", args: []string{"version"}, env: map[string]string{"GOGC": "+5", "GOMEMLIMIT": "+5MiB"}},
+		{name: "malformed GOMEMLIMIT", args: []string{"version"}, env: map[string]string{"GOMEMLIMIT": "5MB"}, runtimeAbort: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -80,6 +89,13 @@ func TestPreinitMatchesCommandModule(t *testing.T) {
 			}
 			wantCode, wantOut, wantErr := run(command)
 			gotCode, gotOut, gotErr := run(preinit)
+			if tc.runtimeAbort {
+				before, _, found := strings.Cut(wantErr, "\nruntime stack:\n")
+				if !found {
+					t.Fatalf("gcx.wasm didn't abort with a stack trace; stderr:\n%s", wantErr)
+				}
+				wantErr = strings.TrimSuffix(before, "\n") + "\n"
+			}
 			if gotCode != wantCode {
 				t.Errorf("exit %d, gcx.wasm exits %d", gotCode, wantCode)
 			}

@@ -149,7 +149,8 @@ if err == nil && rt.CacheError() != nil {
 ```
 
 Each image holds `/gcx.wasm`, `/gcx-preinit.wasm`, `/gcx.commit`, and `/cache/`,
-which is wazero's compiled code for both modules. With that cache, startup takes about 1 s instead
+which is wazero's compiled code for both modules: about 93 MB per platform
+compressed, 765 MB unpacked, half of it for each module. With that cache, startup takes about 1 s instead
 of about 40 s, and the cache can stay read-only. Its files are world-readable,
 so the embedder can run as any user. If they can't be read, or the cache misses
 and can't be written, `New` compiles from scratch instead of failing, and

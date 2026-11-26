@@ -10,8 +10,10 @@ import (
 // gcSettings parses GOGC and GOMEMLIMIT as the Go runtime does, for a
 // pre-initialized module (see preinit_wasip1.go), where the runtime read
 // them before the command's environment existed. An empty value leaves that
-// setting as it is, and returns nil for it. As in the runtime, an invalid
-// GOGC means the default, 100, and an invalid GOMEMLIMIT is an error.
+// setting as it is, and returns nil for it. As in the runtime (Go 1.27, which
+// parses both with internal/strconv.ParseInt, so a leading + is accepted),
+// an invalid GOGC means the default, 100, and an invalid GOMEMLIMIT is an
+// error.
 func gcSettings(gogc, gomemlimit string) (*int, *int64, error) {
 	var percent *int
 	switch gogc {

@@ -66,8 +66,11 @@ func gcxRun() {
 		}
 	}
 	gcPercent, memoryLimit, err := gcSettings(os.Getenv("GOGC"), os.Getenv("GOMEMLIMIT"))
-	if err != nil { // the runtime aborts on a malformed GOMEMLIMIT, with status 2
-		_, _ = os.Stderr.WriteString("gcx: " + err.Error() + "\n")
+	if err != nil {
+		// What the runtime prints, before its stack trace, when it aborts on
+		// a malformed GOMEMLIMIT, and its exit status.
+		_, _ = os.Stderr.WriteString("GOMEMLIMIT=" + os.Getenv("GOMEMLIMIT") +
+			"\nfatal error: malformed GOMEMLIMIT; see `go doc runtime/debug.SetMemoryLimit`\n")
 		os.Exit(2)
 	}
 	if gcPercent != nil {
