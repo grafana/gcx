@@ -56,6 +56,11 @@ func fakeGCX() int {
 		_, _ = os.Stdout.Write(bytes.Repeat([]byte("x"), bigOutput))
 		return 3
 	}
+	if len(os.Args) > 1 && os.Args[1] == "stream" {
+		_, _ = os.Stdout.WriteString("ready\n")
+		time.Sleep(10 * time.Second)
+		return 0
+	}
 	if len(os.Args) > 1 && os.Args[1] == "fail" {
 		_, _ = os.Stdout.WriteString(`{"error":{"summary":"boom","details":"it broke"}}`)
 		return 4
@@ -387,6 +392,7 @@ func TestRun(t *testing.T) {
 		},
 		{name: "gcx command fails", args: []string{"gcx", "fail"}, code: 4, stderr: "Error: boom: it broke\n"},
 		{name: "large gcx output", args: []string{"size", "big"}, stdout: fmt.Sprintf("%d 3\n", bigOutput)},
+		{name: "streamed gcx output", args: []string{"stream", "stream"}, stdout: "streamed\n"},
 		{name: "output before returning", args: []string{"flood"}, code: 1, stdout: strings.Repeat("x", 2<<20) + "END\n", stderr: "Error: after output\n"},
 	}
 	for _, tt := range tests {

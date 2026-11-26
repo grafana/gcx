@@ -43,6 +43,20 @@ func main() {
 			// Output written just before returning must still reach gcx.
 			fmt.Print(strings.Repeat("x", 2<<20) + "END\n")
 			return errors.New("after output")
+		case "stream":
+			// Stopping the command at its first output only works if
+			// Request.Stdout gets output before the command exits.
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			_, err := gcx.Execute(ctx, extsdk.Request{Args: args[1:], Stdout: writerFunc(func(p []byte) (int, error) {
+				cancel()
+				return len(p), nil
+			})})
+			if ctx.Err() == nil {
+				return fmt.Errorf("command exited before its output arrived: %v", err)
+			}
+			fmt.Println("streamed")
+			return nil
 		case "wait":
 			<-ctx.Done()
 			return ctx.Err()
@@ -50,3 +64,7 @@ func main() {
 		return fmt.Errorf("unknown test command %q", args[0])
 	})
 }
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }

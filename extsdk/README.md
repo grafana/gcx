@@ -31,7 +31,7 @@ func main() {
 
 The SDK gives an extension two ways to run gcx commands:
 
-- `GCX.Execute` runs any gcx command in a new gcx process and returns its stdout, stderr and exit code. 
+- `GCX.Execute` runs any gcx command in a new gcx process and returns its stdout, stderr and exit code. Set `Request.Stdout` to read stdout as the command writes it, such as a stream that only ends when the command exits.
 - `GCX.DecodeJSON` adds `--output json`, decodes stdout and returns an `*ExitError` for any non-zero exit, so it drops partial results. Use `Execute` when you want to catch partial results.
 
 Some more notes about extensions:
