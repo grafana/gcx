@@ -194,7 +194,7 @@ gcx resources get dashboards --json metadata.name,spec.title
 gcx resources get dashboards --jq '.items | length'
 ```
 
-When an agent doesn't use these flags, `gcx` prints a one-line hint to `stderr` that suggests them.
+In agent mode, `gcx` prints a one-line hint to `stderr` that suggests these flags. It prints the hint once for each command, unless the command already uses `--jq` or `--json list`.
 
 ### Detect incomplete lists
 
