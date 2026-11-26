@@ -63,6 +63,9 @@ func (o *searchOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *searchOpts) Validate() error {
+	if o.Limit < 0 {
+		return errors.New("--limit must not be negative")
+	}
 	return o.IO.Validate()
 }
 

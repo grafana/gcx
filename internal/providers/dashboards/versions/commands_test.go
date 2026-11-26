@@ -576,3 +576,13 @@ func TestVersionsTableCodec_AnnotationValues(t *testing.T) {
 	assert.Contains(t, out, "grafana-bot")
 	assert.Contains(t, out, "auto-save")
 }
+
+func TestVersionsList_NegativeLimitRejected(t *testing.T) {
+	fc := &fakeVersionsClient{}
+
+	stdout, _, err := runVersionsCmd(t, fc, []string{"list-versions", "foo", "--limit", "-1"}, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--limit must not be negative")
+	assert.False(t, fc.listCalled, "List must not be called on invalid input")
+	assert.Empty(t, stdout)
+}
