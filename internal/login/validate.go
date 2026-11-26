@@ -6,13 +6,10 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/go-openapi/runtime"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
 	intgrafana "github.com/grafana/gcx/internal/grafana"
-	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/resources/discovery"
-	"github.com/grafana/grafana-openapi-client-go/client/signed_in_user"
 )
 
 // grafanaClient is satisfied by any type that can return the Grafana version.
@@ -53,7 +50,7 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 	// here as a "health check failed" error.
 	version, rawVersion, err := v.grafana.GetVersion(ctx)
 	if err != nil {
-		return "", &HealthCheckError{Server: opts.Server, Status: extractGoAPIStatus(err), Cause: err}
+		return "", &HealthCheckError{Server: opts.Server, Status: extractGrafanaStatus(err), Cause: err}
 	}
 
 	// Step 2: K8s API availability via discovery /apis
@@ -89,12 +86,12 @@ func (v *validator) validate(ctx context.Context, opts Options, restCfg config.N
 	}
 }
 
-// extractGoAPIStatus returns the HTTP status from a grafana-openapi-client-go
-// runtime.APIError in the chain, or 0 for transport-level failures (dial, TLS,
-// timeout) where no HTTP response was received.
-func extractGoAPIStatus(err error) int {
-	if apiErr, ok := errors.AsType[*runtime.APIError](err); ok {
-		return apiErr.Code
+// extractGrafanaStatus returns the HTTP status from a grafana.StatusError in
+// the chain, or 0 for transport-level failures (dial, TLS, timeout) where no
+// HTTP response was received.
+func extractGrafanaStatus(err error) int {
+	if statusErr, ok := errors.AsType[*intgrafana.StatusError](err); ok {
+		return statusErr.StatusCode
 	}
 	return 0
 }
@@ -174,28 +171,18 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 }
 
 func validateBasicAuth(ctx context.Context, cfg config.Context) error {
-	client, tlsConfig, err := intgrafana.ClientFromContextWithTLS(&cfg)
-	if err != nil {
-		return err
-	}
-	client.WithHTTPClient(httputils.NewDefaultClientWithTLS(ctx, tlsConfig))
-	user, err := client.SignedInUser.GetSignedInUserWithParams(signed_in_user.NewGetSignedInUserParams().WithContext(ctx))
+	userID, err := intgrafana.SignedInUserID(ctx, &cfg)
 	if err != nil {
 		// HTTP error bodies can echo credentials; retain causes only without a status.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		status := extractGoAPIStatus(err)
-		var response interface{ Code() int }
-		if errors.As(err, &response) {
-			status = response.Code()
+		if status := extractGrafanaStatus(err); status != 0 {
+			return &BasicAuthCheckError{Status: status}
 		}
-		if status == 0 {
-			return &BasicAuthCheckError{Cause: err}
-		}
-		return &BasicAuthCheckError{Status: status}
+		return &BasicAuthCheckError{Cause: err}
 	}
-	if user.Payload == nil || user.Payload.ID == 0 {
+	if userID == 0 {
 		return &BasicAuthCheckError{}
 	}
 	return nil

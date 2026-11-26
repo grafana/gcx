@@ -4,9 +4,9 @@
 
 gcx uses distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
-Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path uses
-the Grafana OpenAPI generated client (`grafana-openapi-client-go`) for
-non-resource operations like health checks and datasource listing. Direct HTTP
+Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path makes
+plain HTTP requests to Grafana's `/api` for the two non-resource checks gcx
+needs: the health/version probe and the signed-in user. Direct HTTP
 clients use `rest.HTTPClientFor` for datasource queries and global resource search
 against their respective `/apis` endpoints.
 
@@ -48,17 +48,17 @@ config.NamespacedRESTConfig        (embeds rest.Config + Namespace string)
               dynamic.VersionedClient     (same interface + auto-version re-fetch)
 ```
 
-The secondary OpenAPI path is independent:
+The secondary `/api` path is independent:
 
 ```
 config.Context
         |
         v
-grafana.ClientFromContext()     [internal/grafana/client.go]
-        |  - parses server URL into Host/BasePath/Scheme
-        |  - applies auth (basic or API key)
+grafana.GetVersion() / grafana.SignedInUserID()   [internal/grafana/client.go]
+        |  - GET <server>/api/health or /api/user
+        |  - applies the selected auth (basic or token) and X-Grafana-Org-Id
         v
-*goapi.GrafanaHTTPAPI           (generated OpenAPI client, /api base path)
+httputils.NewDefaultClientWithTLS   (CLI transport, payload logging)
 ```
 
 The third path for datasource queries also starts from `NamespacedRESTConfig`
@@ -304,43 +304,27 @@ k8s dynamic client  →  apierrors.StatusError
 
 ---
 
-## Grafana OpenAPI Client (Secondary Path)
+## Grafana `/api` Requests (Secondary Path)
 
 **File:** `internal/grafana/client.go`
 
-The `grafana-openapi-client-go` generated client targets `/api` (not `/apis`)
-and is used for Grafana-specific operations that are not part of the K8s API:
-
-```go
-func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
-    cfg := &goapi.TransportConfig{
-        Host:     grafanaURL.Host,
-        BasePath: grafanaURL.Path + "/api",
-        Schemes:  []string{grafanaURL.Scheme},
-    }
-    // Auth and TLS use the same authoritative selection as rest.Config.
-    method, err := ctx.EffectiveGrafanaAuthMethod()
-    selectedTLS, err := ctx.EffectiveGrafanaTLS()
-    if selectedTLS != nil {
-        cfg.TLSConfig, err = selectedTLS.ToStdTLSConfig()
-    }
-    switch method {
-    case "basic":
-        cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
-    case "token":
-        cfg.APIKey = ctx.Grafana.APIToken
-    }
-    return goapi.NewHTTPClientWithConfig(strfmt.Default, cfg), nil
-}
-```
+Grafana-specific checks that are not part of the K8s API target `/api` (not
+`/apis`) with plain HTTP requests rather than a generated client, so gcx
+doesn't link the generated Grafana API client and the go-openapi stack for two
+GET requests. `getJSON` applies auth and TLS with the same authoritative
+selection as `rest.Config` (`EffectiveGrafanaAuthMethod`,
+`EffectiveGrafanaTLS`): only the selected credential is attached, OAuth
+requests are anonymous against the direct Grafana endpoint, and mTLS
+authenticates at the transport layer. A non-2xx response becomes a
+`*grafana.StatusError`, which carries the status but not the body, since error
+bodies can echo credentials.
 
 **Current usages:**
 - `grafana.GetVersion()` — calls `GET /api/health` to check Grafana version
-- Version compatibility checks before operations
-- Datasources list and get — queries the `/api/datasources` endpoint
+- `grafana.SignedInUserID()` — calls `GET /api/user` to verify basic-auth
+  credentials during login
 
 **Does NOT use:**
-- `internal/httputils` (the OpenAPI client manages its own transport)
 - `NamespacedRESTConfig` (completely separate connection setup)
 
 ---
