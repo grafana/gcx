@@ -108,7 +108,7 @@ func (e *Extension) Run(ctx context.Context, opts RunOptions) (int, error) {
 		return 0, ctx.Err()
 	}
 
-	resp, err := ext.client.Run(ctx, &extensionpb.RunRequest{HostBrokerId: brokerID, Args: opts.Args})
+	resp, err := ext.client.Run(ctx, &extensionpb.RunRequest{HostBrokerId: brokerID, Args: opts.Args, AgentMode: agent.IsAgentMode()})
 	if err != nil {
 		return 0, contextError(ctx, fmt.Errorf("run extension %s: %w", e.Name, err))
 	}

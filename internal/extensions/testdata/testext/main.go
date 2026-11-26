@@ -20,6 +20,9 @@ func main() {
 			fmt.Println(args[1:])
 			fmt.Fprintln(os.Stderr, "to stderr")
 			return nil
+		case "agent":
+			fmt.Println(gcx.AgentMode())
+			return nil
 		case "exit":
 			code, err := strconv.Atoi(args[1])
 			if err != nil {

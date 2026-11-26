@@ -115,8 +115,13 @@ func (e *ExitError) Error() string { return e.Message }
 // new gcx process that uses the context and configuration the extension was
 // started with.
 type GCX struct {
-	host extensionpb.HostClient
+	host      extensionpb.HostClient
+	agentMode bool
 }
+
+// AgentMode reports whether gcx runs in agent mode, where its caller is an
+// agent rather than a person.
+func (g *GCX) AgentMode() bool { return g.agentMode }
 
 // Execute runs a gcx command. A command that exits non-zero returns its
 // output and exit code with a nil error, because gcx can report a partial
@@ -219,7 +224,7 @@ func (s *extensionServer) Run(ctx context.Context, req *extensionpb.RunRequest) 
 		return nil, fmt.Errorf("connect to gcx output: %w", err)
 	}
 	code, err := captureOutput(output, func() int {
-		return exitCode(s.run(ctx, &GCX{host: host}, req.GetArgs()))
+		return exitCode(s.run(ctx, &GCX{host: host, agentMode: req.GetAgentMode()}, req.GetArgs()))
 	})
 	if err != nil {
 		return nil, fmt.Errorf("send output to gcx: %w", err)

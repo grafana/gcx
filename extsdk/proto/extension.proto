@@ -27,6 +27,9 @@ message RunRequest {
   uint32 host_broker_id = 1;
   // Arguments that followed the extension name, unchanged.
   repeated string args = 2;
+  // Whether gcx runs in agent mode, from --agent, GCX_AGENT_MODE or an
+  // agent's environment.
+  bool agent_mode = 3;
 }
 
 message RunResponse {

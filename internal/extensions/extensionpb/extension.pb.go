@@ -75,7 +75,10 @@ type RunRequest struct {
 	// go-plugin broker ID on which gcx serves the Host service.
 	HostBrokerId uint32 `protobuf:"varint,1,opt,name=host_broker_id,json=hostBrokerId,proto3" json:"host_broker_id,omitempty"`
 	// Arguments that followed the extension name, unchanged.
-	Args          []string `protobuf:"bytes,2,rep,name=args,proto3" json:"args,omitempty"`
+	Args []string `protobuf:"bytes,2,rep,name=args,proto3" json:"args,omitempty"`
+	// Whether gcx runs in agent mode, from --agent, GCX_AGENT_MODE or an
+	// agent's environment.
+	AgentMode     bool `protobuf:"varint,3,opt,name=agent_mode,json=agentMode,proto3" json:"agent_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -122,6 +125,13 @@ func (x *RunRequest) GetArgs() []string {
 		return x.Args
 	}
 	return nil
+}
+
+func (x *RunRequest) GetAgentMode() bool {
+	if x != nil {
+		return x.AgentMode
+	}
+	return false
 }
 
 type RunResponse struct {
@@ -395,11 +405,13 @@ var File_extension_proto protoreflect.FileDescriptor
 
 const file_extension_proto_rawDesc = "" +
 	"\n" +
-	"\x0fextension.proto\x12\x10gcx.extension.v1\"F\n" +
+	"\x0fextension.proto\x12\x10gcx.extension.v1\"e\n" +
 	"\n" +
 	"RunRequest\x12$\n" +
 	"\x0ehost_broker_id\x18\x01 \x01(\rR\fhostBrokerId\x12\x12\n" +
-	"\x04args\x18\x02 \x03(\tR\x04args\"*\n" +
+	"\x04args\x18\x02 \x03(\tR\x04args\x12\x1d\n" +
+	"\n" +
+	"agent_mode\x18\x03 \x01(\bR\tagentMode\"*\n" +
 	"\vRunResponse\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\":\n" +
 	"\x0eExecuteRequest\x12\x12\n" +

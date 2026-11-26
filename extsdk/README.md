@@ -39,6 +39,7 @@ Some more notes about extensions:
 - Commands use the same context from when the user ran `gcx ext`, so the extension doesn't need to handle credentials.
 - Authors should write the extension's own output to `os.Stdout` and `os.Stderr`. `gcx` forwards both.
 - Authors should return an `*extsdk.ExitError` to exit with a specific code.
+- `GCX.AgentMode()` reports whether gcx runs in agent mode, so an extension can print JSON instead of text, or refuse to start a terminal UI an agent can't use.
 - The error from `GCX.Execute` is only non-nil when the command couldn't run. A command that has a non-zero exit still returns its output, because gcx exits 4 on a partial failure but prints the results that succeeded. Therefore, check `Result.ExitCode`, or call `Result.Err()` to check whether the command succeeded.
 - `Host.Execute` streams a command's output in chunks as it is written and sends its exit code as the last event, so output size isn't limited by gRPC's message size.
 - A request's stdin can be up to 64 MiB.
