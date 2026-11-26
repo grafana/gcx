@@ -23,11 +23,15 @@ skills:
     status: active
   generate-resource-stubs:
     status: active
+  grafana-pages:
+    status: active
   import-dashboards:
     status: active
   investigate-alert:
     status: active
   manage-dashboards:
+    status: active
+  map-source-code:
     status: active
   oncall-triage:
     status: active

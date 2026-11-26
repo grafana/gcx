@@ -6,13 +6,13 @@ import (
 	"fmt"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -441,14 +441,14 @@ func (p *Pusher) upsertResource(
 func preserveManagerIdentity(outgoing, existing *unstructured.Unstructured) {
 	outgoingAnnotations := outgoing.GetAnnotations()
 	liveAnnotations := existing.GetAnnotations()
-	if outgoingAnnotations[utils.AnnoKeyManagerKind] != string(resources.ResourceManagerKind) ||
-		outgoingAnnotations[utils.AnnoKeyManagerIdentity] == "" ||
-		liveAnnotations[utils.AnnoKeyManagerKind] != string(resources.ResourceManagerKind) ||
-		liveAnnotations[utils.AnnoKeyManagerIdentity] == "" {
+	if outgoingAnnotations[grafanameta.AnnoKeyManagerKind] != string(resources.ResourceManagerKind) ||
+		outgoingAnnotations[grafanameta.AnnoKeyManagerIdentity] == "" ||
+		liveAnnotations[grafanameta.AnnoKeyManagerKind] != string(resources.ResourceManagerKind) ||
+		liveAnnotations[grafanameta.AnnoKeyManagerIdentity] == "" {
 		return
 	}
 
-	outgoingAnnotations[utils.AnnoKeyManagerIdentity] = liveAnnotations[utils.AnnoKeyManagerIdentity]
+	outgoingAnnotations[grafanameta.AnnoKeyManagerIdentity] = liveAnnotations[grafanameta.AnnoKeyManagerIdentity]
 	outgoing.SetAnnotations(outgoingAnnotations)
 }
 

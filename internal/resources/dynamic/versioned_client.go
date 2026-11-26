@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -133,7 +133,7 @@ func (c *VersionedClient) getMultipleCorrectVersions(
 }
 
 func getFailedConversionStoredVersion(obj *unstructured.Unstructured) string {
-	acc, err := utils.MetaAccessor(obj)
+	acc, err := grafanameta.MetaAccessor(obj)
 	if err != nil {
 		return ""
 	}

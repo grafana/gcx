@@ -100,7 +100,10 @@ func newFakeGrafana(t *testing.T, name string) *fakeGrafana {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":"` + bigBody() + `"}`))
 			return
-		case "/bootdata": // gcx discovers the stack namespace before anything else
+		case "/apis/iam.grafana.app/v0alpha1/whoami": // gcx discovers the stack namespace before anything else
+			_, _ = w.Write([]byte(`{"identity":{"type":"user","name":"u1"},"namespace":"stacks-12345"}`))
+			return
+		case "/bootdata": // legacy discovery fallback, only used when whoami is unavailable
 			_, _ = w.Write([]byte(`{"settings":{"namespace":"stacks-12345"}}`))
 			return
 		case "/docs-index":

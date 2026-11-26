@@ -163,6 +163,7 @@ func TestIsPluginRouteDenied(t *testing.T) {
 		want bool
 	}{
 		{"route denied", http.StatusForbidden, `{"message":"plugin proxy route access denied"}`, true},
+		{"route denied with detail", http.StatusForbidden, `{"message":"plugin proxy route access denied: missing permission"}`, true},
 		{"backend 403", http.StatusForbidden, `{"message":"forbidden"}`, false},
 		{"route message on another status", http.StatusUnauthorized, `{"message":"plugin proxy route access denied"}`, false},
 		{"plain text body", http.StatusForbidden, "plugin proxy route access denied", false},
@@ -219,6 +220,36 @@ func TestHandleErrorResponsePreservesContentType(t *testing.T) {
 			var statusErr *gcxerrors.HTTPStatusError
 			require.ErrorAs(t, err, &statusErr)
 			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+		})
+	}
+}
+
+func TestIsPluginProxyUnavailable(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"plugin not installed", 404, `{"message":"Plugin not found, no installed plugin with that id"}`, false},
+		{"plugin not found", 404, `{"message":"Plugin not found"}`, false},
+		{"plugin unconfigured", 404, `{"message":"Plugin setting not found"}`, false},
+		{"plugin disabled", 404, `{"message":"Plugin is not enabled"}`, false},
+		{"no route", 404, `{"message":"plugin route match not found"}`, false},
+		{"route denied", 403, `{"message":"plugin proxy route access denied"}`, true},
+		{"route denied with detail", 403, `{"message":"plugin proxy route access denied: missing permission"}`, true},
+		{"plugin access denied", 403, `{"title":"Access denied","message":"You'll need additional permissions to perform this action. Permissions needed: plugins.app:access"}`, true},
+		{"backend not found", 404, `{"code":"not_found","error":"rule not found: x"}`, false},
+		{"backend forbidden", 403, `{"code":"forbidden","error":"nope"}`, false},
+		{"route denied message with wrong status", 404, `{"message":"plugin proxy route access denied"}`, false},
+		{"server error", 500, `{"message":"Failed to fetch plugin settings"}`, false},
+		{"not json", 404, `Plugin not found`, false},
+		{"empty", 403, ``, false},
+		{"ok", 200, `{"message":"Plugin not found"}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, providers.IsPluginProxyUnavailable(tt.status, []byte(tt.body)))
 		})
 	}
 }

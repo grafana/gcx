@@ -61,6 +61,10 @@ type DirectProviderPolicy struct {
 
 	// RequireGrafana validates and materializes Grafana auth before returning.
 	RequireGrafana bool
+
+	// SkipGrafanaTransport lets Cloud-only consumers resolve Cloud credentials
+	// without depending on the Grafana credential. RequireGrafana takes precedence.
+	SkipGrafanaTransport bool
 }
 
 // DirectProviderSnapshot is a coherent, trust-checked view used by providers
@@ -526,7 +530,7 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 
 	namespace := "default"
 	var grafanaCfg *config.NamespacedRESTConfig
-	if curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
+	if (policy.RequireGrafana || !policy.SkipGrafanaTransport) && curCtx.Grafana != nil && !curCtx.Grafana.IsEmpty() {
 		nrc, err := curCtx.ToRESTConfig(ctx)
 		if err != nil {
 			return DirectProviderSnapshot{}, err

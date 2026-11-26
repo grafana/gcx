@@ -74,10 +74,12 @@ canonical portable skill bundle.
 | `import-dashboards` | Import existing Grafana dashboards into Go builder code |
 | `create-dashboard` | Design and create dashboards with datasource discovery and snapshot-based visual iteration |
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
+| `grafana-pages` | Build live, shareable Grafana Pages (reports, views, slideshows) as React projects instead of artifacts: SDK, bindings, bridge, build, snapshot, publish |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
 | `debug-with-grafana` | Investigate with metrics, logs, and traces; use baseline candidates and trace diff to localize request regressions |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
+| `map-source-code` | Scan local repositories and link services to the repositories that build and deploy them and to the buckets, queues, topics, tables and databases they use, using the Knowledge Graph `sourcecode` schema |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
 | `slo-manage` | Create, update, pull, push, and delete SLO definitions |
@@ -183,6 +185,14 @@ Claude will invoke `create-dashboard`, verify the target context/folder,
 discover datasources and metric labels, author the dashboard, push it, render a
 PNG with `gcx dashboards snapshot`, inspect the image, and iterate on layout or
 queries before reporting the result.
+
+**Page instead of an artifact:**
+> "Make me a one-page report on checkout errors this week that I can share with the team."
+
+Claude will invoke `grafana-pages`, check that the stack has Pages, discover the
+datasources and queries, start a page with `gcx pages drafts create`, write
+its bindings and React code, build it with `push`, look at a `snapshot`, and
+hand back the draft link, publishing only when asked.
 
 **Dashboard GitOps workflow:**
 > "Pull all dashboards from staging, validate them, and push to production."

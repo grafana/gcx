@@ -67,11 +67,27 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant watchers list":                  {Cost: "large", Hint: "Enumerates all visible Watchers. Prefer gcx assistant watchers get WATCHER for one configuration or status WATCHER for runtime observations; use --json spec.title or --jq to select fields."},
 	"gcx assistant watchers get":                   {Cost: "medium", Hint: "Read one configuration-only manifest by resource name or server ID. Use status for runtime observations."},
 	"gcx assistant watchers status":                {Cost: "large", Hint: "Read one Watcher runtime view including calibrated checks. Use get for reusable configuration and --json lifecycle,calibration or --jq to select observations."},
+	"gcx pages catalog list":                       {Cost: "small", Hint: "Published pages you can open. --section mine for your own; --search <text>; --limit 0 for all; -o json"},
+	"gcx pages catalog get":                        {Cost: "medium", Hint: "<page-id-or-url> [--source] -o json; details and named queries (bindings). To change a page, pull it instead"},
+	"gcx pages drafts create":                      {Cost: "small", Hint: "Start a page as a local React project instead of an HTML artifact: --title \"Checkout health\" --dir ./checkout-health. Then read packages/pages-sdk/README.md in it, write pages.bindings.json and src/App.tsx, push, snapshot"},
+	"gcx pages drafts pull":                        {Cost: "small", Hint: "<page-id-or-url> --dir <new-dir> writes a published page's source (read-only; the first push builds a draft); without PAGE refreshes --dir from Grafana"},
+	"gcx pages drafts push":                        {Cost: "small", Hint: "--dir <project>; builds on the stack. A failed build returns the compiler errors; fix and push again"},
+	"gcx pages drafts snapshot":                    {Cost: "small", Hint: "--dir <project> [--theme light] [--click <selector>]; writes an image of the latest build. Read the image after each meaningful push"},
+	"gcx pages drafts publish":                     {Cost: "small", Hint: "Shares the page; only when the user asked. New page: --dir <project> --folder <uid> or --unlisted --link-sharing. Pulled or published before: --dir <project>"},
 	"gcx assistant mcp-servers create":             {Cost: "small"},
 	"gcx assistant mcp-servers delete":             {Cost: "small"},
 	"gcx assistant mcp-servers get":                {Cost: "small"},
 	"gcx assistant mcp-servers list":               {Cost: "small"},
 	"gcx assistant mcp-servers update":             {Cost: "small"},
+
+	// assistant change-review
+	"gcx assistant change-review checks list":               {Cost: "small", Hint: "Every built-in and custom check with enabled/blocking/paths; use get CHECK for full instructions"},
+	"gcx assistant change-review checks get":                {Cost: "small", Hint: "CHECK -o yaml; output round-trips into update -f"},
+	"gcx assistant change-review checks create":             {Cost: "small", Hint: "--name <name> --instructions <text> [--path <glob>] [--blocking]; ID is derived from the name"},
+	"gcx assistant change-review checks update":             {Cost: "small", Hint: "CHECK [--enabled=false] [--blocking] [--instructions <text>] [--path <glob>] [-f check.yaml]; only set fields change"},
+	"gcx assistant change-review checks delete":             {Cost: "small", Hint: "CHECK --force; custom checks only (turn built-ins off with update --enabled=false)"},
+	"gcx assistant change-review checks list-pull-requests": {Cost: "medium", Hint: "CHECK [--since 7d] [--repository owner/name] -o json; one row per pull request with findings from the check. Narrow with --since or --repository"},
+	"gcx assistant change-review stats":                     {Cost: "small", Hint: "[--since 30d] [--repository owner/name] -o json; per-check counts only, never finding text"},
 
 	// login
 	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
@@ -243,6 +259,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert template-groups create":           {Cost: "small", Hint: "-f manifest.yaml creates only; the server derives the API name."},
 	"gcx alert template-groups update":           {Cost: "small", Hint: "<current-title> -f manifest.yaml selects the current title; retain the fetched resourceVersion."},
 	"gcx alert template-groups delete":           {Cost: "small", Hint: "<title> --force"},
+	"gcx scim settings get":                      {Cost: "small"},
+	"gcx scim settings update":                   {Cost: "small"},
+	"gcx scim users list":                        {Cost: "large", Hint: "Use --filter to select matching users. All matching pages are fetched."},
+	"gcx scim users get":                         {Cost: "small"},
+	"gcx scim users create":                      {Cost: "small"},
+	"gcx scim users update":                      {Cost: "small"},
+	"gcx scim users deactivate":                  {Cost: "small", Hint: "<id> --force --token-file <path>"},
+	"gcx scim endpoint get":                      {Cost: "small"},
 	"gcx alert routing-trees list":               {Cost: "small"},
 	"gcx alert routing-trees get":                {Cost: "small", Hint: "<name> -o yaml"},
 	"gcx alert routing-trees create":             {Cost: "small", Hint: "-f tree.yaml"},
@@ -390,10 +414,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg notifications get":    {Cost: "small", Hint: "<name> | get one alert notification config by name (list-then-filter; no by-name GET on the backend)"},
 	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML from notifications get/list) | accepts an alertConfigs wrapper, one config, or a config list; exact field names required; never deletes absent remote entries"},
 	"gcx kg notifications delete": {Cost: "small"},
-	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
-	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; experimental (KG write API, gated server-side)"},
-	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d|tenant/<name>> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
+	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d|tenant/<name>> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships upsert": {Cost: "small", Hint: "--type <REL> --domain <d|tenant/<name>> --from <domain/Type/name> --to <domain/Type/name> [--from-scope k=v] [--to-scope k=v] [--ttl 1h] | upsert a custom edge; both endpoints must already exist; a tenant-domain ref is tenant/<name>/Type/name; experimental (KG write API, gated server-side)"},
+	"gcx kg relationships delete": {Cost: "small", Hint: "--type <REL> --from <domain/Type/name> --to <domain/Type/name> [--force] | delete a custom edge; a tenant-domain ref is tenant/<name>/Type/name; --from/--to must match the values used at upsert; experimental (KG write API, gated server-side)"},
 
 	// -----------------------------------------------------------------------
 	// Logs provider
@@ -440,6 +464,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx metrics query":    {Cost: "large", Hint: "'up' --since 1h -o json | Docs: " + docs.PromQL},
 
 	// Metrics adaptive
+	"gcx metrics adaptive metrics get":           {Cost: "small", Hint: "<metric> -o json"},
+	"gcx metrics adaptive metrics list":          {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
 	"gcx metrics adaptive recommendations apply": {Cost: "small"},
 	"gcx metrics adaptive recommendations diff":  {Cost: "medium", Hint: "<metric> -o json"},
 	"gcx metrics adaptive recommendations list":  {Cost: "small", Hint: "Docs: " + docs.AdaptiveMetrics},
@@ -565,7 +591,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall shifts update":                       {Cost: "small", Hint: "<id> -f shift.yaml"},
 	"gcx irm oncall slack-channels list":                 {Cost: "small"},
 	"gcx irm oncall teams get":                           {Cost: "small"},
+	"gcx irm oncall teams get-team-hours":                {Cost: "small"},
 	"gcx irm oncall teams list":                          {Cost: "small"},
+	"gcx irm oncall teams update-team-hours":             {Cost: "small", Hint: "<id> -f hours.yaml"},
 	"gcx irm oncall user-groups list":                    {Cost: "small"},
 	"gcx irm oncall users current":                       {Cost: "small"},
 	"gcx irm oncall users get":                           {Cost: "small"},
@@ -767,49 +795,47 @@ var commandAnnotations = map[string]annotation{
 // registry entries only fill in missing keys. Call this after the full command
 // tree is assembled.
 func ApplyAnnotations(root *cobra.Command) {
-	WalkCommands(root, func(cmd *cobra.Command) {
-		a, ok := commandAnnotations[cmd.CommandPath()]
-		if !ok {
-			return
-		}
+	applyAnnotations(root, root.CommandPath(), false)
+}
+
+// applyAnnotations annotates cmd, whose CommandPath is path, and its subtree.
+// It builds each child's path from its parent's rather than calling
+// CommandPath, which walks back to the root for every command. cloudOnly says
+// whether the parent is cloud-only, which makes its whole subtree cloud-only.
+func applyAnnotations(cmd *cobra.Command, path string, cloudOnly bool) {
+	set := func(key, value string) {
 		if cmd.Annotations == nil {
 			cmd.Annotations = make(map[string]string)
 		}
-		if _, exists := cmd.Annotations[AnnotationTokenCost]; !exists && a.Cost != "" {
-			cmd.Annotations[AnnotationTokenCost] = a.Cost
+		if _, exists := cmd.Annotations[key]; !exists {
+			cmd.Annotations[key] = value
 		}
-		if _, exists := cmd.Annotations[AnnotationLLMHint]; !exists && a.Hint != "" {
-			cmd.Annotations[AnnotationLLMHint] = a.Hint
+	}
+
+	if a, ok := commandAnnotations[path]; ok {
+		if a.Cost != "" {
+			set(AnnotationTokenCost, a.Cost)
 		}
-	})
+		if a.Hint != "" {
+			set(AnnotationLLMHint, a.Hint)
+		}
+	}
 
 	// Set the related-skill annotation on each mapped area node.
-	WalkCommands(root, func(cmd *cobra.Command) {
-		skills, ok := commandSkills[cmd.CommandPath()]
-		if !ok || len(skills) == 0 {
-			return
-		}
-		if cmd.Annotations == nil {
-			cmd.Annotations = make(map[string]string)
-		}
-		if _, exists := cmd.Annotations[AnnotationSkill]; !exists {
-			cmd.Annotations[AnnotationSkill] = strings.Join(skills, ",")
-		}
-	})
+	if skills := commandSkills[path]; len(skills) > 0 {
+		set(AnnotationSkill, strings.Join(skills, ","))
+	}
 
 	// Mark Grafana Cloud-only commands. Derived from the command path so the
 	// whole subtree of each cloud-only product group is covered at once.
-	WalkCommands(root, func(cmd *cobra.Command) {
-		if !IsCloudOnlyPath(cmd.CommandPath()) {
-			return
-		}
-		if cmd.Annotations == nil {
-			cmd.Annotations = make(map[string]string)
-		}
-		if _, exists := cmd.Annotations[AnnotationAvailability]; !exists {
-			cmd.Annotations[AnnotationAvailability] = AvailabilityCloudOnly
-		}
-	})
+	cloudOnly = cloudOnly || IsCloudOnlyPath(path)
+	if cloudOnly {
+		set(AnnotationAvailability, AvailabilityCloudOnly)
+	}
+
+	for _, sub := range cmd.Commands() {
+		applyAnnotations(sub, path+" "+sub.Name(), cloudOnly)
+	}
 }
 
 // WalkCommands recursively calls fn on cmd and all its subcommands.

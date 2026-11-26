@@ -72,11 +72,13 @@ To learn more about roles and permissions for dashboards, folders, and data sour
 
 ### Adaptive Telemetry
 
-Adaptive Metrics, Adaptive Logs, Logs Archive, and Adaptive Traces commands (`gcx metrics adaptive`, `gcx logs adaptive`, `gcx logs archive`, and `gcx traces adaptive`) call Grafana Cloud APIs, so they use a Grafana Cloud credential instead of your Grafana sign-in.
+Adaptive Metrics rules, the analyzed metrics catalog, `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role for reads or **Rules Editor** for writes. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
+
+Adaptive Metrics `recommendations list`, segments, and exemptions always use the direct Cloud API. Adaptive Logs, Logs Archive, and Adaptive Traces also use the direct Cloud API. These APIs use a Grafana Cloud credential.
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Adaptive Metrics (`gcx metrics adaptive`) | Operation-specific `adaptive-metrics-*` scopes |
+| Adaptive Metrics (direct API) | Operation-specific `adaptive-metrics-*` scopes |
 | Adaptive Logs and Logs Archive (`gcx logs adaptive`, `gcx logs archive`) | `adaptive-logs:admin` scope |
 | Adaptive Traces (`gcx traces adaptive`) | `adaptive-traces:admin` scope |
 
@@ -312,7 +314,7 @@ To learn more about roles and permissions for Synthetic Monitoring, refer to [Ma
 
 ## Choose Grafana Cloud access policy scopes
 
-Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, Adaptive Telemetry (`gcx metrics adaptive`, `gcx logs adaptive`, `gcx logs archive`, and `gcx traces adaptive`), `gcx k6` with a service account token, `gcx frontend apps apply-sourcemap`, and Synthetic Monitoring (`gcx synthetic-monitoring`, aliased as `gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../authentication/#grafana-cloud-product-api) for how to add it.
+Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, Adaptive Telemetry commands that use the direct API, `gcx k6` with a service account token, `gcx frontend apps apply-sourcemap`, and Synthetic Monitoring (`gcx synthetic-monitoring`, aliased as `gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../authentication/#grafana-cloud-product-api) for how to add it.
 
 You can sign in to Grafana Cloud in two ways:
 
@@ -326,7 +328,12 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Stack discovery, which resolves the stack slug for all Grafana Cloud commands, plus `gcx k6` reads | `stacks:read` (required) |
 | Create or update stacks | `stacks:write` |
 | Delete stacks (`gcx cloud stacks delete`) | `stacks:delete` |
-| Adaptive Metrics (`gcx metrics adaptive`) | Operation-specific `adaptive-metrics-rules`, `adaptive-metrics-recommendations`, `adaptive-metrics-segments`, or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |
+| Read Adaptive Metrics rules or catalog entries, diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
+| Create or update an Adaptive Metrics rule with `rules create` or `rules update` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
+| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
+| Apply Adaptive Metrics recommendations, including removals | `adaptive-metrics-rules:write`; also `adaptive-metrics-rules:read` for the preview unless you use `--force` |
+| List Adaptive Metrics recommendations with `recommendations list` | `adaptive-metrics-recommendations:read` |
+| Manage Adaptive Metrics segments or exemptions | Operation-specific `adaptive-metrics-segments` or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |
 | Adaptive Logs and Logs Archive (`gcx logs adaptive`, `gcx logs archive`) | `adaptive-logs:admin` |
 | Adaptive Traces (`gcx traces adaptive`) | `adaptive-traces:admin` |
 | Synthetic Monitoring (`gcx synthetic-monitoring`) direct API token creation | `metrics:write`, `logs:write`, `traces:write` |
