@@ -535,10 +535,12 @@ func TestRulesDelete(t *testing.T) {
 			assert.Empty(t, res.stdout)
 			assert.Contains(t, res.stderr, "Deleted rule for a_metric.")
 			assert.Equal(t, []string{"b_metric"}, f.metrics("default"))
-			dels := f.applied(tr.via, "DELETE")
+			dels := f.applied(tr.via, "POST")
 			require.Len(t, dels, 1)
-			assert.Equal(t, "/v2/segments/default/rules/a_metric", dels[0].Path)
-			assert.Empty(t, f.applied(tr.other(), "DELETE"))
+			assert.Equal(t, "/v2/segments/default/rules:batchWrite", dels[0].Path)
+			assert.JSONEq(t, `{"operations":[{"metric":"a_metric","op":"delete"}]}`, dels[0].Body)
+			assert.Empty(t, f.applied(tr.other(), "POST"))
+			assert.Empty(t, f.requests("", "DELETE"))
 		})
 	})
 
@@ -550,7 +552,7 @@ func TestRulesDelete(t *testing.T) {
 			require.ErrorContains(t, res.err, "delete rule nope")
 			assert.Empty(t, res.stdout)
 			assert.NotContains(t, res.stderr, "Deleted rule")
-			assert.Empty(t, f.requests("", "DELETE"))
+			assert.Empty(t, f.requests("", "POST"))
 		})
 	})
 
@@ -608,13 +610,15 @@ func TestRulesDelete(t *testing.T) {
 		})
 	})
 
-	t.Run("server error is surfaced", func(t *testing.T) {
+	t.Run("a rejected batch reports no deletion", func(t *testing.T) {
 		forEachTransport(t, func(t *testing.T, tr rulesTransport, f *fakeRules, run func(...string) cmdResult) {
 			t.Helper()
 			f.seed("default", ruleA)
-			f.fail(tr.via, "DELETE", 500, `{"code":"internal","error":"failed to write rules"}`)
-			res := run("rules", "delete", "a_metric", "--force")
-			require.ErrorContains(t, res.err, "failed to write rules")
+			f.fail(tr.via, "POST", http.StatusUnprocessableEntity, `{"results":[{"metric":"a_metric","status":"error","error":{"code":"invalid_argument","error":"delete operation must not carry a rule"}}]}`)
+			res := run("rules", "delete", "a_metric", "--force", "-o", "json")
+			require.ErrorContains(t, res.err, "delete operation must not carry a rule")
+			assert.Empty(t, res.stdout)
+			assert.NotContains(t, res.stderr, "Deleted rule")
 			assert.Equal(t, []string{"a_metric"}, f.metrics("default"))
 		})
 	})
@@ -782,7 +786,7 @@ func TestRulesTransport_Fallback(t *testing.T) {
 		}{
 			"read":   {[]string{"rules", "list"}, "", "grafana-adaptive-metrics-app.rules:read", "Rules Reader"},
 			"write":  {[]string{"rules", "create", "--metric", "m", "--drop"}, "PUT", "grafana-adaptive-metrics-app.rules:write", "Rules Editor"},
-			"delete": {[]string{"rules", "delete", "a_metric", "--force"}, "DELETE", "grafana-adaptive-metrics-app.rules:delete", "Rules Editor"},
+			"delete": {[]string{"rules", "delete", "a_metric", "--force"}, "POST", "grafana-adaptive-metrics-app.rules:write", "Rules Editor"},
 		} {
 			t.Run(verb, func(t *testing.T) {
 				f := newFakeRules(t).seed("default", ruleA)
@@ -853,7 +857,8 @@ func TestRuleAdapter_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, a.Delete(t.Context(), "missing", metav1.DeleteOptions{}))
-	assert.Len(t, f.applied(viaProxy, "DELETE"), 1)
+	assert.Len(t, f.applied(viaProxy, "POST"), 1)
+	assert.Empty(t, f.requests("", "DELETE"))
 	assert.Empty(t, f.requests("", "GET"))
 }
 
