@@ -38,8 +38,6 @@ The main differences between modes are the following. Most of them reduce the to
 | Status messages and hints | Text on `stderr` | Text on `stderr`, with hints as JSON lines, so `stdout` carries only the result |
 | Destructive operations | An interactive confirmation prompt | Rejected unless you allow them. Refer to [Approve destructive operations](#approve-destructive-operations). |
 
-You can override these defaults with explicit flags. For example, `-o json` prints JSON without agent mode, and `--no-color` and `--no-truncate` give plain output. For details, refer to [How agents read `gcx` output](#how-agents-read-gcx-output) and [Configure agent mode](#configure-agent-mode).
-
 Agents also rely on `gcx` features that are available in both modes:
 
 | Feature | How agents use it |
@@ -149,15 +147,15 @@ Not every command that changes data has `--dry-run`. Run `gcx <command> --help` 
 
 ### Handle batch failures
 
-When a command processes several resources, agents can use the `--on-error` flag to control what happens if one fails:
+When a command processes several resources at once, such as `gcx resources push` or `gcx resources delete`, one failure doesn't have to stop the rest. Agents use the `--on-error` flag to choose what happens after a resource fails:
 
-| Value | Behavior |
-| --- | --- |
-| `fail` (default) | Processes all resources, then exits with code `4` if any failed. |
-| `ignore` | Processes all resources and exits with code `0`. |
-| `abort` | Stops at the first error and exits with a non-zero code. |
+| Value | What happens | Exit code |
+| --- | --- | --- |
+| `fail` (default) | `gcx` continues with the remaining resources, then reports that some failed. | `4` |
+| `ignore` | `gcx` continues with the remaining resources and doesn't treat failures as errors. | `0` |
+| `abort` | `gcx` stops at the first failure. | Non-zero |
 
-The `--max-concurrent` flag limits how many operations run at once. The default is 10.
+With the default, an agent sees exit code `4` and knows that some resources succeeded and some failed. Refer to [Handle errors and exit codes](#handle-errors-and-exit-codes).
 
 ### Approve destructive operations
 
@@ -193,9 +191,11 @@ When an agent doesn't use these flags, `gcx` prints a one-line hint to `stderr` 
 
 ### Detect incomplete lists
 
-List commands never truncate results silently. The `--limit` flag sets how many items a command returns, and `--limit 0` returns all items. For example, `gcx resources get` returns up to 50 items for each resource type by default, which keeps results small.
+List commands never truncate results silently.
 
-When a command returns only part of the results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output, so an agent can tell that the result is incomplete and which command to run next:
+For example, `gcx resources get` returns up to 50 items for each resource type by default, which keeps results small.
+
+When a command returns partial results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output, so an agent can tell that the result is incomplete and which command to run next:
 
 ```json
 "list_meta": {"truncated": true, "returned": 50, "continue": "gcx ... list --limit 100"}
@@ -226,7 +226,7 @@ A large result can fill an agent's context window. When a result is larger than 
 
 The receipt includes a short `preview_sample`, never the complete result. The agent reads the file in `spilled_to` for the full data.
 
-To avoid spilling, agents can pass `-o json` or redirect `stdout` to a file. To change the threshold, set `GCX_AGENT_SPILL_BYTES` in the agent's environment (`0` turns spilling off). To remove spill files older than 30 minutes, run `gcx agent prune`.
+To avoid spilling, agents can pass `-o json` or redirect `stdout` to a file. To change the threshold, set `GCX_AGENT_SPILL_BYTES` in the agent's environment (`0` turns spilling off).
 
 ### Handle errors and exit codes
 
@@ -256,13 +256,14 @@ Run `gcx help exit-codes` for descriptions and examples of each code.
 
 ### Override agent mode detection
 
-If your tool isn't detected automatically, set `GCX_AGENT_NAME` to a supported label in the agent's command environment:
+If `gcx` doesn't detect your tool automatically, set [`GCX_AGENT_NAME`](../cli-reference/#gcx_agent_name) to a supported label in the agent's command environment. For example, to identify **Crush**, run the following command:
 
 ```bash
 GCX_AGENT_NAME=crush gcx resources get dashboards
 ```
 
-Set the label only in the agent's environment, not in a shell that people also use. Supported labels for `GCX_AGENT_NAME` (and the shared `AI_AGENT` variable) are `aider`, `amazon-q`, `amp`, `augment`, `claude-code`, `cline`, `codex`, `crush`, `cursor`, `devin`, `factory-droid`, `gemini-cli`, `github-copilot`, `goose`, `hermes`, `junie`, `kilo-code`, `kiro`, `openclaw`, `opencode`, `openhands`, `pi`, and `qwen-code`. Refer to [Environment variables](../cli-reference/#environment-variables) for variable details and precedence.
+Set the label only in the agent's environment, not in a shell that people also use. For details on how to set environment variables and how `gcx` uses them, refer to [Environment variables](../cli-reference/#environment-variables).
+
 
 To turn agent mode on or off regardless of detection:
 
@@ -271,7 +272,7 @@ To turn agent mode on or off regardless of detection:
 | Turn agent mode on | `--agent` or `GCX_AGENT_MODE=1` |
 | Turn agent mode off | `--agent=false` or `GCX_AGENT_MODE=0` |
 
-The `--agent` flag takes precedence over environment variables. `GCX_AGENT_MODE` accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off. Other values, such as `off`, are ignored.
+The `--agent` flag takes precedence over environment variables. [`GCX_AGENT_MODE`](../cli-reference/#gcx_agent_mode) accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off.
 
 ### Log failed agent calls
 
