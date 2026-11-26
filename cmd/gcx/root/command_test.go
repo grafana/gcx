@@ -661,3 +661,30 @@ func TestF1_HelpTextMentionsCredentials(t *testing.T) {
 	require.NotNil(t, flag, "--insecure-log-http-payload flag must be registered")
 	require.Contains(t, flag.Usage, "credentials", "help text must mention credentials")
 }
+
+func TestNeedsArgValidation(t *testing.T) {
+	leaf := &cobra.Command{Use: "list", RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	group := &cobra.Command{Use: "dashboards"}
+	group.PersistentFlags().String("config", "", "Config file")
+	group.AddCommand(leaf)
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "dashboards", commands: []*cobra.Command{group}}})
+
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"runnable leaf", []string{"dashboards", "list"}, false},
+		{"runnable leaf with flags", []string{"--config", "dashboards", "dashboards", "list", "--config=x"}, false},
+		{"version", []string{"version"}, false},
+		{"stray arg on group", []string{"dashboards", "nonesuch"}, true},
+		{"stray arg after flag value matching a command", []string{"--config", "dashboards", "dashboards", "nonesuch"}, true},
+		{"bare group", []string{"dashboards"}, true},
+		{"unknown top-level command", []string{"nonesuch"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, root.NeedsArgValidation(rootCmd, tc.args))
+		})
+	}
+}

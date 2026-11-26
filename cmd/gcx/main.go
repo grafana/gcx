@@ -70,16 +70,17 @@ func main() {
 	appversion.SetBuildInfo(commit, date)
 
 	cmd := root.Command(formattedVersion)
-	boolFlags := collectBoolFlags(cmd)
-	subCmds := collectSubCmds(cmd)
 
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
 	// Validation parses flags in root trimming, Cobra traversal, and group
 	// validation. Use a separate tree so none of those paths can append
 	// repeatable values or change custom flag state on the execution tree.
-	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
-		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
+	// Building the tree is costly, so only do it when validation can apply.
+	if root.NeedsArgValidation(cmd, os.Args[1:]) {
+		if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
+			exitWith(cmd, gate, start, reportError(err, cmd))
+		}
 	}
 
 	err := cmd.ExecuteContext(ctx)
@@ -91,7 +92,7 @@ func main() {
 		exitWith(cmd, gate, start, gcxerrors.ExitCancelled)
 	}
 
-	exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
+	exitWith(cmd, gate, start, reportError(err, cmd))
 }
 
 // interruptGate hands the SIGINT disposition from the watcher main installs to
@@ -214,7 +215,11 @@ func preParseAgentFlag() {
 // appends the agent invocation log entry, and returns the process exit code.
 // It never exits; context cancellation is already handled in main before this
 // is called.
-func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) int {
+//
+// cmd is the command tree the invocation ran against; the agent invocation log
+// uses it to strip argument values. Walking the tree is costly, so it is only
+// walked when an entry is logged. Tests without a tree pass nil.
+func reportError(err error, cmd *cobra.Command) int {
 	// On the raw error, before every short-circuit below: the AlreadyReported
 	// and EmittedError paths return without converting anything, and an
 	// EmittedError's cause chain is where an agent-mode in-band failure
@@ -238,7 +243,7 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 			_ = agentlog.Append(agentlog.Entry{
 				Timestamp: time.Now(),
 				Version:   appversion.Get(),
-				Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+				Args:      strippedArgs(cmd),
 				ErrorKind: agentlog.KindFromExitCode(emitted.Code),
 				Error:     truncate(emitted.Error(), 200),
 				ExitCode:  emitted.Code,
@@ -261,7 +266,7 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		_ = agentlog.Append(agentlog.Entry{
 			Timestamp: time.Now(),
 			Version:   appversion.Get(),
-			Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+			Args:      strippedArgs(cmd),
 			ErrorKind: agentlog.KindFromExitCode(exitCode),
 			Error:     truncate(detailedErr.Summary, 200),
 			ExitCode:  exitCode,
@@ -282,6 +287,16 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	}
 
 	return exitCode
+}
+
+// strippedArgs returns this invocation's arguments without their values, for
+// the agent invocation log. Without a tree it can't tell subcommands from
+// values, so it keeps positionals, as StripArgValues does for nil maps.
+func strippedArgs(cmd *cobra.Command) []string {
+	if cmd == nil {
+		return agentlog.StripArgValues(os.Args[1:], nil, nil)
+	}
+	return agentlog.StripArgValues(os.Args[1:], collectBoolFlags(cmd), collectSubCmds(cmd))
 }
 
 // collectBoolFlags walks the full command tree and returns a set of all boolean
