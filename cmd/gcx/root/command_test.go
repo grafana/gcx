@@ -246,6 +246,8 @@ func TestValidateArgs_SeparateTreePreservesRepeatableFlags(t *testing.T) {
 			cmd, tags, paths := build()
 			validationCmd, _, _ := build()
 			require.NoError(t, root.ValidateArgs(validationCmd, tc.args))
+			// main also checks the execution tree itself; that must not parse flags.
+			root.NeedsArgValidation(cmd, tc.args)
 			assert.Empty(t, *tags, "validation must not mutate the execution tree")
 			assert.Empty(t, *paths, "validation must not mutate the execution tree")
 			cmd.SetArgs(tc.args)

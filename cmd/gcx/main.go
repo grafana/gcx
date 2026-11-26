@@ -218,8 +218,9 @@ func preParseAgentFlag() {
 //
 // cmd is the command tree the invocation ran against; the agent invocation log
 // uses it to strip argument values. Walking the tree is costly, so it is only
-// walked when an entry is logged, after execution, so it includes the help and
-// completion commands Cobra adds lazily. Tests without a tree pass nil.
+// walked when an entry is logged. That is after execution, so the tree also has
+// what Cobra adds while executing: the __complete commands and the --help and
+// --version flags. Tests without a tree pass nil.
 func reportError(err error, cmd *cobra.Command) int {
 	// On the raw error, before every short-circuit below: the AlreadyReported
 	// and EmittedError paths return without converting anything, and an

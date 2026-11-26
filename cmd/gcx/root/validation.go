@@ -19,7 +19,7 @@ import (
 // validation tree, which is most of a short command's startup.
 func NeedsArgValidation(rootCmd *cobra.Command, args []string) bool {
 	cmd, _, err := rootCmd.Find(args)
-	return err != nil || cmd == nil || !cmd.Runnable()
+	return err != nil || !cmd.Runnable()
 }
 
 // ValidateArgs detects stray positional arguments on non-runnable group
