@@ -17,6 +17,8 @@
 - **Config:** fail fast on unreachable `whoami` and cache non-cloud servers
 - **Skills:** new `map-source-code` skill links services to their repositories
 - **Skills:** new `grafana-pages` skill; updated `agento11y-instrument` guidance
+- **Performance:** faster startup: leaner command tree build, no duplicate validation tree
+- **Performance:** replace client-go's disk-cached discovery client with a smaller one
 - **Licensing:** drop the AGPL-3.0 `grafana/grafana` apimachinery dependency
 - **Docs:** new "Use gcx with agents" guide and permissions consistency sweep
 - **Docs:** reorganised resource guides; "Assistant Watchers" renamed to "Watchers"
