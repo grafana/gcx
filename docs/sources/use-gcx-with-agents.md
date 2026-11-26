@@ -233,7 +233,9 @@ A large result can fill an agent's context window. When a result is larger than 
 
 The receipt includes a short `preview_sample`, never the complete result. The agent reads the file in `spilled_to` for the full data.
 
-To avoid spilling, agents can pass `-o json` or redirect `stdout` to a file. To change the threshold, set `GCX_AGENT_SPILL_BYTES` in the agent's environment (`0` turns spilling off).
+To avoid spilling, agents can pass `-o json` or redirect `stdout` to a file. To change the threshold, set [`GCX_AGENT_SPILL_BYTES`](../cli-reference/#gcx_agent_spill_bytes) in the agent's environment (`0` turns spilling off).
+
+Spill files stay in the temporary directory. To remove the ones older than 30 minutes, agents can run [`gcx agent prune`](../cli-reference/#gcx-agent-prune), for example at the end of a session.
 
 ### Handle errors and exit codes
 
