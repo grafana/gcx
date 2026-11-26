@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,8 +18,13 @@ import (
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
-// orgIDHeader selects the organization for a request authenticated as a user.
-const orgIDHeader = "X-Grafana-Org-Id"
+const (
+	// orgIDHeader selects the organization for a request authenticated as a user.
+	orgIDHeader = "X-Grafana-Org-Id"
+	// maxResponseBytes caps the JSON getJSON decodes; /api/health and /api/user
+	// answer with a few hundred bytes.
+	maxResponseBytes = 1 << 20
+)
 
 // VersionIncompatibleError is returned when a Grafana instance is too old for gcx.
 type VersionIncompatibleError struct {
@@ -101,7 +107,7 @@ func getJSON(ctx context.Context, cfgCtx *config.Context, path string, out any) 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return &StatusError{Path: apiPath, StatusCode: resp.StatusCode}
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
 		return fmt.Errorf("decoding GET %s: %w", apiPath, err)
 	}
 	return nil

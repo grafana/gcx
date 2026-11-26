@@ -87,7 +87,7 @@ func hostDrop(id uint32)
 
 func init() {
 	// Route clients that use http.DefaultTransport itself (directly, through a
-	// nil Base, or via a type assertion as some generated clients do) to
+	// nil Base, or by type-asserting http.DefaultTransport to *http.Transport) to
 	// the host. It must stay an *http.Transport for those type assertions.
 	// Clones do not inherit RegisterProtocol registrations, so a library that
 	// clones the default transport dials natively and fails; gcx's own

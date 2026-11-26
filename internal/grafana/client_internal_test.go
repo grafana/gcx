@@ -168,11 +168,15 @@ func TestSignedInUserID(t *testing.T) {
 		wantID     int64
 		wantStatus int
 		wantOrg    string
+		// wantDecodeErr expects a failure that isn't a StatusError.
+		wantDecodeErr bool
 	}{
 		{name: "signed-in user", status: http.StatusOK, body: `{"id":42,"login":"admin"}`, wantID: 42},
 		{name: "org header", status: http.StatusOK, body: `{"id":7}`, orgID: 3, wantID: 7, wantOrg: "3"},
 		{name: "anonymous user", status: http.StatusOK, body: `{"id":0}`, wantID: 0},
 		{name: "rejected credentials", status: http.StatusUnauthorized, body: `{"message":"invalid username or password: hunter2"}`, wantStatus: http.StatusUnauthorized},
+		{name: "redirect without location", status: http.StatusFound, body: `hunter2`, wantStatus: http.StatusFound},
+		{name: "proxy login page", status: http.StatusOK, body: `<html>sign in, hunter2</html>`, wantDecodeErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -202,6 +206,16 @@ func TestSignedInUserID(t *testing.T) {
 			}
 			if gotAgent == "" {
 				t.Error("User-Agent not set")
+			}
+			if tc.wantDecodeErr {
+				var statusErr *StatusError
+				if err == nil || errors.As(err, &statusErr) {
+					t.Fatalf("err = %v, want a decode error", err)
+				}
+				if strings.Contains(err.Error(), "hunter2") {
+					t.Errorf("error %q echoes the response body", err)
+				}
+				return
 			}
 			if tc.wantStatus != 0 {
 				var statusErr *StatusError
