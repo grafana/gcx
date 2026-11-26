@@ -1,11 +1,11 @@
 ---
-title: User guides
+title: Additional guides
 labels:
   products:
     - cloud
     - enterprise
     - oss
-description: gcx user guides.
+description: Additional gcx guides for specific workflows, such as diagnosing missing telemetry, comparing profiles, and checking Assistant usage.
 keywords:
   - gcx
   - Grafana CLI
@@ -14,10 +14,10 @@ keywords:
   - dashboards
   - resources
   - diagnostics
-weight: 8
+weight: 9
 ---
 
-# `gcx` user guides
+# Additional `gcx` guides
 
 Refer to the following documents to learn about specific workflows to use `gcx`:
 

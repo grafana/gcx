@@ -54,7 +54,7 @@ func main() {
 	if err := os.WriteFile(filepath.Join(*output, "cli-reference.md"), []byte(page), 0600); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(*output, "configuration.md"), []byte(configuration), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(*output, "configuration", "_index.md"), []byte(configuration), 0600); err != nil {
 		log.Fatal(err)
 	}
 }

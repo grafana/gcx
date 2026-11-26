@@ -1,22 +1,23 @@
 ---
 aliases:
   - ../guides/lint-resources/ # /docs/grafana/<GRAFANA_VERSION>/ai-tools/grafana-cli/gcx/guides/lint-resources/
-title: Lint resources
+title: Lint dashboards and alert rules with built-in and custom rules
+menuTitle: Lint resources
 labels:
   products:
     - cloud
     - enterprise
     - oss
-description: Use gcx to lint resources.
+description: Use gcx to check dashboards, alert rules, and other resources against built-in and custom lint rules before you push them.
 keywords:
   - gcx
   - Grafana CLI
   - observability as code
   - telemetry
-weight: 3
+weight: 200
 ---
 
-# Lint resources with `gcx`
+# Lint dashboards and alert rules with `gcx`
 
 Use the Grafana CLI linter to verify that resources, such as dashboards and alert rules, comply with good practices and environment-specific policies.
 

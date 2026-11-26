@@ -468,7 +468,7 @@ gcx config use-context my-stack
 gcx config view
 ```
 
-Secrets are redacted in the output. See [configuration reference](../sources/configuration.md#configuration-reference) for the full config file layout.
+Secrets are redacted in the output. See [configuration reference](../sources/configuration/_index.md#configuration-reference) for the full config file layout.
 
 ## How login works (mental model)
 

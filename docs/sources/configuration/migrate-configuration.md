@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 110
+weight: 1
 ---
 
 # Migrate your `gcx` configuration files to v1 format

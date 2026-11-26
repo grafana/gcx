@@ -14,12 +14,12 @@ weight: 4
 
 `gcx` supports four ways to authenticate to a Grafana instance or stack:
 
-- [OAuth - Grafana Cloud only](#browser-based-oauth-cloud-only-recommended): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](../permissions/#required-role-for-oauth-sign-in) for the permission this flow needs.
+- [OAuth - Grafana Cloud only](#browser-based-oauth-cloud-only-recommended): Browser-based sign-in with `gcx login`. Recommended for interactive use. The tokens are user-scoped: every request runs with your own identity and RBAC permissions, so you can't access anything through `gcx` that you can't already access in the Grafana UI. Refer to [Required role for OAuth sign-in](./permissions/#required-role-for-oauth-sign-in) for the permission this flow needs.
 - [Service account token](#service-account-token): Works for Grafana Cloud and on-premises instances, and is the recommended method for CI and other non-interactive environments. Refer to [Grafana service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/) for how to create one.
 - [Basic authentication - Self-managed Grafana](#basic-authentication-self-managed-grafana): Username and password. Use this only when service accounts aren't available.
 - mTLS: A client certificate and key for instances behind an identity-aware proxy. Configure the `grafana.tls` fields or corresponding TLS [environment variables](#environment-variables).
 
-**Authenticating only establishes your identity**. However, each Grafana product or feature requires its own basic role, plugin role, RBAC permission, or Grafana Cloud access policy scope. For the permissions each feature needs, refer to [Roles and permissions](../permissions/).
+**Authenticating only establishes your identity**. However, each Grafana product or feature requires its own basic role, plugin role, RBAC permission, or Grafana Cloud access policy scope. For the permissions each feature needs, refer to [Roles and permissions](./permissions/).
 
 ## No Grafana Cloud account yet
 
@@ -50,9 +50,9 @@ This flow:
 1. Saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry, and makes the context current.
 1. `gcx` stops before the browser flow when the current process cannot write to the OS credential store.
 
-Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](../keychain).
+Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](./keychain/).
 
-To sign in with OAuth, your Grafana user needs the gcx User role. Refer to [Required role for OAuth sign-in](../permissions/#required-role-for-oauth-sign-in). For the permissions other `gcx` commands need, refer to [Roles and permissions](../permissions/).
+To sign in with OAuth, your Grafana user needs the gcx User role. Refer to [Required role for OAuth sign-in](./permissions/#required-role-for-oauth-sign-in). For the permissions other `gcx` commands need, refer to [Roles and permissions](./permissions/).
 
 ### Grafana Cloud product API
 

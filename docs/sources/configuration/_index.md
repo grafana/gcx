@@ -1,21 +1,22 @@
 ---
 aliases:
   - /docs/grafana-cloud/as-code/observability-as-code/grafana-cli/gcx/configuration/
-title: Configure gcx
+title: Manage gcx contexts and configuration settings
+menuTitle: Contexts and configuration
 labels:
   products:
     - cloud
     - enterprise
     - oss
-weight: 5
+weight: 7
 ---
 
-# Configure `gcx`
+# Manage `gcx` contexts and configuration settings
 
 You can configure `gcx` with a configuration file or using environment variables.
 
 - A configuration file stores named stacks, named Grafana Cloud credentials, and contexts that bind them. `gcx` can layer system, user, and repository files. Refer to the [configuration file reference documentation](#configuration-reference) for all options.
-  - If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration).
+  - If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](./migrate-configuration/).
 - Environment variables override the selected context in memory, so they work best in CI environments and are never persisted implicitly. Refer to [Configure `gcx` with environment variables](#configure-gcx-with-environment-variables) for more information.
 
 ## Understand the `gcx` configuration file in use
@@ -40,7 +41,7 @@ on Windows, Secret Service on Linux) are tied to the canonical config file,
 exact owner kind and name, exact secret field, and normalized destination. 
 
 Copying a config file doesn't port its stored credentials, you need to authenticate the copied
-file separately. Refer to [Keychain credential storage](../keychain) for storage rules and keychain error procedures.
+file separately. Refer to [Keychain credential storage](../authentication/keychain/) for storage rules and keychain error procedures.
 
 You can use credentials owned by a file while their bound destination is unchanged. Edits to a named stack or Cloud entry affect every context that references it. If you change a credential destination, for example a Grafana
 server, Synthetic Monitoring URL, or Cloud API/OAuth endpoint, `gcx` clears the

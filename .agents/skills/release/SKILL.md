@@ -34,7 +34,7 @@ changes together on a `release/vX.Y.Z` branch and pushes the branch. Then:
 
 1. Open a PR (the script prints the exact command). Review the changelog and the
    generated changes to `docs/sources/cli-reference.md` and
-   `docs/sources/configuration.md`, run the repository's required checks, and merge it.
+   `docs/sources/configuration/_index.md`, run the repository's required checks, and merge it.
 2. After merge, tag the commit on main and push the tag:
    ```bash
    git checkout main && git pull

@@ -181,7 +181,7 @@ gcx login
 
 `login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premise and adjusts the prompt accordingly. 
 
-Refer to [Authentication](/docs/sources/authentication) for the available paths and options to authenticate.
+Refer to [Authentication](docs/sources/authentication/_index.md) for the available paths and options to authenticate.
 
 ## Use with your AI agent
 
@@ -483,7 +483,7 @@ for the runtimes and an example manifest, and
 
 ### Manage Watchers (experimental)
 
-Read Watchers (formerly Assistant Watchers) configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Watchers](docs/sources/resources/manage-assistant-watchers.md).
+Read Watchers (formerly Assistant Watchers) configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Watchers](docs/sources/use-gcx-from-command-line/manage-assistant-watchers.md).
 
 Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
 
@@ -518,11 +518,11 @@ To find out more about `gcx` usage statistics, or for information on how to disa
 | Topic | Description |
 |-------|-------------|
 | [Installation](docs/sources/installation.md) | Install gcx on macOS, Linux, and Windows |
-| [Authentication](docs/sources/authentication.md) | Authenticate `gcx` |
-| [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
-| [Dashboards as Code](docs/sources/resources/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
-| [Managing Resources](docs/sources/resources/manage-resources.md) | Get, push, pull, delete, edit, validate |
-| [Linting Resources](docs/sources/resources/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Authentication](docs/sources/authentication/_index.md) | Authenticate `gcx` |
+| [Configuration](docs/sources/configuration/_index.md) | Contexts, authentication, environment variables |
+| [Dashboards as Code](docs/sources/use-gcx-from-command-line/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
+| [Managing Resources](docs/sources/use-gcx-from-command-line/manage-resources.md) | Get, push, pull, delete, edit, validate |
+| [Linting Resources](docs/sources/use-gcx-from-command-line/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [Using gcx with AI Agents](docs/sources/use-gcx-with-agents.md) | Agent mode, skills, sign-in, and safety guards |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |

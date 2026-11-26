@@ -86,9 +86,9 @@ set -eu
 [ "$1" = run ]
 [ "$2" = docs:refresh ]
 [ "$3" = -- ]
-mkdir -p docs/sources
+mkdir -p docs/sources/configuration
 printf 'CLI reference %s\n' "$4" >docs/sources/cli-reference.md
-printf 'Configuration reference %s\n' "$4" >docs/sources/configuration.md
+printf 'Configuration reference %s\n' "$4" >docs/sources/configuration/_index.md
 MISESCRIPT
 	chmod +x "$dir/mise"
 	echo "$dir"
@@ -428,7 +428,7 @@ test_release_commits_docs() {
 
 	out=$(cd "$dir" && PATH="$mock:$PATH" bash "$SCRIPT" patch 2>&1)
 	if [[ $(git -C "$remote" show release/v0.5.6:docs/sources/cli-reference.md) == "CLI reference v0.5.6" ]] &&
-		[[ $(git -C "$remote" show release/v0.5.6:docs/sources/configuration.md) == "Configuration reference v0.5.6" ]] &&
+		[[ $(git -C "$remote" show release/v0.5.6:docs/sources/configuration/_index.md) == "Configuration reference v0.5.6" ]] &&
 		git -C "$remote" show release/v0.5.6:CHANGELOG.md | grep -q '^## v0.5.6'; then
 		pass "release PR commits and pushes docs with the upcoming changelog version"
 	else

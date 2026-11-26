@@ -1,5 +1,5 @@
 ---
-title: Build Grafana Pages
+title: Manage Grafana Pages
 description: Use gcx to write a Grafana Page as a local React project, build it on your Grafana Cloud stack, check how it renders, and publish it, with your editor or a coding agent.
 labels:
   products:
@@ -12,7 +12,7 @@ keywords:
 weight: 110
 ---
 
-# Build Grafana Pages
+# Manage Grafana Pages
 
 A Grafana Page is a live web page on your Grafana data, such as a report, an incident summary, or a slideshow. It's a small React and TypeScript project that your stack builds and serves in Grafana, where its queries run as each viewer. Use `gcx` to write a page in a local directory, with your own editor or a coding agent, and let the stack build it. **Pages commands are experimental and require Grafana Cloud.**
 

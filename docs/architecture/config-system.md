@@ -30,7 +30,7 @@ flowchart LR
 
 `Config.Resolve()` wires each context's resolved view from its name references after decode, merge, or mutation. The resolved Grafana/provider pointers are initially shared with the stack entry. `ParseEnvIntoContext` deep-clones the selected context's runtime stack view before applying process-local overrides. Dangling references leave nil pointers that `Context.Validate` reports.
 
-The structs and their tags in [internal/config](../../internal/config/) define the schema; the [configuration reference](../sources/configuration.md) documents its fields. Global resource settings are union-merged with the selected stack's settings. Credential-store policy belongs to trusted configuration sources, as described below.
+The structs and their tags in [internal/config](../../internal/config/) define the schema; the [configuration reference](../sources/configuration/_index.md) documents its fields. Global resource settings are union-merged with the selected stack's settings. Credential-store policy belongs to trusted configuration sources, as described below.
 
 ### Comparison to kubectl kubeconfig
 
@@ -70,7 +70,7 @@ contexts:
     stack: production
 ```
 
-A context can also reference a named Cloud entry and select datasource defaults. Provider settings live on the stack. See the [configuration guide](../sources/configuration.md) for complete examples and supported fields.
+A context can also reference a named Cloud entry and select datasource defaults. Provider settings live on the stack. See the [configuration guide](../sources/configuration/_index.md) for complete examples and supported fields.
 
 ## File Location and Loading Order
 

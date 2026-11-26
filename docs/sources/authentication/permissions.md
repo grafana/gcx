@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 6
+weight: 1
 ---
 
 # Roles and permissions
@@ -28,10 +28,10 @@ These permissions apply to the current release of `gcx` and can change as Grafan
 For commands that interact with your Grafana instance or Grafana Cloud stack, `gcx` uses the permissions of the Grafana identity you signed in with:
 
 - **OAuth sign-in:** `gcx` acts as your Grafana user. Your effective permissions are your own Grafana user permissions. OAuth sign-in doesn't add to them, so you can't do anything with `gcx` that you can't already do in the Grafana UI.
-- **Service account sign-in:** When you sign in with a service account token, `gcx` uses the permissions assigned to that service account. Refer to [Service account token](../authentication/#service-account-token) for setup details.
+- **Service account sign-in:** When you sign in with a service account token, `gcx` uses the permissions assigned to that service account. Refer to [Service account token](../#service-account-token) for setup details.
 - **Basic authentication and mutual TLS (mTLS):** For self-managed Grafana, `gcx` uses the permissions of the authenticated Grafana user or identity.
 
-For setup details for each sign-in method, refer to [Authenticate gcx](../authentication/).
+For setup details for each sign-in method, refer to [Authenticate gcx](../).
 
 In all cases, your Grafana user or service account needs the product-specific roles and actions listed in [Permissions by product and service](#permissions-by-product-and-service).
 
@@ -241,7 +241,7 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 | `gcx irm oncall schedules`, `gcx irm oncall shifts` | Read: `plugins:grafana-irm-app:schedules-reader`; Write: `plugins:grafana-irm-app:schedules-editor` |
 | `gcx irm oncall webhooks` | Read: `plugins:grafana-irm-app:outgoing-webhooks-reader`; Write: `plugins:grafana-irm-app:outgoing-webhooks-editor` |
 
-OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
+OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../../use-gcx-from-command-line/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
 
@@ -314,7 +314,7 @@ To learn more about roles and permissions for Synthetic Monitoring, refer to [Ma
 
 ## Choose Grafana Cloud access policy scopes
 
-Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, Adaptive Telemetry commands that use the direct API, `gcx k6` with a service account token, `gcx frontend apps apply-sourcemap`, and Synthetic Monitoring (`gcx synthetic-monitoring`, aliased as `gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../authentication/#grafana-cloud-product-api) for how to add it.
+Grafana Cloud sign-in is separate from your Grafana sign-in. It gives `gcx` a Grafana Cloud credential for commands that call Grafana Cloud APIs: `gcx cloud` commands, Adaptive Telemetry commands that use the direct API, `gcx k6` with a service account token, `gcx frontend apps apply-sourcemap`, and Synthetic Monitoring (`gcx synthetic-monitoring`, aliased as `gcx sm`) when it calls the Synthetic Monitoring API directly. Refer to [Grafana Cloud product API](../#grafana-cloud-product-api) for how to add it.
 
 You can sign in to Grafana Cloud in two ways:
 

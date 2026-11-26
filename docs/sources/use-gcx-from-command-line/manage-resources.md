@@ -1,5 +1,6 @@
 ---
-title: Resource management workflows
+title: Search, edit, pull, and push resources with gcx resources
+menuTitle: Search, edit, and sync resources
 labels:
   products:
     - cloud
@@ -17,7 +18,7 @@ aliases:
 weight: 1
 ---
 
-# Resource management workflows with `gcx`
+# Search, edit, pull, and push resources with `gcx resources`
 
 `gcx` allows you to interact with Grafana resources directly from your terminal. You can browse, inspect, update, and delete resources without using the Grafana UI, and move them between environments as files.
 

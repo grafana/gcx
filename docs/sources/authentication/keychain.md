@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 50
+weight: 2
 ---
 
 # Keychain credential storage

@@ -27,7 +27,7 @@ export GCX_AGENT_MODE=false CGO_ENABLED=0
 export GCX_CONFIG="$temp_dir/config.yaml"
 go run ./scripts/config-reference "$temp_dir/config"
 go run ./scripts/env-vars-reference "$temp_dir/env"
-go run "$renderer_dir" --version "$version" --config "$temp_dir/config/index.md" --config-page "$scripts_dir/../docs/sources/configuration.md" --env "$temp_dir/env/index.md" --output-dir "$output"
+go run "$renderer_dir" --version "$version" --config "$temp_dir/config/index.md" --config-page "$scripts_dir/../docs/sources/configuration/_index.md" --env "$temp_dir/env/index.md" --output-dir "$output"
 
-echo "Review git diff -- docs/sources/cli-reference.md docs/sources/configuration.md"
+echo "Review git diff -- docs/sources/cli-reference.md docs/sources/configuration/_index.md"
 echo "Include changes in the release PR, or open a documentation PR for a published release."

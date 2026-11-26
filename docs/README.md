@@ -3,7 +3,7 @@
 ## For Users
 
 - **[Installation](sources/installation.md)** — Install gcx via Homebrew or binary download
-- **[Configuration](sources/configuration.md)** — Set up contexts, authentication, and environments
+- **[Configuration](sources/configuration/_index.md)** — Set up contexts, authentication, and environments
 - **[Guides](sources/guides/)** — How-to guides for common workflows
 - **[CLI Reference](sources/cli-reference.md)** — Generated release reference
 
@@ -13,7 +13,7 @@ To build the Grafana.com-style docs locally:
 
 1. Change to the `docs/` directory.
 2. Run `make docs`.
-3. Open `http://localhost:3002/docs/grafana/next/ai-tools/grafana-cli/gcx/`.
+3. Open `http://localhost:3002/docs/grafana/next/ai-tools/gcx/`.
 
 ## For Contributors & Agents
 

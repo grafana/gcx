@@ -12,7 +12,7 @@ keywords:
   - agents
   - agent mode
   - AI
-weight: 9
+weight: 6
 ---
 
 # Use `gcx` with AI agents
@@ -88,7 +88,7 @@ gcx commands
 
 ## Sign in for agents
 
-An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../permissions/).
+An agent can do anything that its `gcx` credential allows, so make sure you use a credential with only the permissions the agent's tasks need. Refer to [Roles and permissions](../authentication/permissions/).
 
 **When a person is present**, use browser-based OAuth. `gcx` opens a browser and waits for you to approve the sign-in:
 

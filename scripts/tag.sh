@@ -176,7 +176,7 @@ fi
 RELEASE_BRANCH="release/${NEW_TAG}"
 git checkout -b "$RELEASE_BRANCH"
 
-git add "$CHANGELOG" .release-notes.md docs/sources/cli-reference.md docs/sources/configuration.md
+git add "$CHANGELOG" .release-notes.md docs/sources/cli-reference.md docs/sources/configuration/_index.md
 [[ -f "$PLUGIN_JSON" ]] && git add "$PLUGIN_JSON"
 [[ -f "$MARKETPLACE_JSON" ]] && git add "$MARKETPLACE_JSON"
 git commit -m "chore(release): ${NEW_TAG} changelog"
