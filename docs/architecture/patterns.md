@@ -82,7 +82,7 @@ Two distinct client paths serve different purposes:
 | Path | Target endpoint | Library | Use case |
 |------|----------------|---------|----------|
 | Dynamic client | `/apis` (K8s-compatible) | `k8s.io/client-go` | All resource CRUD |
-| OpenAPI client | `/api` (Grafana REST) | `grafana-openapi-client-go` | Health checks, version checks |
+| Grafana `/api` requests | `/api` (Grafana REST) | `net/http` (`internal/grafana`) | Health/version check, signed-in user |
 
 Within the dynamic client path, there are two specializations:
 - `NamespacedClient` -- used for push operations (Create/Update/Delete)

@@ -15,8 +15,6 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/go-logr/logr v1.4.4
-	github.com/go-openapi/runtime v0.33.4
-	github.com/go-openapi/strfmt v0.27.4
 	github.com/goccy/go-yaml v1.19.2
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gofrs/flock v0.13.1
@@ -26,7 +24,6 @@ require (
 	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
 	github.com/grafana/grafana-app-sdk/logging v0.61.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.22
-	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
 	github.com/grafana/mcp-doc-server v1.0.0
 	github.com/grafana/mcp-grafana/lokiguard v0.1.0
 	github.com/grafana/otel-checker v0.4.0
@@ -94,13 +91,8 @@ require (
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb // indirect
 	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/analysis v1.0.1 // indirect
-	github.com/go-openapi/errors v0.22.9 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/go-openapi/jsonreference v1.0.3 // indirect
-	github.com/go-openapi/loads v0.25.3 // indirect
-	github.com/go-openapi/runtime/server-middleware v0.33.4 // indirect
-	github.com/go-openapi/spec v1.0.1 // indirect
 	github.com/go-openapi/swag v0.29.2 // indirect
 	github.com/go-openapi/swag/cmdutils v0.29.2 // indirect
 	github.com/go-openapi/swag/conv v0.29.2 // indirect
@@ -113,8 +105,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.29.2 // indirect
 	github.com/go-openapi/swag/typeutils v0.29.2 // indirect
 	github.com/go-openapi/swag/yamlutils v0.29.2 // indirect
-	github.com/go-openapi/validate v1.0.1 // indirect
-	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/go-openapi/testify/enable/yaml/v2 v2.8.0 // indirect
 	github.com/gobwas/glob v1.1.0 // indirect
 	github.com/goccy/go-json v0.12.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -146,7 +137,6 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oklog/run v1.2.0 // indirect
-	github.com/oklog/ulid/v2 v2.1.2 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.3.0 // indirect
 	github.com/olekukonko/ll v0.1.9 // indirect

@@ -3,18 +3,25 @@ package grafana
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
+	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/go-openapi/strfmt"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
-	goapi "github.com/grafana/grafana-openapi-client-go/client"
+)
+
+const (
+	// orgIDHeader selects the organization for a request authenticated as a user.
+	orgIDHeader = "X-Grafana-Org-Id"
+	// maxResponseBytes caps the JSON getJSON decodes; /api/health and /api/user
+	// answer with a few hundred bytes.
+	maxResponseBytes = 1 << 20
 )
 
 // VersionIncompatibleError is returned when a Grafana instance is too old for gcx.
@@ -26,94 +33,85 @@ func (e *VersionIncompatibleError) Error() string {
 	return fmt.Sprintf("grafana version %s is not supported; gcx requires Grafana 12.0.0 or later", e.Version)
 }
 
-// clientResult bundles the goapi client with the resolved *tls.Config so
-// callers like GetVersion can reuse it without calling ToStdTLSConfig twice.
-type clientResult struct {
-	api       *goapi.GrafanaHTTPAPI
-	tlsConfig *tls.Config // nil when no TLS is configured
+// StatusError reports a Grafana API response with a non-2xx status. It carries
+// no response body: error bodies can echo credentials.
+type StatusError struct {
+	Path       string
+	StatusCode int
 }
 
-func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
-	if ctx == nil {
-		return clientResult{}, errors.New("no context provided")
-	}
-	if ctx.Grafana == nil {
-		return clientResult{}, errors.New("grafana not configured")
-	}
-	authMethod, err := ctx.EffectiveGrafanaAuthMethod()
-	if err != nil {
-		return clientResult{}, fmt.Errorf("grafana authentication: %w", err)
-	}
-	selectedTLS, err := ctx.EffectiveGrafanaTLS()
-	if err != nil {
-		return clientResult{}, fmt.Errorf("grafana TLS configuration: %w", err)
-	}
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("GET %s returned HTTP %d", e.Path, e.StatusCode)
+}
 
-	grafanaURL, err := url.Parse(ctx.Grafana.Server)
+// HTTPStatusCode lets error classification read the status.
+func (e *StatusError) HTTPStatusCode() int { return e.StatusCode }
+
+// getJSON requests GET /api<path> from the context's Grafana and decodes the
+// JSON response into out.
+//
+// EffectiveGrafanaAuthMethod is the single selection authority. Only the
+// selected HTTP credential is attached, so stale fields from a previous auth
+// method cannot leak. OAuth requests are intentionally anonymous against the
+// direct Grafana endpoint; mTLS authenticates at the transport layer and
+// carries no Authorization header.
+func getJSON(ctx context.Context, cfgCtx *config.Context, path string, out any) error {
+	if cfgCtx == nil {
+		return errors.New("no context provided")
+	}
+	if cfgCtx.Grafana == nil {
+		return errors.New("grafana not configured")
+	}
+	authMethod, err := cfgCtx.EffectiveGrafanaAuthMethod()
 	if err != nil {
-		return clientResult{}, err
+		return fmt.Errorf("grafana authentication: %w", err)
 	}
-
-	cfg := &goapi.TransportConfig{
-		Host:     grafanaURL.Host,
-		BasePath: strings.TrimLeft(grafanaURL.Path+"/api", "/"),
-		Schemes:  []string{grafanaURL.Scheme},
-		HTTPHeaders: map[string]string{
-			"User-Agent": version.UserAgent(),
-		},
+	selectedTLS, err := cfgCtx.EffectiveGrafanaTLS()
+	if err != nil {
+		return fmt.Errorf("grafana TLS configuration: %w", err)
 	}
-
-	var stdTLS *tls.Config
+	var stdTLS *tls.Config // nil when no TLS is configured
 	if selectedTLS != nil {
 		stdTLS, err = selectedTLS.ToStdTLSConfig()
 		if err != nil {
-			return clientResult{}, fmt.Errorf("TLS configuration: %w", err)
+			return fmt.Errorf("TLS configuration: %w", err)
 		}
-		cfg.TLSConfig = stdTLS
 	}
 
-	// EffectiveGrafanaAuthMethod is the single selection authority. Attach only
-	// the selected HTTP credential so stale fields from a previous auth method
-	// cannot leak to the health endpoint. OAuth health probes are intentionally
-	// anonymous against the direct Grafana endpoint; mTLS authenticates at the
-	// transport layer and carries no Authorization header.
+	apiPath := "/api" + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(cfgCtx.Grafana.Server, "/")+apiPath, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
 	switch authMethod {
 	case "basic":
-		cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
+		req.SetBasicAuth(cfgCtx.Grafana.User, cfgCtx.Grafana.Password)
 	case "token":
-		cfg.APIKey = ctx.Grafana.APIToken
+		req.Header.Set("Authorization", "Bearer "+cfgCtx.Grafana.APIToken)
 	}
-	if ctx.Grafana.OrgID != 0 {
-		cfg.OrgID = ctx.Grafana.OrgID
+	if cfgCtx.Grafana.OrgID != 0 {
+		req.Header.Set(orgIDHeader, strconv.FormatInt(cfgCtx.Grafana.OrgID, 10))
 	}
 
-	return clientResult{
-		api:       goapi.NewHTTPClientWithConfig(strfmt.Default, cfg),
-		tlsConfig: stdTLS,
-	}, nil
-}
-
-// ClientFromContext returns a goapi client configured from the given context.
-// The returned client's default transport does NOT include TLS configuration;
-// callers that need to wrap the client with middleware via WithHTTPClient
-// should use ClientFromContextWithTLS instead to avoid silently losing mTLS.
-func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
-	res, err := clientFromContextWithTLS(ctx)
+	// The CLI client sets the User-Agent and carries the
+	// --insecure-log-http-payload logging transport when enabled.
+	resp, err := httputils.NewDefaultClientWithTLS(ctx, stdTLS).Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return res.api, nil
-}
-
-// ClientFromContextWithTLS returns both the goapi client and the resolved
-// *tls.Config. Use this when wrapping the client with WithHTTPClient to
-// ensure TLS settings are preserved (see GetVersion for an example).
-func ClientFromContextWithTLS(ctx *config.Context) (*goapi.GrafanaHTTPAPI, *tls.Config, error) {
-	res, err := clientFromContextWithTLS(ctx)
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return &StatusError{Path: apiPath, StatusCode: resp.StatusCode}
+	}
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBytes)
 	if err != nil {
-		return nil, nil, err
+		return fmt.Errorf("reading GET %s: %w", apiPath, err)
 	}
-	return res.api, res.tlsConfig, nil
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decoding GET %s: %w", apiPath, err)
+	}
+	return nil
 }
 
 // GetVersion returns the Grafana version reported by /api/health.
@@ -131,31 +129,21 @@ func ClientFromContextWithTLS(ctx *config.Context) (*goapi.GrafanaHTTPAPI, *tls.
 //   - err == nil, parsed != nil: fully parseable semver; raw is the
 //     original string.
 func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, string, error) {
-	res, err := clientFromContextWithTLS(cfgCtx)
-	if err != nil {
-		return nil, "", err
+	var health struct {
+		Version  string `json:"version"`
+		Commit   string `json:"commit"`
+		Database string `json:"database"`
 	}
-	// Wire a CLI HTTP client that carries the --insecure-log-http-payload logging
-	// transport when enabled, reusing the TLS config already resolved by
-	// clientFromContextWithTLS to avoid redundant file reads.
-	// WithHTTPClient only replaces the underlying transport, not the
-	// goapi auth settings (API key / basic / OrgID).
-	gClient := res.api
-	gClient.WithHTTPClient(httputils.NewDefaultClientWithTLS(ctx, res.tlsConfig))
-
-	healthResponse, err := gClient.Health.GetHealth()
-	if err != nil {
+	if err := getJSON(ctx, cfgCtx, "/health", &health); err != nil {
 		return nil, "", err
 	}
 
-	raw := healthResponse.Payload.Version
-	commit := healthResponse.Payload.Commit
-	db := healthResponse.Payload.Database
+	raw := health.Version
 	logging.FromContext(ctx).Debug("grafana health response",
 		"server", cfgCtx.Grafana.Server,
 		"raw_version", raw,
-		"commit", commit,
-		"database", db,
+		"commit", health.Commit,
+		"database", health.Database,
 		"has_api_token", cfgCtx.Grafana.APIToken != "",
 		"has_oauth_token", cfgCtx.Grafana.OAuthToken != "",
 	)
@@ -170,4 +158,16 @@ func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, s
 		return nil, raw, nil //nolint:nilerr
 	}
 	return parsed, raw, nil
+}
+
+// SignedInUserID returns the ID of the user the context's credentials sign in
+// as, from /api/user. A non-2xx response is a *StatusError.
+func SignedInUserID(ctx context.Context, cfgCtx *config.Context) (int64, error) {
+	var user struct {
+		ID int64 `json:"id"`
+	}
+	if err := getJSON(ctx, cfgCtx, "/user", &user); err != nil {
+		return 0, err
+	}
+	return user.ID, nil
 }

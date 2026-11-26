@@ -8,7 +8,7 @@ weight: 100
 
 # CLI reference
 
-This reference describes gcx **v1.9.0**. Run `gcx version` to check your installed version.
+This reference describes gcx **v1.9.1**. Run `gcx version` to check your installed version.
 
 Flag defaults below are for human mode. Agent mode changes defaults such as output format; explicit flags override those defaults.
 
