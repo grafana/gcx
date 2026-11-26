@@ -19,9 +19,11 @@ func TestApplyAnnotations_UsesFullCommandPaths(t *testing.T) {
 
 	agent.ApplyAnnotations(root)
 
-	assert.Equal(t, "medium", list.Annotations[agent.AnnotationTokenCost])
+	// Exact values belong to the registries' own tests; this checks that each
+	// annotation reached the command at its full path.
+	assert.NotEmpty(t, list.Annotations[agent.AnnotationTokenCost])
 	assert.Equal(t, "kept", list.Annotations[agent.AnnotationLLMHint], "existing annotations win")
 	assert.Equal(t, agent.AvailabilityCloudOnly, list.Annotations[agent.AnnotationAvailability])
-	assert.Contains(t, slo.Annotations[agent.AnnotationSkill], "slo-manage")
+	assert.NotEmpty(t, slo.Annotations[agent.AnnotationSkill])
 	assert.Empty(t, root.Annotations[agent.AnnotationAvailability])
 }

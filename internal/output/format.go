@@ -599,33 +599,34 @@ func (opts *Options) codecFor(name string) format.Codec { //nolint:ireturn
 		return opts.customCodecs[name]
 	}
 
-	// Keep in step with builtinFormats.
-	switch name {
-	case "yaml":
-		return format.NewYAMLCodec()
-	case "json":
-		return format.NewJSONCodec()
-	case string(agentsFormat):
-		errWriter := opts.ErrWriter
-		if errWriter == nil {
-			errWriter = os.Stderr
-		}
-		return newAgentsCodec(errWriter)
+	if build := builtinCodecs()[name]; build != nil {
+		return build(opts)
 	}
 	return nil
 }
 
-// builtinFormats names the formats codecFor builds without a custom codec, so
-// allowedCodecs can list them without constructing a codec for every command.
-func builtinFormats() []string {
-	return []string{"yaml", "json", string(agentsFormat)}
+// builtinCodecs maps each format codecFor builds without a custom codec to
+// its constructor, so allowedCodecs can list the names without constructing a
+// codec for every command.
+func builtinCodecs() map[string]func(*Options) format.Codec {
+	return map[string]func(*Options) format.Codec{
+		"yaml": func(*Options) format.Codec { return format.NewYAMLCodec() },
+		"json": func(*Options) format.Codec { return format.NewJSONCodec() },
+		string(agentsFormat): func(opts *Options) format.Codec {
+			errWriter := opts.ErrWriter
+			if errWriter == nil {
+				errWriter = os.Stderr
+			}
+			return newAgentsCodec(errWriter)
+		},
+	}
 }
 
 func (opts *Options) allowedCodecs() []string {
 	// Merge builtins and custom codecs into a set so that custom codecs
 	// that shadow a builtin name (e.g. a custom "json" codec) are not listed twice.
 	all := make(map[string]struct{})
-	for _, name := range builtinFormats() {
+	for name := range builtinCodecs() {
 		all[name] = struct{}{}
 	}
 	for name := range opts.customCodecs {
