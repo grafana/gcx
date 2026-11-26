@@ -55,8 +55,9 @@ import (
 //
 // TLS, proxies and DNS are the host's business; ClientOpts.TLSConfig and
 // client-go TLS settings have no effect in this build.
-// --insecure-log-http-payload dumps whole response bodies, so it gives up
-// streaming: each body is read to its end before the caller sees it.
+// --insecure-log-http-payload dumps whole response bodies other than event
+// streams, so it gives up streaming for the rest: each such body is read to its
+// end before the caller sees it.
 
 //go:wasmimport gcx_http request_new
 func hostRequestNew(method, scheme, authority, pathWithQuery, headers, body string) uint32

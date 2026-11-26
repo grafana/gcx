@@ -54,11 +54,13 @@ func jsonResponse(req *http.Request, body string) *http.Response {
 
 func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 	tests := []struct {
-		name      string
-		method    string
-		reqBody   string
-		respBody  string
-		wantInLog []string
+		name        string
+		method      string
+		reqBody     string
+		respBody    string
+		contentType string
+		wantInLog   []string
+		notInLog    []string
 	}{
 		{
 			name:     "post dumps both bodies",
@@ -84,6 +86,17 @@ func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 				`{"results":[]}`,
 			},
 		},
+		{
+			name:        "event stream dumps headers only",
+			method:      http.MethodGet,
+			respBody:    "data: {\"sequence\":1}\n\n",
+			contentType: "text/event-stream; charset=utf-8",
+			wantInLog: []string{
+				"http response dump",
+				"Content-Type: text/event-stream; charset=utf-8",
+			},
+			notInLog: []string{`"sequence":1`},
+		},
 	}
 
 	for _, tt := range tests {
@@ -97,7 +110,11 @@ func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 					}
 					gotReqBody = string(b)
 				}
-				return jsonResponse(r, tt.respBody), nil
+				resp := jsonResponse(r, tt.respBody)
+				if tt.contentType != "" {
+					resp.Header.Set("Content-Type", tt.contentType)
+				}
+				return resp, nil
 			})
 
 			var out bytes.Buffer
@@ -123,6 +140,11 @@ func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 			for _, want := range tt.wantInLog {
 				if !strings.Contains(logged, want) {
 					t.Errorf("log is missing %q\ngot:\n%s", want, logged)
+				}
+			}
+			for _, unwanted := range tt.notInLog {
+				if strings.Contains(logged, unwanted) {
+					t.Errorf("log must not hold %q\ngot:\n%s", unwanted, logged)
 				}
 			}
 
