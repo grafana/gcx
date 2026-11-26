@@ -16,6 +16,7 @@ package sandbox
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -354,7 +355,11 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 		WithArgs(append([]string{"gcx"}, inv.Args...)...).
 		WithFSConfig(fsc).
 		WithEnv("HOME", "/home").
-		WithSysWalltime().WithSysNanotime().WithSysNanosleep()
+		WithSysWalltime().WithSysNanotime().WithSysNanosleep().
+		// wazero's default random source is deterministic, which would give
+		// every instance the same random_get bytes, and so the same
+		// crypto/rand output and Go runtime seeds.
+		WithRandSource(crand.Reader)
 	if _, ok := inv.Env["GCX_AGENT_SPILL_BYTES"]; !ok {
 		cfg = cfg.WithEnv("GCX_AGENT_SPILL_BYTES", "0")
 	}
