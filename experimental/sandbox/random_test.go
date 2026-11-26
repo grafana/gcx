@@ -17,7 +17,7 @@ var randomGuest []byte
 // would see the same random_get bytes, and with them the same crypto/rand
 // output and Go runtime seeds.
 func TestRunRandomSourceDiffersPerInstance(t *testing.T) {
-	rt, err := sandbox.New(context.Background(), randomGuest, sandbox.Config{MemoryLimitBytes: 1 << 20})
+	rt, err := sandbox.New(t.Context(), randomGuest, sandbox.Config{MemoryLimitBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
