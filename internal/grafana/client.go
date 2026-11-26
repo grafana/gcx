@@ -14,7 +14,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -86,7 +85,6 @@ func getJSON(ctx context.Context, cfgCtx *config.Context, path string, out any) 
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", version.UserAgent())
 	switch authMethod {
 	case "basic":
 		req.SetBasicAuth(cfgCtx.Grafana.User, cfgCtx.Grafana.Password)
@@ -97,8 +95,8 @@ func getJSON(ctx context.Context, cfgCtx *config.Context, path string, out any) 
 		req.Header.Set(orgIDHeader, strconv.FormatInt(cfgCtx.Grafana.OrgID, 10))
 	}
 
-	// The CLI client carries the --insecure-log-http-payload logging transport
-	// when enabled.
+	// The CLI client sets the User-Agent and carries the
+	// --insecure-log-http-payload logging transport when enabled.
 	resp, err := httputils.NewDefaultClientWithTLS(ctx, stdTLS).Do(req)
 	if err != nil {
 		return err

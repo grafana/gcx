@@ -425,8 +425,8 @@ GrafanaConfig.APIToken != ""
     ├─ dynamic path       →  rest.Config.BearerToken
     │                        k8s transport sets "Authorization: Bearer <token>"
     │
-    ├─ OpenAPI path        →  TransportConfig.APIKey
-    │                        generated client sets "Authorization: Bearer <token>"
+    ├─ /api path          →  grafana.getJSON
+    │                        sets "Authorization: Bearer <token>" on the request
     │
     └─ query clients path →  rest.Config.BearerToken (via rest.HTTPClientFor)
                              same http.Client used by prometheus.Client / loki.Client
@@ -436,8 +436,8 @@ GrafanaConfig.User != ""
     ├─ dynamic path       →  rest.Config.Username + Password
     │                        k8s transport sets "Authorization: Basic <b64(user:pass)>"
     │
-    ├─ OpenAPI path        →  TransportConfig.BasicAuth
-    │                        generated client sets "Authorization: Basic <b64(user:pass)>"
+    ├─ /api path          →  grafana.getJSON
+    │                        req.SetBasicAuth sets "Authorization: Basic <b64(user:pass)>"
     │
     └─ query clients path →  rest.Config.Username + Password (via rest.HTTPClientFor)
                              same mechanism as dynamic path
