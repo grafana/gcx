@@ -94,8 +94,8 @@ func TestPreinitMatchesCommandModule(t *testing.T) {
 }
 
 // The runtime's random state must differ per instance, though every instance
-// starts from the same snapshot. The guest prints a math/rand/v2 value drawn
-// during init and one drawn after its reseed.
+// starts from the same snapshot. The guest prints a hash under a seed made
+// during init and one under a seed made after its reseed.
 func TestPreinitReseedsRandomness(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds and snapshots a guest; skipped with -short")
@@ -104,8 +104,8 @@ func TestPreinitReseedsRandomness(t *testing.T) {
 		t.Skip("needs wasmtime (mise install) to snapshot the guest")
 	}
 	rt := newRuntimeFor(t, buildPreinitGuest(t), sandbox.Config{MemoryLimitBytes: 64 << 20})
-	// draw returns the value drawn during init and the one drawn after the
-	// reseed.
+	// draw returns the hash under the seed made during init and the one
+	// under a seed made after the reseed.
 	draw := func() (string, string) {
 		var out bytes.Buffer
 		res, err := rt.Run(t.Context(), sandbox.Invocation{Stdout: &out, Stderr: &out})
@@ -117,13 +117,13 @@ func TestPreinitReseedsRandomness(t *testing.T) {
 	}
 	initA, freshA := draw()
 	initB, freshB := draw()
-	// The value drawn during init is the snapshot's, which shows both
+	// The seed made during init is the snapshot's, which shows both
 	// instances really start from one snapshot.
 	if initA != initB {
-		t.Fatalf("values drawn during init differ (%s, %s): the instances don't share a snapshot", initA, initB)
+		t.Fatalf("hashes under the init seed differ (%s, %s): the instances don't share a snapshot", initA, initB)
 	}
 	if freshA == freshB {
-		t.Errorf("two instances drew the same value %s after reseeding", freshA)
+		t.Errorf("two instances made the same seed after reseeding (hash %s)", freshA)
 	}
 }
 
