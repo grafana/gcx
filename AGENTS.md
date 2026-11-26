@@ -80,6 +80,7 @@ Start with [project structure](docs/architecture/project-structure.md) for modul
 | **Planning work before implementation** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) and the [contribution workflow](CONTRIBUTING.md#contributing-code) | Load the proposal or RFC specialist only when the selected route needs it; keep restricted research outside the checkout |
 | **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
 | **Adding, extending, or reviewing a gcx capability (domain teams)** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) — necessity, placement, readiness, contract, implementation references, and self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
+| **Getting your own draft PR reviewed** | The repo-local [`independent-review`](.agents/skills/independent-review/SKILL.md) skill — fresh claude + codex reviewers, then triage | Leave the PR as a draft; marking it ready is a human call |
 | **Reviewing someone else's PR** | The repo-local [`review-pr`](.agents/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check all 4 levels in order |
 
 ## Compliance Hierarchy
