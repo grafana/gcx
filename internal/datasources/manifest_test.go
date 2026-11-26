@@ -194,6 +194,31 @@ func TestDiffManifest(t *testing.T) {
 	}
 }
 
+func TestDiffManifest_JSONDataTypeChange(t *testing.T) {
+	spec := func(v any) dsclient.DataSourceSpec {
+		return dsclient.DataSourceSpec{Type: "p", JSONData: map[string]any{"port": v}}
+	}
+
+	for name, tc := range map[string]struct {
+		from, to any
+		want     string
+	}{
+		"string to number":  {from: "80", to: 80, want: "jsonData: changed"},
+		"string to boolean": {from: "true", to: true, want: "jsonData: changed"},
+		"same value":        {from: "80", to: "80", want: "No changes."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := dsclient.DiffManifest(
+				&dsclient.DataSourceManifest{Spec: spec(tc.from)},
+				&dsclient.DataSourceManifest{Spec: spec(tc.to)},
+			).Render()
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("expected %q, got:\n%s", tc.want, got)
+			}
+		})
+	}
+}
+
 func TestDiffManifest_CreateAllAdded(t *testing.T) {
 	next := &dsclient.DataSourceManifest{
 		Spec: dsclient.DataSourceSpec{Type: "p", Title: "t", URL: "https://a"},
