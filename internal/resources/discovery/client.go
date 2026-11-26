@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	apidiscovery "k8s.io/api/apidiscovery/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,18 +31,25 @@ import (
 //   - /api and /apis are requested as aggregated discovery (one request each,
 //     groups and resources together), falling back to the legacy format, where
 //     each group version's resources are fetched separately.
-//   - A 404 from /api means the server has no legacy core group (Grafana).
+//   - A 404 from /api means the server has no legacy core group (Grafana), and
+//     a 404 from /api/v1 that the core group has no resources.
 //   - Stale aggregated group versions are dropped. A group version that fails
 //     to load fails discovery as a whole.
 //   - servergroups.json and <group>/<version>/serverresources.json under the
 //     cache directory are reused until they are defaultDiscoveryCacheTTL
-//     old; empty results aren't cached, and failing to write the cache isn't
-//     an error.
+//     old; an empty group list isn't cached, and failing to write the cache
+//     isn't an error.
+//
+// Unlike client-go's REST client, it doesn't pass Warning response headers to
+// the config's warning handler or apply its QPS limit; per-version requests are
+// bounded by maxConcurrentRequests instead.
 
 const (
 	acceptAggregated = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList,application/json"
 	// defaultDiscoveryTimeout bounds each request when the config sets no timeout.
 	defaultDiscoveryTimeout = 32 * time.Second
+	// maxConcurrentRequests bounds the per-version requests of legacy discovery.
+	maxConcurrentRequests = 10
 )
 
 // cachedClient discovers a server's API groups and resources, caching the
@@ -61,7 +69,12 @@ func newCachedClient(cfg *rest.Config, dir string) (*cachedClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP client: %w", err)
 	}
-	return &cachedClient{baseURL: strings.TrimSuffix(cfg.Host, "/"), http: httpClient, dir: dir}, nil
+	// Normalizes a host without a scheme, as client-go's REST client does.
+	base, _, err := rest.DefaultServerUrlFor(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("parsing server URL: %w", err)
+	}
+	return &cachedClient{baseURL: strings.TrimSuffix(base.String(), "/"), http: httpClient, dir: dir}, nil
 }
 
 // ServerGroupsAndResources returns the server's API groups and the resources
@@ -90,8 +103,9 @@ func (c *cachedClient) ServerGroupsAndResources() ([]*metav1.APIGroup, []*metav1
 	for i := range groups.Groups {
 		apiGroups = append(apiGroups, &groups.Groups[i])
 		for _, v := range groups.Groups[i].Versions {
+			// Fresh aggregated results take precedence over cached ones.
 			var list metav1.APIResourceList
-			if c.readCache(filepath.Join(c.dir, v.GroupVersion, "serverresources.json"), &list) {
+			if file, ok := c.resourcesFile(v.GroupVersion); ok && len(live) == 0 && c.readCache(file, &list) {
 				byGV[v.GroupVersion] = &list
 			} else {
 				misses = append(misses, v.GroupVersion)
@@ -107,23 +121,25 @@ func (c *cachedClient) ServerGroupsAndResources() ([]*metav1.APIGroup, []*metav1
 	}
 
 	var (
-		wg     sync.WaitGroup
+		g      errgroup.Group
 		mu     sync.Mutex
 		failed []error
 	)
+	g.SetLimit(maxConcurrentRequests)
 	for _, gv := range misses {
-		wg.Go(func() {
+		g.Go(func() error {
 			list, err := c.resources(ctx, gv, live)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				failed = append(failed, fmt.Errorf("%s: %w", gv, err))
-				return
+				return nil
 			}
 			byGV[gv] = list
+			return nil
 		})
 	}
-	wg.Wait()
+	_ = g.Wait() // errors are collected in failed, so every version is reported
 	if len(failed) > 0 {
 		return nil, nil, fmt.Errorf("unable to retrieve the complete list of server APIs: %w", errors.Join(failed...))
 	}
@@ -149,16 +165,33 @@ func (c *cachedClient) resources(ctx context.Context, gv string, live map[string
 			path = "/api/" + gv // the legacy core group
 		}
 		fetched = &metav1.APIResourceList{}
-		if _, err := c.get(ctx, path, "application/json", fetched); err != nil {
+		_, err := c.get(ctx, path, "application/json", fetched)
+		switch {
+		case gv == "v1" && apierrors.IsNotFound(err):
+			// As client-go: a core group listed but not served has no resources.
+			fetched = &metav1.APIResourceList{GroupVersion: gv}
+		case err != nil:
 			return nil, err
 		}
 	}
-	if len(fetched.APIResources) > 0 {
+	// Empty lists are cached too, so a version without resources isn't a miss
+	// on every run.
+	if file, ok := c.resourcesFile(gv); ok {
 		cached := *fetched
 		cached.Kind, cached.APIVersion = "APIResourceList", "v1"
-		c.writeCache(filepath.Join(c.dir, gv, "serverresources.json"), cached)
+		c.writeCache(file, cached)
 	}
 	return fetched, nil
+}
+
+// resourcesFile returns where gv's resources are cached. A group version from
+// the server that isn't a plain relative path, such as one containing "..",
+// isn't cached, so it can't name a file outside the cache directory.
+func (c *cachedClient) resourcesFile(gv string) (string, bool) {
+	if !filepath.IsLocal(gv) {
+		return "", false
+	}
+	return filepath.Join(c.dir, gv, "serverresources.json"), true
 }
 
 // fetchGroups requests /api and /apis, returning the groups and, when the

@@ -3,6 +3,9 @@ package discovery
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -12,8 +15,10 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const aggregatedContentType = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList"
+
 // discoveryServer serves the given paths, counting requests. Unknown paths
-// return 404, as Grafana does for /api.
+// return 404, as Grafana does for /api; a body of "500" fails the request.
 func discoveryServer(t *testing.T, contentType string, paths map[string]string) (*rest.Config, *atomic.Int32) {
 	t.Helper()
 	var requests atomic.Int32
@@ -22,6 +27,10 @@ func discoveryServer(t *testing.T, contentType string, paths map[string]string) 
 		body, ok := paths[r.URL.Path]
 		if !ok {
 			http.NotFound(w, r)
+			return
+		}
+		if body == "500" {
+			http.Error(w, "boom", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", contentType)
@@ -93,4 +102,86 @@ func TestCachedClientStatusError(t *testing.T) {
 
 	_, _, err = client.ServerGroupsAndResources()
 	assert.True(t, apierrors.IsUnauthorized(err), "got %v", err)
+}
+
+func TestCachedClientLegacyCachesEmptyAndMissingCore(t *testing.T) {
+	cfg, requests := discoveryServer(t, "application/json", map[string]string{
+		// The core group is listed but /api/v1 isn't served.
+		"/api":                   `{"kind":"APIVersions","versions":["v1"]}`,
+		"/apis":                  `{"kind":"APIGroupList","groups":[{"name":"a.grafana.app","versions":[{"groupVersion":"a.grafana.app/v1","version":"v1"}],"preferredVersion":{"groupVersion":"a.grafana.app/v1","version":"v1"}}]}`,
+		"/apis/a.grafana.app/v1": `{"kind":"APIResourceList","groupVersion":"a.grafana.app/v1","resources":[]}`,
+	})
+	dir := t.TempDir()
+	client, err := newCachedClient(cfg, dir)
+	require.NoError(t, err)
+
+	groups, lists, err := client.ServerGroupsAndResources()
+	require.NoError(t, err)
+	assert.Len(t, groups, 2)
+	assert.Len(t, lists, 2)
+	assert.Equal(t, int32(4), requests.Load(), "/api, /apis, /api/v1 and the group version")
+
+	_, _, err = client.ServerGroupsAndResources()
+	require.NoError(t, err)
+	assert.Equal(t, int32(4), requests.Load(), "empty resource lists are cached too")
+}
+
+func TestCachedClientRefetchesMissingVersion(t *testing.T) {
+	cfg, requests := discoveryServer(t, aggregatedContentType, map[string]string{
+		"/apis": `{"kind":"APIGroupDiscoveryList","items":[
+			{"metadata":{"name":"a.grafana.app"},"versions":[{"version":"v1","resources":[{"resource":"things","responseKind":{"group":"a.grafana.app","version":"v1","kind":"Thing"},"scope":"Namespaced","verbs":["get"]}]}]},
+			{"metadata":{"name":"b.grafana.app"},"versions":[{"version":"v1","resources":[{"resource":"others","responseKind":{"group":"b.grafana.app","version":"v1","kind":"Other"},"scope":"Cluster","verbs":["get"]}]}]}]}`,
+	})
+	dir := t.TempDir()
+	client, err := newCachedClient(cfg, dir)
+	require.NoError(t, err)
+	_, _, err = client.ServerGroupsAndResources()
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(dir, "b.grafana.app", "v1", "serverresources.json")))
+
+	_, lists, err := client.ServerGroupsAndResources()
+	require.NoError(t, err)
+	require.Len(t, lists, 2)
+	assert.Equal(t, "others", lists[1].APIResources[0].Name)
+	assert.Equal(t, int32(4), requests.Load(), "one more /api and /apis answer the miss")
+}
+
+func TestCachedClientFailingVersion(t *testing.T) {
+	cfg, _ := discoveryServer(t, "application/json", map[string]string{
+		"/apis":                  `{"kind":"APIGroupList","groups":[{"name":"a.grafana.app","versions":[{"groupVersion":"a.grafana.app/v1","version":"v1"}],"preferredVersion":{"groupVersion":"a.grafana.app/v1","version":"v1"}}]}`,
+		"/apis/a.grafana.app/v1": "500",
+	})
+	client, err := newCachedClient(cfg, t.TempDir())
+	require.NoError(t, err)
+
+	_, _, err = client.ServerGroupsAndResources()
+	require.ErrorContains(t, err, "a.grafana.app/v1")
+}
+
+func TestNewCachedClientHostWithoutScheme(t *testing.T) {
+	cfg, _ := discoveryServer(t, "application/json", map[string]string{"/apis": `{"kind":"APIGroupList","groups":[]}`})
+	cfg.Host = strings.TrimPrefix(cfg.Host, "http://")
+	client, err := newCachedClient(cfg, t.TempDir())
+	require.NoError(t, err)
+
+	_, _, err = client.ServerGroupsAndResources()
+	require.NoError(t, err)
+}
+
+func TestResourcesFileStaysInCacheDir(t *testing.T) {
+	client := &cachedClient{dir: "/cache"}
+	tests := []struct {
+		gv   string
+		want string
+	}{
+		{"v1", "/cache/v1/serverresources.json"},
+		{"a.grafana.app/v1", "/cache/a.grafana.app/v1/serverresources.json"},
+		{"../../x/v1", ""},
+		{"/etc/v1", ""},
+	}
+	for _, tc := range tests {
+		file, ok := client.resourcesFile(tc.gv)
+		assert.Equal(t, tc.want != "", ok, tc.gv)
+		assert.Equal(t, tc.want, file, tc.gv)
+	}
 }
