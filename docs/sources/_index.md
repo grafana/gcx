@@ -31,21 +31,17 @@ cards:
       description: How `gcx` commands work, how to select a context and control the output, and the Grafana and Grafana Cloud resources you can manage and query for each area.
       href: use-gcx-from-command-line/
       height: 24
+    - title: Use gcx with AI agents
+      description: How `gcx` behaves when an AI coding agent runs it, and how to set up sign-in, destructive operations, and skills for agents.
+      href: use-gcx-with-agents/
+      height: 24
     - title: Contexts and configuration
-      description: Set up contexts with the configuration file or environment variables, and migrate a legacy configuration to the version 1 format.
+      description: Set up contexts with the configuration file or environment variables, migrate a legacy configuration to the version 1 format, and review or opt out of usage statistics.
       href: configuration/
       height: 24
     - title: Additional guides
       description: Diagnose missing telemetry, compare profiles, and check Assistant usage.
       href: guides/
-      height: 24
-    - title: Use gcx with AI agents
-      description: How `gcx` behaves when an AI coding agent runs it, and how to set up sign-in, destructive operations, and skills for agents.
-      href: use-gcx-with-agents/
-      height: 24
-    - title: Usage statistics
-      description: What `gcx` reports to Grafana Labs, and how to opt out.
-      href: anonymous-usage-statistics/
       height: 24
     - title: CLI reference
       description: Commands, flags, environment variables, and configuration for the latest stable release.

@@ -205,4 +205,4 @@ When enabled, `gcx` writes failed agent-mode invocations (up to 1,000 JSONL reco
 ## Learn more
 
 - [Diagnose missing telemetry](../guides/diagnose-missing-telemetry/): An example workflow that uses an agent with `gcx` skills.
-- [Usage statistics](../anonymous-usage-statistics/#agent-identity): What `gcx` reports about agent use, and how to opt out.
+- [Usage statistics](../configuration/anonymous-usage-statistics/#agent-identity): What `gcx` reports about agent use, and how to opt out.

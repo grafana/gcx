@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 30
+weight: 2
 ---
 
 # Understand gcx usage statistics

@@ -16,21 +16,21 @@ labels:
 title: Install, set up, and use the grafanactl CLI
 menuTitle: grafanactl CLI (deprecated)
 weight: 200
-canonical: https://grafana.com/docs/grafana/latest/ai-tools/gcx/grafanactl/
+canonical: https://grafana.com/docs/grafana/latest/ai-tools/gcx/guides/grafanactl/
 aliases:
-  - ../grafana-cli/grafanactl/
-  - ../grafana-cli/install-grafana-cli/
-  - ../../as-code/observability-as-code/grafana-cli/grafanactl/
-  - ../../observability-as-code/grafana-cli/install-grafana-cli/
-  - ../../observability-as-code/grafana-cli/set-up-grafana-cli/
-  - ../../as-code/observability-as-code/grafana-cli/install-grafana-cli/
-  - ../../as-code/observability-as-code/grafana-cli/set-up-grafana-cli/
-  - ../grafana-cli/grafanactl/grafanacli-workflows/
-  - ../grafana-cli/grafanacli-workflows/
-  - ../../as-code/observability-as-code/grafana-cli/grafanactl/grafanacli-workflows/
-  - ../../as-code/observability-as-code/grafana-cli/grafanacli-workflows/
+  - ../../grafana-cli/grafanactl/
+  - ../../grafana-cli/install-grafana-cli/
+  - ../../../as-code/observability-as-code/grafana-cli/grafanactl/
+  - ../../../observability-as-code/grafana-cli/install-grafana-cli/
+  - ../../../observability-as-code/grafana-cli/set-up-grafana-cli/
+  - ../../../as-code/observability-as-code/grafana-cli/install-grafana-cli/
+  - ../../../as-code/observability-as-code/grafana-cli/set-up-grafana-cli/
+  - ../../grafana-cli/grafanactl/grafanacli-workflows/
+  - ../../grafana-cli/grafanacli-workflows/
+  - ../../../as-code/observability-as-code/grafana-cli/grafanactl/grafanacli-workflows/
+  - ../../../as-code/observability-as-code/grafana-cli/grafanacli-workflows/
+  - ../../../observability-as-code/grafana-cli/grafanacli-workflows/
   - ../../observability-as-code/grafana-cli/grafanacli-workflows/
-  - ../observability-as-code/grafana-cli/grafanacli-workflows/
 ---
 
 # Install, set up, and use the `grafanactl` CLI

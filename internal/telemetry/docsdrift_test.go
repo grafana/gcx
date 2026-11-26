@@ -18,7 +18,7 @@ import (
 // this test ties the page to the source of truth the way
 // skillsdrift_test.go ties skill docs to the command tree.
 func TestUsageStatsPageListsTheFullWireVocabularies(t *testing.T) {
-	page, err := os.ReadFile(filepath.Join("..", "..", "docs", "sources", "anonymous-usage-statistics.md"))
+	page, err := os.ReadFile(filepath.Join("..", "..", "docs", "sources", "configuration", "anonymous-usage-statistics.md"))
 	require.NoError(t, err)
 	text := string(page)
 
