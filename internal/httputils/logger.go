@@ -1,6 +1,7 @@
 package httputils
 
 import (
+	"mime"
 	"net/http"
 	"net/http/httputil"
 
@@ -49,7 +50,9 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 		return resp, err
 	}
 
-	respStr, err := httputil.DumpResponse(resp, true)
+	// An event stream may never end, so dump only its headers.
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	respStr, err := httputil.DumpResponse(resp, mediaType != "text/event-stream")
 	if err != nil {
 		logger.Debug("cannot dump http response", "error", err)
 	} else {
