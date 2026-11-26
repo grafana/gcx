@@ -39,18 +39,21 @@ func isLocalHostname(host string) bool {
 		host = h
 	}
 
-	switch host {
-	case "localhost", "127.0.0.1", "::1":
-		return true
-	}
+	// Host names are case-insensitive.
+	host = strings.ToLower(host)
 
-	if strings.HasSuffix(host, ".localhost") {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
 
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return false
+	}
+
+	// The whole 127.0.0.0/8 block and ::1 are loopback.
+	if ip.IsLoopback() {
+		return true
 	}
 
 	if ip4 := ip.To4(); ip4 != nil {
