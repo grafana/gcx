@@ -37,7 +37,10 @@ func TestEscapeSequencesNeverReachTheTerminal(t *testing.T) {
 	run := func(name string, calls []string, args ...string) cliCase {
 		return cliCase{name: name, args: args, calls: calls, check: clean}
 	}
+	const p = "GET projects/314"
 	f.runCases(t, []cliCase{
+		{name: "a declined project delete prompt", stdin: "n\n", args: []string{"projects", "delete", "314"},
+			calls: []string{p}, exit: 5, check: clean},
 		run("projects list names the default", []string{"GET projects"}, "projects", "list"),
 	})
 }

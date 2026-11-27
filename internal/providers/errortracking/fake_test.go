@@ -2,6 +2,7 @@ package errortracking_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,11 +168,13 @@ func (f *fakeET) takeCalls() []etCall {
 
 type cliCase struct {
 	name   string
+	setup  func(f *fakeET)
 	stdin  string
 	args   []string
 	calls  []string
 	bare   bool
 	query  url.Values
+	body   string
 	json   string
 	has    []string
 	hasNot []string
@@ -198,6 +202,9 @@ func (f *fakeET) runCases(t *testing.T, groups ...[]cliCase) {
 			agent.SetFlag(false)
 			f.t = t
 			defer func() { f.t = outer }()
+			if tc.setup != nil {
+				tc.setup(f)
+			}
 			out, err := f.runArgs(tc.stdin, tc.bare, tc.args...)
 			calls := f.takeCalls()
 			if tc.err == "" && tc.exit == 0 {
@@ -219,11 +226,14 @@ func (f *fakeET) runCases(t *testing.T, groups ...[]cliCase) {
 			default:
 				assert.Equal(t, tc.calls, routesOf(calls))
 			}
-			if tc.query != nil {
+			if tc.query != nil || tc.body != "" {
 				require.NotEmpty(t, calls)
 				last := calls[len(calls)-1]
 				if tc.query != nil {
 					assert.Equal(t, tc.query, last.Query)
+				}
+				if tc.body != "" {
+					assert.JSONEq(t, tc.body, last.Body)
 				}
 			}
 			if tc.json != "" {
@@ -243,6 +253,26 @@ func (f *fakeET) runCases(t *testing.T, groups ...[]cliCase) {
 			}
 		})
 	}
+}
+
+func usageCases(args func(...string) []string, bad ...[]string) []cliCase {
+	cases := make([]cliCase, len(bad))
+	for i, b := range bad {
+		cases[i] = cliCase{name: fmt.Sprint(b), args: args(append(slices.Clone(b), "-o", "json")...), exit: gcxerrors.ExitUsageError}
+	}
+	return cases
+}
+
+func replaced(base []string, pairs ...string) []string {
+	out := slices.Clone(base)
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if at := slices.Index(out, pairs[i]); at >= 0 && at+1 < len(out) {
+			out[at+1] = pairs[i+1]
+			continue
+		}
+		out = append(out, pairs[i], pairs[i+1])
+	}
+	return out
 }
 
 func routesOf(calls []etCall) []string {
