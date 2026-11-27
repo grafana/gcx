@@ -39,6 +39,34 @@ func hookRuleStripFields() []string {
 	}
 }
 
+// HookRuleExample returns an example HookRule (guard) manifest as JSON, suitable as a push template.
+func HookRuleExample() json.RawMessage {
+	desc := StaticDescriptor()
+	example := map[string]any{
+		"apiVersion": desc.GroupVersion.String(),
+		"kind":       desc.Kind,
+		"metadata": map[string]any{
+			"name": "guard.block_shell_exec",
+		},
+		"spec": map[string]any{
+			"enabled":        false,
+			"phase":          "postflight",
+			"priority":       10,
+			"selector":       "tool_call_steps",
+			"action_on_fail": "warn",
+			"short_circuit":  false,
+			"tool_filter": map[string]any{
+				"blocked_names": []string{"shell_exec"},
+			},
+		},
+	}
+	b, err := json.Marshal(example)
+	if err != nil {
+		panic(fmt.Sprintf("guards: failed to marshal example: %v", err))
+	}
+	return b
+}
+
 // NewTypedCRUD creates a TypedCRUD for Agent Observability hook rules.
 // The loader carries the command's --config selection; adapter factories pass
 // a zero-value loader and inherit the selection threaded through ctx by the

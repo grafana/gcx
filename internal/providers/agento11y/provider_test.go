@@ -1,6 +1,7 @@
 package agento11y_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/providers/agento11y"
+	"github.com/grafana/gcx/internal/providers/agento11y/eval"
+	"github.com/grafana/gcx/internal/providers/agento11y/eval/collections"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
@@ -146,4 +149,46 @@ func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
 		}
 	}
 	return nil
+}
+
+// TestAgento11yProvider_RegistrationExamples checks that every writable
+// registration ships an example that matches its descriptor and decodes
+// strictly into the resource type, so `resources list-examples` and push
+// templates only offer fields the API accepts.
+func TestAgento11yProvider_RegistrationExamples(t *testing.T) {
+	specTypes := map[string]func() any{
+		"Evaluator":  func() any { return &eval.EvaluatorDefinition{} },
+		"EvalRule":   func() any { return &eval.RuleDefinition{} },
+		"HookRule":   func() any { return &eval.HookRuleDefinition{} },
+		"Collection": func() any { return &collections.Collection{} },
+	}
+
+	regs := (&agento11y.Agento11yProvider{}).TypedRegistrations()
+	require.Len(t, regs, len(specTypes))
+
+	for _, reg := range regs {
+		kind := reg.Descriptor.Kind
+		t.Run(kind, func(t *testing.T) {
+			newSpec, ok := specTypes[kind]
+			require.True(t, ok, "unexpected kind %q", kind)
+			require.NotEmpty(t, reg.Example, "writable resource must supply an example")
+
+			var manifest struct {
+				APIVersion string `json:"apiVersion"`
+				Kind       string `json:"kind"`
+				Metadata   struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+				Spec json.RawMessage `json:"spec"`
+			}
+			require.NoError(t, json.Unmarshal(reg.Example, &manifest))
+			assert.Equal(t, reg.Descriptor.GroupVersion.String(), manifest.APIVersion)
+			assert.Equal(t, kind, manifest.Kind)
+			assert.NotEmpty(t, manifest.Metadata.Name)
+
+			dec := json.NewDecoder(bytes.NewReader(manifest.Spec))
+			dec.DisallowUnknownFields()
+			require.NoError(t, dec.Decode(newSpec()), "spec has fields unknown to the resource type")
+		})
+	}
 }
