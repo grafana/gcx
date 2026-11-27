@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,6 +50,18 @@ func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 
 // GetJSON performs a GET request and decodes the JSON response into v.
 func (c *Client) GetJSON(ctx context.Context, path string, v any) error {
+	return c.getJSON(ctx, path, v, false)
+}
+
+// GetJSONAllowEmpty is GetJSON, except that a successful answer with an empty
+// (or whitespace-only) body leaves v unchanged and returns nil. Transport
+// errors, error statuses and a body that is cut short or malformed are still
+// errors.
+func (c *Client) GetJSONAllowEmpty(ctx context.Context, path string, v any) error {
+	return c.getJSON(ctx, path, v, true)
+}
+
+func (c *Client) getJSON(ctx context.Context, path string, v any, allowEmpty bool) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
@@ -63,7 +76,14 @@ func (c *Client) GetJSON(ctx context.Context, path string, v any) error {
 	if resp.StatusCode >= 400 {
 		return ReadError(resp)
 	}
-	return json.NewDecoder(resp.Body).Decode(v)
+	// Only the decoder's own io.EOF means an empty body: a connection that
+	// closed before a response is an error of Do, above, and a body cut short
+	// gives io.ErrUnexpectedEOF.
+	err = json.NewDecoder(resp.Body).Decode(v)
+	if allowEmpty && errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
 }
 
 // PostJSON performs a POST request with a JSON body and decodes the response into v.

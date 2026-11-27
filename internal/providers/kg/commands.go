@@ -3310,6 +3310,12 @@ func (c *DescribeTextCodec) Encode(w io.Writer, v any) error {
 		sections = append(sections, telHeader+"\n\n"+strings.Join(telSections, "\n\n"))
 	}
 
+	for _, key := range []string{"logs", "traces", "profiles"} {
+		if note, ok := out.Notes[key]; ok {
+			sections = append(sections, "Note ("+key+"): "+note)
+		}
+	}
+
 	if out.Metrics != nil {
 		sections = append(sections, formatMetricSection(*out.Metrics))
 	}
@@ -3427,11 +3433,30 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
+// drillDownNote is the notes entry for a drill-down section the server
+// returned no configs for.
+func drillDownNote(signal, backend string) string {
+	return "the server returned no " + signal + " drill-down configs for this stack " +
+		"(not a failed request), so there is no entity-property to " +
+		backend + " label mapping to show"
+}
+
+// drillDownSection describes one of kg meta logs, traces and profiles.
+type drillDownSection struct {
+	// use is the command name and the section's notes key.
+	use, short string
+	// backend names the datasource in notes (Loki, Tempo, Pyroscope) and
+	// signal names the configs (log, trace, profile).
+	backend, signal string
+	// fetch reads the section's configs and reports whether there were none.
+	fetch func(ctx context.Context, client *Client) (out KGMetadataOutput, empty bool, err error)
+}
+
+func newDrillDownCmd(loader RESTConfigLoader, sec drillDownSection) *cobra.Command {
 	opts := &describeOpts{}
 	cmd := &cobra.Command{
-		Use:   "logs",
-		Short: "Show Loki label mappings for log drilldown.",
+		Use:   sec.use,
+		Short: sec.short,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -3444,71 +3469,51 @@ func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logResp, err := client.FetchLogConfigs(cmd.Context())
+			out, empty, err := sec.fetch(cmd.Context(), client)
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Logs: logResp.LogDrilldownConfigs})
+			if empty {
+				out.Notes = map[string]string{sec.use: drillDownNote(sec.signal, sec.backend)}
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
+	return newDrillDownCmd(loader, drillDownSection{
+		use: "logs", short: "Show Loki label mappings for log drilldown.",
+		backend: "Loki", signal: "log",
+		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
+			resp, err := client.FetchLogConfigs(ctx)
+			return KGMetadataOutput{Logs: resp.LogDrilldownConfigs}, len(resp.LogDrilldownConfigs) == 0, err
+		},
+	})
 }
 
 func newDescribeTracesCmd(loader RESTConfigLoader) *cobra.Command {
-	opts := &describeOpts{}
-	cmd := &cobra.Command{
-		Use:   "traces",
-		Short: "Show Tempo label mappings for trace drilldown.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			traceResp, err := client.FetchTraceConfigs(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Traces: traceResp.TraceDrilldownConfigs})
+	return newDrillDownCmd(loader, drillDownSection{
+		use: "traces", short: "Show Tempo label mappings for trace drilldown.",
+		backend: "Tempo", signal: "trace",
+		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
+			resp, err := client.FetchTraceConfigs(ctx)
+			return KGMetadataOutput{Traces: resp.TraceDrilldownConfigs}, len(resp.TraceDrilldownConfigs) == 0, err
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 func newDescribeProfilesCmd(loader RESTConfigLoader) *cobra.Command {
-	opts := &describeOpts{}
-	cmd := &cobra.Command{
-		Use:   "profiles",
-		Short: "Show Pyroscope label mappings for profile drilldown.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
-			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-			if err != nil {
-				return err
-			}
-			client, err := NewClient(cfg)
-			if err != nil {
-				return err
-			}
-			profileResp, err := client.FetchProfileConfigs(cmd.Context())
-			if err != nil {
-				return err
-			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Profiles: profileResp.ProfileDrilldownConfigs})
+	return newDrillDownCmd(loader, drillDownSection{
+		use: "profiles", short: "Show Pyroscope label mappings for profile drilldown.",
+		backend: "Pyroscope", signal: "profile",
+		fetch: func(ctx context.Context, client *Client) (KGMetadataOutput, bool, error) {
+			resp, err := client.FetchProfileConfigs(ctx)
+			return KGMetadataOutput{Profiles: resp.ProfileDrilldownConfigs}, len(resp.ProfileDrilldownConfigs) == 0, err
 		},
-	}
-	opts.setup(cmd.Flags())
-	return cmd
+	})
 }
 
 func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
@@ -3553,6 +3558,13 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				out.Errors[key] = err.Error()
 			}
+			// recordEmptySection must be called with mu held.
+			recordEmptySection := func(key, signal, backend string) {
+				if out.Notes == nil {
+					out.Notes = make(map[string]string)
+				}
+				out.Notes[key] = drillDownNote(signal, backend)
+			}
 			g.Go(func() error {
 				schemaResp, schemaErr := client.FetchGraphSchema(gCtx, startMs, endMs)
 				if schemaErr != nil {
@@ -3584,6 +3596,9 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				mu.Lock()
 				out.Logs = logResp.LogDrilldownConfigs
+				if len(out.Logs) == 0 {
+					recordEmptySection("logs", "log", "Loki")
+				}
 				mu.Unlock()
 				return nil
 			})
@@ -3595,6 +3610,9 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				mu.Lock()
 				out.Traces = traceResp.TraceDrilldownConfigs
+				if len(out.Traces) == 0 {
+					recordEmptySection("traces", "trace", "Tempo")
+				}
 				mu.Unlock()
 				return nil
 			})
@@ -3606,6 +3624,9 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 				}
 				mu.Lock()
 				out.Profiles = profileResp.ProfileDrilldownConfigs
+				if len(out.Profiles) == 0 {
+					recordEmptySection("profiles", "profile", "Pyroscope")
+				}
 				mu.Unlock()
 				return nil
 			})
