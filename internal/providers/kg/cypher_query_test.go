@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +76,75 @@ func TestGraphQueryCommandOutput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGraphQueryCommandJSONDiscovery(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		agent bool
+	}{
+		{name: "human"},
+		{name: "agent", agent: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pinHumanMode(t)
+			forceNoColor(t)
+			if tt.agent {
+				setAgentMode(t)
+			}
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				_, _ = fmt.Fprint(w, cypherResult)
+			}))
+			defer server.Close()
+			loader := &kg.FakeWriteLoader{Cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}}
+			args := []string{"RETURN 1 AS value LIMIT 1", "--from", "1757000000", "--to", "1757003600", "--json", "list"}
+			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewGraphQueryCommand(loader) }, args, "")
+			require.NoError(t, err)
+			assert.Equal(t, 0, calls, "field discovery does not run the query")
+			assert.Empty(t, stderr)
+			assert.Equal(t, "columns\nrows\nstats\nstats.columnCount\nstats.elapsedMs\nstats.rowCount\n", out)
+		})
+	}
+}
+
+func TestGraphQueryHelpOutputFormats(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		agent       bool
+		wantDefault string
+		want        string // the help's sentence about that default
+	}{
+		{name: "human", wantDefault: "table", want: "Output is a table by default"},
+		{name: "agent", agent: true, wantDefault: "agents", want: "and the agents format (JSON) in agent mode"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pinHumanMode(t)
+			if tt.agent {
+				setAgentMode(t)
+			}
+			cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+			output := cmd.Flags().Lookup("output")
+			require.NotNil(t, output)
+			assert.Equal(t, tt.wantDefault, output.DefValue)
+			assert.Contains(t, strings.Join(strings.Fields(cmd.Long), " "), tt.want)
+		})
+	}
+
+	t.Run("formats", func(t *testing.T) {
+		pinHumanMode(t)
+		cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+		long := strings.Join(strings.Fields(cmd.Long), " ")
+		_, list, found := strings.Cut(cmd.Flags().Lookup("output").Usage, "One of: ")
+		require.True(t, found, "the -o usage lists its formats")
+		picks := regexp.MustCompile(`-o picks ([^;.]*)`).FindStringSubmatch(long)
+		require.NotNil(t, picks, "help says which formats -o picks")
+		for format := range strings.SplitSeq(list, ", ") {
+			named := regexp.MustCompile(`\b` + regexp.QuoteMeta(format) + `\b`)
+			assert.Regexp(t, named, picks[1], "help does not name the %s format", format)
+		}
+	})
 }
 
 func TestGraphQueryCommandTimeWindows(t *testing.T) {
@@ -211,4 +282,91 @@ func TestCypherQueryPreservesGraphValues(t *testing.T) {
 			assert.Equal(t, expected, actual, "cell values and numeric precision must survive transport unchanged")
 		})
 	}
+}
+
+func TestGraphQueryHelpPathBounds(t *testing.T) {
+	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+	long := strings.Join(strings.Fields(cmd.Long), " ")
+	assert.Contains(t, long, "upper bound of at most 5 hops", "help must state the hop maximum the endpoint enforces")
+	bounds := regexp.MustCompile(`\*(\d*)\.\.(\d+)`).FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
+	require.NotEmpty(t, bounds, "help should show a bounded variable-length relationship")
+	for _, b := range bounds {
+		upper, err := strconv.Atoi(b[2])
+		require.NoError(t, err)
+		assert.LessOrEqual(t, upper, 5, "%s exceeds the hop maximum", b[0])
+	}
+}
+
+func TestGraphQueryHelpNamesCatalogRecords(t *testing.T) {
+	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+	long := strings.Join(strings.Fields(cmd.Long), " ")
+	assert.Contains(t, long, "catalog records, nodes labeled Account, EntityType, Env and Schema")
+	assert.Contains(t, long, "a node pattern without a label matches them next to observed entities")
+}
+
+func TestGraphQueryHelpUsesPlaceholders(t *testing.T) {
+	cmd := kg.NewGraphQueryCommand(&kg.FakeWriteLoader{})
+	// A plain, backtick-quoted or angle-bracket name.
+	const name = "`[^`]*`|<[^>]*>|[A-Za-z_][A-Za-z0-9_]*"
+	nameAt := regexp.MustCompile(`^\s*(` + name + `)`)
+	placeholder := regexp.MustCompile(`^<[A-Za-z0-9]+>$`)
+	// TYPE is the help's generic relationship type in its syntax notes.
+	isType := func(s string) bool { return placeholder.MatchString(s) || s == "TYPE" }
+	// The name and scope keys gcx itself matches on.
+	isProperty := func(s string) bool {
+		switch s {
+		case "name", "env", "site", "namespace":
+			return true
+		}
+		return placeholder.MatchString(s)
+	}
+
+	t.Run("pattern labels", func(t *testing.T) {
+		// The labels after the colon of a node or relationship pattern, with
+		// or without a variable, as in (e:<Type>, (n1:<Type>, [:<REL>*1..5]
+		// or (a:<TypeA>|<TypeB>.
+		pattern := regexp.MustCompile(`[(\[]\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*((?:` + name + `)(?:\s*[|&:]\s*(?:` + name + `))*)`)
+		matches := pattern.FindAllStringSubmatch(cmd.Long+cmd.Example, -1)
+		require.NotEmpty(t, matches, "help should show patterns with a label or relationship type")
+		for _, m := range matches {
+			for _, label := range regexp.MustCompile(name).FindAllString(m[1], -1) {
+				assert.True(t, isType(label), "%q names a type; help patterns use placeholders filled from 'gcx kg meta schema'", m[0])
+			}
+		}
+	})
+
+	t.Run("queries", func(t *testing.T) {
+		examples := regexp.MustCompile(`"(MATCH [^"]*)"`).FindAllStringSubmatch(cmd.Example, -1)
+		inLong := regexp.MustCompile(`'(MATCH [^']*)'`).FindAllStringSubmatch(cmd.Long, -1)
+		queries := make([]string, 0, len(examples)+len(inLong))
+		for _, m := range append(examples, inLong...) {
+			queries = append(queries, m[1])
+		}
+		require.GreaterOrEqual(t, len(queries), 5, "the four examples and the Scope paragraph's query")
+		for _, query := range queries {
+			masked := regexp.MustCompile(`'[^']*'|"[^"]*"`).ReplaceAllString(query, "''")
+			// Outside a map, a colon starts a label: in a pattern or a
+			// predicate such as WHERE x:<Type>. Inside one, it ends a key.
+			depth := 0
+			for i, c := range masked {
+				switch c {
+				case '{':
+					depth++
+				case '}':
+					depth--
+				case ':':
+					if depth == 0 {
+						m := nameAt.FindStringSubmatch(masked[i+1:])
+						require.NotNil(t, m, "no label after the colon at %d in %q", i, query)
+						assert.True(t, isType(m[1]), "%q names the type %s; use a placeholder", query, m[1])
+					}
+				}
+			}
+			keys := regexp.MustCompile(`[{,]\s*(`+name+`)\s*:`).FindAllStringSubmatch(masked, -1)
+			accesses := regexp.MustCompile(`[A-Za-z0-9_)\]]\s*\.\s*(`+name+`)`).FindAllStringSubmatch(masked, -1)
+			for _, m := range append(keys, accesses...) {
+				assert.True(t, isProperty(m[1]), "%q names the property %s; use a placeholder", query, m[1])
+			}
+		}
+	})
 }

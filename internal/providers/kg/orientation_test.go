@@ -13,14 +13,15 @@ import (
 // EntityOverview / ScopeSummary builders
 // ---------------------------------------------------------------------------
 
-func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
+func TestBuildEntityOverview_ExcludesCatalogRecords(t *testing.T) {
 	in := kg.OrientationInput{
 		EntityCounts: map[string]int64{
 			"Service":    10,
 			"Pod":        50,
-			"EntityType": 18, // meta — excluded
-			"Schema":     30, // meta — excluded
-			"Env":        3,  // meta — excluded
+			"EntityType": 18, // catalog record — excluded
+			"Schema":     30, // catalog record — excluded
+			"Env":        3,  // catalog record — excluded
+			"Account":    1,  // catalog record — excluded
 		},
 		TracesTargetInfoSeries: 4,
 	}
@@ -28,12 +29,13 @@ func TestBuildEntityOverview_ExcludesMetaTypes(t *testing.T) {
 	overview := kg.BuildEntityOverview(in)
 
 	assert.Equal(t, int64(60), overview.Total,
-		"Total should exclude meta types (10 + 50, not 10+50+18+30+3)")
+		"Total should exclude catalog records (10 + 50, not 10+50+18+30+3+1)")
 	assert.Equal(t, int64(10), overview.TotalServiceCount)
 	assert.Equal(t, int64(4), overview.TracedServiceCount)
 	assert.NotContains(t, overview.ByType, "EntityType")
 	assert.NotContains(t, overview.ByType, "Schema")
 	assert.NotContains(t, overview.ByType, "Env")
+	assert.NotContains(t, overview.ByType, "Account")
 	assert.Contains(t, overview.ByType, "Service")
 	assert.Contains(t, overview.ByType, "Pod")
 }
@@ -317,7 +319,7 @@ func TestComputeOrientation_HealthyUnscoped(t *testing.T) {
 	assert.Empty(t, got.MatchedScenarios, "healthy stack should match no scenarios")
 	assert.NotEmpty(t, got.StartingPoints, "unscoped run should suggest starting points")
 	assert.Len(t, got.StartingPoints, 3)
-	assert.Equal(t, int64(300), got.EntityOverview.Total, "total excludes meta types")
+	assert.Equal(t, int64(300), got.EntityOverview.Total, "total excludes catalog records")
 	assert.Equal(t, int64(20), got.EntityOverview.TracedServiceCount)
 	assert.False(t, got.Scope.FilterSet)
 }
