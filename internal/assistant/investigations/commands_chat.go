@@ -281,9 +281,7 @@ func renderChatBlock(w io.Writer, b ChatContentBlock, wide bool) {
 				limit = 320
 			}
 			text = strings.ReplaceAll(text, "\n", " ")
-			if len(text) > limit {
-				text = text[:limit-3] + "..."
-			}
+			text = truncateRunes(text, limit)
 			fmt.Fprintf(w, " result=%s", text)
 		}
 		fmt.Fprintln(w)
@@ -356,11 +354,20 @@ func compactJSON(raw json.RawMessage, wide bool) string {
 	if err != nil {
 		return string(raw)
 	}
-	s := string(b)
-	if len(s) > limit {
-		return s[:limit-3] + "..."
+	return truncateRunes(string(b), limit)
+}
+
+// truncateRunes shortens s to at most limit characters, ending in "..." when it
+// cuts. It cuts on a rune boundary so multi-byte text stays valid UTF-8.
+func truncateRunes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
 	}
-	return s
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	return string(r[:limit-3]) + "..."
 }
 
 // NarrativeCodec renders the narrative string raw, with a trailing newline.
