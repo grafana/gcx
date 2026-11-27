@@ -275,6 +275,12 @@ func (c *Client) ListSourcemaps(ctx context.Context, appID string, limit int) ([
 		if !autoPaginate || !page.Page.HasNext {
 			break
 		}
+		// A page that claims more results without a usable cursor, or hands
+		// back the cursor we just sent, would otherwise re-request the same page
+		// forever while allBundles grows without bound.
+		if page.Page.Next == "" || page.Page.Next == nextPage {
+			return nil, fmt.Errorf("faro: list sourcemaps for app %s: server reported another page but returned no new page token", appID)
+		}
 		nextPage = page.Page.Next
 	}
 
