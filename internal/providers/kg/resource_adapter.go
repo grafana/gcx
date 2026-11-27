@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources"
@@ -255,12 +257,20 @@ func NewScopeAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 			if err != nil {
 				return nil, err
 			}
-			result := make([]Scope, 0, len(scopeMap))
-			for name, values := range scopeMap {
-				result = append(result, Scope{Name: name, Values: values})
-			}
-			return result, nil
+			return scopesFromMap(scopeMap), nil
 		})
+}
+
+// scopesFromMap flattens the scope map into a list ordered by scope name.
+// Map iteration order is random, so without the sort the list order (and
+// which scopes survive --limit) would change from run to run.
+func scopesFromMap(scopeMap map[string][]string) []Scope {
+	result := make([]Scope, 0, len(scopeMap))
+	for name, values := range scopeMap {
+		result = append(result, Scope{Name: name, Values: values})
+	}
+	slices.SortFunc(result, func(a, b Scope) int { return strings.Compare(a.Name, b.Name) })
+	return result
 }
 
 // ---------------------------------------------------------------------------
