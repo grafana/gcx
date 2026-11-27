@@ -203,21 +203,6 @@ If a command such as `gcx assistant investigations list` fails, use the error me
 
 To learn more about roles and permissions for Grafana Assistant, refer to [Manage Assistant access with RBAC](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/).
 
-#### Grafana Pages
-
-`gcx pages` commands go through the Grafana Assistant plugin on your stack. To publish pages or pull and edit published pages, sign in as a Grafana user (`gcx login`). A service account token can build new drafts, but can't publish or edit published pages.
-
-Every Pages command needs `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`, plus these permissions:
-
-| Access or commands | Required role or permission |
-| --- | --- |
-| Read or pull published pages (`gcx pages catalog list`, `get`, and `gcx pages drafts pull PAGE`) | `assistant.ext.grafana.app/pages:get` |
-| Create, push, snapshot, and publish drafts, or refresh an existing draft (`gcx pages drafts`) | `assistant.ext.grafana.app/pages:get`, `assistant.ext.grafana.app/pages:create`, `assistant.ext.grafana.app/pages:update`, and `grafana-assistant-app.chats:access` (refreshing an existing draft needs only `pages:get` and `chats:access`) |
-
-`gcx pages drafts snapshot` renders the page in Grafana, which also uses `grafana-assistant-app.settings.pages:read` (included in the built-in Assistant roles). Add this permission to custom roles so pages can load their network access policy.
-
-Pages permissions don't replace folder access or a page's sharing settings. To learn more, refer to [Control access to Pages](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/#control-access-to-pages).
-
 ### Grafana Cloud k6
 
 `gcx k6` permissions depend on whether you sign in with OAuth or a service account token. When you sign in with OAuth, commands go through the k6 plugin on your stack. When you sign in with a service account token, `gcx` exchanges the token with the k6 API directly and also uses a Grafana Cloud credential to look up your stack.
@@ -264,6 +249,21 @@ If **Require team membership for updates** is enabled in IRM, users without the 
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
+
+### Grafana Pages
+
+`gcx pages` commands go through the Grafana Assistant plugin (`grafana-assistant-app`) on your stack. To publish pages or pull and edit published pages, sign in as a Grafana user (`gcx login`). A service account token can build new drafts, but can't publish or edit published pages.
+
+Every Pages command needs `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`, plus these permissions:
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Read or pull published pages (`gcx pages catalog list`, `get`, and `gcx pages drafts pull PAGE`) | `assistant.ext.grafana.app/pages:get` |
+| Create, push, snapshot, and publish drafts, or refresh an existing draft (`gcx pages drafts`) | `assistant.ext.grafana.app/pages:get`, `assistant.ext.grafana.app/pages:create`, `assistant.ext.grafana.app/pages:update`, and `grafana-assistant-app.chats:access` (refreshing an existing draft needs only `pages:get` and `chats:access`) |
+
+`gcx pages drafts snapshot` renders the page in Grafana, which also uses `grafana-assistant-app.settings.pages:read` (included in the built-in Assistant roles). Add this permission to custom roles so pages can load their network access policy.
+
+Pages permissions don't replace folder access or a page's sharing settings. To learn more, refer to [Control access to Pages](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/#control-access-to-pages).
 
 ### Instrumentation
 
