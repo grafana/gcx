@@ -253,6 +253,10 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 | `gcx irm oncall escalation-chains` | Read: `plugins:grafana-irm-app:escalation-chains-reader`; Write: `plugins:grafana-irm-app:escalation-chains-editor` |
 | `gcx irm oncall schedules`, `gcx irm oncall shifts` | Read: `plugins:grafana-irm-app:schedules-reader`; Write: `plugins:grafana-irm-app:schedules-editor` |
 | `gcx irm oncall webhooks` | Read: `plugins:grafana-irm-app:outgoing-webhooks-reader`; Write: `plugins:grafana-irm-app:outgoing-webhooks-editor` |
+| `gcx irm oncall teams` (`list`, `get`, `get-team-hours`, `update-team-hours`) | Read: `plugins:grafana-irm-app:settings-reader`; Write: `plugins:grafana-irm-app:settings-editor` |
+
+If **Require team membership for updates** is enabled in IRM, users without the Admin role also need to belong to the team to update its hours.
+
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
@@ -298,15 +302,17 @@ To learn more about roles and permissions for Machine Learning, refer to [Config
 
 ### SCIM
 
-`gcx scim settings` and `gcx scim endpoint` use your Grafana sign-in. `gcx scim users` needs both your Grafana sign-in and a SCIM service account token: it reads the SCIM settings with your sign-in, then calls the SCIM API with the token that you pass with `--token-file`.
+`gcx scim settings` and `gcx scim endpoint` use your Grafana sign-in. `gcx scim users` needs both your Grafana sign-in and a service account token: it reads the SCIM settings with your sign-in, then calls the SCIM API with the service account token you pass with `--token-file` (user credentials aren't accepted on the SCIM `/Users` endpoint).
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Read SCIM sync settings and get the SCIM endpoint (`gcx scim settings get`, `gcx scim endpoint get`) | `settings:read` scoped to `settings:auth.scim:*` |
-| Update SCIM sync settings (`gcx scim settings update`) | `settings:read` and `settings:write` scoped to `settings:auth.scim:*` |
-| List, get, create, update, or deactivate SCIM users (`gcx scim users`) | `settings:read` scoped to `settings:auth.scim:*`, plus a SCIM service account token |
+| Read SCIM sync settings and get the SCIM endpoint (`gcx scim settings get`, `gcx scim endpoint get`) | `settings:read` (included in `fixed:authentication.config:writer` and `fixed:settings:reader`) |
+| Update SCIM sync settings (`gcx scim settings update`) | `settings:read` and `settings:write` (included in `fixed:authentication.config:writer`) |
+| List or get SCIM users (`gcx scim users list`, `get`) | `settings:read` on your Grafana sign-in, plus a service account token with `org.users:read` (`fixed:org.users:reader` or `fixed:org.users:writer`) |
+| Create SCIM users (`gcx scim users create`) | `settings:read` on your Grafana sign-in, plus a service account token with `org.users:add` (`fixed:org.users:writer`) |
+| Update or deactivate SCIM users (`gcx scim users update`, `deactivate`) | `settings:read` on your Grafana sign-in, plus a service account token with `org.users:write` (`fixed:org.users:writer`) |
 
-The **Authentication config writer** fixed role (`fixed:authentication.config:writer`) includes both SCIM settings actions.
+On Grafana Cloud, the Admin basic role includes `fixed:authentication.config:writer` and `fixed:org.users:writer`. On self-managed Grafana, Grafana Admin includes both, and the Admin basic role includes `fixed:org.users:writer`.
 
 To create, update, or deactivate users, user sync must be enabled in the SCIM settings.
 
