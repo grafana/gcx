@@ -41,6 +41,7 @@ func (o *muteTimingsListOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
+//nolint:dupl // The alert list commands share one shape and differ only in the client call.
 func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &muteTimingsListOpts{}
 	cmd := &cobra.Command{
@@ -48,6 +49,9 @@ func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "List mute timings.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := validateLimit(opts.Limit); err != nil {
 				return err
 			}
 			ctx := cmd.Context()

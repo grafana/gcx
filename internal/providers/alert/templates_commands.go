@@ -39,6 +39,7 @@ func (o *templatesListOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
 }
 
+//nolint:dupl // The alert list commands share one shape and differ only in the client call.
 func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &templatesListOpts{}
 	cmd := &cobra.Command{
@@ -46,6 +47,9 @@ func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Short: "List notification templates.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			if err := validateLimit(opts.Limit); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
