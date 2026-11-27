@@ -125,7 +125,19 @@ func runQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoader,
 	if err != nil {
 		return err
 	}
+	return executeQuery(cmd, opts, resolved, share)
+}
 
+// executeQuery runs the sentinel-wrapped search against an already-resolved
+// query and handles output/Explore linking. Split out from runQuery so the
+// sentinel-vs-Explore wiring — which request carries the +1, which carries
+// the user-facing limit — can be pinned by a test that builds a resolvedQuery
+// directly against a fake HTTP server, without needing to fake config loading
+// and datasource resolution just to reach this code.
+func executeQuery(cmd *cobra.Command, opts *queryOpts, resolved *resolvedQuery, share dsquery.ExploreLinkOpts) error {
+	// req carries the user-facing limit — used for the Explore link, so the
+	// URL never leaks the sentinel below. sentinelReq is what actually goes
+	// on the wire: size+1, so a full page back means more documents matched.
 	req := elasticsearch.SearchRequest{
 		Query:  resolved.Expr,
 		Size:   opts.Limit,
@@ -133,6 +145,8 @@ func runQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoader,
 		End:    resolved.End,
 		StepMs: resolved.StepMs,
 	}
+	sentinelReq := req
+	sentinelReq.Size = opts.Limit + 1
 
 	search := resolved.Client.Search
 	explore := QueryExploreURL
@@ -143,9 +157,12 @@ func runQuery(cmd *cobra.Command, args []string, loader *providers.ConfigLoader,
 		exploreSubject = "logs query"
 	}
 
-	resp, err := search(cmd.Context(), resolved.DatasourceUID, req)
+	resp, err := search(cmd.Context(), resolved.DatasourceUID, sentinelReq)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
+	}
+	if elasticsearch.TruncateRows(resp, opts.Limit) {
+		cmdio.Warning(cmd.ErrOrStderr(), "showing the first %d rows; more rows match — raise --limit (max %d) to see more", opts.Limit, maxLimit)
 	}
 
 	exploreURL := explore(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
