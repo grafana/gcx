@@ -292,6 +292,45 @@ func TestPasteRouteStopsOnBrowserCancel(t *testing.T) {
 	assert.Equal(t, "callback", capture.CurrentLoginStage(), "a pasted Cancel ends the wait")
 }
 
+// TestPasteRouteEndsOnExchangeFailure covers a pasted redirect URL whose token
+// exchange fails. The paste route has taken the exchange guard and the code is
+// spent, so no later paste or browser callback can finish the login. The flow
+// must end with the error instead of asking for another URL.
+func TestPasteRouteEndsOnExchangeFailure(t *testing.T) {
+	remoteSessionForTest(t)
+	browser := recordBrowser(t)
+	writerEnd := pasteTerminal(t)
+	exchange := newGatedExchange(t)
+
+	var out syncBuffer
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	done := startFlow(ctx, auth.NewFlow("https://mystack.grafana.net", auth.Options{Writer: &out}))
+
+	params := consentParams(t, browser.next(t))
+	waitForOutput(t, &out, "Redirect URL")
+	port := params.Get("callback_port")
+	pasted := stackPaste(params.Get("state"), exchange.URL)
+	_, err := writerEnd.WriteString(callbackURL(port, pasted) + "\n")
+	require.NoError(t, err)
+	exchange.waitEntered(t)
+
+	// The guard is claimed while the exchange is in flight: the browser route
+	// answers without a second exchange and does not end the login.
+	status, _ := sendCallback(t, http.MethodGet, callbackURL(port, pasted))
+	assert.Equal(t, http.StatusOK, status)
+	assertNotEnded(t, done)
+	exchange.open()
+
+	outcome := waitForOutcome(t, done)
+	require.ErrorContains(t, outcome.err, "token exchange failed")
+	var statusErr *auth.ExchangeStatusError
+	require.ErrorAs(t, outcome.err, &statusErr)
+	assert.Equal(t, http.StatusInternalServerError, statusErr.StatusCode)
+	assert.NotContains(t, out.String(), "That URL did not work")
+	assert.Equal(t, int32(1), exchange.hits.Load(), "the spent code is exchanged once")
+}
+
 // TestLauncherAndSignupURLs pins where the browser goes. Without a stack the
 // consent URL is the Grafana Cloud launcher on the configured portal. A signup
 // goes through the launcher to the stack's sign-in route, which carries the
