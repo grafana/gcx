@@ -29,11 +29,11 @@ const connectionInfoMetric = "database_observability_connection_info"
 // dbo11yJobValue is the fixed job label the database_observability.postgres
 // and database_observability.mysql Alloy components scrape under, regardless
 // of engine. It disambiguates the universal `up` health signal from any other
-// scrape target that happens to share the same service_name (an application
+// scrape target that happens to share the same instance name (an application
 // pod's own `up` series, for example) — see buildScrapeUpQuery.
 const dbo11yJobValue = "integrations/db-o11y"
 
-// Postgres-specific metrics, scoped by the shared service_name label. Sourced
+// Postgres-specific metrics, scoped by the instance name label. Sourced
 // from postgres_exporter (pg_stat_activity, pg_stat_statements collectors).
 const (
 	pgScrapeErrorMetric     = "pg_exporter_last_scrape_error"
@@ -45,7 +45,7 @@ const (
 	pgStatStatementsRows    = "pg_stat_statements_rows_total"
 )
 
-// MySQL-specific metrics, scoped by the shared service_name label. Sourced
+// MySQL-specific metrics, scoped by the instance name label. Sourced
 // from mysqld_exporter's Performance Schema eventsstatements collector.
 // Confirmed against the grafana-dbo11y-app v2.30.0 production bundle
 // (module.js chunks 530/917) — there is no live MySQL dbo11y telemetry on any
@@ -58,10 +58,14 @@ const (
 	mysqlConnectedMetric   = "mysql_global_status_threads_connected"
 )
 
-// serviceNameLabel is the label every Database Observability metric family
-// shares (inventory, exporter health, and per-engine query-stats metrics
-// alike), so it's the identifier `instances get <name>` scopes queries by.
+// serviceNameLabel is the default label `instances get <name>` scopes
+// per-instance queries by; see instanceNameLabels for the fallbacks.
 const serviceNameLabel = "service_name"
+
+// instanceNameLabels are the labels an instance's name is read from, in
+// priority order. Some Alloy pipelines label instances with `service` or only
+// db_instance_identifier instead of the OTel-style service_name.
+var instanceNameLabels = []string{serviceNameLabel, "service", "db_instance_identifier"}
 
 // engineMySQL and engineDefault are the "engine" label values
 // database_observability_connection_info emits. Any value other than
@@ -256,6 +260,19 @@ func connectionInfoPromotedLabels() map[string]struct{} {
 	}
 }
 
+// instanceName returns the first non-empty instanceNameLabels value.
+func instanceName(metric map[string]string) string {
+	for _, l := range instanceNameLabels {
+		v := metric[l]
+		// "unknown" is the Alloy sentinel for an unset db_instance_identifier.
+		if v == "" || (l == "db_instance_identifier" && v == unknownProviderValue) {
+			continue
+		}
+		return v
+	}
+	return ""
+}
+
 // parseInstancesResponse converts a database_observability_connection_info
 // instant-query result into a sorted slice of Instance.
 func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) {
@@ -265,13 +282,18 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 	promoted := connectionInfoPromotedLabels()
 	out := make([]Instance, 0, len(resp.Data.Result))
 	for _, sample := range resp.Data.Result {
-		name := sample.Metric[serviceNameLabel]
+		name := instanceName(sample.Metric)
 		if name == "" {
 			continue
 		}
 		labels := map[string]string{}
 		for k, v := range sample.Metric {
 			if _, skip := promoted[k]; skip || v == "" {
+				continue
+			}
+			// Hide `service` only when it supplied the name; otherwise it's
+			// independent metadata (e.g. a k8s Service).
+			if k == "service" && v == name {
 				continue
 			}
 			labels[k] = v
@@ -299,11 +321,14 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 	return out, nil
 }
 
-// scopedByServiceName returns a vector selector for `metric` filtered to a
-// single instance via the shared service_name label, plus any caller-supplied
-// matchers.
-func scopedByServiceName(metric, name string, matchers []Matcher) *promql.VectorExprBuilder {
-	v := promql.Vector(metric).Label(serviceNameLabel, escapePromqlValue(name))
+// scopedByInstance returns a vector selector for `metric` filtered to a
+// single instance via scopeLabel (service_name when empty), plus any
+// caller-supplied matchers.
+func scopedByInstance(metric, scopeLabel, name string, matchers []Matcher) *promql.VectorExprBuilder {
+	if scopeLabel == "" {
+		scopeLabel = serviceNameLabel
+	}
+	v := promql.Vector(metric).Label(scopeLabel, escapePromqlValue(name))
 	for _, m := range matchers {
 		v = m.apply(v)
 	}
@@ -313,15 +338,18 @@ func scopedByServiceName(metric, name string, matchers []Matcher) *promql.Vector
 // buildScrapeUpQuery returns the PromQL for the universal Prometheus scrape-health
 // gauge (`up`), scoped to one instance's dbo11y scrape target specifically —
 // engine-agnostic, unlike pg_up/mysql_up. The job matcher is required: `up`
-// is emitted by every scrape target, so an unscoped service_name match can
+// is emitted by every scrape target, so an unscoped name match can
 // collide with an unrelated target that happens to share the name (e.g. the
 // database's own application pod).
-func buildScrapeUpQuery(name string) (string, error) {
+func buildScrapeUpQuery(scopeLabel, name string) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
+	if scopeLabel == "" {
+		scopeLabel = serviceNameLabel
+	}
 	v := promql.Vector("up").
-		Label(serviceNameLabel, escapePromqlValue(name)).
+		Label(scopeLabel, escapePromqlValue(name)).
 		Label("job", dbo11yJobValue)
 	expr, err := v.Build()
 	if err != nil {
@@ -333,14 +361,14 @@ func buildScrapeUpQuery(name string) (string, error) {
 // buildUpQuery returns the PromQL for an instant single-value metric
 // (exporter scrape health, MySQL's current-connections gauge) scoped to one
 // instance.
-func buildUpQuery(metric, name string, matchers []Matcher) (string, error) {
+func buildUpQuery(metric, scopeLabel, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
 	if metric == "" {
 		return "", errors.New("metric name is required")
 	}
-	expr, err := scopedByServiceName(metric, name, matchers).Build()
+	expr, err := scopedByInstance(metric, scopeLabel, name, matchers).Build()
 	if err != nil {
 		return "", err
 	}
@@ -349,11 +377,11 @@ func buildUpQuery(metric, name string, matchers []Matcher) (string, error) {
 
 // buildConnectionsByStateQuery returns `sum by (state) (pg_stat_activity_count{...})`
 // for one instance.
-func buildConnectionsByStateQuery(name string, matchers []Matcher) (string, error) {
+func buildConnectionsByStateQuery(scopeLabel, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName(pgActivityCountMetric, name, matchers)
+	v := scopedByInstance(pgActivityCountMetric, scopeLabel, name, matchers)
 	expr, err := promql.Sum(v).By([]string{"state"}).Build()
 	if err != nil {
 		return "", err
@@ -365,11 +393,11 @@ func buildConnectionsByStateQuery(name string, matchers []Matcher) (string, erro
 // (pg_stat_activity_count{..., wait_event!=""})` for one instance — the
 // sessions currently blocked on something, broken out by what they're
 // waiting on.
-func buildWaitEventsQuery(name string, matchers []Matcher) (string, error) {
+func buildWaitEventsQuery(scopeLabel, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName(pgActivityCountMetric, name, matchers).LabelNeq("wait_event", "")
+	v := scopedByInstance(pgActivityCountMetric, scopeLabel, name, matchers).LabelNeq("wait_event", "")
 	expr, err := promql.Sum(v).By([]string{"wait_event_type", "wait_event"}).Build()
 	if err != nil {
 		return "", err
@@ -379,11 +407,11 @@ func buildWaitEventsQuery(name string, matchers []Matcher) (string, error) {
 
 // buildLongestTxQuery returns `max(pg_stat_activity_max_tx_duration{...})`
 // for one instance.
-func buildLongestTxQuery(name string, matchers []Matcher) (string, error) {
+func buildLongestTxQuery(scopeLabel, name string, matchers []Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName(pgActivityMaxTxMetric, name, matchers)
+	v := scopedByInstance(pgActivityMaxTxMetric, scopeLabel, name, matchers)
 	expr, err := promql.Max(v).Build()
 	if err != nil {
 		return "", err
@@ -395,14 +423,14 @@ func buildLongestTxQuery(name string, matchers []Matcher) (string, error) {
 // (rate(<metric>{...}[<window>]))`, used for the calls/seconds/rows rates
 // that make up the top-queries view. Label names are engine-specific:
 // queryid/datname for Postgres, digest/schema for MySQL.
-func buildTopQueriesRateQuery(metric, name, window string, matchers []Matcher, queryIDLabel, datnameLabel string) (string, error) {
+func buildTopQueriesRateQuery(metric, scopeLabel, name, window string, matchers []Matcher, queryIDLabel, datnameLabel string) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
 	if metric == "" {
 		return "", errors.New("metric name is required")
 	}
-	v := scopedByServiceName(metric, name, matchers).Range(window)
+	v := scopedByInstance(metric, scopeLabel, name, matchers).Range(window)
 	expr, err := promql.Sum(promql.Rate(v)).By([]string{queryIDLabel, datnameLabel}).Build()
 	if err != nil {
 		return "", err
