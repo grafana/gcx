@@ -981,22 +981,7 @@ func formatRelativeAge(ts string) string {
 			return "-"
 		}
 	}
-	d := time.Since(t)
-	if d < 0 {
-		d = -d
-	}
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	default:
-		return fmt.Sprintf("%dw ago", int(d.Hours()/(24*7)))
-	}
+	return cmdio.RelativeAge(time.Since(t).Abs())
 }
 
 // alertCollapseKey returns the de-duplication key for an alert envelope:
