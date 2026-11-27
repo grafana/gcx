@@ -2082,6 +2082,11 @@ func slugifyK8sName(s string) string {
 	if len(result) > 63 {
 		result = strings.TrimRight(result[:63], "-")
 	}
+	if result == "" {
+		// A name with no ASCII letters or digits would otherwise yield an empty
+		// metadata.name, which Kubernetes rejects.
+		return "k6-test"
+	}
 	return result
 }
 
