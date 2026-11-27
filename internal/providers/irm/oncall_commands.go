@@ -739,8 +739,8 @@ func orDash(s string) string {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen-3] + "..."
+	if utf8.RuneCountInString(s) > maxLen {
+		return string([]rune(s)[:maxLen-3]) + "..."
 	}
 	return s
 }
