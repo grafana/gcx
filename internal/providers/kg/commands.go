@@ -2621,7 +2621,31 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &summaryOpts{}
 	cmd := &cobra.Command{
 		Use:   "stats",
-		Short: "Show entity and active-insight counts, broken down by type, severity, and insight name.",
+		Short: "Show entity counts by type and active-insight counts by category, severity, and insight name.",
+		Long: fmt.Sprintf(`Show entity counts by type and active-insight counts by category, severity, and
+insight name, for the requested window (the last hour by default; pass --from/--to
+for older data).
+
+entities.total and entities.byType leave out the graph's catalog records: the
+counted types that 'kg meta schema' does not list for the same window. They are
+listed separately under entities.internal, and insights on them still count in
+the insight totals. If the schema cannot be read, stats warns on stderr and
+leaves out only the graph's catalog record types (Account, EntityType, Env and
+Schema).
+
+--type limits only the insight counts; the entity counts always cover every
+type.
+
+insights.byCategory splits insights.total by the insights' categories (for
+example failure, error, anomaly, saturation and amend; insights without one count
+under unknown), each with its own total and byName. Every active insight counts
+in exactly one category, so the byCategory totals add up to insights.total.
+
+stats follows each entity type's search pages while the server reports more,
+up to %d pages per type. insights.incompleteTypes lists every type whose
+insight-carrying entities it could not read in full (the server's result limit,
+more pages than that, a server error, or a rate limit that persisted through
+gcx's retries); insights on the entities it did not read are not counted.`, statsMaxSearchPages),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
@@ -2642,73 +2666,171 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			counts, err := client.CountEntityTypes(cmd.Context(), startMs, endMs, summaryScope.scopeCriteria())
-			if err != nil {
+			// The schema for the same window tells which counted types are
+			// the graph's catalog records (see isCatalogType). Reading it is
+			// best effort: without it, only the catalog record types are
+			// left out of the entity totals.
+			var (
+				counts    map[string]int64
+				listed    map[string]bool
+				schemaErr error
+			)
+			g, gCtx := errgroup.WithContext(cmd.Context())
+			g.Go(func() error {
+				var countErr error
+				counts, countErr = client.CountEntityTypes(gCtx, startMs, endMs, summaryScope.scopeCriteria())
+				return countErr
+			})
+			g.Go(func() error {
+				schemaResp, err := client.FetchGraphSchema(gCtx, startMs, endMs)
+				if err != nil {
+					schemaErr = err
+					return nil //nolint:nilerr // Best effort: reported below, and the split falls back to isCatalogRecordType.
+				}
+				listed = listedSchemaTypes(schemaResp)
+				return nil
+			})
+			if err := g.Wait(); err != nil {
 				return err
 			}
-			typeCounts := map[string]int64{}
-			var entityTypes []string
-			var totalEntities int64
-			for t, cnt := range counts {
-				totalEntities += cnt
-				if cnt > 0 {
-					typeCounts[t] = cnt
+			if schemaErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not read the graph schema (%v); entities.total leaves out only the graph's catalog record types\n", schemaErr)
+			}
+			entities := summarizeEntityCounts(counts, listed)
+			// Every counted type is searched for insights, catalog types
+			// included: catalog records can carry active insights of their
+			// own.
+			entityTypes := make([]string, 0, len(counts))
+			for t, n := range counts {
+				if n > 0 {
 					entityTypes = append(entityTypes, t)
 				}
 			}
+			sort.Strings(entityTypes)
 			if summaryEntityType != "" {
 				entityTypes = []string{summaryEntityType}
 			}
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, true, false, summaryScope.scopeCriteria(), startMs, endMs, 0, nil)
+			results, incomplete, err := searchInsightCarriers(cmd.Context(), cmd.ErrOrStderr(), client, entityTypes, summaryScope.scopeCriteria(), startMs, endMs)
 			if err != nil {
 				return err
 			}
-			sevCounts := map[string]int{}
-			nameCounts := map[string]int{}
-			totalInsights := 0
-			for _, r := range results {
-				assertions, _ := r.Assertion["assertions"].([]any)
-				for _, a := range assertions {
-					m, ok := a.(map[string]any)
-					if !ok {
-						continue
-					}
-					totalInsights++
-					name, _ := m["assertionName"].(string)
-					if name == "" {
-						name = "UNKNOWN"
-					}
-					nameCounts[name]++
-					sev, _ := m["severity"].(string)
-					if sev == "" {
-						sevCounts["UNKNOWN"]++
-					} else {
-						sevCounts[strings.ToUpper(sev)]++
-					}
-				}
-			}
-			type entitiesSummary struct {
-				Total  int64            `json:"total" yaml:"total"`
-				ByType map[string]int64 `json:"byType" yaml:"byType"`
-			}
-			type insightsSummary struct {
-				Total      int            `json:"total" yaml:"total"`
-				BySeverity map[string]int `json:"bySeverity" yaml:"bySeverity"`
-				ByName     map[string]int `json:"byName" yaml:"byName"`
-			}
+			insights := summarizeInsights(results)
+			insights.IncompleteTypes = incomplete
 			return ioOpts.IO.Encode(cmd.OutOrStdout(), struct {
 				Entities entitiesSummary `json:"entities" yaml:"entities"`
 				Insights insightsSummary `json:"insights" yaml:"insights"`
 			}{
-				Entities: entitiesSummary{Total: totalEntities, ByType: typeCounts},
-				Insights: insightsSummary{Total: totalInsights, BySeverity: sevCounts, ByName: nameCounts},
+				Entities: entities,
+				Insights: insights,
 			})
 		},
 	}
 	summaryScope.register(cmd)
-	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit to a specific entity type")
+	cmd.Flags().StringVar(&summaryEntityType, "type", "", "Limit the insight counts to one entity type (entity counts always cover every type)")
 	ioOpts.setup(cmd.Flags())
 	return cmd
+}
+
+// entityCount is a total with its per-type breakdown.
+type entityCount struct {
+	Total  int64            `json:"total" yaml:"total"`
+	ByType map[string]int64 `json:"byType" yaml:"byType"`
+}
+
+// entitiesSummary is the entities block of `kg stats`. Total and ByType
+// leave out the graph's catalog records (see isCatalogType), which are
+// reported under Internal.
+type entitiesSummary struct {
+	Total    int64            `json:"total" yaml:"total"`
+	ByType   map[string]int64 `json:"byType" yaml:"byType"`
+	Internal *entityCount     `json:"internal,omitempty" yaml:"internal,omitempty"`
+}
+
+// summarizeEntityCounts splits per-type entity counts into the graph's own
+// catalog records (see isCatalogType; listed is the set of types the schema
+// lists for the same window) and every other type. Types with a zero count
+// are dropped.
+func summarizeEntityCounts(counts map[string]int64, listed map[string]bool) entitiesSummary {
+	out := entitiesSummary{ByType: map[string]int64{}}
+	for t, n := range counts {
+		if n <= 0 {
+			continue
+		}
+		if isCatalogType(t, listed) {
+			if out.Internal == nil {
+				out.Internal = &entityCount{ByType: map[string]int64{}}
+			}
+			out.Internal.ByType[t] = n
+			out.Internal.Total += n
+			continue
+		}
+		out.ByType[t] = n
+		out.Total += n
+	}
+	return out
+}
+
+// insightGroup is one category's share of the active insights.
+type insightGroup struct {
+	Total  int            `json:"total" yaml:"total"`
+	ByName map[string]int `json:"byName" yaml:"byName"`
+}
+
+// insightsSummary is the insights block of `kg stats`. IncompleteTypes
+// lists the entity types whose insight-carrying entities could not all be
+// read, so their insights are undercounted.
+type insightsSummary struct {
+	Total           int                     `json:"total" yaml:"total"`
+	ByCategory      map[string]insightGroup `json:"byCategory" yaml:"byCategory"`
+	BySeverity      map[string]int          `json:"bySeverity" yaml:"bySeverity"`
+	ByName          map[string]int          `json:"byName" yaml:"byName"`
+	IncompleteTypes []string                `json:"incompleteTypes,omitempty" yaml:"incompleteTypes,omitempty"`
+}
+
+// summarizeInsights counts the active insights on the given entities by
+// severity, by name, and by category (each category with its own per-name
+// counts). Missing names, severities and categories count as UNKNOWN /
+// unknown.
+func summarizeInsights(results []SearchResult) insightsSummary {
+	out := insightsSummary{
+		ByCategory: map[string]insightGroup{},
+		BySeverity: map[string]int{},
+		ByName:     map[string]int{},
+	}
+	for _, r := range results {
+		assertions, _ := r.Assertion["assertions"].([]any)
+		for _, a := range assertions {
+			m, ok := a.(map[string]any)
+			if !ok {
+				continue
+			}
+			out.Total++
+			name, _ := m["assertionName"].(string)
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			out.ByName[name]++
+			sev, _ := m["severity"].(string)
+			if sev == "" {
+				out.BySeverity["UNKNOWN"]++
+			} else {
+				out.BySeverity[strings.ToUpper(sev)]++
+			}
+			cat, _ := m["category"].(string)
+			cat = strings.ToLower(cat)
+			if cat == "" {
+				cat = "unknown"
+			}
+			g, ok := out.ByCategory[cat]
+			if !ok {
+				g = insightGroup{ByName: map[string]int{}}
+			}
+			g.Total++
+			g.ByName[name]++
+			out.ByCategory[cat] = g
+		}
+	}
+	return out
 }
 
 type summaryOpts struct {
@@ -3076,8 +3198,8 @@ func AlertCorrelateTable() cmdio.Table[GraphEntity] {
 // ---------------------------------------------------------------------------
 
 // processGraphSchema converts a raw GraphSchemaResponse into a KGSchemaResult.
+// It leaves out the graph's catalog record types (see isCatalogRecordType).
 func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
-	ignoredTypes := map[string]bool{"Account": true, "Env": true}
 	ignoredProps := map[string]bool{"Discovered": true, "Updated": true, "labelsForName": true}
 
 	idToName := make(map[int64]string)
@@ -3088,7 +3210,7 @@ func processGraphSchema(resp GraphSchemaResponse) KGSchemaResult {
 		if name == "" {
 			name = "Unknown"
 		}
-		if ignoredTypes[name] {
+		if isCatalogRecordType(name) {
 			continue
 		}
 		if e.ID != nil {

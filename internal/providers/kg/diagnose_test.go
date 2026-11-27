@@ -71,6 +71,86 @@ func TestRunDiagnose_AllHealthy(t *testing.T) {
 	assert.Equal(t, 0, result.Summary.Warned)
 }
 
+func TestRunDiagnose_EntityOverviewLeavesOutCatalogRecords(t *testing.T) {
+	const prefix = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1"
+	type window struct {
+		Start int64 `json:"start"`
+		End   int64 `json:"end"`
+	}
+	tests := []struct {
+		name        string
+		schemaOK    bool
+		wantTotal   int64
+		wantNotType []string
+	}{
+		{
+			name:        "types the schema does not list and catalog record types are left out",
+			schemaOK:    true,
+			wantTotal:   30,
+			wantNotType: []string{"RecordTypeA", "EntityType", "Account", "Env"},
+		},
+		{
+			name:        "without the schema only the catalog record types are left out",
+			wantTotal:   34,
+			wantNotType: []string{"EntityType", "Account", "Env"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				mu                        sync.Mutex
+				countWindow, schemaWindow window
+			)
+			readWindow := func(r *http.Request) window {
+				var req struct {
+					TimeCriteria window `json:"timeCriteria"`
+				}
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+				return req.TimeCriteria
+			}
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case prefix + "/entity_type/count":
+					w0 := readWindow(r)
+					mu.Lock()
+					countWindow = w0
+					mu.Unlock()
+					writeJSON(w, map[string]int64{"TypeX": 10, "TypeY": 20, "RecordTypeA": 4, "EntityType": 3, "Account": 1, "Env": 2})
+				case prefix + "/search":
+					w0 := readWindow(r)
+					mu.Lock()
+					schemaWindow = w0
+					mu.Unlock()
+					if !tt.schemaOK {
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					_, _ = io.WriteString(w, `{"data":{"entities":[{"id":1,"name":"TypeX"},{"id":2,"name":"TypeY"},{"id":3,"name":"Account"},{"id":4,"name":"Env"}]}}`)
+				default:
+					http.NotFound(w, r)
+				}
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			scope := kg.NewTestScopeFlags("", "", "")
+			result := kg.RunDiagnose(t.Context(), newTestClient(t, server), &scope, nil, "")
+
+			require.NotNil(t, result.Orientation)
+			overview := result.Orientation.EntityOverview
+			assert.Equal(t, tt.wantTotal, overview.Total)
+			for _, typ := range tt.wantNotType {
+				assert.NotContains(t, overview.ByType, typ)
+			}
+			assert.Contains(t, overview.ByType, "TypeX")
+			assert.Contains(t, overview.ByType, "TypeY")
+			assert.Equal(t, countWindow, schemaWindow, "the schema is read for the same window as the entity counts")
+			assert.Equal(t, int64(3600000), countWindow.End-countWindow.Start, "the entity counts cover the last hour")
+		})
+	}
+}
+
 func TestRunDiagnose_StackDisabled(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
