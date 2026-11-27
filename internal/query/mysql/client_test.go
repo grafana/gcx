@@ -41,7 +41,7 @@ func testQueryReq() mysql.QueryRequest {
 func TestQuery(t *testing.T) {
 	t.Run("parses rows", func(t *testing.T) {
 		client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Contains(t, r.URL.Path, "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
+			assert.Contains(t, r.URL.Path, "/apis/datasource.grafana.app/v0alpha1/namespaces/default/query")
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"status","type":"string"},{"name":"n","type":"number"}]},"data":{"values":[["pending","shipped"],[66,67]]}}]}}}`))
 		}))

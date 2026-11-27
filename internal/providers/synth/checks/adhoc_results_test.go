@@ -52,7 +52,7 @@ func adHocLine(t *testing.T, probeName string, success bool) string {
 
 // fakeGrafanaQueryServer returns an httptest server that serves the given
 // pre-encoded Loki log lines from any Grafana datasource-query endpoint
-// (/apis/query.grafana.app/... and /api/ds/query alike), regardless of path.
+// (/apis/datasource.grafana.app/... and /api/ds/query alike), regardless of path.
 func fakeGrafanaQueryServer(t *testing.T, lines ...string) *httptest.Server {
 	t.Helper()
 

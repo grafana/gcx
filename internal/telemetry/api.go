@@ -203,7 +203,8 @@ func isDatasourceQueryRoute(route string) bool {
 	if route == "/api/ds/query" {
 		return true
 	}
-	return strings.HasPrefix(route, "/apis/query.grafana.app/") && strings.HasSuffix(route, "/query")
+	return (strings.HasPrefix(route, "/apis/datasource.grafana.app/") ||
+		strings.HasPrefix(route, "/apis/query.grafana.app/")) && strings.HasSuffix(route, "/query")
 }
 
 // allowedDatasourceType maps a datasource plugin type onto the closed

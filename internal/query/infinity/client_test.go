@@ -52,7 +52,7 @@ func TestQuery_SuccessfulQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, http.MethodPost, capturedMethod)
-	assert.Contains(t, capturedPath, "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
+	assert.Contains(t, capturedPath, "/apis/datasource.grafana.app/v0alpha1/namespaces/default/query")
 	assert.Equal(t, "application/json", capturedContentType)
 
 	require.NotNil(t, resp)
@@ -260,7 +260,7 @@ func TestQuery_FallbackOnNon200(t *testing.T) {
 			copy(capturedPaths, paths)
 			mu.Unlock()
 
-			assert.Contains(t, capturedPaths[0], "/apis/query.grafana.app/v0alpha1")
+			assert.Contains(t, capturedPaths[0], "/apis/datasource.grafana.app/v0alpha1")
 			assert.Equal(t, "/api/ds/query", capturedPaths[1])
 
 			require.NotNil(t, resp)

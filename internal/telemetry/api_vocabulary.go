@@ -104,6 +104,7 @@ var apiRouteTemplates = []string{
 //nolint:gochecknoglobals
 var knownAPIGroups = map[string]bool{
 	"dashboard.grafana.app":              true,
+	"datasource.grafana.app":             true,
 	"folder.grafana.app":                 true,
 	"iam.grafana.app":                    true,
 	"notifications.alerting.grafana.app": true,

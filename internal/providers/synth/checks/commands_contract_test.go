@@ -270,7 +270,7 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		}
 		writeJSON(w, adhocQueryResponse(lines))
 	}
-	mux.HandleFunc("/apis/query.grafana.app/v0alpha1/namespaces/default/query", query)
+	mux.HandleFunc("/apis/datasource.grafana.app/v0alpha1/namespaces/default/query", query)
 	mux.HandleFunc("/api/ds/query", query)
 
 	// Proxy mode: /api/datasources/proxy/uid/<uid>/sm/<p> is the SM API's /api/v1/<p>.

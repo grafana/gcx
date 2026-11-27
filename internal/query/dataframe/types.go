@@ -1,7 +1,7 @@
 package dataframe
 
 // Response is the top-level wire format returned by Grafana's datasource
-// query APIs (/apis/query.grafana.app/.../query and /api/ds/query).
+// query APIs (/apis/datasource.grafana.app/.../query and /api/ds/query).
 type Response struct {
 	Results map[string]Result `json:"results"`
 }

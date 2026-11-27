@@ -76,11 +76,11 @@ rest.HTTPClientFor(&cfg.Config)     [k8s.io/client-go/rest]
 *http.Client
         |
         +---> prometheus.Client     [internal/query/prometheus/client.go]
-        |         |  POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query
+        |         |  POST /apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query
         |         |  GET  /apis/prometheus.datasource.grafana.app/v0alpha1/...
         |
         +---> loki.Client           [internal/query/loki/client.go]
-                  |  POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query
+                  |  POST /apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query
                   |  GET  /apis/loki.datasource.grafana.app/v0alpha1/...
 ```
 
@@ -347,7 +347,7 @@ clients do not use `dynamic.Interface`, GVK resolution, or `Unstructured`
 objects. They speak JSON directly to Grafana's query and datasource-proxy APIs.
 
 **Shared unified-query transport:** Datasource clients that POST to Grafana's
-unified datasource query API (`/apis/query.grafana.app/.../query`, with
+unified datasource query API (`/apis/datasource.grafana.app/.../query`, with
 `/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP
 POST/fallback/response-limit handling and `internal/query/dataframe` for the
 Grafana data frame response envelope. Keep plugin-specific payload construction
@@ -371,7 +371,7 @@ wiring is needed.
 
 | Method | HTTP | Path |
 |---|---|---|
-| `Query` | POST | `/apis/query.grafana.app/v0alpha1/namespaces/{ns}/query` |
+| `Query` | POST | `/apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query` |
 | `Labels` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/labels` |
 | `LabelValues` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/label/{name}/values` |
 | `Metadata` | GET | `/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/metadata` |
@@ -381,7 +381,7 @@ wiring is needed.
 
 | Method | HTTP | Path |
 |---|---|---|
-| `Query` | POST | `/apis/query.grafana.app/v0alpha1/namespaces/{ns}/query` |
+| `Query` | POST | `/apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query` |
 | `Labels` | GET | `/apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/labels` |
 | `LabelValues` | GET | `/apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/label/{name}/values` |
 | `Series` | GET | `/apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/series` |

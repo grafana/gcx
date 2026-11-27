@@ -244,7 +244,7 @@ NamespacedRESTConfig
        |
    *http.Client
        |
-   POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query
+   POST /apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query
    GET  /apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/api/v1/...
    GET  /apis/loki.datasource.grafana.app/v0alpha1/namespaces/{ns}/datasources/{uid}/resource/...
 ```

@@ -156,7 +156,7 @@ func TestQuery_FallsBackOn403(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, paths, 2)
-	assert.Contains(t, paths[0], "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
+	assert.Contains(t, paths[0], "/apis/datasource.grafana.app/v0alpha1/namespaces/default/query")
 	assert.Equal(t, "/api/ds/query", paths[1])
 }
 

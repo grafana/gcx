@@ -25,7 +25,7 @@ func TestQueryCmd_DrilldownLink(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, err := w.Write([]byte(`{"uid":"prom-uid","type":"prometheus"}`))
 			assert.NoError(t, err)
-		case "/api/ds/query", "/apis/query.grafana.app/v0alpha1/namespaces/default/query":
+		case "/api/ds/query", "/apis/datasource.grafana.app/v0alpha1/namespaces/default/query":
 			w.Header().Set("Content-Type", "application/json")
 			_, err := w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
 			assert.NoError(t, err)
