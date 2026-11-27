@@ -168,6 +168,10 @@ grafana_slo_sli_window metrics.`,
 				step = AutoStep(start, end)
 			}
 
+			if err := ValidateTimelineRange(start, end, step); err != nil {
+				return err
+			}
+
 			// Create Prometheus client for range queries.
 			promClient, err := prometheus.NewClient(cfg)
 			if err != nil {
@@ -186,6 +190,20 @@ grafana_slo_sli_window metrics.`,
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// ValidateTimelineRange rejects a range Prometheus cannot serve: a step that is
+// not positive, or an end before the start. FetchMetricsRange drops failed
+// queries, so without this check either one renders as "no data".
+// This is exported so that the reports package can reuse the same validation logic.
+func ValidateTimelineRange(start, end time.Time, step time.Duration) error {
+	if step <= 0 {
+		return fmt.Errorf("invalid --step: %s must be greater than zero", step)
+	}
+	if end.Before(start) {
+		return errors.New("invalid time range: --to must not be before --from")
+	}
+	return nil
 }
 
 // AutoStep calculates a reasonable query step for the given time range,

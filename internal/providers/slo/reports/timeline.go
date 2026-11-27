@@ -185,6 +185,10 @@ grafana_slo_sli_window metrics.`,
 				step = definitions.AutoStep(start, end)
 			}
 
+			if err := definitions.ValidateTimelineRange(start, end, step); err != nil {
+				return err
+			}
+
 			// Create Prometheus client and fetch range metrics.
 			var points map[string][]definitions.SLOTimeSeriesPoint
 			if len(referencedSLOs) > 0 {
