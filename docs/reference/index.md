@@ -8,3 +8,4 @@
 - [Linter rules](linter-rules/index.md)
 - [Costs and billing](costs.md)
 - [SCIM provisioning](scim.md)
+- [k6 Cloud API coverage](k6-api-coverage.md)

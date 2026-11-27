@@ -39,6 +39,9 @@ func (p *K6Provider) Commands() []*cobra.Command {
 	k6Cmd.AddCommand(
 		newProjectsCommand(loader),
 		newTestsCommand(loader),
+		newLabelKeysCommand(loader),
+		newOptionsCommand(loader),
+		newProjectLimitsCommand(loader),
 		newEnvVarsCommand(loader),
 		newRunsCommand(loader),
 		newSchedulesCommand(loader),
@@ -56,9 +59,10 @@ func (p *K6Provider) Validate(cfg map[string]string) error {
 }
 
 // ConfigKeys returns the configuration keys used by this provider.
-// The cached-* keys are populated lazily in DirectClient mode (SA-token auth)
-// to skip the /v3/account/grafana-app/start round-trip on subsequent invocations.
-// They are not used in OAuth/plugin-proxy mode.
+// The api-domain key also selects the direct endpoint for operations that the
+// OAuth plugin proxy cannot preserve. The cached-* keys are populated lazily
+// in DirectClient mode (SA-token auth) to skip the
+// /v3/account/grafana-app/start round-trip on subsequent invocations.
 func (p *K6Provider) ConfigKeys() []providers.ConfigKey {
 	return []providers.ConfigKey{
 		{Name: "api-domain"},
