@@ -21,6 +21,7 @@ import (
 	"time"
 
 	configcmd "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	internalauth "github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
@@ -406,6 +407,194 @@ func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 	err := cmd.ExecuteContext(t.Context())
 	require.ErrorContains(t, err, "Stored Grafana token cannot be reused")
 	assert.Zero(t, requests.Load(), "destination mismatch must fail before any server probe")
+}
+
+func TestLoginRejectsTokenAsServerWithoutPrintingIt(t *testing.T) {
+	const fakeToken = "glsa_FAKE_example"
+	tests := []struct {
+		name       string
+		args       []string
+		env        string
+		stored     string
+		wantSource string
+	}{
+		{name: "flag", args: []string{"--server", fakeToken}, wantSource: "--server"},
+		{name: "flag with scheme", args: []string{"--server", "https://" + fakeToken}, wantSource: "--server"},
+		{name: "cloud token flag", args: []string{"--server", "glc_FAKE_example"}, wantSource: "--server"},
+		{name: "quoted bearer flag", args: []string{"--server", `"Bearer ` + fakeToken + `"`}, wantSource: "--server"},
+		{name: "authorization header flag", args: []string{"--server", "Authorization: Bearer\t" + fakeToken}, wantSource: "--server"},
+		{name: "environment", env: fakeToken, wantSource: "GRAFANA_SERVER"},
+		{name: "saved context", stored: "https://" + fakeToken, wantSource: `context "default"`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_MODE", "false")
+			t.Setenv("GCX_KEYCHAIN", "off")
+			unsetEnvForTest(t, "GRAFANA_TOKEN")
+			if tc.env != "" {
+				t.Setenv("GRAFANA_SERVER", tc.env)
+			} else {
+				unsetEnvForTest(t, "GRAFANA_SERVER")
+			}
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			seed := config.Config{}
+			if tc.stored != "" {
+				seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: tc.stored}})
+				seed.SetContext("default", true, config.Context{Stack: "default"})
+			}
+			require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+			var out bytes.Buffer
+			cmd := Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(append([]string{"default", "--config", path, "--token", "fake", "--yes"}, tc.args...))
+
+			err := cmd.ExecuteContext(t.Context())
+			require.ErrorContains(t, err, "looks like a Grafana token")
+			require.ErrorContains(t, err, tc.wantSource)
+			assert.NotContains(t, err.Error(), "FAKE_example")
+			assert.NotContains(t, out.String(), "FAKE_example")
+			det := fail.ErrorToDetailedError(err)
+			require.NotNil(t, det)
+			require.NotNil(t, det.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *det.ExitCode)
+		})
+	}
+}
+
+func TestLoginRejectsTokenAsServerBeforeInferringContextName(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	userDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", userDir)
+	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
+	t.Setenv("GCX_CONFIG", "")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	userPath := filepath.Join(userDir, "gcx", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o755))
+	require.NoError(t, os.WriteFile(userPath, []byte(`version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.example.invalid
+contexts:
+  a:
+    stack: a
+current-context: a
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, ".gcx.yaml"), []byte(`version: 1
+stacks:
+  b:
+    grafana:
+      server: https://b.example.invalid
+contexts:
+  b:
+    stack: b
+`), 0o600))
+
+	var out bytes.Buffer
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--server", "glsa_FAKE_example", "--token", "fake", "--yes"})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.ErrorContains(t, err, "looks like a Grafana token")
+	assert.NotContains(t, err.Error(), "FAKE_example")
+	assert.NotContains(t, out.String(), "FAKE_example")
+}
+
+func TestLoginHidesTokenSavedAsServer(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
+	unsetEnvForTest(t, "GRAFANA_SERVER")
+	unsetEnvForTest(t, "GRAFANA_TOKEN")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://glsa_FAKE_example"}})
+	seed.SetContext("default", true, config.Context{Stack: "default"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	server := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
+
+	var out bytes.Buffer
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"default", "--config", path, "--server", server.URL, "--token", "fake", "--yes"})
+
+	err := cmd.ExecuteContext(t.Context())
+	require.Error(t, err)
+	assert.Contains(t, out.String(), "<token hidden>")
+	assert.NotContains(t, out.String(), "FAKE_example")
+	assert.NotContains(t, err.Error(), "FAKE_example")
+}
+
+func TestLoginHidesTokenSavedAsContextName(t *testing.T) {
+	tests := []struct {
+		name        string
+		contextName string
+	}{
+		{name: "refreshing", contextName: "glsa_FAKE_example"},
+		{name: "existing contexts list", contextName: "fresh"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_MODE", "false")
+			t.Setenv("GCX_KEYCHAIN", "off")
+			unsetEnvForTest(t, "GRAFANA_SERVER")
+			unsetEnvForTest(t, "GRAFANA_TOKEN")
+			agent.ResetForTesting()
+			t.Cleanup(agent.ResetForTesting)
+
+			server := httptest.NewServer(http.NotFoundHandler())
+			t.Cleanup(server.Close)
+
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			seed := config.Config{}
+			seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{Server: server.URL}})
+			seed.SetContext("glsa_FAKE_example", true, config.Context{Stack: "default"})
+			require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+			var out bytes.Buffer
+			cmd := Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{tt.contextName, "--config", path, "--server", server.URL, "--token", "fake", "--yes"})
+
+			err := cmd.ExecuteContext(t.Context())
+			require.Error(t, err)
+			assert.Contains(t, out.String(), "<token hidden>")
+			assert.NotContains(t, out.String(), "FAKE_example")
+			assert.NotContains(t, err.Error(), "FAKE_example")
+		})
+	}
 }
 
 func TestProxyOrTLSChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {

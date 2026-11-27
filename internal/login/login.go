@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
@@ -659,6 +660,50 @@ func NormalizeServerURL(raw string) string {
 	return raw
 }
 
+// LooksLikeToken reports whether a server value is a Grafana credential,
+// usually pasted into the wrong prompt. Such a value must never be resolved or
+// printed: it would leak in a DNS query and in error output.
+func LooksLikeToken(server string) bool {
+	host := strings.ToLower(server)
+	// Pasted tokens often arrive quoted or as an Authorization header copied
+	// from a curl command, either bare or after a scheme, so peel those off in
+	// any order.
+	for {
+		prev := host
+		host = strings.TrimLeftFunc(host, func(r rune) bool {
+			return unicode.IsSpace(r) || r == '"' || r == '\''
+		})
+		host = strings.TrimPrefix(host, "https://")
+		host = strings.TrimPrefix(host, "http://")
+		host = strings.TrimPrefix(host, "authorization:")
+		for _, scheme := range []string{"bearer", "token"} {
+			if rest, ok := strings.CutPrefix(host, scheme); ok && rest != "" && unicode.IsSpace(rune(rest[0])) {
+				host = rest
+			}
+		}
+		if host == prev {
+			break
+		}
+	}
+	// Lowercased prefixes of service account tokens, Grafana Cloud access
+	// policy tokens and legacy API keys (base64 of `{"k":"`).
+	for _, prefix := range []string{"glsa_", "glc_", "eyjrijoi"} {
+		if strings.HasPrefix(host, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// DisplayServer returns server for use in messages, hiding a token saved as a
+// server.
+func DisplayServer(server string) string {
+	if LooksLikeToken(server) {
+		return "<token hidden>"
+	}
+	return server
+}
+
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
 // When TLS settings are present, builds a TLS-aware HTTP client for the probe.
 //
@@ -1073,7 +1118,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 				Field: "allow-override",
 				Question: fmt.Sprintf(
 					"Context %q already exists with server %s.\nOverride with %s?",
-					contextName, oldServer, newServer,
+					contextName, DisplayServer(oldServer), newServer,
 				),
 				Choices: []string{"yes", "no"},
 			}

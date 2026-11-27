@@ -258,6 +258,15 @@ Auth sources (for non-interactive use):
 //nolint:gocyclo,maintidx // Login deliberately keeps trust preflight, auth selection, and retry setup in one auditable flow.
 func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	capture.SetLoginStage("preflight")
+	// Checked before anything else because later gates and context-name
+	// inference echo the server value in their errors.
+	if login.LooksLikeToken(requestedLoginServer(flags.Server, nil)) {
+		source := "The --server value"
+		if flags.Server == "" {
+			source = "The GRAFANA_SERVER value"
+		}
+		return tokenAsServerError(source)
+	}
 	ctx := cmd.Context()
 	// The auto-discovered-config credential rejection below is the earliest gate
 	// that can end a login, and it runs before any config is read — so there is
@@ -332,6 +341,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		}
 	}
 	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
+	if login.LooksLikeToken(flags.Server) {
+		return tokenAsServerError(fmt.Sprintf("The server saved in context %q", login.DisplayServer(contextName)))
+	}
 	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
 	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget)
 	cmd.SetContext(ctx)
@@ -450,7 +462,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			persistedSourceCtx.Grafana.Server != "" &&
 			flags.Server != persistedSourceCtx.Grafana.Server {
 			logging.FromContext(cmd.Context()).Warn("reusing existing TLS client certificate for a different server",
-				"previous_server", persistedSourceCtx.Grafana.Server,
+				"previous_server", login.DisplayServer(persistedSourceCtx.Grafana.Server),
 				"new_server", flags.Server,
 			)
 		}
@@ -1115,7 +1127,7 @@ func preflightServerOverride(opts *login.Options, sourceCtx *config.Context, int
 		Field: "allow-override",
 		Question: fmt.Sprintf(
 			"Context %q already exists with server %s.\nOverride with %s?",
-			opts.ContextName, sourceCtx.Grafana.Server, requestedServer,
+			opts.ContextName, login.DisplayServer(sourceCtx.Grafana.Server), requestedServer,
 		),
 		Choices: []string{"yes", "no"},
 	}
@@ -1140,11 +1152,24 @@ func grafanaDestinationChangeAuthError(previousServer, requestedServer string) e
 		Summary: "Stored Grafana token cannot be reused for a different destination",
 		Details: fmt.Sprintf(
 			"The selected context's token is bound to server %s and its persisted proxy/TLS identity, but this login targets server %s with a different destination binding. Validation would disclose the stored token outside its credential binding.",
-			previousServer, requestedServer,
+			login.DisplayServer(previousServer), requestedServer,
 		),
 		Suggestions: []string{
 			"Supply a new credential explicitly with --token",
 			"Or use --oauth to authenticate to the new server",
+		},
+	}
+}
+
+func tokenAsServerError(source string) error {
+	return gcxerrors.DetailedError{
+		Summary:  "Server URL looks like a Grafana token",
+		Details:  source + " starts with a Grafana token prefix, so it is a token rather than a URL. gcx did not contact it or print it.",
+		ExitCode: new(gcxerrors.ExitUsageError),
+		Suggestions: []string{
+			"Pass the Grafana URL with --server, for example --server https://my-stack.grafana.net",
+			"Pass the token with --token instead",
+			"If the token was shared or saved anywhere, revoke it and create a new one",
 		},
 	}
 }
@@ -1260,6 +1285,9 @@ func askForInput(
 					Validate(func(s string) error {
 						if (opts.GrafanaToken != "" || opts.UseBasicAuth) && strings.TrimSpace(s) == "" {
 							return errors.New("server URL is required")
+						}
+						if login.LooksLikeToken(s) {
+							return errors.New("this looks like a Grafana token, not a server URL")
 						}
 						return nil
 					}).
@@ -1939,10 +1967,10 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 			name = cfg.CurrentContext
 		}
 		fmt.Fprintf(w, "Refreshing context %q (server: %s)\n\n",
-			name, sourceCtx.Grafana.Server)
+			login.DisplayServer(name), login.DisplayServer(sourceCtx.Grafana.Server))
 	case contextName != "":
 		// Creating a new named context.
-		fmt.Fprintf(w, "Creating new context %q\n", contextName)
+		fmt.Fprintf(w, "Creating new context %q\n", login.DisplayServer(contextName))
 		if names := existingContextNames(cfg); len(names) > 0 {
 			fmt.Fprintf(w, "Existing contexts: %s\n", strings.Join(names, ", "))
 		}
@@ -1958,7 +1986,7 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 func existingContextNames(cfg config.Config) []string {
 	names := make([]string, 0, len(cfg.Contexts))
 	for name := range cfg.Contexts {
-		names = append(names, name)
+		names = append(names, login.DisplayServer(name))
 	}
 	sort.Strings(names)
 	return names

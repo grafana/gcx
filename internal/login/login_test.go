@@ -2040,3 +2040,41 @@ func TestRun_ManualOAuthWithoutReaderFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "reader")
 	assert.False(t, called, "the auth flow must not start without a reader")
 }
+
+func TestLooksLikeToken(t *testing.T) {
+	tests := []struct {
+		server string
+		want   bool
+	}{
+		{"glsa_FAKE_example", true},
+		{"glc_FAKE+example/=", true},
+		{"https://glsa_FAKE_example", true},
+		{"  http://GLSA_FAKE_example  ", true},
+		{"eyJrIjoiFAKEexample", true},
+		{"https://eyJrIjoiFAKE/example=", true},
+		{`"glsa_FAKE_example"`, true},
+		{`'glsa_FAKE_example'`, true},
+		{`https://"glsa_FAKE_example"`, true},
+		{"Bearer glsa_FAKE_example", true},
+		{"bearer  glc_FAKE_example", true},
+		{"https://Bearer glsa_FAKE_example", true},
+		{`"Bearer glsa_FAKE_example"`, true},
+		{"Bearer\tglsa_FAKE_example", true},
+		{"Authorization: Bearer glsa_FAKE_example", true},
+		{"authorization:bearer glsa_FAKE_example", true},
+		{"Token glsa_FAKE_example", true},
+		{"https://bearer.example.com", false},
+		{"https://token.example.com", false},
+		{"tokenglsa_example.com", false},
+		{"https://my-stack.grafana.net", false},
+		{"https://my_host.internal", false},
+		{"localhost:3000", false},
+		{"https://example.com/glsa_path", false},
+		{"", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.server, func(t *testing.T) {
+			assert.Equal(t, tc.want, login.LooksLikeToken(tc.server))
+		})
+	}
+}
