@@ -2,6 +2,7 @@ package datasources
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -74,7 +75,7 @@ func diffMaps(current, next map[string]any) []FieldChange {
 		switch {
 		case !ok:
 			changes = append(changes, FieldChange{Field: k, Kind: "added"})
-		case fmt.Sprintf("%v", cv) != fmt.Sprintf("%v", nv):
+		case !reflect.DeepEqual(cv, nv):
 			changes = append(changes, FieldChange{Field: k, Kind: "changed"})
 		}
 	}
