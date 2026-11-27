@@ -72,7 +72,7 @@ To learn more about roles and permissions for dashboards, folders, and data sour
 
 ### Adaptive Telemetry
 
-Adaptive Metrics rules, the analyzed metrics catalog, `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role for reads or **Rules Editor** for writes. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
+Adaptive Metrics rules, the analyzed metrics catalog (`gcx metrics adaptive metrics`), `recommendations diff`, and `recommendations apply` use your Grafana sign-in by default. You need access to the Adaptive Metrics plugin and the **Rules Reader** role (`grafana-adaptive-metrics-app.rules:read`) for reads, or **Rules Editor** for writes. Creating, updating, or deleting a rule needs both `grafana-adaptive-metrics-app.rules:read` and `grafana-adaptive-metrics-app.rules:write`, because `gcx` reads the rule before it changes it. `gcx` uses the direct Cloud API if no usable Grafana credential is available, or if the plugin proxy denies access with a 403 and the configured Grafana server URL matches the stack URL returned by the Cloud API.
 
 Adaptive Metrics `recommendations list`, segments, and exemptions always use the direct Cloud API. Adaptive Logs, Logs Archive, and Adaptive Traces also use the direct Cloud API. These APIs use a Grafana Cloud credential.
 
@@ -92,10 +92,10 @@ To learn more about roles and permissions for Adaptive Telemetry, refer to [Graf
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| View agents, model cards, generations, evaluation results, and experiments (`gcx agento11y agents`, `model-cards`, `generations`, `experiments`) | `grafana-agento11y-app.data:read` (Agent Observability Data Reader role or higher) |
+| View agents, model cards, generations, evaluation results, experiments, human evaluators, and review queues (`gcx agento11y agents`, `model-cards`, `generations`, `experiments`, `human-evaluators`, `review-queues list`, `get`, `list-scores`) | `grafana-agento11y-app.data:read` (Agent Observability Data Reader role or higher) |
 | View conversations (`gcx agento11y conversations list`, `get`, `search`, `list-annotations`) | `grafana-agento11y-app.conversations:read` (Agent Observability Reader role or higher) |
-| Annotate conversations (`gcx agento11y conversations annotate`) | `grafana-agento11y-app.feedback:write` (Agent Observability Feedback Writer role or higher) |
-| Manage evaluators, evaluation rules, templates, experiments, test suites, collections, and saved conversations | `grafana-agento11y-app.eval:write` (Agent Observability Admin role) |
+| Annotate conversations and submit human reviews (`gcx agento11y conversations annotate`, `gcx agento11y reviews create`) | `grafana-agento11y-app.feedback:write` (Agent Observability Feedback Writer role or higher) |
+| Manage evaluators, evaluation rules, templates, experiments, test suites, collections, review queues, and saved conversations | `grafana-agento11y-app.eval:write` (Agent Observability Admin role) |
 | Create, update, or delete guards (`gcx agento11y guards`) | `grafana-agento11y-app.guards:write` (Agent Observability Admin role) |
 | Create or delete model rates (`gcx agento11y model-rates create`, `delete`) | `grafana-agento11y-app.pricing:write` (Agent Observability Admin role) |
 
@@ -190,6 +190,8 @@ To learn more about roles and permissions for Frontend Observability, refer to [
 | Read investigations (`gcx assistant investigations list`) | `grafana-assistant-app.investigations:read` (included in the Assistant Investigation User role) |
 | View investigations started automatically by alerts or Grafana Incident Response and Management (IRM) webhooks | `grafana-assistant-app.investigations.system:read` (Assistant System Investigation Viewer role) |
 | View organization-wide Assistant usage and limits (`gcx assistant usage get`) | `grafana-assistant-app.usage:read` (included in the Assistant Admin role and Admin basic role) |
+| View change review checks, their pull requests, and review statistics (`gcx assistant change-review checks list`, `get`, `list-pull-requests`, and `gcx assistant change-review stats`) | `grafana-assistant-app.github:read` (Assistant Coding User role, included in all basic roles) |
+| Create, update, or delete change review checks (`gcx assistant change-review checks create`, `update`, `delete`) | `grafana-assistant-app.github:read` and `grafana-assistant-app.github:write`, because each change reads the current checks before saving (Assistant Coding Admin or Assistant Admin role, included in the Admin basic role) |
 
 #### Troubleshoot Assistant permission errors
 
@@ -240,10 +242,28 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 | `gcx irm oncall escalation-chains` | Read: `plugins:grafana-irm-app:escalation-chains-reader`; Write: `plugins:grafana-irm-app:escalation-chains-editor` |
 | `gcx irm oncall schedules`, `gcx irm oncall shifts` | Read: `plugins:grafana-irm-app:schedules-reader`; Write: `plugins:grafana-irm-app:schedules-editor` |
 | `gcx irm oncall webhooks` | Read: `plugins:grafana-irm-app:outgoing-webhooks-reader`; Write: `plugins:grafana-irm-app:outgoing-webhooks-editor` |
+| `gcx irm oncall teams` (`list`, `get`, `get-team-hours`, `update-team-hours`) | Read: `plugins:grafana-irm-app:settings-reader`; Write: `plugins:grafana-irm-app:settings-editor` |
+
+If **Require team membership for updates** is enabled in IRM, users without the Admin role also need to belong to the team to update its hours.
 
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
+
+### Grafana Pages
+
+`gcx pages` commands go through the Grafana Assistant plugin (`grafana-assistant-app`) on your stack. To publish pages or pull and edit published pages, sign in as a Grafana user (`gcx login`). A service account token can build new drafts, but can't publish or edit published pages.
+
+Every Pages command needs `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`, plus these permissions:
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Read or pull published pages (`gcx pages catalog list`, `get`, and `gcx pages drafts pull PAGE`) | `assistant.ext.grafana.app/pages:get` |
+| Create, push, snapshot, and publish drafts, or refresh an existing draft (`gcx pages drafts`) | `assistant.ext.grafana.app/pages:get`, `assistant.ext.grafana.app/pages:create`, `assistant.ext.grafana.app/pages:update`, and `grafana-assistant-app.chats:access` (refreshing an existing draft needs only `pages:get` and `chats:access`) |
+
+`gcx pages drafts snapshot` renders the page in Grafana, which also uses `grafana-assistant-app.settings.pages:read` (included in the built-in Assistant roles). Add this permission to custom roles so pages can load their network access policy.
+
+Pages permissions don't replace folder access or a page's sharing settings. To learn more, refer to [Control access to Pages](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/#control-access-to-pages).
 
 ### Instrumentation
 
@@ -283,6 +303,24 @@ To learn more about roles and permissions for Knowledge Graph, refer to [Grafana
 | Create, update, or delete forecast jobs, holidays, outlier detectors, and their alerts | `plugins:grafana-ml-app:ml-editor` (Editor or Admin basic role) |
 
 To learn more about roles and permissions for Machine Learning, refer to [Configure RBAC permissions](https://grafana.com/docs/grafana-cloud/ai-tools/machine-learning/additional-configuration/rbac/).
+
+### SCIM
+
+`gcx scim settings` and `gcx scim endpoint` use your Grafana sign-in. `gcx scim users` needs both your Grafana sign-in and a service account token: it reads the SCIM settings with your sign-in, then calls the SCIM API with the service account token you pass with `--token-file` (user credentials aren't accepted on the SCIM `/Users` endpoint).
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Read SCIM sync settings and get the SCIM endpoint (`gcx scim settings get`, `gcx scim endpoint get`) | `settings:read` (included in `fixed:authentication.config:writer` and `fixed:settings:reader`) |
+| Update SCIM sync settings (`gcx scim settings update`) | `settings:read` and `settings:write` (included in `fixed:authentication.config:writer`) |
+| List or get SCIM users (`gcx scim users list`, `get`) | `settings:read` on your Grafana sign-in, plus a service account token with `org.users:read` (`fixed:org.users:reader` or `fixed:org.users:writer`) |
+| Create SCIM users (`gcx scim users create`) | `settings:read` on your Grafana sign-in, plus a service account token with `org.users:add` (`fixed:org.users:writer`) |
+| Update or deactivate SCIM users (`gcx scim users update`, `deactivate`) | `settings:read` on your Grafana sign-in, plus a service account token with `org.users:write` (`fixed:org.users:writer`) |
+
+On Grafana Cloud, the Admin basic role includes `fixed:authentication.config:writer` and `fixed:org.users:writer`. On self-managed Grafana, Grafana Admin includes both, and the Admin basic role includes `fixed:org.users:writer`.
+
+To create, update, or deactivate users, user sync must be enabled in the SCIM settings.
+
+To learn more about SCIM, refer to [Configure SCIM provisioning](https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-scim-provisioning/).
 
 ### SLO
 
@@ -328,7 +366,7 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Stack discovery, which resolves the stack slug for all Grafana Cloud commands, plus `gcx k6` reads | `stacks:read` (required) |
 | Create or update stacks | `stacks:write` |
 | Delete stacks (`gcx cloud stacks delete`) | `stacks:delete` |
-| Read Adaptive Metrics rules or catalog entries, diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
+| Read Adaptive Metrics rules or analyzed metrics (`metrics list`, `metrics get`), diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
 | Create or update an Adaptive Metrics rule with `rules create` or `rules update` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
 | Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
 | Apply Adaptive Metrics recommendations, including removals | `adaptive-metrics-rules:write`; also `adaptive-metrics-rules:read` for the preview unless you use `--force` |
