@@ -872,8 +872,15 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 Applies the entries in the input file, creating each suppression when absent or
 updating it when present. Remote suppressions absent from the file are never
 deleted. Use --dry-run to validate against the backend and preview the diff,
-scoped to the entries in the input file, without uploading.`,
+scoped to the entries in the input file, without uploading.
+
+The input may be a disabledAlertConfigs wrapper, one bare suppression, or a bare
+list of suppressions (what suppressions list prints). Field names are
+case-sensitive and unknown fields are rejected.`,
 		Example: `  gcx kg suppressions upsert -f suppressions.yaml
+
+  # Re-apply everything list prints:
+  gcx kg suppressions list -o yaml | gcx kg suppressions upsert -f -
 
   # Validate against the backend and preview the diff without uploading:
   gcx kg suppressions upsert -f suppressions.yaml --dry-run
@@ -891,13 +898,19 @@ scoped to the entries in the input file, without uploading.`,
 			if err != nil {
 				return err
 			}
-			var suppressions Suppressions
-			if err := yaml.Unmarshal(data, &suppressions); err != nil {
+			parsed, err := parseSuppressions(data)
+			if err != nil {
 				return fmt.Errorf("failed to parse suppressions file: %w", err)
 			}
-			if len(suppressions.DisabledAlertConfigs) == 0 {
+			if len(parsed) == 0 {
 				return errors.New("no suppressions found in file")
 			}
+			for i, s := range parsed {
+				if s.Name == "" {
+					return fmt.Errorf("suppression %d has an empty name", i)
+				}
+			}
+			suppressions := Suppressions{DisabledAlertConfigs: parsed}
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
@@ -912,6 +925,8 @@ scoped to the entries in the input file, without uploading.`,
 			total := len(suppressions.DisabledAlertConfigs)
 			result := cmdio.NewBatchMutation("upserted")
 			for i, s := range suppressions.DisabledAlertConfigs {
+				// managedBy is sent as given: the backend replaces the whole entry
+				// by name, so omitting it would clear a stored "terraform" owner.
 				if err := client.UpsertSuppression(cmd.Context(), s); err != nil {
 					failure := fmt.Errorf("failed to upsert suppression %q (%d/%d succeeded): %w", s.Name, i, total, err)
 					if i == 0 {
@@ -1138,6 +1153,23 @@ back directly. Field names are case-sensitive, and unknown fields are rejected.`
 // (one config, or a list of configs) as well as an alertConfigs wrapper, and
 // rejects unknown fields so a misspelled key isn't silently dropped.
 func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
+	return parseConfigShapes(data, "a notification config", "configs", "alertConfigs", "an alertConfigs wrapper",
+		func(w AlertConfigs) []AlertConfig { return w.AlertConfigs })
+}
+
+// parseSuppressions accepts the shapes suppressions list prints (a list of
+// suppressions), one suppression, or a disabledAlertConfigs wrapper, and rejects
+// unknown fields so a misspelled key isn't silently dropped.
+func parseSuppressions(data []byte) ([]Suppression, error) {
+	return parseConfigShapes(data, "a suppression", "suppressions", "disabledAlertConfigs", "a disabledAlertConfigs wrapper",
+		func(w Suppressions) []Suppression { return w.DisabledAlertConfigs })
+}
+
+// parseConfigShapes decodes data as a list of T, a single T, or a wrapper W
+// identified by its top-level wrapperKey, with unknown fields rejected. singular
+// and plural name the item, and wrapperDesc the wrapper, in the error shown when
+// the input is none of those.
+func parseConfigShapes[T, W any](data []byte, singular, plural, wrapperKey, wrapperDesc string, unwrap func(W) []T) ([]T, error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(data, &document); err != nil {
 		return nil, err
@@ -1166,36 +1198,36 @@ func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
 				return err
 			}
 			if len(extra.Content) > 0 && extra.Content[0].Tag != "!!null" {
-				return errors.New("multiple YAML documents are not supported; put the configs in one list")
+				return fmt.Errorf("multiple YAML documents are not supported; put the %s in one list", plural)
 			}
 		}
 	}
 
 	switch root.Kind {
 	case yaml.SequenceNode:
-		var configs []AlertConfig
-		if err := decodeStrict(&configs); err != nil {
+		var items []T
+		if err := decodeStrict(&items); err != nil {
 			return nil, err
 		}
-		return configs, nil
+		return items, nil
 	case yaml.MappingNode:
 		for i := 0; i < len(root.Content); i += 2 {
-			if root.Content[i].Value != "alertConfigs" {
+			if root.Content[i].Value != wrapperKey {
 				continue
 			}
-			var wrapped AlertConfigs
+			var wrapped W
 			if err := decodeStrict(&wrapped); err != nil {
 				return nil, err
 			}
-			return wrapped.AlertConfigs, nil
+			return unwrap(wrapped), nil
 		}
-		var config AlertConfig
-		if err := decodeStrict(&config); err != nil {
+		var item T
+		if err := decodeStrict(&item); err != nil {
 			return nil, err
 		}
-		return []AlertConfig{config}, nil
+		return []T{item}, nil
 	default:
-		return nil, errors.New("expected a notification config, a list of configs, or an alertConfigs wrapper")
+		return nil, fmt.Errorf("expected %s, a list of %s, or %s", singular, plural, wrapperDesc)
 	}
 }
 
@@ -1342,7 +1374,7 @@ func runSuppressionsDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Cl
 // absent from the file are ignored — `upsert` never deletes — so surfacing
 // them would only add noise.
 //
-// System-managed fields (see forDiff) are excluded from both the comparison and
+// System-managed fields (see withoutSystemFields) are excluded from both the comparison and
 // the diff: they are populated by the backend, not the user, so showing them as
 // added/removed would misrepresent what `upsert` actually changes.
 func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDryRunResult, error) {
@@ -1360,14 +1392,14 @@ func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDry
 		localScoped  Suppressions
 	)
 	for _, s := range local.DisabledAlertConfigs {
-		localCmp := forDiff(s)
+		localCmp := withoutSystemFields(s)
 		r, ok := remoteByName[s.Name]
 		if !ok {
 			changes = append(changes, SuppressionChange{Name: s.Name, Action: "add"})
 			localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, localCmp)
 			continue
 		}
-		remoteCmp := forDiff(r)
+		remoteCmp := withoutSystemFields(r)
 		remoteScoped.DisabledAlertConfigs = append(remoteScoped.DisabledAlertConfigs, remoteCmp)
 		localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, localCmp)
 		if !suppressionEqual(remoteCmp, localCmp) {
@@ -1396,12 +1428,12 @@ func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDry
 	return result, nil
 }
 
-// forDiff returns a copy of s with system-managed fields cleared, so dry-run
+// withoutSystemFields returns a copy of s with system-managed fields cleared, so dry-run
 // comparison and diffing consider only the user-authored fields (name,
 // matchLabels). managedBy is set by the backend (e.g. "terraform"), not the
 // input file, so including it would flag unchanged entries as modified and show
 // spurious removals in the diff.
-func forDiff(s Suppression) Suppression {
+func withoutSystemFields(s Suppression) Suppression {
 	s.ManagedBy = ""
 	return s
 }
