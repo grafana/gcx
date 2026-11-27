@@ -92,10 +92,10 @@ To learn more about roles and permissions for Adaptive Telemetry, refer to [Graf
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| View agents, model cards, generations, evaluation results, and experiments (`gcx agento11y agents`, `model-cards`, `generations`, `experiments`) | `grafana-agento11y-app.data:read` (Agent Observability Data Reader role or higher) |
+| View agents, model cards, generations, evaluation results, experiments, human evaluators, and review queues (`gcx agento11y agents`, `model-cards`, `generations`, `experiments`, `human-evaluators`, `review-queues list`, `get`, `list-scores`) | `grafana-agento11y-app.data:read` (Agent Observability Data Reader role or higher) |
 | View conversations (`gcx agento11y conversations list`, `get`, `search`, `list-annotations`) | `grafana-agento11y-app.conversations:read` (Agent Observability Reader role or higher) |
 | Annotate conversations and submit human reviews (`gcx agento11y conversations annotate`, `gcx agento11y reviews create`) | `grafana-agento11y-app.feedback:write` (Agent Observability Feedback Writer role or higher) |
-| Manage evaluators, evaluation rules, templates, experiments, test suites, collections, and saved conversations | `grafana-agento11y-app.eval:write` (Agent Observability Admin role) |
+| Manage evaluators, evaluation rules, templates, experiments, test suites, collections, review queues, and saved conversations | `grafana-agento11y-app.eval:write` (Agent Observability Admin role) |
 | Create, update, or delete guards (`gcx agento11y guards`) | `grafana-agento11y-app.guards:write` (Agent Observability Admin role) |
 | Create or delete model rates (`gcx agento11y model-rates create`, `delete`) | `grafana-agento11y-app.pricing:write` (Agent Observability Admin role) |
 
@@ -205,12 +205,16 @@ To learn more about roles and permissions for Grafana Assistant, refer to [Manag
 
 #### Grafana Pages
 
-`gcx pages` commands use the Pages API on your stack, and drafts also work through Grafana Assistant conversations. Every Pages command needs `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`, plus these permissions:
+`gcx pages` commands go through the Grafana Assistant plugin on your stack. To publish pages or pull and edit published pages, sign in as a Grafana user (`gcx login`). A service account token can build new drafts, but can't publish or edit published pages.
+
+Every Pages command needs `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`, plus these permissions:
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Read published pages (`gcx pages catalog list`, `get`) | `assistant.ext.grafana.app/pages:get` |
-| Create, pull, push, snapshot, and publish drafts (`gcx pages drafts`) | `assistant.ext.grafana.app/pages:create`, `assistant.ext.grafana.app/pages:update`, and `grafana-assistant-app.chats:access` |
+| Read or pull published pages (`gcx pages catalog list`, `get`, and `gcx pages drafts pull PAGE`) | `assistant.ext.grafana.app/pages:get` |
+| Create, push, snapshot, and publish drafts, or refresh an existing draft (`gcx pages drafts`) | `assistant.ext.grafana.app/pages:get`, `assistant.ext.grafana.app/pages:create`, `assistant.ext.grafana.app/pages:update`, and `grafana-assistant-app.chats:access` (refreshing an existing draft needs only `pages:get` and `chats:access`) |
+
+`gcx pages drafts snapshot` renders the page in Grafana, which also uses `grafana-assistant-app.settings.pages:read` (included in the built-in Assistant roles). Add this permission to custom roles so pages can load their network access policy.
 
 Pages permissions don't replace folder access or a page's sharing settings. To learn more, refer to [Control access to Pages](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/#control-access-to-pages).
 
