@@ -16,6 +16,7 @@ import (
 type queryOpts struct {
 	dsquery.SharedOpts
 
+	Share      dsquery.ExploreLinkOpts
 	Datasource string
 }
 
@@ -24,6 +25,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	opts.SetupTimeFlags(flags)
+	opts.Share.Setup(flags, "executed query")
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.infinity is configured)")
 }
 
@@ -44,7 +46,10 @@ The datasource's URL, type, method, and headers are read from its saved configur
 EXPR is an optional root selector expression (JSONPath for JSON, XPath for XML/HTML)
 that narrows the returned data.
 
-Datasource is resolved from -d flag or datasources.infinity in your context.`,
+Datasource is resolved from -d flag or datasources.infinity in your context.
+
+Use --share-link to print the equivalent Grafana Explore URL, or --open to open
+it in your browser after the query succeeds.`,
 		Example: `
   # Query using datasource UID
   gcx datasources infinity query -d UID
@@ -110,7 +115,23 @@ Datasource is resolved from -d flag or datasources.infinity in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+				DatasourceUID:  datasourceUID,
+				DatasourceType: dsType,
+				Expr:           expr,
+				From:           opts.From,
+				To:             opts.To,
+				OrgID:          dsquery.OrgID(cfgCtx),
+			})
+			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.Share, dsquery.ExploreLink{
+				URL:            exploreURL,
+				UnavailableMsg: unavailableMsg,
+				FailedOpenMsg:  failedOpenMsg,
+			})
 		},
 	}
 
