@@ -18,7 +18,7 @@ shared one, its formatter and codecs already exist (see Step 3).
 
 **Start with the shared transport — it is the default, not an optimisation.**
 AGENTS.md Key Conventions: a client that calls Grafana's unified datasource query
-API (`/apis/query.grafana.app/.../query`, with the `/api/ds/query` fallback) must
+API (`/apis/datasource.grafana.app/.../query`, with the `/api/ds/query` fallback) must
 reuse `internal/query/grafanaquery` for the HTTP transport (POST + fallback +
 response-size limiting) and `internal/query/dataframe` for the data-frame wire
 types. Do not duplicate that logic or re-declare
@@ -34,7 +34,7 @@ shapes `bail` has to catch, and which of the existing dialects is safe to copy.
 
 **Pick the client shape from what your commands actually call — there are three,
 and the middle one is the common case.** The two transports are not alternatives:
-unified query is a POST to `/apis/query.grafana.app/.../query`, while label,
+unified query is a POST to `/apis/datasource.grafana.app/.../query`, while label,
 series, metadata and other discovery endpoints are proxy/resource requests
 (`/api/datasources/uid/{uid}/resources/...`) that `grafanaquery.Client` cannot
 reach — it only exposes `Execute`. The verb there is per-plugin, not always GET:

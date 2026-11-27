@@ -206,7 +206,7 @@ func TestGenericQueryCharacterization_PrometheusTimeAndStep(t *testing.T) {
 	require.NoError(t, err)
 
 	path, body := f.seenPost()
-	assert.Contains(t, path, "/query.grafana.app/")
+	assert.Contains(t, path, "/datasource.grafana.app/")
 
 	q := firstQuery(t, body)
 	assert.Equal(t, `up{job="grafana"}`, q["expr"])

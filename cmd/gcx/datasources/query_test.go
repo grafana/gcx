@@ -83,9 +83,9 @@ func newQueryCaptureServer(t *testing.T, datasourceType string, capture func(str
 			switch {
 			case strings.Contains(r.URL.Path, "/api/datasources/proxy/uid/"):
 				_, _ = w.Write([]byte(`{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`))
-			case strings.Contains(r.URL.Path, "/query.grafana.app/") && datasourceType == "prometheus":
+			case strings.Contains(r.URL.Path, "/datasource.grafana.app/") && datasourceType == "prometheus":
 				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number","labels":{"job":"grafana"}}]},"data":{"values":[[1711893600000],[1]]}}]}}}`))
-			case strings.Contains(r.URL.Path, "/query.grafana.app/"):
+			case strings.Contains(r.URL.Path, "/datasource.grafana.app/"):
 				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
 			default:
 				t.Fatalf("unexpected query path: %s", r.URL.Path)

@@ -83,6 +83,9 @@ func (c *DashboardProxy) StaticEndpoints() StaticProxyConfig {
 		ProxyPost: []string{
 			"/api/datasources/proxy/*",
 			"/apis/query.grafana.app/*",
+			// Grafana's frontend uses this query service group when the
+			// datasources.querier.newName flag is on (grafana/grafana#139025).
+			"/apis/datasource.grafana.app/*",
 			"/api/ds/query",
 		},
 		MockGet: map[string]string{

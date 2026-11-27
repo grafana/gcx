@@ -55,8 +55,10 @@ func (c *Client) Execute(ctx context.Context, body []byte, datasource, operation
 	}
 
 	// The K8s query API is not enabled everywhere and can return a non-200
-	// (e.g. 403 for some roles); fall back to the universally-available
-	// endpoint. Queries are idempotent reads, so the retry is safe.
+	// (e.g. 403 for some roles, or 404 on Grafana 12, which predates the
+	// datasource.grafana.app query group); fall back to the
+	// universally-available endpoint. Queries are idempotent reads, so the
+	// retry is safe.
 	if statusCode != http.StatusOK {
 		statusCode, respBody, err = c.post(ctx, "/api/ds/query", body)
 		if err != nil {
@@ -92,6 +94,9 @@ func (c *Client) post(ctx context.Context, path string, body []byte) (int, []byt
 	return resp.StatusCode, respBody, nil
 }
 
+// k8sQueryPath uses datasource.grafana.app, the query service's group since
+// Grafana 13.0 (grafana/grafana#139025). The older query.grafana.app group is
+// only rewritten to it and may not always be served.
 func (c *Client) k8sQueryPath() string {
-	return fmt.Sprintf("/apis/query.grafana.app/v0alpha1/namespaces/%s/query", c.namespace)
+	return fmt.Sprintf("/apis/datasource.grafana.app/v0alpha1/namespaces/%s/query", c.namespace)
 }

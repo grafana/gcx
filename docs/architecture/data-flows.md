@@ -378,7 +378,7 @@ User invocation:
   │      prometheus.NewClient(cfg) — wraps rest.HTTPClientFor(&cfg)      │
   │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
   │                                                                       │
-  │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
+  │        POST /apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query   │
   │        Body: {                                                        │
   │          "queries": [{                                                │
   │            "refId": "A",                                             │
@@ -394,7 +394,7 @@ User invocation:
   │      loki.NewClient(cfg) — same HTTP client construction             │
   │      client.Query(ctx, datasourceUID, QueryRequest{...})             │
   │                                                                       │
-  │        POST /apis/query.grafana.app/v0alpha1/namespaces/{ns}/query   │
+  │        POST /apis/datasource.grafana.app/v0alpha1/namespaces/{ns}/query   │
   │        Body: same structure with "type":"loki" and "queryType":      │
   │          "instant" or "range" (not "instant": true); log queries     │
   │          also send "maxLines":limit                                  │
@@ -475,7 +475,7 @@ IsRange() == true (--start and --end provided):
 Both Prometheus and Loki queries go through the same unified endpoint:
 
 ```
-POST /apis/query.grafana.app/v0alpha1/namespaces/{namespace}/query
+POST /apis/datasource.grafana.app/v0alpha1/namespaces/{namespace}/query
 ```
 
 The datasource type is identified by the `datasource.type` field in the query body

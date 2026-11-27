@@ -115,7 +115,7 @@ func TestQuery_RequestConstruction(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, http.MethodPost, capturedMethod)
-	assert.Equal(t, "/apis/query.grafana.app/v0alpha1/namespaces/default/query", capturedPath)
+	assert.Equal(t, "/apis/datasource.grafana.app/v0alpha1/namespaces/default/query", capturedPath)
 	assert.Equal(t, "application/json", capturedContentType)
 }
 
@@ -167,7 +167,7 @@ func TestQuery_FallsBackOn404(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 2, callCount, "expected 2 HTTP calls (K8s + fallback)")
-	assert.Equal(t, "/apis/query.grafana.app/v0alpha1/namespaces/default/query", capturedPaths[0])
+	assert.Equal(t, "/apis/datasource.grafana.app/v0alpha1/namespaces/default/query", capturedPaths[0])
 	assert.Equal(t, "/api/ds/query", capturedPaths[1])
 	require.Len(t, resp.Rows, 1)
 	assert.InDelta(t, float64(42), resp.Rows[0][0], 0.001)

@@ -12,7 +12,7 @@ package root_test
 // root command tree via root.NewCommandForTest, two recording servers A and B
 // behind config files with distinct URLs, bearer tokens, and stack IDs. The
 // stack IDs make routing observable in the services query path itself
-// (/apis/query.grafana.app/v0alpha1/namespaces/stacks-<id>/query), and the
+// (/apis/datasource.grafana.app/v0alpha1/namespaces/stacks-<id>/query), and the
 // per-config datasource UIDs make it observable in the query body.
 
 import (
@@ -90,7 +90,7 @@ func newAppO11yServer(t *testing.T, datasourcesJSON string) (*httptest.Server, *
 		rec.record(req)
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case strings.HasPrefix(req.URL.Path, "/apis/query.grafana.app/") && strings.HasSuffix(req.URL.Path, "/query"),
+		case strings.HasPrefix(req.URL.Path, "/apis/datasource.grafana.app/") && strings.HasSuffix(req.URL.Path, "/query"),
 			req.URL.Path == "/api/ds/query":
 			body, _ := io.ReadAll(req.Body)
 			qc.add(string(body))
@@ -207,7 +207,7 @@ func TestAppO11y_ExplicitConfigWinsOverDefault(t *testing.T) {
 	overridesFile := writeSpecFile(t, "overrides.yaml", overridesSpecYAML)
 	settingsFile := writeSpecFile(t, "settings.yaml", settingsSpecYAML)
 
-	queryPath := "/apis/query.grafana.app/v0alpha1/namespaces/stacks-22222/query"
+	queryPath := "/apis/datasource.grafana.app/v0alpha1/namespaces/stacks-22222/query"
 	seriesPath := "/api/datasources/uid/prom-b/resources/api/v1/series"
 
 	cases := []struct {
@@ -381,7 +381,7 @@ func TestAppO11y_DatasourceDiscoverySaveBack(t *testing.T) {
 
 	assert.True(t, recB.contains("GET", "/api/datasources"),
 		"datasource auto-discovery must query the --config server, got %v", recB.all())
-	assert.True(t, recB.contains("POST", "/apis/query.grafana.app/v0alpha1/namespaces/stacks-22222/query"),
+	assert.True(t, recB.contains("POST", "/apis/datasource.grafana.app/v0alpha1/namespaces/stacks-22222/query"),
 		"the discovered datasource must be queried on the --config server, got %v", recB.all())
 	assert.Empty(t, recB.wrongAuth("Bearer token-b"), "discovery must carry B's token")
 	assert.Zero(t, recA.count(), "default-config server A must receive no requests, got %v", recA.all())

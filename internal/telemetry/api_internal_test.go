@@ -53,6 +53,8 @@ func TestNormalizeAPIRoute(t *testing.T) {
 			want: "/apis/dashboard.grafana.app/v1/namespaces/{namespace}/dashboards/{name}"},
 		{name: "k8s query connect route", path: "/apis/query.grafana.app/v0alpha1/namespaces/stacks-123/query",
 			want: "/apis/query.grafana.app/v0alpha1/namespaces/{namespace}/query"},
+		{name: "k8s datasource query connect route", path: "/apis/datasource.grafana.app/v0alpha1/namespaces/stacks-123/query",
+			want: "/apis/datasource.grafana.app/v0alpha1/namespaces/{namespace}/query"},
 		{name: "k8s datasource group passes ds allowlist", path: "/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/default/connections",
 			want: "/apis/prometheus.datasource.grafana.app/v0alpha1/namespaces/{namespace}/connections"},
 		{name: "k8s private datasource group redacted", path: "/apis/acmecorp-internal-datasource.datasource.grafana.app/v0alpha1/namespaces/default/connections",
@@ -224,6 +226,22 @@ func TestRecordAPIRequest(t *testing.T) {
 		Route:           "/api/ds/query",
 		DatasourceTypes: "grafana-postgresql-datasource",
 	}, got)
+}
+
+func TestRecordAPIRequestInspectsBothQueryServiceGroups(t *testing.T) {
+	t.Cleanup(func() { apiRequest.Store(nil) })
+
+	body := `{"queries":[{"datasource":{"type":"prometheus","uid":"secret"}}]}`
+	for _, group := range []string{"datasource.grafana.app", "query.grafana.app"} {
+		t.Run(group, func(t *testing.T) {
+			RecordAPIRequest("POST", "/apis/"+group+"/v0alpha1/namespaces/stacks-1/query", []byte(body))
+			assert.Equal(t, &APIRequest{
+				Method:          "POST",
+				Route:           "/apis/" + group + "/v0alpha1/namespaces/{namespace}/query",
+				DatasourceTypes: "prometheus",
+			}, CurrentAPIRequest())
+		})
+	}
 }
 
 func TestRecordAPIRequestExtractionFailureIsOther(t *testing.T) {
