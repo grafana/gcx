@@ -118,7 +118,7 @@ type startMaintenanceOpts struct {
 }
 
 func (o *startMaintenanceOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			cmdio.Success(w, "Started maintenance on integration %s", m.Target.ID)
 		},
@@ -208,7 +208,7 @@ type stopMaintenanceOpts struct {
 }
 
 func (o *stopMaintenanceOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			cmdio.Success(w, "Stopped maintenance on integration %s", m.Target.ID)
 		},
