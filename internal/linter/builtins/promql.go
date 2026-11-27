@@ -50,10 +50,37 @@ var variableRegexp = regexp.MustCompile(
 
 // dashboardVariable is a deliberately incomplete representation of the Dashboard -> dashboardVariable type in grafana.
 // The properties which are extracted from JSON are only those used for linting purposes.
+//
+// v1 dashboards keep these fields at the top level of the variable. v2 dashboards
+// nest them under "spec", e.g. {"kind": "IntervalVariable", "spec": {"name": ...}}.
 type dashboardVariable struct {
 	Name    string              `json:"name"`
 	Current rawVariableOption   `json:"current"`
 	Options []rawVariableOption `json:"options"`
+	Spec    *struct {
+		Name    string              `json:"name"`
+		Current rawVariableOption   `json:"current"`
+		Options []rawVariableOption `json:"options"`
+	} `json:"spec"`
+}
+
+// normalize lifts the fields of a v2 variable's "spec" to the top level.
+func (v *dashboardVariable) normalize() {
+	if v.Spec == nil {
+		return
+	}
+
+	if v.Name == "" {
+		v.Name = v.Spec.Name
+	}
+
+	if v.Current == nil {
+		v.Current = v.Spec.Current
+	}
+
+	if len(v.Options) == 0 {
+		v.Options = v.Spec.Options
+	}
 }
 
 type variableOption struct {
@@ -62,6 +89,21 @@ type variableOption struct {
 }
 
 type rawVariableOption map[string]any
+
+// firstString returns the first element of a multi-value selection. An empty
+// selection, or a first element that is not a string, counts as no value.
+func firstString(values []any) string {
+	if len(values) == 0 {
+		return ""
+	}
+
+	s, ok := values[0].(string)
+	if !ok {
+		return ""
+	}
+
+	return s
+}
 
 func (raw *rawVariableOption) Get() (variableOption, error) {
 	t := variableOption{}
@@ -74,8 +116,7 @@ func (raw *rawVariableOption) Get() (variableOption, error) {
 		case string:
 			t.Text = tt
 		case []any:
-			//nolint:forcetypeassert
-			t.Text = tt[0].(string)
+			t.Text = firstString(tt)
 		default:
 			return t, fmt.Errorf("invalid type for field 'text': %v", tt)
 		}
@@ -87,8 +128,7 @@ func (raw *rawVariableOption) Get() (variableOption, error) {
 		case string:
 			t.Value = vt
 		case []any:
-			//nolint:forcetypeassert
-			t.Value = vt[0].(string)
+			t.Value = firstString(vt)
 		default:
 			return t, fmt.Errorf("invalid type for field 'value': %v", vt)
 		}
@@ -125,6 +165,10 @@ func ValidatePromql() func(*rego.Rego) {
 			dashboardVars := make([]dashboardVariable, 0)
 			if err := json.Unmarshal([]byte(dashboardVarsTerm.String()), &dashboardVars); err != nil {
 				return nil, err
+			}
+
+			for i := range dashboardVars {
+				dashboardVars[i].normalize()
 			}
 
 			exprStr, err := expandVariables(string(expr), dashboardVars)
