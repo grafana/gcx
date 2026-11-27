@@ -167,6 +167,11 @@ func (f *scopeFlags) validateScopes(ctx context.Context, client *Client) error {
 	return nil
 }
 
+// windowGiven reports whether the caller passed --from, --to or --since.
+func (f *scopeFlags) windowGiven() bool {
+	return f.from != "" || f.to != "" || f.since != ""
+}
+
 func (f *scopeFlags) scopeMap() map[string]string {
 	scope := map[string]string{}
 	if f.env != "" {
@@ -294,6 +299,9 @@ func parseInsightFlag(s string) (insightMatcher, error) {
 	if strings.EqualFold(strings.TrimSpace(s), "any") {
 		return insightMatcher{}, nil
 	}
+	if strings.HasPrefix(s, "-") {
+		return insightMatcher{}, fmt.Errorf("--insight %q: a predicate cannot start with \"-\"; use --insight any to match any insight, or --insight key=value", s)
+	}
 	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
 		m := insightMatcher{Key: strings.ToLower(name), Op: "CONTAINS", Value: value}
 		if err := validateInsightMatcher(m); err != nil {
@@ -353,19 +361,7 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 	}
 	var allResults []SearchResult
 	for _, et := range entityTypes {
-		matchers := append([]PropertyMatcher{{Name: "name", Op: "IS NOT NULL", Type: "String"}}, propertyFilters...)
-		req := SearchRequest{
-			TimeCriteria: &TimeCriteria{Start: startMs, End: endMs},
-			FilterCriteria: []EntityMatcher{{
-				EntityType:                 et,
-				HavingAssertion:            assertionsOnly,
-				HavingPropagatedAssertions: assertionsOnly && includePropagated,
-				PropertyMatchers:           matchers,
-			}},
-			ScopeCriteria: sc,
-			PageNum:       pageNum,
-		}
-		page, err := client.Search(ctx, req)
+		page, err := searchTypePage(ctx, client, et, assertionsOnly, includePropagated, sc, startMs, endMs, pageNum, propertyFilters)
 		if err != nil {
 			var apiErr *APIError
 			if errors.As(err, &apiErr) && apiErr.IsServerError() {
@@ -374,7 +370,7 @@ func searchByTypes(ctx context.Context, cmd *cobra.Command, client *Client, enti
 			}
 			return nil, fmt.Errorf("search entity type %s: %w", et, err)
 		}
-		if page.MaxLimitHit || (!page.LastPage && len(page.Entities) > 0) {
+		if hasMorePages(page) {
 			cmdio.EmitHint(cmd.ErrOrStderr(),
 				fmt.Sprintf("more results available for type %q (page %d returned %d) — use --page %d or narrow with --property/--namespace",
 					et, pageNum, len(page.Entities), pageNum+1),
@@ -1909,6 +1905,15 @@ Pick the read verb by what you start with:
   list       Default for listing and basic lookups: an entity's identity, scope,
              and properties. Filter to one known entity with
              '--property name=<name>'. Cheap — use this for plain lookups.
+             It returns at most --limit entities (default 50); when it
+             stops there, only a hint on stderr says so. --limit 0 follows
+             the backend's pages, up to 50 per type; pages can leave out
+             rows at their boundaries, and when they repeat rows, a hint
+             says how many. For an exact count, use 'gcx kg graph query'
+             with count(); for a complete list, page through it with SKIP
+             and LIMIT, ordered by keys that are unique per row (with ties
+             in the ORDER BY keys, pages can repeat rows and leave out
+             others).
   correlate  You have a firing alert (its labels) but not the entity → find
              which entity the alert hangs off. The "I have an alert, which
              entity is it?" entry point.
@@ -1919,7 +1924,13 @@ Pick the read verb by what you start with:
              aggregates, and paths, use 'gcx kg graph query'.`,
 	}
 
-	// list subcommand
+	cmd.AddCommand(newEntitiesListCommand(loader), newCorrelateCommand(loader), newEntitiesInspectCommand(loader), newCypherCommand(loader),
+		newEntitiesCreateCommand(loader), newEntitiesDeleteCommand(loader))
+	return cmd
+}
+
+// newEntitiesListCommand returns 'gcx kg entities list'.
+func newEntitiesListCommand(loader RESTConfigLoader) *cobra.Command {
 	var (
 		listType        string
 		listScope       scopeFlags
@@ -1939,6 +1950,17 @@ PromQL/Loki queries — job, namespace, container, image, etc.), and a small
 snapshot of its current insights. Filter to a single entity with
 '--property name=<exact-name>'.
 
+It returns at most --limit entities (default 50); when the limit cuts the
+list short, the rows carry no marker and only a hint on stderr says so.
+--limit 0 follows the backend's pages, up to 50 per type. The backend can
+leave out some rows at page boundaries, so the row count can fall short of
+the true count; list drops the rows a later page repeats, and a hint on
+stderr says how many. For an exact count, use 'gcx kg graph query' with
+count(); for a complete list, page through it with SKIP and LIMIT, ordered
+by keys that are unique per row. With ties in the ORDER BY keys, pages can
+repeat some rows and leave out others. Entities can share a name and scope,
+so check the keys first: a count() grouped by them shows any that repeat.
+
 For an entity's full insight timeline or related entities for root-cause
 analysis, use 'gcx kg entities inspect' instead.`,
 		Example: `  gcx kg entities list --type Service --env <env> --namespace <namespace> --property name=<service-name>
@@ -1946,6 +1968,14 @@ analysis, use 'gcx kg entities inspect' instead.`,
   gcx kg entities list --type Service --env <env> --insight name=Saturation --insight severity=critical
   gcx kg entities list --type Service --env <env> --property name=~api --insight severity=critical
   gcx kg entities list --type Service --env <env> --insight severity=critical --json name,scope`,
+		// A bare --insight takes the next argument as its value. Reject a
+		// flag-looking value here: PreRunE runs before cobra's required-flag
+		// check, which would otherwise report the swallowed flag (for example
+		// --type) as missing, and before RunE, where the leftover value would
+		// surface as an unrelated time-window error.
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			return rejectFlagLikeInsight(cmd, listInsightRaw, os.Args[1:])
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.IO.Validate(); err != nil {
 				return err
@@ -1965,46 +1995,72 @@ analysis, use 'gcx kg entities inspect' instead.`,
 			if err := listScope.validateScopes(cmd.Context(), client); err != nil {
 				return err
 			}
-			entityTypes, err := resolveEntityTypes(cmd, client, listType)
+			propertyFilters, nameFilter, insightMatchers, err := parseListFilters(listPropertyRaw, listInsightRaw)
 			if err != nil {
 				return err
 			}
-			var propertyFilters []PropertyMatcher
-			for _, raw := range listPropertyRaw {
-				pm, err := parsePropertyFlag(raw)
-				if err != nil {
-					return err
-				}
-				propertyFilters = append(propertyFilters, pm)
-			}
-			var insightMatchers []insightMatcher
-			for _, raw := range listInsightRaw {
-				im, err := parseInsightFlag(raw)
-				if err != nil {
-					return err
-				}
-				insightMatchers = append(insightMatchers, im)
-			}
-			// --insight requests inlined assertion data so we can filter client-side.
-			fetchInsights := len(insightMatchers) > 0
-			results, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, fetchInsights, true, listScope.scopeCriteria(), startMs, endMs, listPage, propertyFilters)
-			if err != nil {
-				return err
+			search := typeSearch{
+				// --insight requests inlined assertion data so we can filter client-side.
+				assertionsOnly:    len(insightMatchers) > 0,
+				includePropagated: true,
+				sc:                listScope.scopeCriteria(),
+				startMs:           startMs,
+				endMs:             endMs,
+				propertyFilters:   propertyFilters,
 			}
 			if len(insightMatchers) > 0 {
-				results = filterByInsightMatchers(results, insightMatchers)
+				search.keep = func(rs []SearchResult) []SearchResult {
+					return filterByInsightMatchers(rs, insightMatchers)
+				}
+			}
+			maxPages := maxListPages
+			if !cmd.Flags().Changed("limit") {
+				maxPages = maxDefaultListPages
+			}
+			run := func(entityType string) ([]SearchResult, error) {
+				entityTypes, err := resolveEntityTypes(cmd, client, entityType)
+				if err != nil {
+					return nil, err
+				}
+				if cmd.Flags().Changed("page") {
+					rs, err := searchByTypes(cmd.Context(), cmd, client, entityTypes, search.assertionsOnly, search.includePropagated, search.sc, startMs, endMs, listPage, propertyFilters)
+					if err != nil {
+						return nil, err
+					}
+					return search.filter(rs), nil
+				}
+				return searchByTypesAllPages(cmd.Context(), cmd, client, entityTypes, search, listOpts.Limit, maxPages)
+			}
+			results, err := run(listType)
+			// The type is checked only when the search finds nothing, so a
+			// lookup that finds entities costs no extra call.
+			if listType != "" && ((err == nil && len(results) == 0) || isClientAPIError(err)) {
+				checked, cerr := checkEntityType(cmd.Context(), client, listType, typeCheck{
+					verb:        "list",
+					name:        nameFilter,
+					search:      search,
+					windowGiven: listScope.windowGiven(),
+					flags:       listSuggestionFlags(listPropertyRaw, listInsightRaw, listScope),
+				})
+				if cerr != nil {
+					return cerr
+				}
+				if checked != listType {
+					results, err = run(checked)
+				}
+			}
+			if err != nil {
+				return err
 			}
 			results = adapter.TruncateSlice(results, listOpts.Limit)
 			if listOpts.Limit > 0 && int64(len(results)) >= listOpts.Limit {
-				cmdio.EmitHint(cmd.ErrOrStderr(),
-					fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all", listOpts.Limit),
-					"")
+				cmdio.EmitHint(cmd.ErrOrStderr(), listLimitHint(listOpts.Limit, cmd.Flags().Changed("page")), "")
 			}
 			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
 		},
 	}
 	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
-	listCmd.Flags().IntVar(&listPage, "page", 0, "Page number (0-based)")
+	listCmd.Flags().IntVar(&listPage, "page", 0, "Return only this backend page (0-based); without --page, list follows the backend's pages until --limit is reached")
 	listCmd.Flags().StringArrayVar(&listPropertyRaw, "property", nil, "Filter by property: name=value (exact) or name=~value (contains); repeatable (run 'gcx kg meta schema' to list property names)")
 	listCmd.Flags().StringArrayVar(&listInsightRaw, "insight", nil, "Filter to entities with an active insight: 'any' (has any insight) or key=value (key=~value for substring; name only); valid keys: name, severity (critical|warning|info); repeatable — multiple predicates must match the same assertion")
 	listScope.register(listCmd)
@@ -2013,10 +2069,83 @@ analysis, use 'gcx kg entities inspect' instead.`,
 	listCmd.Flags().Lookup("site").Usage = "Site scope (run 'gcx kg meta scopes' to see valid values)"
 	listOpts.setup(listCmd.Flags())
 	_ = listCmd.MarkFlagRequired("type")
+	return listCmd
+}
 
-	cmd.AddCommand(listCmd, newCorrelateCommand(loader), newEntitiesInspectCommand(loader), newCypherCommand(loader),
-		newEntitiesCreateCommand(loader), newEntitiesDeleteCommand(loader))
-	return cmd
+// parseListFilters parses list's --property and --insight values. nameFilter
+// is the value of an exact --property name=<value>, if one was given.
+func parseListFilters(propertyRaw, insightRaw []string) ([]PropertyMatcher, string, []insightMatcher, error) {
+	var propertyFilters []PropertyMatcher // stays nil without --property, as before
+	nameFilter := ""
+	for _, raw := range propertyRaw {
+		pm, err := parsePropertyFlag(raw)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		if pm.Name == "name" && pm.Op == "=" {
+			nameFilter = pm.Value
+		}
+		propertyFilters = append(propertyFilters, pm)
+	}
+	var insightMatchers []insightMatcher
+	for _, raw := range insightRaw {
+		im, err := parseInsightFlag(raw)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		insightMatchers = append(insightMatchers, im)
+	}
+	return propertyFilters, nameFilter, insightMatchers, nil
+}
+
+// rejectFlagLikeInsight returns a usage error for the first --insight value
+// that starts with "-". argv is the invocation's arguments: when the value is
+// the argument after a bare --insight, the error says that --insight took it
+// as its value; otherwise (as with --insight=<value>) it names the value.
+func rejectFlagLikeInsight(cmd *cobra.Command, insightRaw, argv []string) error {
+	for _, raw := range insightRaw {
+		if !strings.HasPrefix(raw, "-") {
+			continue
+		}
+		if followsBareFlag(argv, "--insight", raw) {
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--insight needs a value, but it took the next argument %q as its value; use --insight any to match any insight, or --insight key=value", raw), nil)
+		}
+		_, err := parseInsightFlag(raw)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
+	}
+	return nil
+}
+
+// followsBareFlag reports whether value is the argument right after flag
+// given without "=<value>" in argv, before any "--".
+func followsBareFlag(argv []string, flag, value string) bool {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--" {
+			return false
+		}
+		if argv[i] == flag && argv[i+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
+// listSuggestionFlags renders the caller's filters for a suggested list command.
+func listSuggestionFlags(propertyRaw, insightRaw []string, scope scopeFlags) []string {
+	scopeArgs := scope.args()
+	flags := make([]string, 0, len(propertyRaw)+len(insightRaw)+len(scopeArgs))
+	flags = append(flags, flagArgs("--property", propertyRaw)...)
+	flags = append(flags, flagArgs("--insight", insightRaw)...)
+	return append(flags, scopeArgs...)
+}
+
+// listLimitHint is the hint list prints when it returned --limit entities.
+func listLimitHint(limit int64, singlePage bool) string {
+	msg := fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit", limit)
+	if !singlePage {
+		msg += fmt.Sprintf(" (--limit 0 follows up to %d backend pages per type)", maxListPages)
+	}
+	return msg + "; for an exact count use 'gcx kg graph query' with count()"
 }
 
 type entitiesListOpts struct {
@@ -2028,7 +2157,7 @@ func (o *entitiesListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, EntityTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of entities to return; list fetches further backend pages as needed, up to 10 per type when --limit is not passed and 50 when it is (0 means no limit, still at most 50 pages)")
 }
 
 func EntityTable() cmdio.Table[SearchResult] {
@@ -2432,57 +2561,89 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 			if err != nil {
 				return err
 			}
-			scope := inspectScope.scopeMap()
-			if scope == nil {
-				discovered, err := discoverEntityScope(cmd, client, entityType, name, inspectDomain, startMs, endMs)
-				if err != nil {
-					return err
-				}
-				scope = discovered
-			}
-
-			hideOlderHours, hideChronicPct := ioOpts.resolveInsightFilters(cmd.Flags())
-
-			llmReq := LLMSummaryRequest{
-				StartTime: startMs,
-				EndTime:   endMs,
-				EntityKeys: []EntityKey{{
-					Type:  entityType,
-					Name:  name,
-					Scope: toAnyMap(scope),
-				}},
-				SuggestionSrcEntities:                         []EntityKey{},
-				AlertCategories:                               ioOpts.InsightCategories,
-				HideAssertionsOlderThanNHours:                 hideOlderHours,
-				HideAssertionsPresentMoreThanPercentageOfTime: hideChronicPct,
-				IncludeSuggestions:                            true,
-				IncludeRcaPatterns:                            false,
-			}
-			result, err := client.LLMSummary(cmd.Context(), llmReq)
-			if err != nil {
-				var apiErr *APIError
-				if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-					if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
-						return fmt.Errorf("%w\n\n%s", err, hint)
+			// lookup inspects entityType/name. notFound reports that the
+			// entity was not found, which is when the type is checked.
+			lookup := func(entityType string) (map[string]any, map[string]string, bool, error) {
+				scope := inspectScope.scopeMap()
+				if scope == nil {
+					discovered, err := discoverEntityScope(cmd, client, entityType, name, inspectDomain, startMs, endMs)
+					if err != nil {
+						return nil, nil, false, err
 					}
+					scope = discovered
 				}
+
+				hideOlderHours, hideChronicPct := ioOpts.resolveInsightFilters(cmd.Flags())
+
+				llmReq := LLMSummaryRequest{
+					StartTime: startMs,
+					EndTime:   endMs,
+					EntityKeys: []EntityKey{{
+						Type:  entityType,
+						Name:  name,
+						Scope: toAnyMap(scope),
+					}},
+					SuggestionSrcEntities:                         []EntityKey{},
+					AlertCategories:                               ioOpts.InsightCategories,
+					HideAssertionsOlderThanNHours:                 hideOlderHours,
+					HideAssertionsPresentMoreThanPercentageOfTime: hideChronicPct,
+					IncludeSuggestions:                            true,
+					IncludeRcaPatterns:                            false,
+				}
+				result, err := client.LLMSummary(cmd.Context(), llmReq)
+				if err != nil {
+					var apiErr *APIError
+					if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+						if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
+							return nil, nil, true, fmt.Errorf("%w\n\n%s", err, hint)
+						}
+						return nil, nil, true, err
+					}
+					return nil, nil, false, err
+				}
+				// The llm-summary endpoint echoes an empty "rcaPatterns" array (we
+				// request IncludeRcaPatterns: false). Drop it when empty so inspect
+				// output doesn't carry a permanently-empty field.
+				if p, ok := result["rcaPatterns"].([]any); ok && len(p) == 0 {
+					delete(result, "rcaPatterns")
+				}
+				if isEmptyLLMResult(result) {
+					scopeDesc := ""
+					if len(scope) > 0 {
+						scopeDesc = " in " + scopeStr(scope)
+					}
+					if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
+						return nil, nil, true, fmt.Errorf("%s/%s not found%s\n\n%s", entityType, name, scopeDesc, hint)
+					}
+					return nil, nil, true, fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
+				}
+				return result, scope, false, nil
+			}
+			result, scope, notFound, err := lookup(entityType)
+			if notFound {
+				search := typeSearch{
+					sc:              inspectScope.scopeCriteria(),
+					startMs:         startMs,
+					endMs:           endMs,
+					propertyFilters: []PropertyMatcher{{Name: "name", Op: "=", Value: name}},
+				}
+				checked, cerr := checkEntityType(cmd.Context(), client, entityType, typeCheck{
+					verb:        "inspect",
+					name:        name,
+					search:      search,
+					windowGiven: inspectScope.windowGiven(),
+					flags:       inspectScope.args(),
+				})
+				if cerr != nil {
+					return cerr
+				}
+				if checked != entityType {
+					entityType = checked
+					result, scope, _, err = lookup(checked)
+				}
+			}
+			if err != nil {
 				return err
-			}
-			// The llm-summary endpoint echoes an empty "rcaPatterns" array (we
-			// request IncludeRcaPatterns: false). Drop it when empty so inspect
-			// output doesn't carry a permanently-empty field.
-			if p, ok := result["rcaPatterns"].([]any); ok && len(p) == 0 {
-				delete(result, "rcaPatterns")
-			}
-			if isEmptyLLMResult(result) {
-				scopeDesc := ""
-				if len(scope) > 0 {
-					scopeDesc = " in " + scopeStr(scope)
-				}
-				if hint := inspectScopeHint(cmd.Context(), client, entityType, name, startMs, endMs); hint != "" {
-					return fmt.Errorf("%s/%s not found%s\n\n%s", entityType, name, scopeDesc, hint)
-				}
-				return fmt.Errorf("%s/%s not found%s\nRun 'gcx kg entities list --type %s --property name=~%s' to find matching entities and their correct scope", entityType, name, scopeDesc, entityType, name)
 			}
 			if u := rcaWorkbenchURL(cfg.GrafanaURL, entityType, name, scope, startMs, endMs, inspectScope.since); u != "" {
 				if ioOpts.ShareLink {
