@@ -372,7 +372,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 		Example: alertGroupListExample,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -380,7 +380,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 
 			filters, err := resolveAlertGroupListFilters(cmd, opts)
 			if err != nil {
-				return err
+				return gcxerrors.NewCommandUsageError(cmd, "", err)
 			}
 
 			client, namespace, err := loader.LoadOnCallClient(cmd.Context())
