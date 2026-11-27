@@ -141,6 +141,7 @@ func TestParseInsightFlag(t *testing.T) {
 		{in: "name=~Sat", want: kg.InsightMatcher{Key: "name", Op: "CONTAINS", Value: "Sat"}},
 		{in: "severity=critical", want: kg.InsightMatcher{Key: "severity", Op: "=", Value: "critical"}},
 		{in: "Name=Foo", want: kg.InsightMatcher{Key: "name", Op: "=", Value: "Foo"}},
+		{in: "name=a=~b", want: kg.InsightMatcher{Key: "name", Op: "=", Value: "a=~b"}},
 		{in: "severity=~crit", wantErr: "substring match"},
 		{in: "scope=foo", wantErr: "unsupported key"},
 		{in: "no-equals", wantErr: "expected 'any'"},
@@ -152,6 +153,36 @@ func TestParseInsightFlag(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParsePropertyFlag(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    kg.PropertyMatcher
+		wantErr bool
+	}{
+		{in: "env=prod", want: kg.PropertyMatcher{Name: "env", Op: "=", Value: "prod"}},
+		{in: "env=~pro", want: kg.PropertyMatcher{Name: "env", Op: "CONTAINS", Value: "pro"}},
+		{in: "env=", want: kg.PropertyMatcher{Name: "env", Op: "=", Value: ""}},
+		{in: "env=~", want: kg.PropertyMatcher{Name: "env", Op: "CONTAINS", Value: ""}},
+		// An exact match whose value happens to contain "=~" stays exact.
+		{in: "pattern=a=~b", want: kg.PropertyMatcher{Name: "pattern", Op: "=", Value: "a=~b"}},
+		{in: "pattern=~a=b", want: kg.PropertyMatcher{Name: "pattern", Op: "CONTAINS", Value: "a=b"}},
+		{in: "no-equals", wantErr: true},
+		{in: "=value", wantErr: true},
+		{in: "=~value", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got, err := kg.ParsePropertyFlag(tt.in)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)

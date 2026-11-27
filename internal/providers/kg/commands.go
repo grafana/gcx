@@ -261,14 +261,27 @@ func scopeStr(scope map[string]string) string {
 //	name=value   — exact match (EQUALS)
 //	name=~value  — substring match (CONTAINS); mirrors PromQL label-selector syntax
 func parsePropertyFlag(s string) (PropertyMatcher, error) {
-	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
-		return PropertyMatcher{Name: name, Op: "CONTAINS", Value: value}, nil
-	}
-	name, value, ok := strings.Cut(s, "=")
-	if !ok || name == "" {
+	name, op, value, ok := splitMatcher(s)
+	if !ok {
 		return PropertyMatcher{}, fmt.Errorf("--property %q: expected format name=value or name=~value", s)
 	}
-	return PropertyMatcher{Name: name, Op: "=", Value: value}, nil
+	return PropertyMatcher{Name: name, Op: op, Value: value}, nil
+}
+
+// splitMatcher splits a "name=value" or "name=~value" filter at its first "="
+// and reports the operator: "=" for an exact match, "CONTAINS" when the "="
+// is directly followed by "~". Splitting at the first "=" keeps a value that
+// itself contains "=~" (for example "pattern=a=~b") intact. The last result is
+// false when there is no "=" or the name is empty.
+func splitMatcher(s string) (string, string, string, bool) {
+	name, value, found := strings.Cut(s, "=")
+	if !found || name == "" {
+		return "", "", "", false
+	}
+	if rest, contains := strings.CutPrefix(value, "~"); contains {
+		return name, "CONTAINS", rest, true
+	}
+	return name, "=", value, true
 }
 
 // insightMatcher is one predicate from --insight, applied client-side against
@@ -294,18 +307,11 @@ func parseInsightFlag(s string) (insightMatcher, error) {
 	if strings.EqualFold(strings.TrimSpace(s), "any") {
 		return insightMatcher{}, nil
 	}
-	if name, value, ok := strings.Cut(s, "=~"); ok && name != "" {
-		m := insightMatcher{Key: strings.ToLower(name), Op: "CONTAINS", Value: value}
-		if err := validateInsightMatcher(m); err != nil {
-			return insightMatcher{}, err
-		}
-		return m, nil
-	}
-	name, value, ok := strings.Cut(s, "=")
-	if !ok || name == "" {
+	name, op, value, ok := splitMatcher(s)
+	if !ok {
 		return insightMatcher{}, fmt.Errorf("--insight %q: expected 'any' or format key=value / key=~value", s)
 	}
-	m := insightMatcher{Key: strings.ToLower(name), Op: "=", Value: value}
+	m := insightMatcher{Key: strings.ToLower(name), Op: op, Value: value}
 	if err := validateInsightMatcher(m); err != nil {
 		return insightMatcher{}, err
 	}
