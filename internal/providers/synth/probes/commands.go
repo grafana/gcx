@@ -89,7 +89,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return codec.Encode(cmd.OutOrStdout(), probeList)
 			}
 
-			var objs []unstructured.Unstructured
+			objs := make([]unstructured.Unstructured, 0, len(typedObjs))
 			for _, typedObj := range typedObjs {
 				res, err := ToResource(typedObj.Spec, namespace)
 				if err != nil {

@@ -393,3 +393,15 @@ func TestProbesDeployRejectsMultipleTokenSources(t *testing.T) {
 	)
 	require.EqualError(t, err, "use only one of --token-file, --token-env, or --token")
 }
+
+// TestProbesListEmptyJSON pins that a tenant with no probes encodes as an
+// empty JSON array rather than null.
+func TestProbesListEmptyJSON(t *testing.T) {
+	srv := newProbeServer(t, &probeAPIState{})
+
+	stdout, _, err := runProbes(t, srv.URL, false, "", "list", "-o", "json")
+	require.NoError(t, err)
+	doc, ok := decodeSingleJSONValue(t, stdout).([]any)
+	require.True(t, ok, "empty list must encode as a JSON array, got: %q", stdout)
+	assert.Empty(t, doc)
+}
