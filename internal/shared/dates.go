@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,14 @@ import (
 )
 
 var relativeTimeRegex = regexp.MustCompile(`^now(?:([+-])(\d+)([smhdwMy]))?$`)
+
+// Bounds for Unix timestamps accepted by ParseTime. They keep the float to
+// int64 conversion defined and the resulting time.Time well inside the range
+// Go can represent without wrapping.
+const (
+	minUnixSeconds = -1 << 53
+	maxUnixSeconds = 1<<53 - 1
+)
 
 // ParseTime parses a time string that can be either:
 // - RFC3339 format (e.g., "2024-01-15T10:30:00Z").
@@ -32,6 +41,11 @@ func ParseTime(s string, now time.Time) (time.Time, error) {
 	}
 
 	if ts, err := strconv.ParseFloat(s, 64); err == nil {
+		// NaN, ±Inf and values beyond the int64 range have no defined
+		// float-to-int conversion and would yield an arbitrary timestamp.
+		if math.IsNaN(ts) || math.IsInf(ts, 0) || ts < minUnixSeconds || ts > maxUnixSeconds {
+			return time.Time{}, fmt.Errorf("unable to parse time: %s", s)
+		}
 		sec := int64(ts)
 		nsec := int64((ts - float64(sec)) * 1e9)
 		return time.Unix(sec, nsec), nil
@@ -55,34 +69,43 @@ func parseRelativeTime(s string, now time.Time) (time.Time, error) {
 	}
 
 	sign := matches[1]
-	value, _ := strconv.Atoi(matches[2])
+	value, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid relative time format: %s", s)
+	}
 	unit := matches[3]
 
 	if sign == "-" {
 		value = -value
 	}
 
-	var duration time.Duration
+	var unitDuration time.Duration
 	switch unit {
 	case "s":
-		duration = time.Duration(value) * time.Second
+		unitDuration = time.Second
 	case "m":
-		duration = time.Duration(value) * time.Minute
+		unitDuration = time.Minute
 	case "h":
-		duration = time.Duration(value) * time.Hour
+		unitDuration = time.Hour
 	case "d":
-		duration = time.Duration(value) * 24 * time.Hour
+		unitDuration = 24 * time.Hour
 	case "w":
-		duration = time.Duration(value) * 7 * 24 * time.Hour
+		unitDuration = 7 * 24 * time.Hour
 	case "M":
-		duration = time.Duration(value) * 30 * 24 * time.Hour
+		unitDuration = 30 * 24 * time.Hour
 	case "y":
-		duration = time.Duration(value) * 365 * 24 * time.Hour
+		unitDuration = 365 * 24 * time.Hour
 	default:
 		return time.Time{}, fmt.Errorf("unknown time unit: %s", unit)
 	}
 
-	return now.Add(duration), nil
+	// Reject offsets whose duration does not fit in an int64 of nanoseconds
+	// rather than letting the multiplication wrap to an unrelated time.
+	if int64(value) > math.MaxInt64/int64(unitDuration) || int64(value) < math.MinInt64/int64(unitDuration) {
+		return time.Time{}, fmt.Errorf("relative time out of range: %s", s)
+	}
+
+	return now.Add(time.Duration(value) * unitDuration), nil
 }
 
 // ParseDuration parses a Prometheus-style duration string. It accepts the units
