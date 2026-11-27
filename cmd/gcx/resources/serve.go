@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/server"
 	"github.com/grafana/gcx/internal/server/livereload"
 	"github.com/grafana/gcx/internal/server/watch"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -42,7 +43,7 @@ func (opts *serveOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.NoWatch, "no-watch", opts.NoWatch, "Do not watch for changes")
 	flags.StringVarP(&opts.Script, "script", "S", "", "Script to execute to generate a resource")
 	flags.StringVarP(&opts.ScriptFormat, "script-format", "f", "json", "Format of the data returned by the script")
-	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
+	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", shared.DefaultMaxConcurrency, "Maximum number of concurrent operations")
 }
 
 func (opts *serveOpts) watchTargets(args []string) []string {

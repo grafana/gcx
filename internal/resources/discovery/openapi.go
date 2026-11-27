@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
@@ -79,7 +80,7 @@ func (f *SchemaFetcher) FetchSpecSchemas(
 	var mu sync.Mutex
 
 	errg, ctx := errgroup.WithContext(ctx)
-	errg.SetLimit(10) // Bounded parallelism.
+	errg.SetLimit(shared.DefaultMaxConcurrency) // Bounded parallelism.
 
 	for gv, descs := range gvDescs {
 		indexKey := fmt.Sprintf("apis/%s/%s", gv.Group, gv.Version)

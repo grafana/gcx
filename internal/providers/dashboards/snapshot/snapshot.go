@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -74,7 +75,7 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&opts.PanelID, "panel", 0, "Panel number to render a single panel instead of the full dashboard")
 	flags.IntVar(&opts.OrgID, "org-id", 1, "Grafana organization number")
 	flags.StringVar(&opts.OutputDir, "output-dir", ".", "Directory to write PNG files to (created if it does not exist)")
-	flags.IntVar(&opts.Concurrency, "concurrency", 10, "Maximum number of concurrent render requests")
+	flags.IntVar(&opts.Concurrency, "concurrency", shared.DefaultMaxConcurrency, "Maximum number of concurrent render requests")
 	flags.DurationVar(&opts.Timeout, "timeout", 0, "Maximum time for each render as a positive whole-second duration (e.g. 30s, 3m)")
 	flags.StringToStringVar(&opts.Vars, "var", nil, "Dashboard template variable overrides (e.g. --var cluster=prod --var datasource=prometheus)")
 }

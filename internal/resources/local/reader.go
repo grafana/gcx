@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -78,7 +79,7 @@ func (reader *FSReader) Read(
 	}
 
 	if reader.MaxConcurrentReads < 1 {
-		reader.MaxConcurrentReads = 1
+		reader.MaxConcurrentReads = shared.DefaultMaxConcurrency
 	}
 
 	// Error group & channel for coordinating the reading and processing of resources.

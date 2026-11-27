@@ -23,13 +23,14 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
-	defaultExportConcurrency      = 10
+	defaultExportConcurrency      = shared.DefaultMaxConcurrency
 	maxExportArtifactBytes        = 25 << 20
 	maxExportJSONResponseBytes    = 64 << 20
 	maxExportTrialPages           = 10_000

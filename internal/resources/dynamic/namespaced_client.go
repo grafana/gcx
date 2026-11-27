@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/shared"
 	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -16,9 +17,8 @@ import (
 )
 
 // defaultMaxConcurrentGetRequests bounds the per-name fan-out in GetMultiple by
-// default, matching the fan-out cap used elsewhere in the resources pipeline
-// (adapter router, puller). Override via WithMaxConcurrentGetRequests.
-const defaultMaxConcurrentGetRequests = 10
+// default. Override via WithMaxConcurrentGetRequests.
+const defaultMaxConcurrentGetRequests = shared.DefaultMaxConcurrency
 
 // NamespacedClient is a dynamic client with a namespace and a discovery registry.
 type NamespacedClient struct {

@@ -12,6 +12,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/local"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -58,7 +59,7 @@ func (opts *lintOpts) setup(flags *pflag.FlagSet) {
 
 	flags.BoolVar(&opts.debug, "debug", false, "Enable debug mode")
 	flags.StringArrayVarP(&opts.rules, "rules", "r", nil, "Path to custom rules")
-	flags.IntVar(&opts.maxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
+	flags.IntVar(&opts.maxConcurrent, "max-concurrent", shared.DefaultMaxConcurrency, "Maximum number of concurrent operations")
 
 	flags.BoolVar(&opts.disableAll, "disable-all", false, "Disable all rules")
 	flags.StringArrayVar(&opts.disabledResources, "disable-resource", nil, "Disable all rules for a resource type")

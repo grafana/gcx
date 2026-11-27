@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/linter/builtins"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/local"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -160,7 +161,7 @@ func New(opts ...Option) (*Linter, error) {
 			Decoders:    format.Codecs(),
 			StopOnError: true,
 		},
-		maxConcurrency: 1,
+		maxConcurrency: shared.DefaultMaxConcurrency,
 		ruleBundles: []*bundle.Bundle{
 			&BuiltinBundle,
 		},

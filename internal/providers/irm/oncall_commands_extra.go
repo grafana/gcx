@@ -32,7 +32,7 @@ const alertGroupsListAlertsCap = 100
 const alertGroupListDefaultLimit = 50
 
 // alertGroupsListAlertsConcurrency bounds the N+1 retrieve fan-out.
-const alertGroupsListAlertsConcurrency = 10
+const alertGroupsListAlertsConcurrency = shared.DefaultMaxConcurrency
 
 // ---------------------------------------------------------------------------
 // alert-groups command: list, get, actions, list-alerts
