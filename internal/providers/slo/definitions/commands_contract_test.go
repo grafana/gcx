@@ -200,7 +200,7 @@ func TestDefinitionsPushOutputContract(t *testing.T) {
 		{
 			name:       "human dry-run byte-identical",
 			extraArgs:  []string{"--dry-run"},
-			wantStdout: "🛈 [dry-run] Would push SLO \"SLO One\" (uuid=)\n🛈 [dry-run] Would push SLO \"SLO Two\" (uuid=uuid-2)\n",
+			wantStdout: "ℹ [dry-run] Would push SLO \"SLO One\" (uuid=)\nℹ [dry-run] Would push SLO \"SLO Two\" (uuid=uuid-2)\n",
 		},
 		{
 			name:      "agent mode single JSON document",
@@ -484,7 +484,7 @@ func TestDefinitionsStatusEmptyContract(t *testing.T) {
 		wantStdout string
 		checkEmpty bool
 	}{
-		{name: "human default keeps prose notice", wantStdout: "🛈 No SLO definitions found.\n"},
+		{name: "human default keeps prose notice", wantStdout: "ℹ No SLO definitions found.\n"},
 		{name: "agent mode emits one empty JSON document", agentMode: true, checkEmpty: true},
 	}
 
@@ -512,7 +512,7 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 		agentMode  bool
 		wantStdout string
 	}{
-		{name: "human default keeps prose notice", wantStdout: "🛈 No SLO definitions found.\n"},
+		{name: "human default keeps prose notice", wantStdout: "ℹ No SLO definitions found.\n"},
 		{name: "agent mode emits one JSON document", agentMode: true},
 	}
 
