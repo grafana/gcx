@@ -154,3 +154,57 @@ func TestResolve_ServerWithoutDashboards(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveFolders(t *testing.T) {
+	const group = "folder.grafana.app"
+	versions := []metav1.GroupVersionForDiscovery{
+		{GroupVersion: group + "/v1beta1", Version: "v1beta1"},
+		{GroupVersion: group + "/v1", Version: "v1"},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var response any
+		switch r.URL.Path {
+		case "/api":
+			response = metav1.APIVersions{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIVersions"}, Versions: []string{}}
+		case "/apis":
+			response = metav1.APIGroupList{
+				TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIGroupList"},
+				Groups:   []metav1.APIGroup{{Name: group, Versions: versions, PreferredVersion: versions[1]}},
+			}
+		default:
+			version, ok := strings.CutPrefix(r.URL.Path, "/apis/"+group+"/")
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			response = metav1.APIResourceList{
+				TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
+				GroupVersion: group + "/" + version,
+				APIResources: []metav1.APIResource{{
+					Name:         "folders",
+					SingularName: "folder",
+					Namespaced:   true,
+					Kind:         "Folder",
+					Verbs:        metav1.Verbs{"get", "list"},
+				}},
+			}
+		}
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("encode discovery: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("GCX_DISCOVERY_CACHE_DIR", t.TempDir())
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	got, err := descriptor.ResolveFolders(t.Context(), cfg)
+	require.NoError(t, err)
+	require.Equal(t, resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: group, Version: "v1"},
+		Kind:         "Folder",
+		Singular:     "folder",
+		Plural:       "folders",
+	}, got)
+}

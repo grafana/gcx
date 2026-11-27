@@ -208,6 +208,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx dashboards delete":           {Cost: "small"},
 	"gcx dashboards search":           {Cost: "medium", Hint: "<query> -o json"},
 	"gcx dashboards list-versions":    {Cost: "small", Hint: "<name> -o json"},
+	"gcx dashboards tree":             {Cost: "medium", Hint: "[folder] -o json"},
 	"gcx dashboards versions restore": {Cost: "small"},
 
 	// -----------------------------------------------------------------------

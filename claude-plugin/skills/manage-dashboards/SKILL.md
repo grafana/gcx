@@ -71,6 +71,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Pyroscope label values | `gcx datasources pyroscope labels -d <uid> --label service_name` |
 | Other datasource types | Check `gcx datasources <type> --help` for dedicated subcommands before using `gcx api` |
 | List dashboards | `gcx dashboards list -o wide` |
+| Show folder hierarchy | `gcx dashboards tree [folder] -o json` (`-d` folders only, `-L <n>` depth, `-P <glob> --prune` filter) |
 | Search by text/tag/folder | `gcx dashboards search "<query>" --tag <tag> --folder <folder-name> -o json` |
 | Get one dashboard | `gcx dashboards get <dashboard-name> -o json` |
 | Create from finished file | `gcx dashboards create -f <dashboard.yaml>` |

@@ -1,0 +1,8 @@
+https://example.grafana.net
+├── Applications
+├── Infrastructure
+│   ├── Ceph
+│   └── Raspberry Pi
+└── Performance Testing
+
+5 folders

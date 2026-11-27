@@ -1,0 +1,15 @@
+https://example.grafana.net
+├── [apps          2026-01-01 12:00]  Applications/
+│   ├── [ha            2026-01-20 12:00]  Home Assistant
+│   └── [static        2026-01-08 12:00]  Static Pages / Overview
+├── [infra         2026-01-02 12:00]  Infrastructure/
+│   ├── [ceph          2026-01-03 12:00]  Ceph/
+│   │   ├── [ceph-cluster  2026-01-09 12:00]  Ceph - Cluster
+│   │   └── [osd           2026-01-30 12:00]  OSD Overview
+│   ├── [pi            2026-01-04 12:00]  Raspberry Pi/
+│   │   └── [fleet         2026-01-11 12:00]  Raspberry Pi Fleet
+│   └── [tailscale     2026-01-12 12:00]  Tailscale
+├── [k6            2026-01-05 12:00]  Performance Testing/
+└── [incidents     2026-01-13 12:00]  Incident Insights
+
+5 folders, 7 dashboards

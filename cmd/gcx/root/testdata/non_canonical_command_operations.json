@@ -37,6 +37,7 @@
   "gcx assistant watchers unarchive",
   "gcx cloud login",
   "gcx dashboards snapshot",
+  "gcx dashboards tree",
   "gcx dashboards versions restore",
   "gcx datasources athena describe-table",
   "gcx datasources bigquery describe-table",
