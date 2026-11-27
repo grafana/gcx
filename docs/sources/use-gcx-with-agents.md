@@ -17,12 +17,9 @@ weight: 9
 
 # Use `gcx` with AI agents
 
-With `gcx`, your AI coding agent can use production data to troubleshoot issues and make better implementation decisions. For example, the agent can examine traces alongside your code to identify which operation to optimize, or ask Grafana Assistant to investigate a potential issue.
+Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to **agent mode**. 
 
-Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to **agent mode**.
-
-Agent mode **reduces token usage**. `gcx` keeps output compact, lets the agent request only the fields it needs, and keeps large results out of the agent's context window.
-
+With `gcx`, your AI coding agent can use production data to troubleshoot issues and make better implementation decisions. For example, the agent can examine traces alongside your code to identify which operation to optimize, or ask Grafana Assistant to investigate a potential issue. Agent mode **reduces token usage**. `gcx` keeps output compact, lets the agent request only the fields it needs, and keeps large results out of the agent's context window.
 
 ## How agent mode works
 
@@ -39,20 +36,28 @@ The main differences between modes are the following. Most of them reduce the to
 | Large results | Printed in full | [Saved to a temporary file](#handle-large-results), with a short receipt on `stdout` |
 | Destructive operations | An interactive confirmation prompt | [Rejected unless you allow them](#approve-destructive-operations) |
 
+You can override these defaults. Refer to [Configure agent mode](#configure-agent-mode).
+
 Agents also rely on `gcx` features that are available in both modes:
 
 | Feature | How agents use it |
 | --- | --- |
 | `--dry-run` | [Preview changes](#preview-changes) |
 | `gcx resources push` | [Retry safely](#retry-safely) after a failure |
-| Exit codes and JSON errors | [Handle errors and exit codes](#handle-errors-and-exit-codes) |
+| Exit codes | [Handle errors and exit codes](#handle-errors-and-exit-codes) |
 | `--on-error` | [Handle batch failures](#handle-batch-failures) |
 | `--json` and `--jq` | [Select fields and filter results](#select-fields-and-filter-results) to get only the data they need |
 | `--limit` and `list_meta` | [Detect incomplete lists](#detect-incomplete-lists) to continue processing results |
 
-## Before you begin
+## Set up `gcx` for your agent
 
-[Install `gcx`](../installation/) in the environment where your agent runs.
+If you haven't already, [install `gcx`](../installation/) in the environment where your agent runs. 
+
+Next, follow these steps to set up `gcx` for your agent:
+
+1. [Authenticate so the agent can reach your Grafana instance](#authenticate-gcx-for-your-agent).
+1. [Iinstall the `gcx` skills for your agent tool](#install-gcx-agent-skills).
+1. Optionally, [modify the agent mode configuration](#configure-agent-mode).
 
 ### Authenticate `gcx` for your agent
 
@@ -128,6 +133,50 @@ gcx commands
 
 Commands follow a consistent `gcx <area> <noun> <verb>` grammar, for example `gcx slo definitions list`, so agents can predict commands they haven't seen. Every command also has `--help` text with commented examples that agents can read to learn the syntax.
 
+### Configure agent mode
+
+#### Override agent mode detection
+
+If `gcx` doesn't detect your tool automatically, set [`GCX_AGENT_NAME`](../cli-reference/#gcx_agent_name) to a supported label in the agent's command environment. For example, to identify **Crush**, run the following command:
+
+```bash
+GCX_AGENT_NAME=crush gcx resources get dashboards
+```
+
+Set the label only in the agent's environment, not in a shell that people also use. Supported labels for `GCX_AGENT_NAME` (and the shared `AI_AGENT` variable) are `aider`, `amazon-q`, `amp`, `augment`, `claude-code`, `cline`, `codex`, `crush`, `cursor`, `devin`, `factory-droid`, `gemini-cli`, `github-copilot`, `goose`, `hermes`, `junie`, `kilo-code`, `kiro`, `openclaw`, `opencode`, `openhands`, `pi`, and `qwen-code`.
+
+For details on how to set environment variables and how `gcx` uses them, refer to [Environment variables](../cli-reference/#environment-variables).
+
+#### Turn agent mode on or off
+
+To turn agent mode on or off regardless of detection:
+
+| To | Use |
+| --- | --- |
+| Turn agent mode on | `--agent` or [`GCX_AGENT_MODE=1`](../cli-reference/#gcx_agent_mode) |
+| Turn agent mode off | `--agent=false` or `GCX_AGENT_MODE=0` |
+
+The `--agent` flag takes precedence over environment variables. `GCX_AGENT_MODE` accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off.
+
+#### Override the output format
+
+To use a format other than the default for the current mode, pass `-o` with `text`, `json`, or `yaml`. For example:
+
+- In agent mode, `-o text` prints a readable table.
+- Without agent mode, `-o json` prints JSON.
+
+`-o json` also writes the full result to `stdout` in agent mode, without [saving large results to a temporary file](#handle-large-results).
+
+#### Log failed agent calls
+
+To record failed agent-mode calls locally for debugging, enable `diagnostics.agent-invocation-log` in your [configuration](../configuration/#configuration-reference):
+
+```bash
+gcx config set diagnostics.agent-invocation-log true
+```
+
+When enabled, `gcx` writes failed agent-mode invocations (up to 1,000 JSONL records) to `~/.local/state/gcx/agent-invocation-errors.jsonl` (`$XDG_STATE_HOME/gcx/agent-invocation-errors.jsonl`), or to `diagnostics.log-dir` if configured.
+
 ## How agents manage resources safely
 
 `gcx` includes features that let an agent preview changes, retry safely, and recover from partial failures. You decide which destructive operations an agent can run.
@@ -148,7 +197,7 @@ Not every command that changes data has `--dry-run`. Run `gcx <command> --help` 
 
 ### Handle batch failures
 
-When a command processes several resources at once, such as `gcx resources push` or `gcx resources delete`, one failure doesn't have to stop the rest. Agents use the `--on-error` flag to choose what happens after a resource fails:
+When a command processes several resources at once, such as `gcx resources push`, `gcx resources pull`, or `gcx resources delete`, one failure doesn't have to stop the rest. Agents use the `--on-error` flag to choose what happens after a resource fails:
 
 | Value | What happens | Exit code |
 | --- | --- | --- |
@@ -177,7 +226,7 @@ In agent mode, `gcx` returns structured output, reports incomplete results and e
 
 The default output in agent mode is compact JSON instead of tables. It has no colors, no layout, and no truncated columns, so agents can parse it directly without spending tokens on formatting.
 
-`gcx` writes the data to `stdout` and status messages and hints to `stderr`. Agents can parse `stdout` without filtering out those messages.
+`gcx` writes the data to `stdout`, and status messages and hints to `stderr`, with hints as JSON lines. Agents can parse `stdout` without filtering out those messages.
 
 ### Select fields and filter results
 
@@ -194,19 +243,26 @@ gcx resources get dashboards --json metadata.name,spec.title
 gcx resources get dashboards --jq '.items | length'
 ```
 
-In agent mode, `gcx` prints a one-line hint to `stderr` that suggests these flags. It prints the hint once for each command, unless the command already uses `--jq` or `--json list`.
+In agent mode, `gcx` writes a hint to `stderr`, as a JSON line, that suggests these flags. It prints the hint once for each command, unless the command already uses `--jq` or `--json list`.
 
 ### Detect incomplete lists
 
-List commands never truncate results silently.
+To keep results small, many list commands return a limited number of items by default, and they tell the agent when more are available. For example, [`gcx resources get`](../cli-reference/#gcx-resources-get) returns up to 50 items for each resource type. To return every item, pass `--limit 0`.
 
-For example, [`gcx resources get`](../cli-reference/#gcx-resources-get) returns up to 50 items for each resource type by default, which keeps results small.
-
-When a command returns partial results, it prints a hint to `stderr` with the command that returns more. Some list commands also add a `list_meta` object to the JSON output, so an agent can tell that the result is incomplete and which command to run next:
+When a command returns partial results, it prints a hint to `stderr` with the command that returns more. Some list commands, such as `gcx datasources list` and `gcx irm oncall alert-groups list`, also add a `list_meta` object to the JSON output. With it, an agent can tell that the result is incomplete and which command to run next:
 
 ```json
-"list_meta": {"truncated": true, "returned": 50, "continue": "gcx ... list --limit 100"}
+{
+  "items": [...],
+  "list_meta": {
+    "truncated": true,
+    "returned": 50,
+    "continue": "gcx irm oncall alert-groups list --limit 100"
+  }
+}
 ```
+
+If a safety limit stops the command, `list_meta` includes `cap` and no `continue` command. A larger `--limit` can't return more items, so the agent narrows the query with filters instead.
 
 ### Handle large results
 
@@ -260,38 +316,6 @@ Agents use the process exit code to decide what to do next:
 | `6` | Grafana version not supported | Stop and report the version. |
 
 Run `gcx help exit-codes` for descriptions and examples of each code.
-
-## Configure agent mode
-
-### Override agent mode detection
-
-If `gcx` doesn't detect your tool automatically, set [`GCX_AGENT_NAME`](../cli-reference/#gcx_agent_name) to a supported label in the agent's command environment. For example, to identify **Crush**, run the following command:
-
-```bash
-GCX_AGENT_NAME=crush gcx resources get dashboards
-```
-
-Set the label only in the agent's environment, not in a shell that people also use. For details on how to set environment variables and how `gcx` uses them, refer to [Environment variables](../cli-reference/#environment-variables).
-
-
-To turn agent mode on or off regardless of detection:
-
-| To | Use |
-| --- | --- |
-| Turn agent mode on | `--agent` or [`GCX_AGENT_MODE=1`](../cli-reference/#gcx_agent_mode) |
-| Turn agent mode off | `--agent=false` or `GCX_AGENT_MODE=0` |
-
-The `--agent` flag takes precedence over environment variables. `GCX_AGENT_MODE` accepts `1`, `true`, or `yes` to turn agent mode on, and `0`, `false`, or `no` to turn it off.
-
-### Log failed agent calls
-
-To record failed agent-mode calls locally for debugging, enable `diagnostics.agent-invocation-log` in your [configuration](../configuration/#configuration-reference):
-
-```bash
-gcx config set diagnostics.agent-invocation-log true
-```
-
-When enabled, `gcx` writes failed agent-mode invocations (up to 1,000 JSONL records) to `~/.local/state/gcx/agent-invocation-errors.jsonl` (`$XDG_STATE_HOME/gcx/agent-invocation-errors.jsonl`), or to `diagnostics.log-dir` if configured.
 
 ## Learn more
 
