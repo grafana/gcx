@@ -119,6 +119,7 @@ func ListAllWithHasMore[T any](ctx context.Context, c *Client, basePath string, 
 		q.Set("limit", strconv.Itoa(pageSize))
 	}
 
+	seenCursors := map[string]struct{}{}
 	for {
 		path := basePath
 		if encoded := q.Encode(); encoded != "" {
@@ -154,6 +155,10 @@ func ListAllWithHasMore[T any](ctx context.Context, c *Client, basePath string, 
 		if page.NextCursor == "" {
 			break
 		}
+		if _, repeated := seenCursors[page.NextCursor]; repeated {
+			return nil, false, fmt.Errorf("pagination of %s repeated cursor %q", basePath, page.NextCursor)
+		}
+		seenCursors[page.NextCursor] = struct{}{}
 		q.Set("cursor", page.NextCursor)
 	}
 
