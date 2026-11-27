@@ -105,11 +105,10 @@ const rulesV2Prefix = "/adaptive-metrics/api/v2/segments/default/rules"
 func fakeMetricsAPI() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasPrefix(r.URL.Path, rulesV2Prefix+"/"):
-			if r.Method == http.MethodDelete {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
+		case r.URL.Path == rulesV2Prefix+":batchWrite" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"results":[{"metric":"foo","status":"ok"}]}`)
+		case strings.HasPrefix(r.URL.Path, rulesV2Prefix+"/") && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `{"metric":%q,"action":"drop"}`, strings.TrimPrefix(r.URL.Path, rulesV2Prefix+"/"))
 		case r.URL.Path == rulesV2Prefix:

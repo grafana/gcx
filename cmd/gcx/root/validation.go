@@ -11,6 +11,17 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// NeedsArgValidation reports whether args may need [ValidateArgs]. Cobra
+// dispatches with Find, which parses no flags, so when Find already resolves
+// args to a runnable command in the execution tree, Cobra runs that command
+// and there is no group command whose stray arguments ValidateArgs could
+// reject. Checking this first lets callers skip building the separate
+// validation tree, which is most of a short command's startup.
+func NeedsArgValidation(rootCmd *cobra.Command, args []string) bool {
+	cmd, _, err := rootCmd.Find(args)
+	return err != nil || !cmd.Runnable()
+}
+
 // ValidateArgs detects stray positional arguments on non-runnable group
 // commands and converts them into a local unknown-command usage error.
 //

@@ -1565,49 +1565,30 @@ func adaptiveScopeSuggestionFromSignalPrefix(msg string) string {
 }
 
 func adaptiveMetricsScopeFromError(msg string) string {
-	type resource struct {
-		keyword   string
-		base      string
-		reads     []string
-		writes    []string
-		deleteKey string
+	_, detail, _ := strings.Cut(msg, "adaptive-metrics: ")
+	op, _, _ := strings.Cut(detail, ":")
+	switch op {
+	case "list rules", "get rule", "list metrics", "get metric", "get recommendation", "summarize recommendations":
+		return "adaptive-metrics-rules:read"
+	case "create rule", "update rule", "delete rule", "apply recommendations":
+		return "adaptive-metrics-rules:write"
+	case "list recommendations":
+		return "adaptive-metrics-recommendations:read"
+	case "list segments":
+		return "adaptive-metrics-segments:read"
+	case "create segment", "update segment":
+		return "adaptive-metrics-segments:write"
+	case "delete segment":
+		return "adaptive-metrics-segments:delete"
+	case "list exemptions", "list segmented exemptions", "get exemption":
+		return "adaptive-metrics-exemptions:read"
+	case "create exemption", "update exemption":
+		return "adaptive-metrics-exemptions:write"
+	case "delete exemption":
+		return "adaptive-metrics-exemptions:delete"
+	default:
+		return ""
 	}
-	// Operation matches are checked in priority order: delete > write > read.
-	resources := []resource{
-		{"rule", "adaptive-metrics-rules",
-			[]string{"list rules", "get rule", "list recommended rules"},
-			[]string{"create rule", "update rule", "sync rules", "validate rules"},
-			"delete rule"},
-		{"recommendation", "adaptive-metrics-recommendations",
-			[]string{"list recommendations"}, nil, ""},
-		{"segment", "adaptive-metrics-segments",
-			[]string{"list segments"},
-			[]string{"create segment", "update segment"},
-			"delete segment"},
-		{"exemption", "adaptive-metrics-exemptions",
-			[]string{"list exemptions", "list segmented exemptions", "get exemption"},
-			[]string{"create exemption", "update exemption"},
-			"delete exemption"},
-	}
-	for _, r := range resources {
-		if !strings.Contains(msg, r.keyword) {
-			continue
-		}
-		if r.deleteKey != "" && strings.Contains(msg, r.deleteKey) {
-			return r.base + ":delete"
-		}
-		for _, v := range r.writes {
-			if strings.Contains(msg, v) {
-				return r.base + ":write"
-			}
-		}
-		for _, v := range r.reads {
-			if strings.Contains(msg, v) {
-				return r.base + ":read"
-			}
-		}
-	}
-	return ""
 }
 
 // convertUnknownFieldSelectionErrors converts UnknownFieldSelectionError (from

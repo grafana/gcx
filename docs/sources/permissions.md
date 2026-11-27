@@ -330,7 +330,7 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Delete stacks (`gcx cloud stacks delete`) | `stacks:delete` |
 | Read Adaptive Metrics rules or catalog entries, diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
 | Create or update an Adaptive Metrics rule with `rules create` or `rules update` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
-| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:delete` |
+| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
 | Apply Adaptive Metrics recommendations, including removals | `adaptive-metrics-rules:write`; also `adaptive-metrics-rules:read` for the preview unless you use `--force` |
 | List Adaptive Metrics recommendations with `recommendations list` | `adaptive-metrics-recommendations:read` |
 | Manage Adaptive Metrics segments or exemptions | Operation-specific `adaptive-metrics-segments` or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |

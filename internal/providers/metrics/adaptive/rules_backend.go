@@ -24,11 +24,10 @@ const (
 	rulesProxyRoot  = "/api/plugin-proxy/grafana-adaptive-metrics-app"
 	rulesDirectRoot = "/adaptive-metrics/api/v2"
 
-	rulesReadAction   = "grafana-adaptive-metrics-app.rules:read"
-	rulesWriteAction  = "grafana-adaptive-metrics-app.rules:write"
-	rulesDeleteAction = "grafana-adaptive-metrics-app.rules:delete"
-	rulesReadRole     = "Rules Reader"
-	rulesEditRole     = "Rules Editor"
+	rulesReadAction  = "grafana-adaptive-metrics-app.rules:read"
+	rulesWriteAction = "grafana-adaptive-metrics-app.rules:write"
+	rulesReadRole    = "Rules Reader"
+	rulesEditRole    = "Rules Editor"
 
 	rulesMaxPageSize = 1000
 )
@@ -342,15 +341,23 @@ func (b *rulesBackend) Update(ctx context.Context, metric string, rule *MetricRu
 }
 
 // Delete is idempotent: the v2 API succeeds whether or not the rule existed.
+// Use batch write so all rule changes require the same write permission.
+// The batch is atomic: HTTP 200 means it committed, so no per-item check is needed.
 func (b *rulesBackend) Delete(ctx context.Context, metric string) error {
 	if err := validateRuleRef(b.segment, metric, true); err != nil {
 		return err
 	}
-	status, body, err := b.send(ctx, b.v2Call(http.MethodDelete, "/rules/"+url.PathEscape(metric), nil, rulesDeleteAction))
+	data, err := json.Marshal(map[string]any{
+		"operations": []map[string]string{{"metric": metric, "op": "delete"}},
+	})
+	if err != nil {
+		return fmt.Errorf("adaptive-metrics: delete rule: marshal: %w", err)
+	}
+	status, body, err := b.send(ctx, b.v2Call(http.MethodPost, "/rules:batchWrite", data, rulesWriteAction))
 	if err != nil {
 		return err
 	}
-	if status < 200 || status >= 300 {
+	if status != http.StatusOK {
 		return ruleError("delete rule", status, body)
 	}
 	return nil

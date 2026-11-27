@@ -4,9 +4,10 @@
 
 gcx uses distinct client paths to Grafana. The primary path uses the
 Kubernetes dynamic client stack (k8s.io/client-go) to talk to Grafana's
-Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path uses
-the Grafana OpenAPI generated client (`grafana-openapi-client-go`) for
-non-resource operations like health checks and datasource listing. Direct HTTP
+Kubernetes-compatible `/apis` endpoint for resource CRUD. A secondary path makes
+plain HTTP requests to Grafana's `/api` for the non-resource checks gcx needs:
+the health/version probe, the signed-in user, and the anonymous frontend
+settings probe used to detect the target before login. Direct HTTP
 clients use `rest.HTTPClientFor` for datasource queries and global resource search
 against their respective `/apis` endpoints.
 
@@ -48,17 +49,17 @@ config.NamespacedRESTConfig        (embeds rest.Config + Namespace string)
               dynamic.VersionedClient     (same interface + auto-version re-fetch)
 ```
 
-The secondary OpenAPI path is independent:
+The secondary `/api` path is independent:
 
 ```
 config.Context
         |
         v
-grafana.ClientFromContext()     [internal/grafana/client.go]
-        |  - parses server URL into Host/BasePath/Scheme
-        |  - applies auth (basic or API key)
+grafana.GetVersion() / grafana.SignedInUserID()   [internal/grafana/client.go]
+        |  - GET <server>/api/health or /api/user
+        |  - applies the selected auth (basic or token) and X-Grafana-Org-Id
         v
-*goapi.GrafanaHTTPAPI           (generated OpenAPI client, /api base path)
+httputils.NewDefaultClientWithTLS   (CLI transport, payload logging)
 ```
 
 The third path for datasource queries also starts from `NamespacedRESTConfig`
@@ -173,7 +174,9 @@ Uses a dedicated 5-second-timeout, no-retry HTTP client (separate from the
 main client) that attaches the selected credentials directly instead of going
 through the OAuth refresh transport. A whoami answer with a non-stack namespace
 (e.g. `"default"`) falls through to `/bootdata`; if that also yields no stack
-ID, discovery fails and the configured values are used as-is.
+ID, discovery fails and the configured values are used as-is. A network-level
+whoami failure (connection error, timeout) skips `/bootdata` outside OAuth mode,
+since it targets the same host.
 See [Stack ID Auto-Discovery](config-system.md#stack-id-auto-discovery).
 
 ### Layer 3: `NamespacedClient` — Primary CRUD Client
@@ -302,43 +305,30 @@ k8s dynamic client  →  apierrors.StatusError
 
 ---
 
-## Grafana OpenAPI Client (Secondary Path)
+## Grafana `/api` Requests (Secondary Path)
 
 **File:** `internal/grafana/client.go`
 
-The `grafana-openapi-client-go` generated client targets `/api` (not `/apis`)
-and is used for Grafana-specific operations that are not part of the K8s API:
-
-```go
-func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
-    cfg := &goapi.TransportConfig{
-        Host:     grafanaURL.Host,
-        BasePath: grafanaURL.Path + "/api",
-        Schemes:  []string{grafanaURL.Scheme},
-    }
-    // Auth and TLS use the same authoritative selection as rest.Config.
-    method, err := ctx.EffectiveGrafanaAuthMethod()
-    selectedTLS, err := ctx.EffectiveGrafanaTLS()
-    if selectedTLS != nil {
-        cfg.TLSConfig, err = selectedTLS.ToStdTLSConfig()
-    }
-    switch method {
-    case "basic":
-        cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
-    case "token":
-        cfg.APIKey = ctx.Grafana.APIToken
-    }
-    return goapi.NewHTTPClientWithConfig(strfmt.Default, cfg), nil
-}
-```
+Grafana-specific checks that are not part of the K8s API target `/api` (not
+`/apis`) with plain HTTP requests rather than a generated client, so gcx
+doesn't link the generated Grafana API client and the go-openapi stack for two
+GET requests. `getJSON` applies auth and TLS with the same authoritative
+selection as `rest.Config` (`EffectiveGrafanaAuthMethod`,
+`EffectiveGrafanaTLS`): only the selected credential is attached, OAuth
+requests are anonymous against the direct Grafana endpoint, and mTLS
+authenticates at the transport layer. A non-2xx response becomes a
+`*grafana.StatusError`, which carries the status but not the body, since error
+bodies can echo credentials.
 
 **Current usages:**
 - `grafana.GetVersion()` — calls `GET /api/health` to check Grafana version
-- Version compatibility checks before operations
-- Datasources list and get — queries the `/api/datasources` endpoint
+- `grafana.SignedInUserID()` — calls `GET /api/user` to verify basic-auth
+  credentials during login
+- `grafana.FetchAnonymousSettings()` — calls `GET /api/frontend/settings`
+  without credentials to detect the target (for example, Grafana Cloud) before
+  login
 
 **Does NOT use:**
-- `internal/httputils` (the OpenAPI client manages its own transport)
 - `NamespacedRESTConfig` (completely separate connection setup)
 
 ---
@@ -439,8 +429,8 @@ GrafanaConfig.APIToken != ""
     ├─ dynamic path       →  rest.Config.BearerToken
     │                        k8s transport sets "Authorization: Bearer <token>"
     │
-    ├─ OpenAPI path        →  TransportConfig.APIKey
-    │                        generated client sets "Authorization: Bearer <token>"
+    ├─ /api path          →  grafana.getJSON
+    │                        sets "Authorization: Bearer <token>" on the request
     │
     └─ query clients path →  rest.Config.BearerToken (via rest.HTTPClientFor)
                              same http.Client used by prometheus.Client / loki.Client
@@ -450,8 +440,8 @@ GrafanaConfig.User != ""
     ├─ dynamic path       →  rest.Config.Username + Password
     │                        k8s transport sets "Authorization: Basic <b64(user:pass)>"
     │
-    ├─ OpenAPI path        →  TransportConfig.BasicAuth
-    │                        generated client sets "Authorization: Basic <b64(user:pass)>"
+    ├─ /api path          →  grafana.getJSON
+    │                        req.SetBasicAuth sets "Authorization: Basic <b64(user:pass)>"
     │
     └─ query clients path →  rest.Config.Username + Password (via rest.HTTPClientFor)
                              same mechanism as dynamic path

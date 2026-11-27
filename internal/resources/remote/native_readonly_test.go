@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/gcx/internal/grafanameta"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/remote"
-	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -159,8 +159,8 @@ func TestNativeReadOnly_PullManagedExclusionUnchanged(t *testing.T) {
 	desc := readOnlyDescriptor("TimeInterval", "v1beta1")
 	obj := readOnlyObject(desc, "external-manager", "api")
 	obj.SetAnnotations(map[string]string{
-		utils.AnnoKeyManagerKind:     string(utils.ManagerKindTerraform),
-		utils.AnnoKeyManagerIdentity: "terraform",
+		grafanameta.AnnoKeyManagerKind:     string(grafanameta.ManagerKindTerraform),
+		grafanameta.AnnoKeyManagerIdentity: "terraform",
 	})
 	for _, excludeReadOnly := range []bool{false, true} {
 		client := &readOnlyClient{objects: []*unstructured.Unstructured{obj}}
