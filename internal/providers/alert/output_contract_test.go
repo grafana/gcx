@@ -512,3 +512,31 @@ func TestInstancesListOutputContract(t *testing.T) {
 		assert.False(t, json.Valid([]byte(stdout)), "-o yaml must not produce JSON, got: %q", stdout)
 	})
 }
+
+// TestAlertListEmptyJSON pins that list commands encode an empty result as an
+// empty JSON array, not null.
+func TestAlertListEmptyJSON(t *testing.T) {
+	// A group without rules leaves nothing to list.
+	emptyGroup := []alert.RuleGroup{{Name: "g", FolderUID: "f"}}
+	tests := []struct {
+		name string
+		cmd  func(alert.GrafanaConfigLoader) *cobra.Command
+	}{
+		{"rules list", alert.NewRulesListCommandForTest},
+		{"instances list", alert.NewInstancesListCommandForTest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			setAgentMode(t, false)
+
+			loader := newAlertFixture(t, serveRules(emptyGroup))
+			stdout, _, err := runCmdSplit(t, tc.cmd(loader), []string{"list", "-o", "json"}, "")
+			require.NoError(t, err)
+
+			doc := decodeSingleJSONDocument(t, stdout)
+			items, ok := doc.([]any)
+			require.True(t, ok, "empty list should be a JSON array, got %T: %q", doc, stdout)
+			assert.Empty(t, items)
+		})
+	}
+}

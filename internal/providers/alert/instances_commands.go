@@ -136,7 +136,7 @@ func filterInstancesByName(instances []AlertInstanceRecord, re *regexp.Regexp) [
 }
 
 func collectAlertInstances(groups []RuleGroup) []AlertInstanceRecord {
-	var instances []AlertInstanceRecord
+	instances := []AlertInstanceRecord{}
 	for _, g := range groups {
 		for _, r := range g.Rules {
 			for _, a := range r.Alerts {

@@ -94,3 +94,8 @@ func RulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 func NewRoutingTreesCommandForTest(binding native.Binding) *cobra.Command {
 	return newRoutingTreesCommand(binding)
 }
+
+// NewRulesListCommandForTest wraps newRulesListCommand.
+func NewRulesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newRulesListCommand(loader)
+}
