@@ -950,10 +950,11 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 }
 
 func parseDuration(s string) (time.Duration, error) {
-	if len(s) > 1 && s[len(s)-1] == 'd' {
-		var days int
-		if _, err := fmt.Sscanf(s, "%dd", &days); err == nil {
-			return time.Duration(days) * 24 * time.Hour, nil
+	if days, ok := strings.CutSuffix(s, "d"); ok && days != "" {
+		// Atoi, not Sscanf, so trailing text such as "7dd" is an error
+		// instead of being dropped.
+		if n, err := strconv.Atoi(days); err == nil {
+			return time.Duration(n) * 24 * time.Hour, nil
 		}
 	}
 	return time.ParseDuration(s)
