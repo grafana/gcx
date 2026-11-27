@@ -101,6 +101,11 @@ func ReadAlertmanagerUserConfig(file string, stdin io.Reader, templatePaths []st
 	return readAlertmanagerUserConfig(file, stdin, templatePaths)
 }
 
+// AlertmanagerImportIdentifierFromDatasourceName exposes identifier derivation to tests.
+func AlertmanagerImportIdentifierFromDatasourceName(name string) string {
+	return alertmanagerImportIdentifierFromDatasourceName(name)
+}
+
 // NewRoutingTreesCommandForTest wraps newRoutingTreesCommand so tests can
 // inject a native binding (native.Fixed / native.Func).
 func NewRoutingTreesCommandForTest(binding native.Binding) *cobra.Command {
