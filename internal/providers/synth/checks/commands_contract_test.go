@@ -1313,16 +1313,28 @@ func TestChecksTimelineContract(t *testing.T) {
 		}
 	}
 
-	t.Run("clamp notice goes to stderr, no-data notice keeps human stdout", func(t *testing.T) {
-		srv := newCheckServer(t, newState())
+	humanTests := []struct {
+		name       string
+		args       []string
+		wantStdout string
+	}{
+		{name: "default graph prints nothing", wantStdout: ""},
+		{name: "table prints the empty table", args: []string{"-o", "table"}, wantStdout: "PROBE  TIMESTAMP  SUCCESS\n"},
+	}
+	for _, tc := range humanTests {
+		t.Run("no data: "+tc.name+" and the notices go to stderr", func(t *testing.T) {
+			srv := newCheckServer(t, newState())
 
-		stdout, stderr, err := runChecks(t, srv.URL, false, "", "timeline", "42", "--datasource-uid", "test-uid")
-		require.NoError(t, err)
+			args := append([]string{"timeline", "42", "--datasource-uid", "test-uid"}, tc.args...)
+			stdout, stderr, err := runChecks(t, srv.URL, false, "", args...)
+			require.NoError(t, err)
 
-		// --since default (6h) exceeds check age (30m) → clamped.
-		assert.Contains(t, stderr, "window adjusted to match")
-		assert.Equal(t, "🛈 No time-series data available for check 42.\n", stdout)
-	})
+			assert.Equal(t, tc.wantStdout, stdout)
+			// --since default (6h) exceeds check age (30m) → clamped.
+			assert.Contains(t, stderr, "window adjusted to match")
+			assert.Contains(t, stderr, "hint: no time-series data available for check 42\n")
+		})
+	}
 
 	t.Run("agent mode emits one JSON document even with no data", func(t *testing.T) {
 		srv := newCheckServer(t, newState())
@@ -1337,5 +1349,6 @@ func TestChecksTimelineContract(t *testing.T) {
 		require.True(t, ok, "Series must serialize as an array, not null")
 		assert.Empty(t, series)
 		assert.Contains(t, stderr, "window adjusted to match")
+		assert.Contains(t, stderr, `"summary":"no time-series data available for check 42"`)
 	})
 }
