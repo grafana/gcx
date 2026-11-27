@@ -190,12 +190,8 @@ To learn more about roles and permissions for Frontend Observability, refer to [
 | Read investigations (`gcx assistant investigations list`) | `grafana-assistant-app.investigations:read` (included in the Assistant Investigation User role) |
 | View investigations started automatically by alerts or Grafana Incident Response and Management (IRM) webhooks | `grafana-assistant-app.investigations.system:read` (Assistant System Investigation Viewer role) |
 | View organization-wide Assistant usage and limits (`gcx assistant usage get`) | `grafana-assistant-app.usage:read` (included in the Assistant Admin role and Admin basic role) |
-| View change review checks, their pull requests, and review statistics (`gcx assistant change-review checks list`, `get`, `list-pull-requests`, and `gcx assistant change-review stats`) | `grafana-assistant-app.github:read` |
-| Create, update, or delete change review checks (`gcx assistant change-review checks create`, `update`, `delete`) | `grafana-assistant-app.github:write` |
-
-`gcx pages` commands also use the Grafana Assistant app. You can only read or change pages that your identity has access to.
-
-<!-- REVIEW: Confirm the Assistant roles that include grafana-assistant-app.github:read and :write, and the actions or roles gcx pages needs. -->
+| View change review checks, their pull requests, and review statistics (`gcx assistant change-review checks list`, `get`, `list-pull-requests`, and `gcx assistant change-review stats`) | `grafana-assistant-app.github:read` (Assistant Coding User role, included in all basic roles) |
+| Create, update, or delete change review checks (`gcx assistant change-review checks create`, `update`, `delete`) | `grafana-assistant-app.github:read` and `grafana-assistant-app.github:write`, because each change reads the current checks before saving (Assistant Coding Admin or Assistant Admin role, included in the Admin basic role) |
 
 #### Troubleshoot Assistant permission errors
 
@@ -206,6 +202,17 @@ If a command such as `gcx assistant investigations list` fails, use the error me
 - **Commands that change resources or call Model Context Protocol (MCP) servers:** `gcx` can't always tell you which permission is missing. If the error doesn't name one, ask your administrator to review your Assistant roles.
 
 To learn more about roles and permissions for Grafana Assistant, refer to [Manage Assistant access with RBAC](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/).
+
+#### Grafana Pages
+
+`gcx pages` commands use the Pages API on your stack, and drafts also work through Grafana Assistant conversations. Every Pages command needs `plugins.app:access` scoped to `plugins:id:grafana-assistant-app`, plus these permissions:
+
+| Access or commands | Required role or permission |
+| --- | --- |
+| Read published pages (`gcx pages catalog list`, `get`) | `assistant.ext.grafana.app/pages:get` |
+| Create, pull, push, snapshot, and publish drafts (`gcx pages drafts`) | `assistant.ext.grafana.app/pages:create`, `assistant.ext.grafana.app/pages:update`, and `grafana-assistant-app.chats:access` |
+
+Pages permissions don't replace folder access or a page's sharing settings. To learn more, refer to [Control access to Pages](https://grafana.com/docs/grafana-cloud/platform/grafana-assistant/privacy-and-security/rbac/#control-access-to-pages).
 
 ### Grafana Cloud k6
 
@@ -246,9 +253,6 @@ To grant narrower access, use the granular IRM roles for the commands you run:
 | `gcx irm oncall escalation-chains` | Read: `plugins:grafana-irm-app:escalation-chains-reader`; Write: `plugins:grafana-irm-app:escalation-chains-editor` |
 | `gcx irm oncall schedules`, `gcx irm oncall shifts` | Read: `plugins:grafana-irm-app:schedules-reader`; Write: `plugins:grafana-irm-app:schedules-editor` |
 | `gcx irm oncall webhooks` | Read: `plugins:grafana-irm-app:outgoing-webhooks-reader`; Write: `plugins:grafana-irm-app:outgoing-webhooks-editor` |
-
-<!-- REVIEW: Confirm the granular IRM role for team working hours (gcx irm oncall teams get-team-hours, update-team-hours), and add a row. -->
-
 OnCall personal notification rules don't work with a service account because the server rejects service account requests. Sign in as a Grafana user instead. Refer to [Manage OnCall notification rules](../resources/manage-oncall-notification-rules/) for the permissions those commands need.
 
 To learn more about roles and permissions for Grafana IRM, refer to [Roles and permissions for Grafana IRM](https://grafana.com/docs/grafana-cloud/observe-and-act/respond-to-incidents/set-up/manage-access/roles-and-permissions/).
@@ -294,14 +298,15 @@ To learn more about roles and permissions for Machine Learning, refer to [Config
 
 ### SCIM
 
-`gcx scim settings` and `gcx scim endpoint` use your Grafana sign-in. `gcx scim users` doesn't: it calls the SCIM API with a SCIM service account token that you pass with `--token-file`.
-
-<!-- REVIEW: Confirm the RBAC action or role for reading and updating SCIM settings. The Grafana SCIM docs only mention "the authentication settings permission". -->
+`gcx scim settings` and `gcx scim endpoint` use your Grafana sign-in. `gcx scim users` needs both your Grafana sign-in and a SCIM service account token: it reads the SCIM settings with your sign-in, then calls the SCIM API with the token that you pass with `--token-file`.
 
 | Access or commands | Required role or permission |
 | --- | --- |
-| Read or update SCIM sync settings, and get the SCIM endpoint (`gcx scim settings`, `gcx scim endpoint`) | Permission to manage SCIM authentication settings |
-| List, get, create, update, or deactivate SCIM users (`gcx scim users`) | A SCIM service account token |
+| Read SCIM sync settings and get the SCIM endpoint (`gcx scim settings get`, `gcx scim endpoint get`) | `settings:read` scoped to `settings:auth.scim:*` |
+| Update SCIM sync settings (`gcx scim settings update`) | `settings:read` and `settings:write` scoped to `settings:auth.scim:*` |
+| List, get, create, update, or deactivate SCIM users (`gcx scim users`) | `settings:read` scoped to `settings:auth.scim:*`, plus a SCIM service account token |
+
+The **Authentication config writer** fixed role (`fixed:authentication.config:writer`) includes both SCIM settings actions.
 
 To create, update, or deactivate users, user sync must be enabled in the SCIM settings.
 
@@ -353,7 +358,7 @@ If you use a Grafana Cloud access policy token, scope the access policy to the c
 | Delete stacks (`gcx cloud stacks delete`) | `stacks:delete` |
 | Read Adaptive Metrics rules or analyzed metrics (`metrics list`, `metrics get`), diff recommendations, or preview an apply | `adaptive-metrics-rules:read` |
 | Create or update an Adaptive Metrics rule with `rules create` or `rules update` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
-| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write`. `gcx` 1.9.0 and later don't use `adaptive-metrics-rules:delete`. |
+| Delete an Adaptive Metrics rule with `rules delete` | `adaptive-metrics-rules:read` and `adaptive-metrics-rules:write` |
 | Apply Adaptive Metrics recommendations, including removals | `adaptive-metrics-rules:write`; also `adaptive-metrics-rules:read` for the preview unless you use `--force` |
 | List Adaptive Metrics recommendations with `recommendations list` | `adaptive-metrics-recommendations:read` |
 | Manage Adaptive Metrics segments or exemptions | Operation-specific `adaptive-metrics-segments` or `adaptive-metrics-exemptions` scope (`:read`, `:write`, or `:delete`) |
