@@ -24,5 +24,6 @@ func (p *postgresDSProvider) ExtraCommands(loader *providers.ConfigLoader) []*co
 	return []*cobra.Command{
 		postgres.ListTablesCmd(loader),
 		postgres.DescribeTableCmd(loader),
+		postgres.DescribeConstraintsCmd(loader),
 	}
 }

@@ -58,6 +58,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatTraceTable(w, resp)
 	case *querysql.QueryResponse:
 		return querysql.FormatTable(w, resp)
+	case *querysql.TableConstraints:
+		return querysql.FormatConstraintsTable(w, resp, false)
 	case []clickhouse.TableInfo:
 		return clickhouse.FormatListTablesTable(w, resp)
 	case []clickhouse.ColumnInfo:
@@ -117,6 +119,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatTraceWide(w, resp)
 	case *querysql.QueryResponse:
 		return querysql.FormatWideTable(w, resp)
+	case *querysql.TableConstraints:
+		return querysql.FormatConstraintsTable(w, resp, true)
 	case athena.StringList:
 		return athena.FormatStringList(w, resp.Items, resp.Header)
 	case bigquery.StringList:
