@@ -63,6 +63,7 @@ See ` + docs.IRMInvoice + `.`,
 
 	irmCmd.AddCommand(oncallCmd)
 	irmCmd.AddCommand(newIncidentsCmd(loader))
+	irmCmd.AddCommand(newPluginCommand(loader))
 
 	return []*cobra.Command{irmCmd}
 }
