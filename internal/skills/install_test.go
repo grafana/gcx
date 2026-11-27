@@ -120,3 +120,25 @@ func TestUninstallSymlink(t *testing.T) {
 	_, err = os.Lstat(filepath.Join(root, "skills", "old"))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
+
+func TestInstallConflictLeavesNothingWritten(t *testing.T) {
+	t.Parallel()
+	source := fstest.MapFS{
+		"alpha/SKILL.md": {Data: []byte("alpha")},
+		"beta/SKILL.md":  {Data: []byte("beta")},
+	}
+	catalog := []byte("skills: {alpha: {status: active}, beta: {status: active}}")
+	root := filepath.Join(t.TempDir(), ".agents")
+	conflict := filepath.Join(root, "skills", "beta", "SKILL.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(conflict), 0o755))
+	require.NoError(t, os.WriteFile(conflict, []byte("local-change"), 0o600))
+
+	_, err := skills.Install(source, catalog, root, nil, false, false)
+	require.ErrorContains(t, err, "use --force to overwrite")
+
+	// alpha sorts before beta; it must not have been installed.
+	require.NoDirExists(t, filepath.Join(root, "skills", "alpha"))
+	data, err := os.ReadFile(conflict)
+	require.NoError(t, err)
+	require.Equal(t, "local-change", string(data))
+}
