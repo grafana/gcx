@@ -46,8 +46,8 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 
 | Area | What you can manage | Command | Guides |
 | --- | --- | --- | --- |
-| **Adaptive Telemetry** | Rules, policies, and recommendations for Adaptive Metrics, Logs, Traces, and Profiles, and log archiving (experimental) | [`gcx metrics adaptive`](../cli-reference/#gcx-metrics-adaptive), [`gcx logs adaptive`](../cli-reference/#gcx-logs-adaptive), [`gcx logs archive`](../cli-reference/#gcx-logs-archive), [`gcx traces adaptive`](../cli-reference/#gcx-traces-adaptive), [`gcx profiles adaptive`](../cli-reference/#gcx-profiles-adaptive) | |
-| **Agent Observability** | AI agents, conversations, evaluations, model cards, and prompt templates | [`gcx agento11y`](../cli-reference/#gcx-agento11y) | |
+| **Adaptive Telemetry** | Rules, policies, and recommendations for Adaptive Metrics, Logs, Traces, and Profiles, the Adaptive Metrics analyzed metrics catalog, and log archiving (experimental) | [`gcx metrics adaptive`](../cli-reference/#gcx-metrics-adaptive), [`gcx logs adaptive`](../cli-reference/#gcx-logs-adaptive), [`gcx logs archive`](../cli-reference/#gcx-logs-archive), [`gcx traces adaptive`](../cli-reference/#gcx-traces-adaptive), [`gcx profiles adaptive`](../cli-reference/#gcx-profiles-adaptive) | |
+| **Agent Observability** | AI agents, conversations, evaluations, human review queues, model cards, and prompt templates | [`gcx agento11y`](../cli-reference/#gcx-agento11y) | |
 | **Alerting** | Alert rules, contact points, notification policies, and related alerting configuration | [`gcx alert`](../cli-reference/#gcx-alert), [`gcx resources`](../cli-reference/#gcx-resources) | <ul><li>[Lint resources](./lint-resources/)</li><li>[Use gcx to manage alerting resources](https://grafana.com/docs/grafana/<GRAFANA_VERSION>/alerting/set-up/provision-alerting-resources/gcx-provisioning/)</li></ul> |
 | **Annotations** | Annotations on dashboards and panels, organization-wide annotations, and annotation tags | [`gcx annotations`](../cli-reference/#gcx-annotations) | |
 | **Application Observability** | Monitored services and their settings | [`gcx appo11y`](../cli-reference/#gcx-appo11y) | |
@@ -58,15 +58,16 @@ The following table lists the main Grafana areas and Grafana Cloud products you 
 | **Folders** | Folders | [`gcx resources`](../cli-reference/#gcx-resources) | |
 | **Frontend Observability** | Frontend apps, source maps, and user sessions | [`gcx frontend`](../cli-reference/#gcx-frontend) | |
 | **Error Tracking** | Projects, errors and their events, comments and assignees, heatmaps, and source maps (experimental) | `gcx error-tracking` | |
-| **Grafana Assistant** | Conversations, investigations, MCP servers, Watchers, and change review checks | [`gcx assistant`](../cli-reference/#gcx-assistant) | <ul><li>[Manage Watchers](./manage-assistant-watchers/)</li><li>[Manage Assistant change review checks](./manage-change-review-checks/)</li><li>[Check Assistant usage and limits](../guides/assistant-usage/)</li></ul> |
+| **Grafana Assistant** | Conversations, investigations, MCP servers, Watchers (experimental), and change review checks (experimental) | [`gcx assistant`](../cli-reference/#gcx-assistant) | <ul><li>[Manage Watchers](./manage-assistant-watchers/)</li><li>[Manage Assistant change review checks](./manage-change-review-checks/)</li><li>[Check Assistant usage and limits](../guides/assistant-usage/)</li></ul> |
 | **Grafana Cloud platform** | Organization memberships and Grafana Cloud stacks | [`gcx cloud`](../cli-reference/#gcx-cloud) | |
-| **Grafana Pages** | Live pages on Grafana data: drafts and published pages | [`gcx pages`](../cli-reference/#gcx-pages) | [Build Grafana Pages](./build-grafana-pages/) |
+| **Grafana Pages** | Live pages on Grafana data: drafts and published pages (experimental) | [`gcx pages`](../cli-reference/#gcx-pages) | [Build Grafana Pages](./build-grafana-pages/) |
 | **Instrumentation** | Kubernetes clusters, cluster apps, and monitored services | [`gcx instrumentation`](../cli-reference/#gcx-instrumentation) | |
 | **IRM Incidents** | Incidents and post-incident reviews | [`gcx irm incidents`](../cli-reference/#gcx-irm-incidents), [`gcx resources`](../cli-reference/#gcx-resources) | [Incident descriptions](./manage-resources/#incident-descriptions) |
-| **IRM OnCall** | Schedules, escalation chains, integrations, and other OnCall configuration | [`gcx irm oncall`](../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](./manage-oncall-notification-rules/) |
+| **IRM OnCall** | Schedules, escalation chains, integrations, team working hours, and other OnCall configuration | [`gcx irm oncall`](../cli-reference/#gcx-irm-oncall) | [Manage OnCall notification rules](./manage-oncall-notification-rules/) |
 | **Knowledge Graph** | Entities, relationships, and the rules that shape them | [`gcx kg`](../cli-reference/#gcx-kg) | |
 | **Machine Learning** | Forecasts, holidays, outlier detectors, and their alerts | [`gcx ml`](../cli-reference/#gcx-ml), [`gcx resources`](../cli-reference/#gcx-resources) | <ul><li>[Use gcx to manage Machine Learning resources](https://grafana.com/docs/grafana-cloud/ai-tools/machine-learning/additional-configuration/gcx/)</li><li>[Manage Machine Learning resources as code](./manage-machine-learning/)</li></ul> |
 | **Performance Testing (k6)** | Projects, load tests, schedules, and test runs | [`gcx k6`](../cli-reference/#gcx-k6) | |
+| **SCIM provisioning** | SCIM sync settings, the SCIM endpoint, and SCIM-provisioned users | [`gcx scim`](../cli-reference/#gcx-scim) | |
 | **SLOs** | SLO definitions and reports | [`gcx slo`](../cli-reference/#gcx-slo), [`gcx resources`](../cli-reference/#gcx-resources) | [Use gcx to manage SLO resources](https://grafana.com/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/slo/set-up/gcx/) |
 | **Synthetic Monitoring** | Checks, probes, and saved queries | [`gcx synthetic-monitoring`](../cli-reference/#gcx-synthetic-monitoring), [`gcx resources`](../cli-reference/#gcx-resources) | |
 

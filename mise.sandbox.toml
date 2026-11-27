@@ -1,0 +1,5 @@
+# Tools only experimental/sandbox/build.sh needs, loaded with MISE_ENV=sandbox
+# (as the Sandbox and Publish gcx.wasm workflows set it): wasmtime, whose wizer
+# pre-initializes gcx-preinit.wasm. Locally: MISE_ENV=sandbox mise install.
+[tools]
+wasmtime = "51.0.0"

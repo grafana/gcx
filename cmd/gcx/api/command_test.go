@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
@@ -232,6 +233,25 @@ func TestOutputResponse_ErrorWithBody(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, carrier.HTTPStatusCode())
 }
 
+func TestOutputResponse_EventStreamErrorStatus(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("data: denied\n\n")),
+	}
+
+	var stdout bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&stdout)
+	opts := &apiOpts{}
+
+	err := outputResponse(cmd, opts, resp)
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusForbidden, statusErr.Status)
+	assert.Empty(t, stdout.String())
+}
+
 func TestOutputResponse_ErrorWithoutBody(t *testing.T) {
 	resp := &http.Response{
 		StatusCode: http.StatusNotFound,
@@ -444,4 +464,38 @@ func TestApiOpts_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// chanWriter signals each write, so a test can see output before EOF.
+type chanWriter chan string
+
+func (c chanWriter) Write(p []byte) (int, error) { c <- string(p); return len(p), nil }
+
+func TestOutputResponse_EventStreamWrittenAsItArrives(t *testing.T) {
+	setAgentMode(t, false)
+	opts := boundAPIOpts(t)
+	body, w := io.Pipe()
+	t.Cleanup(func() { _ = w.Close() })
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream; charset=utf-8"}},
+		Body:       body,
+	}
+	out := make(chanWriter, 4)
+	cmd := &cobra.Command{}
+	cmd.SetOut(out)
+	done := make(chan error, 1)
+	go func() { done <- outputResponse(cmd, opts, resp) }()
+
+	// Write from a goroutine, so a body nobody reads fails at the deadline
+	// instead of blocking the test.
+	go func() { _, _ = w.Write([]byte("data: {\"sequence\":1}\n\n")) }()
+	select {
+	case got := <-out:
+		require.Equal(t, "data: {\"sequence\":1}\n\n", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("event not written before the stream ended")
+	}
+	require.NoError(t, w.Close())
+	require.NoError(t, <-done)
 }
