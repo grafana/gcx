@@ -213,7 +213,7 @@ To see exactly what `gcx` would report for an invocation, set `GCX_TELEMETRY=log
 GCX_TELEMETRY=log gcx dashboards list
 ```
 
-## Opt out
+## Control reporting and opt out
 
 You can control usage statistics reporting three ways:
 
@@ -240,7 +240,7 @@ Opting out disables reporting entirely. No event is constructed and nothing is s
 
 The notice is shown at most once for each revision of its text. `gcx` records the revision it showed in `$XDG_STATE_HOME/gcx/telemetry-notice-shown`, which is `~/.local/state/gcx/telemetry-notice-shown` on most systems. Delete that file to see the notice again. When the text changes in a material way, the revision changes with it, and the notice is shown once more — including to installations that already ran `gcx`.
 
-Two limits are worth stating plainly:
+Keep in mind the following:
 
 - **The notice is only printed to an interactive terminal.** It is skipped when stderr is not a terminal, when `gcx` detects a CI environment, and when `gcx` runs in agent mode. Those invocations still report. So a CI job or a coding agent can report usage statistics without the notice ever appearing. If you run `gcx` in either environment, opt out in the configuration file or in the environment of the job.
 - **The first report is sent by the same invocation that prints the notice.** The notice comes first and the report follows, in one process. So reading the notice tells you that one invocation has already reported. Every invocation after it obeys the opt-out you choose.
@@ -249,15 +249,47 @@ Two limits are worth stating plainly:
 
 Agent identity uses the fixed labels in the
 [agent environment reference](https://github.com/grafana/gcx/blob/main/docs/design/environment-variables.md#supported-harness-names).
-The `GCX_AGENT_NAME` override supports harnesses without a native marker.
-The shared `AI_AGENT` variable also accepts supported names.
-The bare `AGENT` variable is accepted only when its value is `goose`.
-Unknown names and version suffixes are not sent. Session markers are used only
-for detection; their values are not sent.
 
-When agent mode is enabled without a known identity, `agent` is `generic`.
-When neither a known identity nor agent mode is present, `agent` is empty.
-This fallback applies only to usage events. It does not enable agent mode.
+- The `GCX_AGENT_NAME` override supports harnesses without a native marker.
+- The shared `AI_AGENT` variable also accepts supported names.
+- The bare `AGENT` variable is accepted only when its value is `goose`.
+- Unknown names and version suffixes are not sent. 
+- Session markers are used only for detection; their values are not sent.
 
-An explicit mode opt-out can produce `is_agent=false` with a non-empty `agent`.
-The label identifies the calling harness. The boolean records the active gcx mode.
+When agent mode is enabled without a known identity, `agent` is `generic`. 
+
+For usage events, when neither a known identity nor agent mode is present, `agent` is empty, and agent mode is not enabled.
+
+An explicit mode opt-out can produce `is_agent=false`, with a non-empty `agent` identifying the calling harness. 
+
+## Send text feedback
+
+Use `gcx feedback send` to send text. This command is separate from usage statistics, using its own endpoint (`https://stats.grafana.org/gcx-feedback`) when you run it. The usage event for that invocation still records only the command path and flag names, never the note or the field values.
+
+Each feedback request contains:
+
+| Field | Description |
+| :---- | :---- |
+| `feedback_id` | A random UUID created for each request, so the receiver can drop a duplicate delivery. It's not derived from the device ID. |
+| `data` | Your note, under the key `note`, and every `--field key=value` you passed. Keys and values with an empty value are left out. |
+| `metadata` | The `gcx` version, OS, architecture, whether agent mode was on, the agent label, and the device ID described in [Telemetry data and identifiers](#telemetry-data-and-identifiers). This is `null` unless usage statistics are enabled. |
+
+The note and fields are always sent when you run the command, whatever the usage statistics setting. The setting controls only `metadata`: with `GCX_TELEMETRY=disabled`, `GCX_TELEMETRY=log`, `DO_NOT_TRACK=1`, or `diagnostics.telemetry: disabled`, the request carries the note and fields and `metadata` is `null`.
+
+To send feedback somewhere else, for example a local test server, set `GCX_FEEDBACK_ENDPOINT` to another URL.
+
+A request larger than 64 KiB is rejected before anything is sent. `gcx` makes one attempt with a ten second limit and never retries. When it cannot confirm that the feedback was stored, it says the feedback may or may not have arrived. 
+
+### Text scrubbing
+
+Before printing or sending, `gcx` scrubs every key and value. It replaces known token formats, `Authorization` header values and `Bearer` or `Basic` credentials, credentials in URLs, every `http` and `https` URL, Grafana Cloud stack hostnames, email addresses, IP addresses, and values of keys that look like secrets (such as `token=` or `password:`) with placeholders like `<redacted:url>`, and home directory paths with `~`. Scrubbing is pattern based and can miss things, so don't include secrets or personal data in the first place.
+
+### Verify what's sent
+
+To see exactly what would be sent, after scrubbing, add `--dry-run`:
+
+```shell
+gcx feedback send "the error didn't say which flag was wrong" --field type=friction --dry-run
+```
+
+
