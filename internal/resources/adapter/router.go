@@ -180,6 +180,24 @@ func (r *ResourceClientRouter) List(
 	return r.dynamic.List(ctx, desc, opts)
 }
 
+// ListForPull implements remote.PullLister. It uses the adapter's complete
+// listing when it offers one, and List otherwise.
+func (r *ResourceClientRouter) ListForPull(
+	ctx context.Context, desc resources.Descriptor, opts metav1.ListOptions,
+) (*unstructured.UnstructuredList, error) {
+	a, err := r.getAdapter(ctx, desc.GroupVersionKind())
+	if err != nil {
+		return nil, err
+	}
+	if a == nil {
+		return r.dynamic.List(ctx, desc, opts)
+	}
+	if lister, ok := a.(PullLister); ok {
+		return lister.ListForPull(ctx, opts)
+	}
+	return a.List(ctx, opts)
+}
+
 // Delete implements remote.DeleteClient.
 func (r *ResourceClientRouter) Delete(
 	ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions,
