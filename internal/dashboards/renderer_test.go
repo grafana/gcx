@@ -237,6 +237,20 @@ func TestRender_TimeRangeURLConstruction(t *testing.T) {
 			wantFrom: "10000000000",
 			wantTo:   "10000060000",
 		},
+		{
+			name:     "fractional Unix seconds params are normalized to epoch milliseconds",
+			from:     "1705315800.5",
+			to:       "1705319400.25",
+			wantFrom: "1705315800500",
+			wantTo:   "1705319400250",
+		},
+		{
+			name:     "fractional Unix milliseconds params are not scaled again",
+			from:     "1705315800123.5",
+			to:       "1.705319400456e12",
+			wantFrom: "1705315800123",
+			wantTo:   "1705319400456",
+		},
 	}
 
 	for _, tt := range tests {
@@ -297,6 +311,32 @@ func TestRender_InvalidTimeRange(t *testing.T) {
 	}
 	if called {
 		t.Error("server was called despite invalid time range")
+	}
+}
+
+func TestRender_NonFiniteTimeRejected(t *testing.T) {
+	for _, value := range []string{"NaN", "nan", "Inf", "-Infinity", "9.3e18", "-9.3e18"} {
+		t.Run(value, func(t *testing.T) {
+			called := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("\x89PNG\r\n\x1a\n"))
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			_, err := client.Render(context.Background(), dashboards.RenderRequest{UID: "abc", From: value, To: "now"})
+			if err == nil {
+				t.Fatalf("expected error for from=%q, got nil", value)
+			}
+			if !strings.Contains(err.Error(), "invalid from time") {
+				t.Errorf("error %q does not contain invalid from time", err.Error())
+			}
+			if called {
+				t.Error("server was called despite invalid time")
+			}
+		})
 	}
 }
 
