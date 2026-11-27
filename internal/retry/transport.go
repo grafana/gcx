@@ -218,6 +218,12 @@ func parseRetryAfter(val string) time.Duration {
 
 	// Try integer seconds first.
 	if secs, err := strconv.ParseInt(val, 10, 64); err == nil && secs > 0 {
+		// Saturate instead of overflowing: a huge value must still read as a
+		// long wait (and get capped by the caller), not wrap to a negative
+		// duration that is treated as "no Retry-After".
+		if secs > int64(math.MaxInt64/time.Second) {
+			return time.Duration(math.MaxInt64)
+		}
 		return time.Duration(secs) * time.Second
 	}
 
