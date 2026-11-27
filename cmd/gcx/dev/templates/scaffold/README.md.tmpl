@@ -1,3 +1,20 @@
 # {{ .Input.ProjectName }}
 
 TODO
+
+## Deploy workflow
+
+`.github/workflows/deploy.yaml` installs gcx and runs `gcx resources push`.
+
+By default `GCX_VERSION` is empty, so each run installs the **latest** gcx
+release. A new gcx release can then change how your deploy behaves without any
+change in this repository.
+
+For a stable, repeatable build, pin a version:
+
+```yaml
+env:
+  GCX_VERSION: '1.9.1'
+```
+
+Upgrade on purpose by changing the pinned version in a pull request.

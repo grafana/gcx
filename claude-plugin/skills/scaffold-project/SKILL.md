@@ -54,6 +54,13 @@ my-dashboards/
 └── README.md
 ```
 
+## Deploy Workflow gcx Version
+
+The generated `.github/workflows/deploy.yaml` sets `GCX_VERSION: ''`, so each
+run installs the latest gcx release. Recommend pinning a version (for example
+`GCX_VERSION: '1.9.1'`) for a stable, repeatable build, and upgrading it on
+purpose in a pull request.
+
 ## Next Steps After Scaffolding
 
 1. `cd my-dashboards && go mod tidy`

@@ -38,7 +38,7 @@ func scaffoldCmd() *cobra.Command {
 		Use:   "scaffold",
 		Args:  cobra.NoArgs,
 		Short: "Scaffold a new Grafana resources-as-code project",
-		Long:  "Scaffold a new Go project pre-configured for managing Grafana resources as code. Generates a module with example dashboards, a deploy workflow, and gcx configuration.",
+		Long:  "Scaffold a new Go project pre-configured for managing Grafana resources as code. Generates a module with example dashboards, a deploy workflow, and gcx configuration.\n\nThe generated deploy workflow (.github/workflows/deploy.yaml) installs gcx in CI. Its GCX_VERSION is empty by default, so each run installs the latest gcx release. For a stable, repeatable build, pin it to a release (for example GCX_VERSION: '1.9.1') and change the pin in a pull request to upgrade.",
 		Example: `
 	# Interactive scaffolding (prompts for project name and Go module path):
 	gcx dev scaffold
