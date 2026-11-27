@@ -204,7 +204,7 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 			var labels []ProbeLabel
 			for _, l := range opts.Labels {
 				k, v, ok := strings.Cut(l, "=")
-				if !ok {
+				if !ok || strings.TrimSpace(k) == "" {
 					return fmt.Errorf("invalid label %q: expected key=value", l)
 				}
 				labels = append(labels, ProbeLabel{Name: k, Value: v})

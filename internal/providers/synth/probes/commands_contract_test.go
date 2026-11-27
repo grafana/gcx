@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/fatih/color"
@@ -180,6 +181,24 @@ func TestProbesCreateOutputContract(t *testing.T) {
 				assert.Equal(t, "probe-auth-token-abc", doc["token"],
 					"one-time token must be a structured field agents can capture")
 			}
+		})
+	}
+}
+
+func TestProbesCreateRejectsInvalidLabels(t *testing.T) {
+	for _, label := range []string{"=prod", "  =prod", "env"} {
+		t.Run(label, func(t *testing.T) {
+			var added atomic.Bool
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				added.Store(true)
+				writeJSON(w, probes.CreateResponse{Token: "tok"})
+			}))
+			t.Cleanup(srv.Close)
+
+			stdout, _, err := runProbes(t, srv.URL, false, "", "create", "--name", "my-probe", "--labels", label)
+			require.ErrorContains(t, err, "expected key=value")
+			assert.Empty(t, stdout)
+			assert.False(t, added.Load(), "an invalid label must not reach the API")
 		})
 	}
 }
