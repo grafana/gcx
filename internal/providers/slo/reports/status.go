@@ -241,12 +241,14 @@ func computeCombinedSLI(sloResults []definitions.StatusResult) *float64 {
 	return &avg
 }
 
-// computeAverageObjective returns the average objective across SLOs.
+// computeAverageObjective returns the average objective across the SLOs that
+// have an SLI. It uses the same SLOs as computeCombinedSLI so the combined SLI
+// is compared against the objectives of the SLOs it was computed from.
 func computeAverageObjective(sloResults []definitions.StatusResult) float64 {
 	var sum float64
 	var count int
 	for _, sr := range sloResults {
-		if sr.Objective > 0 {
+		if sr.SLI != nil && sr.Objective > 0 {
 			sum += sr.Objective
 			count++
 		}

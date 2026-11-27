@@ -220,3 +220,34 @@ func TestReportStatusTableCodec_InvalidType(t *testing.T) {
 		t.Error("expected error for invalid data type")
 	}
 }
+
+// An SLO without data must not pull the report's average objective down: the
+// combined SLI only covers the SLOs that have data.
+//
+//nolint:modernize // ptr() creates pointer to value, not pointer to type
+func TestBuildReportStatusResults_NoDataSLOExcludedFromObjective(t *testing.T) {
+	rpts := []reports.Report{{
+		UUID: "rpt-1",
+		Name: "Report",
+		ReportDefinition: reports.ReportDefinition{
+			Slos: []reports.ReportSlo{{SloUUID: "slo-1"}, {SloUUID: "slo-2"}},
+		},
+	}}
+	sloIndex := map[string]definitions.Slo{
+		"slo-1": {UUID: "slo-1", Name: "a", Objectives: []definitions.Objective{{Value: 0.99, Window: "28d"}}},
+		"slo-2": {UUID: "slo-2", Name: "b", Objectives: []definitions.Objective{{Value: 0.5, Window: "28d"}}},
+	}
+	sloResultIndex := map[string]definitions.StatusResult{
+		"slo-1": {Name: "a", UUID: "slo-1", Objective: 0.99, SLI: ptr(0.985), Status: "BREACHING"},
+		"slo-2": {Name: "b", UUID: "slo-2", Objective: 0.5, Status: "NODATA"},
+	}
+
+	r := reports.BuildReportStatusResults(rpts, sloIndex, sloResultIndex)[0]
+
+	if r.Status != "BREACHING" {
+		t.Errorf("expected BREACHING (0.985 < 0.99), got %s", r.Status)
+	}
+	if r.CombinedBudget == nil || *r.CombinedBudget >= 0 {
+		t.Errorf("expected a negative combined budget, got %v", r.CombinedBudget)
+	}
+}
