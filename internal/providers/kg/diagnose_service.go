@@ -143,7 +143,7 @@ func runServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 			result.Checks = append(result.Checks, runServiceMetricChecks(ctx, promClient, datasourceUID, serviceName, scope.env)...)
 		}
 		result.Diagnosis = append(result.Diagnosis, fmt.Sprintf("Service %q was not found in the Entity Graph.", serviceName))
-		result.NextSteps = append(result.NextSteps, fmt.Sprintf("gcx metrics query 'traces_target_info{service_name=\"%s\"}' --since 1h", serviceName))
+		result.NextSteps = append(result.NextSteps, metricsQueryHint(vectorSelector("traces_target_info", eqMatcher("service_name", serviceName))))
 		result.NextSteps = append(result.NextSteps, "gcx metrics query 'group by (service_name) (traces_target_info)' --since 1h")
 		result.computeSummary()
 		return result
@@ -231,9 +231,13 @@ func runServiceDiagnose(ctx context.Context, client *Client, serviceName string,
 // ---------------------------------------------------------------------------
 
 func runServiceMetricChecks(ctx context.Context, promClient *prometheus.Client, datasourceUID, serviceName, env string) []CheckResult {
-	envFilter := ""
-	if env != "" {
-		envFilter = fmt.Sprintf(`, asserts_env="%s"`, env)
+	// scoped builds count(metric{labelKey=serviceName[, asserts_env=env]}).
+	scoped := func(metric, labelKey string) string {
+		matchers := []labelMatcher{eqMatcher(labelKey, serviceName)}
+		if env != "" {
+			matchers = append(matchers, eqMatcher("asserts_env", env))
+		}
+		return countQuery(metric, matchers...)
 	}
 
 	// withServiceFallback attaches an unscoped (no asserts_env filter, but
@@ -244,9 +248,7 @@ func runServiceMetricChecks(ctx context.Context, promClient *prometheus.Client, 
 	// already unscoped and the fallback would be a no-op round-trip.
 	withServiceFallback := func(d metricCheckDef, metric, labelKey string) metricCheckDef {
 		if env != "" {
-			d.UnscopedQuery = promql.Count(
-				promql.Vector(metric).Label(labelKey, serviceName),
-			).String()
+			d.UnscopedQuery = countQuery(metric, eqMatcher(labelKey, serviceName))
 		}
 		return d
 	}
@@ -254,27 +256,27 @@ func runServiceMetricChecks(ctx context.Context, promClient *prometheus.Client, 
 	checks := []metricCheckDef{
 		withServiceFallback(metricCheckDef{
 			Name:           "Metric: traces_service_graph (client)",
-			Query:          fmt.Sprintf(`count(traces_service_graph_request_total{client="%s"%s})`, serviceName, envFilter),
+			Query:          scoped("traces_service_graph_request_total", "client"),
 			Recommendation: fmt.Sprintf("Tempo sees no outbound calls FROM %s. Check that trace context propagation is enabled on outgoing HTTP/gRPC requests.", serviceName),
 		}, "traces_service_graph_request_total", "client"),
 		withServiceFallback(metricCheckDef{
 			Name:           "Metric: traces_service_graph (server)",
-			Query:          fmt.Sprintf(`count(traces_service_graph_request_total{server="%s"%s})`, serviceName, envFilter),
+			Query:          scoped("traces_service_graph_request_total", "server"),
 			Recommendation: fmt.Sprintf("Tempo sees no inbound calls TO %s. Verify the service is receiving traced requests.", serviceName),
 		}, "traces_service_graph_request_total", "server"),
 		withServiceFallback(metricCheckDef{
 			Name:           "Metric: asserts:relation:calls",
-			Query:          fmt.Sprintf(`count(asserts:relation:calls{service="%s"%s})`, serviceName, envFilter),
+			Query:          scoped("asserts:relation:calls", "service"),
 			Recommendation: "No CALLS edge metrics for this service. The recording rule may not be matching its labels.",
 		}, "asserts:relation:calls", "service"),
 		withServiceFallback(metricCheckDef{
 			Name:           "Metric: asserts:mixin_workload_job",
-			Query:          fmt.Sprintf(`count(asserts:mixin_workload_job{service="%s"%s})`, serviceName, envFilter),
+			Query:          scoped("asserts:mixin_workload_job", "service"),
 			Recommendation: "Entity discovery metric missing for this service. Check asserts_env label and recording rule configuration.",
 		}, "asserts:mixin_workload_job", "service"),
 		withServiceFallback(metricCheckDef{
 			Name:           "Metric: asserts:request:rate5m",
-			Query:          fmt.Sprintf(`count(asserts:request:rate5m{service="%s"%s})`, serviceName, envFilter),
+			Query:          scoped("asserts:request:rate5m", "service"),
 			Recommendation: "Request rate KPI missing. Service KPIs may not display correctly.",
 		}, "asserts:request:rate5m", "service"),
 	}
@@ -400,7 +402,7 @@ func interpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
 		if checkStatus["Metric: asserts:mixin_workload_job"] == CheckPass {
 			diagnosis = append(diagnosis, "However, the entity discovery metric (asserts:mixin_workload_job) exists in Mimir. The graph may need time to ingest the entity.")
 		}
-		nextSteps = append(nextSteps, fmt.Sprintf("gcx metrics query 'traces_target_info{service_name=\"%s\"}' --since 1h", r.ServiceName))
+		nextSteps = append(nextSteps, metricsQueryHint(vectorSelector("traces_target_info", eqMatcher("service_name", r.ServiceName))))
 		return diagnosis, nextSteps
 	}
 
@@ -410,7 +412,7 @@ func interpretServiceResults(r *ServiceDiagnoseResult) ([]string, []string) {
 		switch {
 		case serverMetric == CheckPass && callsMetric == CheckFail:
 			diagnosis = append(diagnosis, "Tempo sees inbound calls (server series exist) but the asserts:relation:calls recording rule produced no edges. The recording rule may not be matching this service's labels (check asserts_env and namespace).")
-			nextSteps = append(nextSteps, fmt.Sprintf("gcx metrics query 'traces_service_graph_request_total{server=\"%s\"}' --since 1h", r.ServiceName))
+			nextSteps = append(nextSteps, metricsQueryHint(vectorSelector("traces_service_graph_request_total", eqMatcher("server", r.ServiceName))))
 			nextSteps = append(nextSteps, "gcx kg diagnose labels")
 		case serverMetric == CheckFail && clientMetric == CheckFail:
 			diagnosis = append(diagnosis, "Tempo is not generating any service graph metrics for this service. Either no traced HTTP/gRPC traffic exists, or trace context propagation is not working.")
@@ -566,4 +568,10 @@ func (c *ServiceDiagnoseTableCodec) Encode(w io.Writer, v any) error {
 
 func (c *ServiceDiagnoseTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+// metricsQueryHint renders a next-step `gcx metrics query` suggestion for a
+// selector built with promql-builder.
+func metricsQueryHint(sel *promql.VectorExprBuilder) string {
+	return fmt.Sprintf("gcx metrics query '%s' --since 1h", sel.String())
 }
