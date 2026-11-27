@@ -190,20 +190,18 @@ func resolveTimeEpochMs(since string) (int64, int64, error) {
 		return now - 3600000, now, nil
 	}
 	d, err := time.ParseDuration(since)
-	//nolint:nestif
 	if err != nil {
-		// Try common suffixes: 7d, 30d, etc.
-		if strings.HasSuffix(since, "d") {
-			days := since[:len(since)-1]
-			var n int
-			if _, err := fmt.Sscanf(days, "%d", &n); err == nil {
-				d = time.Duration(n) * 24 * time.Hour
-			} else {
-				return 0, 0, fmt.Errorf("invalid duration %q", since)
-			}
-		} else {
+		// Try the "Nd" day suffix (7d, 30d). Atoi, not Sscanf, so trailing
+		// junk such as "1.5d" errors instead of being read as one day.
+		days, ok := strings.CutSuffix(since, "d")
+		if !ok {
 			return 0, 0, fmt.Errorf("invalid duration %q: %w", since, err)
 		}
+		n, perr := strconv.Atoi(days)
+		if perr != nil {
+			return 0, 0, fmt.Errorf("invalid duration %q", since)
+		}
+		d = time.Duration(n) * 24 * time.Hour
 	}
 	return now - d.Milliseconds(), now, nil
 }
