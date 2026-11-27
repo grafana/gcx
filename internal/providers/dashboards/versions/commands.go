@@ -117,6 +117,9 @@ func (o *versionsListOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *versionsListOpts) Validate() error {
+	if o.Limit < 0 {
+		return errors.New("--limit must not be negative")
+	}
 	return o.IO.Validate()
 }
 

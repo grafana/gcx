@@ -436,3 +436,20 @@ func TestSearch_TableOutput(t *testing.T) {
 		t.Errorf("expected AGE to render as '-':\n%s", output)
 	}
 }
+
+// TestSearch_NegativeLimitRejected verifies that a negative --limit fails
+// before any request is sent instead of silently dropping the limit.
+func TestSearch_NegativeLimitRejected(t *testing.T) {
+	_, loader := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request on invalid input: %s", r.URL)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	_, err := runSearchCommand(t, loader, "foo", "--limit", "-1")
+	if err == nil {
+		t.Fatal("expected error for negative --limit, got nil")
+	}
+	if !strings.Contains(err.Error(), "--limit must not be negative") {
+		t.Errorf("error = %q, want it to mention --limit must not be negative", err)
+	}
+}
