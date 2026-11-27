@@ -36,6 +36,8 @@ Use "gcx instrumentation status" for observed-state status.`,
 				return err
 			}
 
+			opts.ErrWriter = cmd.ErrOrStderr()
+
 			// --json list (field discovery): introspect AppView shape without
 			// requiring a cluster positional or making any API call.
 			if opts.JSONDiscovery {

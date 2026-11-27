@@ -13,7 +13,7 @@ import (
 )
 
 // jsonDiscoveryTip is the help text shown for commands that support --json field selection.
-const jsonDiscoveryTip = "Use --json list to discover available fields, --json field1,field2 to select specific fields."
+const jsonDiscoveryTip = "Use --json list to discover the available dotted paths, --json <path>,<path> to select specific fields."
 
 // relatedSkillFooter returns the "Related skill" footer lines for a command, or
 // nil when no skill is mapped to the command or its ancestors.
