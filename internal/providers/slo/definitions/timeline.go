@@ -381,6 +381,10 @@ func ParseTimelineTime(s string, now time.Time) (time.Time, error) {
 	return parseTimelineTime(s, now)
 }
 
+// maxUnixSeconds bounds a numeric timestamp so that converting it to int64
+// seconds, and adding the Unix epoch offset, cannot overflow.
+const maxUnixSeconds = float64(1 << 62)
+
 // parseTimelineTime parses a time string for the timeline command.
 // Supports "now", "now-Xd", "now-Xh", RFC3339, and Unix timestamps.
 func parseTimelineTime(s string, now time.Time) (time.Time, error) {
@@ -402,6 +406,9 @@ func parseTimelineTime(s string, now time.Time) (time.Time, error) {
 
 	// Unix timestamp (integer or float)
 	if ts, err := strconv.ParseFloat(s, 64); err == nil {
+		if math.IsNaN(ts) || math.Abs(ts) >= maxUnixSeconds {
+			return time.Time{}, fmt.Errorf("unix timestamp out of range: %q", s)
+		}
 		sec := int64(ts)
 		nsec := int64((ts - float64(sec)) * 1e9)
 		return time.Unix(sec, nsec), nil
@@ -452,25 +459,30 @@ func parseRelativeTimelineTime(s string, now time.Time) (time.Time, error) {
 	}
 	unit := rest[i:]
 
-	var dur time.Duration
+	var unitDur time.Duration
 	switch unit {
 	case "s":
-		dur = time.Duration(value) * time.Second
+		unitDur = time.Second
 	case "m":
-		dur = time.Duration(value) * time.Minute
+		unitDur = time.Minute
 	case "h":
-		dur = time.Duration(value) * time.Hour
+		unitDur = time.Hour
 	case "d":
-		dur = time.Duration(value) * 24 * time.Hour
+		unitDur = 24 * time.Hour
 	case "w":
-		dur = time.Duration(value) * 7 * 24 * time.Hour
+		unitDur = 7 * 24 * time.Hour
 	case "M":
-		dur = time.Duration(value) * 30 * 24 * time.Hour
+		unitDur = 30 * 24 * time.Hour
 	case "y":
-		dur = time.Duration(value) * 365 * 24 * time.Hour
+		unitDur = 365 * 24 * time.Hour
 	default:
 		return time.Time{}, fmt.Errorf("unknown time unit %q in %q", unit, s)
 	}
+
+	if int64(value) > math.MaxInt64/int64(unitDur) {
+		return time.Time{}, fmt.Errorf("relative time out of range: %q", s)
+	}
+	dur := time.Duration(value) * unitDur
 
 	return now.Add(time.Duration(sign) * dur), nil
 }
