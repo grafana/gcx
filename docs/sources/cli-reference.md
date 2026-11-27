@@ -12698,6 +12698,8 @@ Inherits `--agent`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`
 
 Scaffold a new Go project pre-configured for managing Grafana resources as code. Generates a module with example dashboards, a deploy workflow, and gcx configuration.
 
+The generated deploy workflow (.github/workflows/deploy.yaml) installs gcx in CI. Its GCX_VERSION is empty by default, so each run installs the latest gcx release. For a stable, repeatable build, pin it to a release (for example GCX_VERSION: '1.9.1') and change the pin in a pull request to upgrade.
+
 ```shell
 gcx dev scaffold [flags]
 ```
