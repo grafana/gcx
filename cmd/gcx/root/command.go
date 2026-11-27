@@ -266,6 +266,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(logincmd.SignupCommand())
 	rootCmd.AddCommand(config.Command())
 	addDevCommand(rootCmd)
+	addExtCommand(rootCmd)
 	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(versioncmd.Command())
 	rootCmd.AddCommand(docscmd.Command())

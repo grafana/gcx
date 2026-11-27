@@ -51,6 +51,7 @@ var toolingAreas = map[string]bool{
 	"completion": true,
 	"config":     true,
 	"dev":        true,
+	"ext":        true,
 	"help":       true,
 }
 

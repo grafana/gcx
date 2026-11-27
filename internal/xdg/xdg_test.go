@@ -34,6 +34,18 @@ func TestStateHome_DefaultsToHomeLocalState(t *testing.T) {
 	assert.Equal(t, filepath.Join(home, ".local", "state"), xdg.StateHome())
 }
 
+func TestDataHome_EnvOverride(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/custom/data")
+	assert.Equal(t, "/custom/data", xdg.DataHome())
+}
+
+func TestDataHome_DefaultsToHomeLocalShare(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "")
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(home, ".local", "share"), xdg.DataHome())
+}
+
 func TestConfigDirs_EnvOverride(t *testing.T) {
 	dirs := []string{filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")}
 	t.Setenv("XDG_CONFIG_DIRS", dirs[0]+string(os.PathListSeparator)+dirs[1])
