@@ -28,6 +28,9 @@ func TestEnforceLimit(t *testing.T) {
 		{name: "preserves small limit", sql: "SELECT 1 LIMIT 50", limit: 100, maxLimit: 1000, want: "SELECT 1 LIMIT 50"},
 		{name: "strips trailing semicolon", sql: "SELECT 1;", limit: 100, maxLimit: 1000, want: "SELECT 1 LIMIT 100;"},
 		{name: "disabled when zero", sql: "SELECT 1", limit: 0, maxLimit: 1000, want: "SELECT 1"},
+		{name: "appends limit before CRLF", sql: "SELECT 1\r\n", limit: 100, maxLimit: 1000, want: "SELECT 1 LIMIT 100\r\n"},
+		{name: "strips trailing semicolon before CRLF", sql: "SELECT 1;\r\n", limit: 100, maxLimit: 1000, want: "SELECT 1 LIMIT 100;\r\n"},
+		{name: "caps existing limit before CRLF", sql: "SELECT 1 LIMIT 5000;\r\n", limit: 100, maxLimit: 1000, want: "SELECT 1 LIMIT 1000;\r\n", wantCapped: true},
 		{name: "nil bail is allowed", sql: "SELECT 1", limit: 100, maxLimit: 1000, bail: func(string) bool { return false }, want: "SELECT 1 LIMIT 100"},
 		{name: "bail passes through", sql: "EXPLAIN SELECT 1", limit: 100, maxLimit: 1000, bail: bail, want: "EXPLAIN SELECT 1"},
 		{name: "requested limit above max is capped and reported", sql: "SELECT 1", limit: 5000, maxLimit: 1000, want: "SELECT 1 LIMIT 1000", wantCapped: true},
@@ -63,6 +66,8 @@ func TestEnforceLimitSentinel(t *testing.T) {
 		{name: "sentinel at the ceiling detects >max", sql: "SELECT 1", limit: 1000, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1001", wantEff: 1000, wantCapped: true},
 		{name: "above ceiling clamps eff, still sentinels", sql: "SELECT 1", limit: 5000, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1001", wantEff: 1000, wantCapped: true},
 		{name: "disabled when zero", sql: "SELECT 1", limit: 0, maxLimit: 1000, wantSQL: "SELECT 1", wantEff: 0, wantCapped: false},
+		{name: "sentinel before CRLF", sql: "SELECT 1;\r\n", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 101;\r\n", wantEff: 100, wantCapped: true},
+		{name: "oversized user LIMIT before CRLF", sql: "SELECT 1 LIMIT 5000;\r\n", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1001;\r\n", wantEff: 1000, wantCapped: true},
 		{name: "user LIMIT within max is respected, not capped", sql: "SELECT 1 LIMIT 50", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 50", wantEff: 100, wantCapped: false},
 		{name: "oversized user LIMIT is sentineled at maxLimit+1, not silently clamped", sql: "SELECT 1 LIMIT 5000", limit: 100, maxLimit: 1000, wantSQL: "SELECT 1 LIMIT 1001", wantEff: 1000, wantCapped: true},
 	}
@@ -112,4 +117,35 @@ func TestTruncationHint(t *testing.T) {
 	assert.Contains(t, hint, "first 100 rows")
 	assert.Contains(t, hint, "max 1000")
 	assert.Contains(t, hint, "--limit 0")
+}
+
+func TestEndsInLineComment(t *testing.T) {
+	bq := sql.LineCommentSyntax{Hash: true, Quotes: "'\"`", BackslashEscapes: true}
+	std := sql.LineCommentSyntax{Quotes: "'\""}
+	tests := []struct {
+		name string
+		sql  string
+		syn  sql.LineCommentSyntax
+		want bool
+	}{
+		{"trailing dashes", "SELECT 1 -- c", std, true},
+		{"trailing dashes before CRLF", "SELECT 1 -- c\r\n", std, true},
+		{"comment on earlier line", "SELECT 1 -- c\nFROM t", std, false},
+		{"comment ended by bare CR", "SELECT 1 -- c\rFROM t", std, false},
+		{"dashes in literal", "SELECT 'a--b'", std, false},
+		{"doubled quote stays in literal", "SELECT 'it''s --'", std, false},
+		{"hash ignored without Hash", "SELECT 1 # c", std, false},
+		{"trailing hash", "SELECT 1 # c", bq, true},
+		{"hash in literal", "SELECT '#fff'", bq, false},
+		{"backslash escaped quote", `SELECT 'a\'#b'`, bq, false},
+		{"unterminated literal", "SELECT 'abc --", std, false},
+		{"block comment hides marker", "SELECT 1 /* -- */", std, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sql.EndsInLineComment(tt.sql, tt.syn); got != tt.want {
+				t.Errorf("EndsInLineComment(%q) = %v, want %v", tt.sql, got, tt.want)
+			}
+		})
+	}
 }

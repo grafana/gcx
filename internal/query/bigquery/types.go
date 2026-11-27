@@ -170,6 +170,14 @@ func InfoSchemaPrefix(project, dataset string) string {
 // The LIMIT … OFFSET branch is deliberately unanchored — it must match anywhere.
 var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\A\s*(?:EXPLAIN|DESC(?:RIBE)?|SHOW|CREATE|DROP|ALTER|INSERT|UPDATE|DELETE|MERGE|TRUNCATE|BEGIN|DECLARE|CALL)\b)`)
 
+// bail also skips statements ending in a line comment: appending "LIMIT n" after a `--` or `#` line comment
+// that runs to the end of the statement would land inside the comment and
+// leave the query unbounded. Markers inside quoted literals do not count.
+func bail(sql string) bool {
+	syntax := querysql.LineCommentSyntax{Hash: true, Quotes: "'\"`", BackslashEscapes: true}
+	return limitBailRe.MatchString(sql) || querysql.EndsInLineComment(sql, syntax)
+}
+
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports
 // whether the emitted row cap is lower than what was requested — an existing
 // LIMIT capped down to maxLimit, or a requested limit above maxLimit applied
@@ -179,7 +187,7 @@ var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\A\s*(?:EXPL
 // If the SQL is a DDL/metadata statement or already uses LIMIT ... OFFSET, it
 // bails out (pass-through).
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
-	return querysql.EnforceLimit(sql, limit, maxLimit, limitBailRe.MatchString)
+	return querysql.EnforceLimit(sql, limit, maxLimit, bail)
 }
 
 // QueryRequest represents a BigQuery query request.

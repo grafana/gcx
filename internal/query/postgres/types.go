@@ -52,7 +52,7 @@ var limitBailRe = regexp.MustCompile(`(?i)(\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\
 var trailingLineCommentRe = regexp.MustCompile(`--[^\n]*$`)
 
 func bail(sql string) bool {
-	return limitBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+	return limitBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\r\n"))
 }
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports

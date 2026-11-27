@@ -48,10 +48,16 @@ func EnforceLimitSentinel(sql string, limit, maxLimit int) (string, int, bool) {
 	return querysql.EnforceLimitSentinel(sql, limit, maxLimit, athenaBail)
 }
 
+// athenaBail also skips statements ending in a line comment: appending "LIMIT n" after a `--` line comment that
+// runs to the end of the statement would land inside the comment and leave the
+// query unbounded. A bare "\r" ends a comment in Trino. Markers inside quoted
+// literals do not count.
+
 func athenaBail(sql string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(sql))
 	if strings.HasPrefix(upper, "SHOW") || strings.HasPrefix(upper, "DESCRIBE") || strings.HasPrefix(upper, "EXPLAIN") {
 		return true
 	}
-	return limitBailRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+	trimmed := strings.TrimRight(sql, "; \t\r\n")
+	return limitBailRe.MatchString(trimmed) || querysql.EndsInLineComment(sql, querysql.LineCommentSyntax{Quotes: "'\""})
 }

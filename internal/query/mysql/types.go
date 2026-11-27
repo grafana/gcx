@@ -85,7 +85,7 @@ func isReplaceWrite(sql string) bool {
 var trailingLineCommentRe = regexp.MustCompile(`(--([ \t][^\n]*)?|#[^\n]*)$`)
 
 func bail(sql string) bool {
-	trimmed := strings.TrimRight(sql, "; \t\n")
+	trimmed := strings.TrimRight(sql, "; \t\r\n")
 	return limitBailRe.MatchString(sql) || isReplaceWrite(sql) || trailingLineCommentRe.MatchString(trimmed)
 }
 
