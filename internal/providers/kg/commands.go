@@ -3355,7 +3355,10 @@ pass --from/--to for older data, the same window as your queries).
 The JSON output nests everything under .schema: .schema.entityTypes[] is
 {type, properties} and .schema.relationships[] is a string. Filter it with the
 built-in --jq rather than an external parser; -o text prints one line per type
-with its properties, then one line with every relationship.`,
+with its properties, then one line with every relationship.
+
+Use 'gcx kg schemas list' to discover installed declared schema bundles, including
+types that do not appear in the graph.`,
 		Example: `  # Show the schema for an incident window
   gcx kg meta schema --from <start> --to <end>
 

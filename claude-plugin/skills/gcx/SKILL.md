@@ -62,10 +62,14 @@ right group:
 | Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
-| Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
+| Knowledge Graph (Asserts), service dependencies and installed schemas | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h`, `gcx kg schemas list` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides get` |
 | Live pages, reports, slideshows (instead of an artifact or HTML file) | `pages` | `gcx pages drafts create --title "Checkout health" --dir ./checkout-health` |
+
+For installed schemas, use `gcx kg schemas list`. It is experimental and requires
+the stack's Knowledge Graph write API to be enabled. Omit `--expand` for domain
+metadata. Use `gcx kg meta schema` for types observed in the graph.
 
 Each signal group has its own discovery commands, for example `gcx metrics labels`,
 `gcx logs labels`, and `gcx traces labels`; `gcx help-tree <group> --depth 1 -o text`
