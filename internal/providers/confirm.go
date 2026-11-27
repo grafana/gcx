@@ -63,7 +63,16 @@ func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) 
 	if bypass || err != nil {
 		return bypass, err
 	}
+	ok, err := Prompt(in, out, prompt)
+	if err == nil && !ok {
+		cmdio.Info(out, "Aborted.")
+	}
+	return ok, err
+}
 
+// Prompt asks a [y/N] question and reports the answer, leaving it to the
+// caller to say what happens on a no.
+func Prompt(in io.Reader, out io.Writer, prompt string) (bool, error) {
 	fmt.Fprintf(out, "%s [y/N] ", prompt)
 
 	answer, err := bufio.NewReader(in).ReadString('\n')
@@ -74,7 +83,6 @@ func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) 
 
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	if answer != "y" && answer != "yes" {
-		cmdio.Info(out, "Aborted.")
 		return false, nil
 	}
 

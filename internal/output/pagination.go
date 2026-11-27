@@ -98,8 +98,20 @@ func shellJoinForOS(argv []string, goos string) string {
 	return strings.Join(parts, " ")
 }
 
+// powerShellQuote doubles every character PowerShell treats as a single quote,
+// including the typographic ones (U+2018 to U+201B), so none of them can end
+// the quoted string.
 func powerShellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	var b strings.Builder
+	b.WriteByte('\'')
+	for _, r := range s {
+		b.WriteRune(r)
+		if strings.ContainsRune("'‘’‚‛", r) {
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('\'')
+	return b.String()
 }
 
 // windowsCommandLineQuote preserves an argument when Legacy mode joins native

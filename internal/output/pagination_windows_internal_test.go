@@ -53,6 +53,7 @@ func TestPowerShellPaginationArgumentsRoundTrip(t *testing.T) {
 		{name: "double quote", args: []string{`a"b`, `C:\path\"quoted`}},
 		{name: "trailing backslash", args: []string{`C:\folder name\`, "tail"}},
 		{name: "apostrophe and Unicode", args: []string{"team's prod", "München \u96ea"}},
+		{name: "typographic quotes", args: []string{"web\u2018; x", "a\u2019b", "c\u201ad", "e\u201bf"}},
 	}
 	for _, shellName := range []string{"powershell.exe", "pwsh.exe"} {
 		t.Run(shellName, func(t *testing.T) {

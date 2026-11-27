@@ -345,6 +345,17 @@ func (l *ConfigLoader) loadCloudBase(ctx context.Context) (cloudBase, error) {
 	}, nil
 }
 
+type StackLookupError struct {
+	Slug string
+	Err  error
+}
+
+func (e *StackLookupError) Error() string {
+	return fmt.Sprintf("failed to get stack info for %q: %v", e.Slug, e.Err)
+}
+
+func (e *StackLookupError) Unwrap() error { return e.Err }
+
 // missingCloudAuthError explains how to get cloud auth onto the current
 // context: bind an existing entry (named when exactly one exists) or run
 // `gcx cloud login`. Cloud binding is optional at validation time, so this is
@@ -400,7 +411,7 @@ func (l *ConfigLoader) LoadCloudConfig(ctx context.Context) (CloudRESTConfig, er
 
 	stack, err := base.client.GetStack(ctx, slug)
 	if err != nil {
-		return CloudRESTConfig{}, fmt.Errorf("failed to get stack info for %q: %w", slug, err)
+		return CloudRESTConfig{}, &StackLookupError{Slug: slug, Err: err}
 	}
 
 	namespace := "default"
@@ -612,7 +623,7 @@ func (l *ConfigLoader) resolveSnapshotCloudConfig(
 	}
 	stack, err := client.GetStack(ctx, slug)
 	if err != nil {
-		return CloudRESTConfig{}, fmt.Errorf("failed to get stack info for %q: %w", slug, err)
+		return CloudRESTConfig{}, &StackLookupError{Slug: slug, Err: err}
 	}
 
 	result := CloudRESTConfig{

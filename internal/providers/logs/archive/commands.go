@@ -19,8 +19,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const experimentalPreamble = "This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions."
-
 const (
 	kindDestination = "archive-destination"
 	kindStream      = "archive-stream"
@@ -50,7 +48,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		h.destinationsCommand(),
 		h.streamsCommand(),
 	)
-	markExperimental(cmd)
+	agent.MarkExperimental(cmd)
 	return cmd
 }
 
@@ -60,22 +58,6 @@ type archiveHelper struct {
 
 func (h *archiveHelper) newClient(ctx context.Context) (*Client, error) {
 	return newClient(ctx, h.loader)
-}
-
-func markExperimental(cmd *cobra.Command) {
-	long := cmd.Long
-	if long == "" {
-		long = cmd.Short
-	}
-	cmd.Short = "[experimental] " + cmd.Short
-	cmd.Long = strings.TrimSpace(experimentalPreamble + "\n\n" + long)
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	cmd.Annotations[agent.AnnotationStability] = agent.StabilityExperimental
-	for _, sub := range cmd.Commands() {
-		markExperimental(sub)
-	}
 }
 
 func registerSingleTable[T any](opts *cmdio.Options, t cmdio.Table[T]) {
