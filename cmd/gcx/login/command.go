@@ -124,11 +124,42 @@ const (
 	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
 )
 
+// serverLooksLikeTokenError reports a token supplied as the server, naming
+// where the value came from and never echoing it.
+func serverLooksLikeTokenError(source string) error {
+	return gcxerrors.DetailedError{
+		Summary: source + " looks like a token",
+		Details: "The value starts with a Grafana token prefix (glsa_ or glc_), so it was not used as a server and no request was made. If it is a real token, revoke it: it may have been exposed in your shell history, environment or config file.",
+		Suggestions: []string{
+			"Pass the server URL: gcx login --server https://my-stack.grafana.net",
+			"Supply the token with --token or the GRAFANA_TOKEN environment variable",
+			"If the value came from GRAFANA_SERVER or grafana.server in your config, correct it there",
+		},
+	}
+}
+
+// loginServerSource names where requestedLoginServer took the server from.
+func loginServerSource(flagServer, contextName string, sourceCtx *config.Context) string {
+	switch {
+	case flagServer != "":
+		return "--server"
+	case strings.TrimSpace(os.Getenv("GRAFANA_SERVER")) != "":
+		return "GRAFANA_SERVER"
+	case sourceCtx != nil && sourceCtx.Grafana != nil && contextName != "":
+		return fmt.Sprintf("grafana.server of context %q", login.RedactServer(contextName))
+	default:
+		return "grafana.server"
+	}
+}
+
 // Validate checks opts and args for internal consistency before runLogin executes.
 // Returns an error if a positional CONTEXT_NAME argument is combined with the
 // --context flag (they're mutually exclusive to prevent silent confusion).
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
+	if login.ServerLooksLikeToken(opts.Server) {
+		return serverLooksLikeTokenError("--server")
+	}
 	userProvided := opts.UserSet || opts.User != ""
 	opts.User = strings.TrimSpace(opts.User)
 	if userProvided && opts.User == "" {
@@ -331,6 +362,11 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			return autoLocalFreshCredentialError(target)
 		}
 	}
+	// Refuse a token-shaped server before any banner or context mutation. The
+	// resolved server also covers GRAFANA_SERVER and the saved context.
+	if login.ServerLooksLikeToken(requestedLoginServer(flags.Server, sourceCtx)) {
+		return serverLooksLikeTokenError(loginServerSource(flags.Server, contextName, sourceCtx))
+	}
 	flags.Server = requestedLoginServer(flags.Server, sourceCtx)
 	mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
 	ctx = flags.Config.LoginMutationContext(ctx, mutationTarget)
@@ -450,8 +486,8 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			persistedSourceCtx.Grafana.Server != "" &&
 			flags.Server != persistedSourceCtx.Grafana.Server {
 			logging.FromContext(cmd.Context()).Warn("reusing existing TLS client certificate for a different server",
-				"previous_server", persistedSourceCtx.Grafana.Server,
-				"new_server", flags.Server,
+				"previous_server", login.RedactServer(persistedSourceCtx.Grafana.Server),
+				"new_server", login.RedactServer(flags.Server),
 			)
 		}
 	}
@@ -725,6 +761,9 @@ func runLoginLoop(
 			}
 		}
 		result, err := login.Run(cmd.Context(), opts)
+		if errors.Is(err, login.ErrServerLooksLikeToken) {
+			err = serverLooksLikeTokenError("the server value")
+		}
 		// Run resolves opts.Target by detection when it was not forced, and the
 		// resolution survives the sentinel retries below. It outranks anything
 		// derived from the URL: a custom domain fronting a Cloud stack is only
@@ -1115,7 +1154,7 @@ func preflightServerOverride(opts *login.Options, sourceCtx *config.Context, int
 		Field: "allow-override",
 		Question: fmt.Sprintf(
 			"Context %q already exists with server %s.\nOverride with %s?",
-			opts.ContextName, sourceCtx.Grafana.Server, requestedServer,
+			opts.ContextName, login.RedactServer(sourceCtx.Grafana.Server), login.RedactServer(requestedServer),
 		),
 		Choices: []string{"yes", "no"},
 	}
@@ -1140,7 +1179,7 @@ func grafanaDestinationChangeAuthError(previousServer, requestedServer string) e
 		Summary: "Stored Grafana token cannot be reused for a different destination",
 		Details: fmt.Sprintf(
 			"The selected context's token is bound to server %s and its persisted proxy/TLS identity, but this login targets server %s with a different destination binding. Validation would disclose the stored token outside its credential binding.",
-			previousServer, requestedServer,
+			login.RedactServer(previousServer), login.RedactServer(requestedServer),
 		),
 		Suggestions: []string{
 			"Supply a new credential explicitly with --token",
@@ -1258,6 +1297,9 @@ func askForInput(
 					Title("Grafana server URL").
 					Description(serverPromptDescription(opts)).
 					Validate(func(s string) error {
+						if login.ServerLooksLikeToken(s) {
+							return login.ErrServerLooksLikeToken
+						}
 						if (opts.GrafanaToken != "" || opts.UseBasicAuth) && strings.TrimSpace(s) == "" {
 							return errors.New("server URL is required")
 						}
@@ -1939,10 +1981,10 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 			name = cfg.CurrentContext
 		}
 		fmt.Fprintf(w, "Refreshing context %q (server: %s)\n\n",
-			name, sourceCtx.Grafana.Server)
+			login.RedactServer(name), login.RedactServer(sourceCtx.Grafana.Server))
 	case contextName != "":
 		// Creating a new named context.
-		fmt.Fprintf(w, "Creating new context %q\n", contextName)
+		fmt.Fprintf(w, "Creating new context %q\n", login.RedactServer(contextName))
 		if names := existingContextNames(cfg); len(names) > 0 {
 			fmt.Fprintf(w, "Existing contexts: %s\n", strings.Join(names, ", "))
 		}
@@ -1958,7 +2000,7 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 func existingContextNames(cfg config.Config) []string {
 	names := make([]string, 0, len(cfg.Contexts))
 	for name := range cfg.Contexts {
-		names = append(names, name)
+		names = append(names, login.RedactServer(name))
 	}
 	sort.Strings(names)
 	return names

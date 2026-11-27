@@ -360,7 +360,7 @@ const (
 // the CLI sentinel-retry flow. Callers that retry after ErrNeedInput /
 // ErrNeedClarification should reuse the same Options value.
 //
-//nolint:gocyclo // The ordered login state machine is easier to audit when its validation and persistence gates remain explicit.
+//nolint:gocyclo,maintidx // The ordered login state machine is easier to audit when its validation and persistence gates remain explicit.
 func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Step 1: check if the server is set
 	if opts.CloudSignup {
@@ -368,6 +368,11 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 	if opts.Server == "" && !opts.UseCloudInstanceSelector {
 		return Result{}, &ErrNeedInput{Fields: []string{"server"}}
+	}
+	// A token pasted where the server belongs must be refused before any
+	// network call and without echoing it.
+	if ServerLooksLikeToken(opts.Server) {
+		return Result{}, ErrServerLooksLikeToken
 	}
 	if opts.UseCloudInstanceSelector {
 		opts.UseOAuth = true
@@ -645,6 +650,33 @@ func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resol
 		}
 	}
 	return &RuntimeOnlyBearerDestinationError{}
+}
+
+// ErrServerLooksLikeToken is returned when a value supplied as the Grafana
+// server looks like a Grafana token (glsa_ or glc_ prefix). Its message never
+// includes the offending value.
+var ErrServerLooksLikeToken = errors.New("the server value looks like a Grafana token, not a URL; " +
+	"pass the server URL (for example https://my-stack.grafana.net) and supply the token with --token or GRAFANA_TOKEN")
+
+// ServerLooksLikeToken reports whether raw, optionally prefixed with a
+// scheme, begins with a Grafana token prefix (glsa_ service account token or
+// glc_ Cloud access policy token). Hostnames that merely contain underscores
+// are not matched.
+func ServerLooksLikeToken(raw string) bool {
+	host := strings.ToLower(strings.TrimSpace(raw))
+	for _, scheme := range []string{"https://", "http://"} {
+		host = strings.TrimPrefix(host, scheme)
+	}
+	return strings.HasPrefix(host, "glsa_") || strings.HasPrefix(host, "glc_")
+}
+
+// RedactServer returns server unchanged unless it looks like a token, in
+// which case it returns a placeholder so the secret is never displayed.
+func RedactServer(server string) string {
+	if ServerLooksLikeToken(server) {
+		return "[redacted: value looks like a token]"
+	}
+	return server
 }
 
 // NormalizeServerURL trims surrounding whitespace and defaults a schemeless
