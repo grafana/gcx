@@ -19,7 +19,7 @@ const (
 
 // QueryCmd returns the `query` subcommand for a ClickHouse datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
+	shared := &dsquery.SQLQueryOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
 	var limit int
@@ -29,7 +29,10 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a SQL query against a ClickHouse datasource",
 		Long: `Execute a SQL query against a ClickHouse datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --filename. Use --filename - to read SQL from stdin.
+File input executes verbatim without the default row limit and cannot be combined
+with --limit. Put any row limit in the SQL file itself.
 Datasource is resolved from -d flag or datasources.clickhouse in your context.
 Server-side macros ($__timeFilter, $__timeInterval, etc.) are supported.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -44,6 +47,9 @@ open it in your browser after the query succeeds.`,
   # Output as JSON
   gcx datasources clickhouse query -d UID 'SELECT 1' -o json
 
+  # Read a long query from a file
+  gcx datasources clickhouse query -d UID --filename ./query.sql -o json
+
   # Print a Grafana Explore share link for the executed query
   gcx datasources clickhouse query 'SELECT 1' --share-link
 
@@ -51,6 +57,9 @@ open it in your browser after the query succeeds.`,
   gcx datasources clickhouse query 'SELECT * FROM big_table' --limit 0`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := shared.ValidateInputFlags(cmd); err != nil {
+				return err
+			}
 			if err := shared.Validate(); err != nil {
 				return err
 			}
@@ -58,10 +67,11 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("--limit must be >= 0, got %d", limit)
 			}
 
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := shared.ResolveExpr(cmd, args, 0)
 			if err != nil {
 				return err
 			}
+			limit = shared.RowLimit(limit)
 
 			ctx := cmd.Context()
 
