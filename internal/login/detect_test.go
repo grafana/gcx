@@ -20,6 +20,10 @@ func TestIsLocalHostname(t *testing.T) {
 		{"127.0.0.1", true},
 		{"::1", true},
 		{"foo.localhost", true},
+		{"127.0.0.2", true},
+		{"127.255.255.254", true},
+		{"LocalHost", true},
+		{"Foo.LOCALHOST", true},
 		// RFC 1918 private IPv4
 		{"10.0.0.1", true},
 		{"10.255.255.255", true},
