@@ -1,0 +1,17 @@
+Staged Alertmanager configuration "mimir-prod" (read-only until promoted; original names, before renames)
+
+Routes (1):
+MATCHERS  RECEIVER       GROUP BY  CONTINUE  INTERVALS
+(root)    default-email  -         -         -
+
+Receivers (1):
+NAME           INTEGRATIONS
+default-email  email
+
+Time intervals (0):
+
+Inhibition rules (0):
+
+Templates (0):
+
+Secrets are masked and global settings are dropped: use -o yaml to inspect the configuration, not to import it again.

@@ -11,6 +11,7 @@
   "gcx agento11y model-rates resolve",
   "gcx agento11y saved-conversations collections",
   "gcx agento11y saved-conversations save",
+  "gcx alert alertmanager-imports promote",
   "gcx alert contact-points export",
   "gcx alert groups status",
   "gcx alert mute-timings export",

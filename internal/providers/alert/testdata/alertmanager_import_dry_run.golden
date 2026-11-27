@@ -1,0 +1,13 @@
+✔ Dry run: Alertmanager configuration "mimir-prod" is valid. Nothing was saved.
+
+Resources that the import would add:
+  Route:            mimir-prod
+  Receivers:        email_mimir-prod, webhook_mimir-prod
+  Time intervals:   weekends_mimir-prod
+  Templates:        default.tmpl
+  Inhibition rules: none
+
+Renamed resources (old -> new):
+  receiver email -> email_mimir-prod
+  receiver webhook -> webhook_mimir-prod
+  time interval weekends -> weekends_mimir-prod

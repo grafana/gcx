@@ -271,6 +271,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert templates delete":                 {Cost: "small"},
 	"gcx alert notification-history list":        {Cost: "large", Hint: "--since 1h --status firing --outcome error --receiver <cp> -o json"},
 	"gcx alert notification-history list-alerts": {Cost: "medium", Hint: "--uuid <uuid> --since 1h -o json"},
+	"gcx alert alertmanager-imports upsert":      {Cost: "small", Hint: "[<identifier>] -f alertmanager.yaml [--template <file>]...; run with --dry-run first to see renames; --promote needs --force"},
+	"gcx alert alertmanager-imports get":         {Cost: "medium", Hint: "[<identifier>] -o json; secrets are masked and global is dropped, so do not re-import the output"},
+	"gcx alert alertmanager-imports promote":     {Cost: "small", Hint: "<identifier> --force; merges the staged configuration permanently"},
+	"gcx alert alertmanager-imports delete":      {Cost: "small", Hint: "<identifier> --force"},
 
 	// -----------------------------------------------------------------------
 	// App Observability provider
