@@ -573,38 +573,51 @@ func TestSuppressionsUpsert_DryRun_RemoteOnlyIgnored(t *testing.T) {
 	assert.False(t, writeHit, "dry-run must not write")
 }
 
-// System-managed fields (managedBy) are populated by the backend, not the input
-// file, so an entry whose user fields match remote must report no change even
-// when remote carries a managedBy the file omits — otherwise the diff would show
-// a spurious removal for a field upsert does not touch.
-func TestSuppressionsUpsert_DryRun_SystemFieldsIgnored(t *testing.T) {
-	writeHit := false
+// managedBy is sent on upsert and stored as given, so dry-run must report a
+// file that drops it as a modify, and one that keeps it as no change.
+func TestSuppressionsUpsert_DryRun_ManagedBy(t *testing.T) {
 	remote := kg.Suppressions{DisabledAlertConfigs: []kg.Suppression{
 		{Name: "my-suppression", MatchLabels: map[string]string{"alertname": "ErrorRatioBreach"}, ManagedBy: "terraform"},
 	}}
-	server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
-	defer server.Close()
+	tests := []struct {
+		name        string
+		input       string
+		wantChanged bool
+	}{
+		{name: "file omits managedBy", input: localSuppressionYAML, wantChanged: true},
+		{name: "file keeps managedBy", input: localSuppressionYAML + "    managedBy: terraform\n", wantChanged: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			writeHit := false
+			server := httptest.NewServer(suppressionsDryRunHandler(t, http.StatusOK, "", remote, &writeHit))
+			defer server.Close()
 
-	var stdout, stderr bytes.Buffer
-	cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
-	cmd.SilenceUsage = true
-	cmd.SilenceErrors = true
-	cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "json"})
-	// localSuppressionYAML has the same name/matchLabels but no managedBy.
-	cmd.SetIn(bytes.NewBufferString(localSuppressionYAML))
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stderr)
+			var stdout bytes.Buffer
+			cmd := kg.NewSuppressionsCommand(writeLoaderFor(server))
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetArgs([]string{"upsert", "-f", "-", "--dry-run", "-o", "json"})
+			cmd.SetIn(bytes.NewBufferString(tt.input))
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&bytes.Buffer{})
 
-	require.NoError(t, cmd.Execute())
+			require.NoError(t, cmd.Execute())
 
-	var got kg.SuppressionsDryRunResult
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
-	assert.True(t, got.Valid)
-	assert.False(t, got.Changed, "managedBy is a system field; user fields are unchanged")
-	assert.Empty(t, got.Changes)
-	assert.Empty(t, got.Diff, "system-only differences must not appear in the diff")
-	assert.NotContains(t, stdout.String(), "managedBy")
-	assert.False(t, writeHit, "dry-run must not write")
+			var got kg.SuppressionsDryRunResult
+			require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+			assert.True(t, got.Valid)
+			assert.Equal(t, tt.wantChanged, got.Changed)
+			if tt.wantChanged {
+				assert.Equal(t, []kg.SuppressionChange{{Name: "my-suppression", Action: "modify"}}, got.Changes)
+				assert.Contains(t, got.Diff, "-      managedBy: terraform")
+			} else {
+				assert.Empty(t, got.Changes)
+				assert.Empty(t, got.Diff)
+			}
+			assert.False(t, writeHit, "dry-run must not write")
+		})
+	}
 }
 
 // TestRcaWorkbenchURL_CompoundUnitSince pins down that a compound PromQL

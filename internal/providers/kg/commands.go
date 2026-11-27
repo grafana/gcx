@@ -1374,17 +1374,16 @@ func runSuppressionsDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Cl
 // absent from the file are ignored — `upsert` never deletes — so surfacing
 // them would only add noise.
 //
-// System-managed fields (see withoutSystemFields) are excluded from both the comparison and
-// the diff: they are populated by the backend, not the user, so showing them as
-// added/removed would misrepresent what `upsert` actually changes.
+// managedBy is compared like any other field: upsert sends it as given and the
+// backend stores it, so a file that omits it would clear a "terraform" owner.
 func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDryRunResult, error) {
 	remoteByName := make(map[string]Suppression, len(remote.DisabledAlertConfigs))
 	for _, s := range remote.DisabledAlertConfigs {
 		remoteByName[s.Name] = s
 	}
 
-	// remoteScoped/localScoped hold the entries the diff compares — file order,
-	// system fields stripped. Added entries appear only in localScoped.
+	// remoteScoped/localScoped hold the entries the diff compares, in file
+	// order. Added entries appear only in localScoped.
 	// changes is non-nil so it serializes as [] rather than null when empty.
 	changes := []SuppressionChange{}
 	var (
@@ -1392,17 +1391,15 @@ func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDry
 		localScoped  Suppressions
 	)
 	for _, s := range local.DisabledAlertConfigs {
-		localCmp := withoutSystemFields(s)
 		r, ok := remoteByName[s.Name]
 		if !ok {
 			changes = append(changes, SuppressionChange{Name: s.Name, Action: "add"})
-			localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, localCmp)
+			localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, s)
 			continue
 		}
-		remoteCmp := withoutSystemFields(r)
-		remoteScoped.DisabledAlertConfigs = append(remoteScoped.DisabledAlertConfigs, remoteCmp)
-		localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, localCmp)
-		if !suppressionEqual(remoteCmp, localCmp) {
+		remoteScoped.DisabledAlertConfigs = append(remoteScoped.DisabledAlertConfigs, r)
+		localScoped.DisabledAlertConfigs = append(localScoped.DisabledAlertConfigs, s)
+		if !suppressionEqual(r, s) {
 			changes = append(changes, SuppressionChange{Name: s.Name, Action: "modify"})
 		}
 	}
@@ -1426,16 +1423,6 @@ func buildSuppressionsDryRunResult(remote, local *Suppressions) (SuppressionsDry
 	}
 	result.Diff = diff
 	return result, nil
-}
-
-// withoutSystemFields returns a copy of s with system-managed fields cleared, so dry-run
-// comparison and diffing consider only the user-authored fields (name,
-// matchLabels). managedBy is set by the backend (e.g. "terraform"), not the
-// input file, so including it would flag unchanged entries as modified and show
-// spurious removals in the diff.
-func withoutSystemFields(s Suppression) Suppression {
-	s.ManagedBy = ""
-	return s
 }
 
 func suppressionEqual(a, b Suppression) bool {
