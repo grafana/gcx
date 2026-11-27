@@ -343,7 +343,8 @@ Each entry has `action` (`created` or `updated`), `requested` (the input kind an
 name), and `target` (`kind`, `name`, `uid`, and `namespace` when available).
 The optional `source` on the success entry identifies its input file, matching
 `source` on failure entries. These references contain no resource body.
-Dry-run and skipped operations do not produce applied identity references.
+Dry-run and skipped operations do not produce applied identity references;
+a dry run reports `planned` instead (see below).
 API responses without a resource name also produce no reference.
 If the option is set and no reference is returned, `successes` is an empty array.
 If an abort follows a successful write, the opt-in result keeps the completed
@@ -358,6 +359,20 @@ source path is empty. `source` is independent of `target.name`, which remains
 the API address. `resources push` and file-based `resources delete` populate
 `source` from the failed resource's local source path. Artifact receipts
 leave it absent when the failed resource has no input path.
+
+`gcx.mutation_batch` from `resources push --dry-run` includes a top-level
+`planned` array that previews what the push would do. It appears only for dry
+runs, regardless of `--include-successes`, and is omitted otherwise. Each entry
+has the same shape as a `successes` entry: `action`, `requested`, `target`, and
+the optional `source`. `action` uses the past tense, `created` or `updated`,
+like `successes[].action`. For a `created` entry `target.name` is empty and omitted,
+because the server has not assigned a name yet. For an `updated` entry it is
+the name of the existing remote resource, which can differ from the requested
+name when the resource was matched by natural key. Entries are sorted by kind,
+requested name, and source, so the order is stable between runs. Resources
+pushed through the envelope path (currently the assistant watcher) have no
+entry. The human text output prints one `would create` or `would update` line
+per entry before the summary line.
 
 `gcx.mutation_batch` and `gcx.artifact_receipt` may include a top-level
 `skipped_reasons` object mapping each skip reason to its count. It is omitted
@@ -415,6 +430,35 @@ A populated `NewBatchMutation("pushed")` result:
       "error": "409 conflict: resource modified server-side"
     }
   ]
+}
+```
+
+A `resources push --dry-run -o json` result with a `planned` array. Both
+resources are also counted as skipped, because the server cannot verify them:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 0, "failed": 0, "skipped": 2},
+  "skipped_reasons": {"not server-verified": 2},
+  "planned": [
+    {
+      "action": "updated",
+      "requested": {"kind": "AlertRule", "name": "rule-1"},
+      "target": {"kind": "AlertRule", "name": "rule-1"},
+      "source": "rule-1.json"
+    },
+    {
+      "action": "created",
+      "requested": {"kind": "AlertRule", "name": "rule-2"},
+      "target": {"kind": "AlertRule"},
+      "source": "rule-2.json"
+    }
+  ],
+  "failures": [],
+  "dry_run": true
 }
 ```
 

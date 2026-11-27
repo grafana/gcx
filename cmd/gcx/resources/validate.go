@@ -122,6 +122,8 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
+			// The push also records a dry-run plan (what would be created or
+			// updated). validate does not report it, so the plan is ignored.
 			req := remote.PushRequest{
 				Resources:        resourcesList,
 				MaxConcurrency:   opts.MaxConcurrent,

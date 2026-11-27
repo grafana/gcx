@@ -78,7 +78,8 @@ func NewSingleMutation(action string, target MutationTarget) SingleMutation {
 	}
 }
 
-// MutationSuccess is the identity receipt for one real write.
+// MutationSuccess is the identity receipt for one real write, or one planned
+// action when used in BatchMutation.Planned.
 // It contains no resource body or credentials.
 type MutationSuccess struct {
 	Requested MutationTarget `json:"requested" yaml:"requested"`
@@ -98,6 +99,9 @@ type BatchMutation struct {
 	SkippedReasons map[string]int `json:"skipped_reasons,omitempty" yaml:"skipped_reasons,omitempty"`
 	// Successes contains only identities from real API writes.
 	Successes *[]MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
+	// Planned lists what a dry run would do per resource: action created or
+	// updated, and the target name when one exists. Omitted outside dry runs.
+	Planned []MutationSuccess `json:"planned,omitempty" yaml:"planned,omitempty"`
 	// Failures is always present, including an empty slice.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`
 	DryRun   bool              `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`

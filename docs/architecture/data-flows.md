@@ -112,6 +112,8 @@ User invocation:
   │    e. summary.RecordSuccess(), RecordFailure(res, err), or           │
   │       RecordSkipped(reason) — read-only or guard-blocked dry-run     │
   │       is SKIPPED (not sent, not failed; keeps exit 0)                │
+  │       A dry run also calls RecordPlanned (created or updated) at     │
+  │       the same point, for verified and skipped resources alike       │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐

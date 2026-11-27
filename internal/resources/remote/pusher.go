@@ -294,7 +294,7 @@ func (p *Pusher) pushSingleResource(
 		return nil
 	}
 
-	applied, action, err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache)
+	applied, action, target, err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache)
 	if err != nil {
 		var warnings adapter.OperationWarnings
 		if errors.As(err, &warnings) {
@@ -305,6 +305,7 @@ func (p *Pusher) pushSingleResource(
 		// unlistable types.
 		if errors.Is(err, errDryRunUnverified) {
 			summary.RecordSkipped("not server-verified")
+			recordPlanned(summary, request, desc, name, res, action, target)
 			logger.Info("Dry-run: change not verified (server-side dry-run unsupported); no changes sent")
 			return nil
 		}
@@ -323,15 +324,28 @@ func (p *Pusher) pushSingleResource(
 
 	logger.Info("Resource pushed")
 	summary.RecordSuccess()
+	if applied != nil && applied.GetName() != "" {
+		target = applied.GetName()
+	}
+	recordPlanned(summary, request, desc, name, res, action, target)
 	if request.IncludeSuccesses && !request.DryRun && applied != nil && applied.GetName() != "" {
 		summary.RecordApplied(OperationSuccess{RequestedName: name, SourcePath: res.SourcePath(), Action: action, Kind: desc.Kind, Name: applied.GetName(), UID: string(applied.GetUID()), Namespace: applied.GetNamespace()})
 	}
 	return nil
 }
 
+// recordPlanned notes what a dry-run push would do with res. It records nothing
+// for a real push, or when the push path did not report an action.
+func recordPlanned(summary *OperationSummary, request PushRequest, desc resources.Descriptor, name string, res *resources.Resource, action, target string) {
+	if !request.DryRun || action == "" {
+		return
+	}
+	summary.RecordPlanned(OperationSuccess{RequestedName: name, SourcePath: res.SourcePath(), Action: action, Kind: desc.Kind, Name: target})
+}
+
 func (p *Pusher) upsertResource(
 	ctx context.Context, desc resources.Descriptor, name string, src *resources.Resource, dryRun bool, log logging.Logger, nkCache *naturalKeyCache,
-) (*unstructured.Unstructured, string, error) {
+) (*unstructured.Unstructured, string, string, error) {
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}
@@ -341,7 +355,7 @@ func (p *Pusher) upsertResource(
 	}); ok {
 		obj := src.ToUnstructured()
 		if handled, err := client.PushEnvelope(ctx, desc, &obj, metav1.CreateOptions{DryRun: dryRunOpts}); handled {
-			return nil, "", err
+			return nil, "", "", err
 		}
 	}
 
@@ -353,7 +367,7 @@ func (p *Pusher) upsertResource(
 		var identityErr error
 		desiredIdentity, _, identityErr = resources.NativeIdentity(&obj)
 		if identityErr != nil {
-			return nil, "", identityErr
+			return nil, "", "", identityErr
 		}
 	}
 
@@ -372,7 +386,7 @@ func (p *Pusher) upsertResource(
 	}
 	if err == nil {
 		if nativePolicy && resources.IsReadOnlyNative(existing) {
-			return nil, "", fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(existing))
+			return nil, "", "", fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(existing))
 		}
 		// Use the destination address and version on updates.
 		obj.SetName(existing.GetName())
@@ -383,16 +397,16 @@ func (p *Pusher) upsertResource(
 			DryRun: dryRunOpts,
 		})
 		if err != nil {
-			return nil, "", err
+			return nil, "updated", obj.GetName(), err
 		}
 
 		log.Info("Resource updated")
-		return applied, "updated", nil
+		return applied, "updated", obj.GetName(), nil
 	}
 
 	// If the error is not a NotFound, it's an unexpected API error — surface it.
 	if !apierrors.IsNotFound(err) {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	// Resource does not exist — try natural key matching for cross-stack push.
@@ -400,11 +414,11 @@ func (p *Pusher) upsertResource(
 	// Look for a resource with the same content identity.
 	matched, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj, desiredIdentity)
 	if nkErr != nil {
-		return nil, "", nkErr
+		return nil, "", "", nkErr
 	}
 	if found {
 		if nativePolicy && resources.IsReadOnlyNative(matched) {
-			return nil, "", fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(matched))
+			return nil, "", "", fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(matched))
 		}
 		remoteName := matched.GetName()
 		obj.SetName(remoteName)
@@ -414,10 +428,10 @@ func (p *Pusher) upsertResource(
 			DryRun: dryRunOpts,
 		})
 		if err != nil {
-			return nil, "", err
+			return nil, "updated", remoteName, err
 		}
 		log.Info("Resource updated via natural key match", "remoteName", remoteName)
-		return applied, "updated", nil
+		return applied, "updated", remoteName, nil
 	}
 
 	// No natural key match — create as new resource.
@@ -428,11 +442,15 @@ func (p *Pusher) upsertResource(
 		DryRun: dryRunOpts,
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, "created", "", err
 	}
 
 	log.Info("Resource created")
-	return applied, "created", nil
+	created := ""
+	if applied != nil {
+		created = applied.GetName()
+	}
+	return applied, "created", created, nil
 }
 
 // preserveManagerIdentity keeps the live kubectl identity on updates. Grafana
