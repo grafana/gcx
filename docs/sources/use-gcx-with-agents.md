@@ -17,9 +17,11 @@ weight: 9
 
 # Use `gcx` with AI agents
 
-Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to **agent mode**. 
+With `gcx`, your AI coding agent can use production data to troubleshoot issues and make better implementation decisions. For example, the agent can examine traces alongside your code to identify which operation to optimize, or ask Grafana Assistant to investigate a potential issue.
 
-With `gcx`, your AI coding agent can use production data to troubleshoot issues and make better implementation decisions. For example, the agent can examine traces alongside your code to identify which operation to optimize, or ask Grafana Assistant to investigate a potential issue. Agent mode **reduces token usage**. `gcx` keeps output compact, lets the agent request only the fields it needs, and keeps large results out of the agent's context window.
+Both people and agents use the same `gcx` commands. However, when `gcx` detects an agent, it switches to **agent mode**.
+
+Agent mode **reduces token usage**. `gcx` keeps output compact, lets the agent request only the fields it needs, and keeps large results out of the agent's context window.
 
 ## How agent mode works
 
@@ -51,12 +53,11 @@ Agents also rely on `gcx` features that are available in both modes:
 
 ## Set up `gcx` for your agent
 
-If you haven't already, [install `gcx`](../installation/) in the environment where your agent runs. 
+To set up `gcx` for your agent, follow these steps:
 
-Next, follow these steps to set up `gcx` for your agent:
-
+1. If you haven't already, [install `gcx`](../installation/) in the environment where your agent runs.
 1. [Authenticate so the agent can reach your Grafana instance](#authenticate-gcx-for-your-agent).
-1. [Iinstall the `gcx` skills for your agent tool](#install-gcx-agent-skills).
+1. [Install the `gcx` skills for your agent tool](#install-gcx-agent-skills).
 1. Optionally, [modify the agent mode configuration](#configure-agent-mode).
 
 ### Authenticate `gcx` for your agent
