@@ -512,6 +512,16 @@ func TestClient_DeleteSourcemaps(t *testing.T) {
 			},
 		},
 		{
+			name:      "escapes each bundle ID and keeps the comma separator",
+			appID:     "42",
+			bundleIDs: []string{"v1/rc 2", "a,b", "c?d"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app/42/sourcemaps/batch/v1%2Frc%202,a%2Cb,c%3Fd", r.URL.EscapedPath())
+				assert.Empty(t, r.URL.RawQuery)
+				w.WriteHeader(http.StatusNoContent)
+			},
+		},
+		{
 			name:      "server error",
 			appID:     "42",
 			bundleIDs: []string{"bundle-1"},

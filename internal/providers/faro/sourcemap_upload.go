@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func GenerateBundleID() string {
 // Auth uses Bearer {stackId}:{token} format per the faro-bundler-plugins convention.
 func UploadSourcemap(ctx context.Context, faroAPIURL string, stackID int, token string, appID string, bundleID string, reader io.Reader, contentType string) error {
 	endpoint := fmt.Sprintf(faroUploadPathFmt,
-		strings.TrimRight(faroAPIURL, "/"), appID, bundleID)
+		strings.TrimRight(faroAPIURL, "/"), url.PathEscape(appID), url.PathEscape(bundleID))
 
 	log := logging.FromContext(ctx)
 	log.Info("Uploading sourcemap", "app_id", appID, "bundle_id", bundleID, "endpoint", endpoint)

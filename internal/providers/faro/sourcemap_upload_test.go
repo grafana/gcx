@@ -111,6 +111,19 @@ func TestUploadSourcemap(t *testing.T) {
 			},
 		},
 		{
+			name:        "escapes the bundle ID in the path",
+			stackID:     13,
+			token:       "my-token",
+			appID:       "42",
+			bundleID:    "v1/rc 2?x#y",
+			contentType: "application/json",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/v1/app/42/sourcemaps/v1%2Frc%202%3Fx%23y", r.URL.EscapedPath())
+				assert.Empty(t, r.URL.RawQuery)
+				w.WriteHeader(http.StatusOK)
+			},
+		},
+		{
 			name:        "successful gzip upload",
 			stackID:     13,
 			token:       "my-token",
