@@ -1,11 +1,18 @@
 package format
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/lexer"
+	"github.com/goccy/go-yaml/parser"
+	"github.com/goccy/go-yaml/token"
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
@@ -48,6 +55,12 @@ var _ Codec = (*YAMLCodec)(nil)
 // YAMLCodec is a Codec that encodes and decodes resources to and from YAML.
 type YAMLCodec struct {
 	BytesAsBase64 bool
+
+	// PromoteExponentFloats decodes unquoted exponent-only numbers such as
+	// 1e-07 as floats instead of strings. It is meant for unstructured
+	// resource manifests, matching kubectl; typed decoders keep go-yaml's
+	// YAML 1.1 behaviour so values like 1e10 or a short SHA stay strings.
+	PromoteExponentFloats bool
 }
 
 // NewYAMLCodec returns a new YAMLCodec.
@@ -111,7 +124,83 @@ func (c *YAMLCodec) Decode(src io.Reader, value any) error {
 		}))
 	}
 
-	return yaml.NewDecoder(src, opts...).Decode(value)
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return err
+	}
+
+	if !c.PromoteExponentFloats {
+		return yaml.NewDecoder(bytes.NewReader(data), opts...).Decode(value)
+	}
+
+	tokens := lexer.Tokenize(string(data))
+	if !promoteExponentFloats(tokens) {
+		return yaml.NewDecoder(bytes.NewReader(data), opts...).Decode(value)
+	}
+
+	file, err := parser.Parse(tokens, 0)
+	if err != nil {
+		return err
+	}
+
+	// Only the first document is decoded, as with Decoder.Decode, which
+	// reports io.EOF for an empty first document.
+	if len(file.Docs) == 0 || file.Docs[0].Body == nil {
+		return io.EOF
+	}
+
+	return yaml.NewDecoder(bytes.NewReader(data), opts...).DecodeFromNode(file.Docs[0].Body, value)
+}
+
+// exponentFloat matches a plain scalar that is a number written with an
+// exponent but no decimal point, such as 1e-07 or 1E+21.
+var exponentFloat = regexp.MustCompile(`^[-+]?[0-9]+[eE][-+]?[0-9]+$`)
+
+// promoteExponentFloats retypes unquoted exponent-only numbers as floats and
+// reports whether it changed any token.
+//
+// go-yaml follows YAML 1.1, where a float needs a decimal point, so it decodes
+// 1e-07 as a string. The JSON-to-YAML encoder (and every YAML 1.2 reader)
+// writes and reads such values as numbers, so without this a pulled file
+// holding 1e-07 would come back as the string "1e-07". Mapping keys are left
+// alone.
+func promoteExponentFloats(tokens token.Tokens) bool {
+	changed := false
+
+	for _, tk := range tokens {
+		if tk.Type != token.StringType || !exponentFloat.MatchString(tk.Value) {
+			continue
+		}
+
+		// Content of a | or > block scalar is text, not a number, and an
+		// explicit tag such as !!str decides the type itself.
+		if tk.Prev != nil && (tk.Prev.Type == token.LiteralType || tk.Prev.Type == token.FoldedType || tk.Prev.Type == token.TagType) {
+			continue
+		}
+
+		// Out-of-range values (1e400) stay strings, as in kubectl.
+		if _, err := strconv.ParseFloat(tk.Value, 64); err != nil {
+			continue
+		}
+
+		if tk.Next != nil && tk.Next.Type == token.MappingValueType {
+			continue
+		}
+
+		// "1e-07" -> "1.0e-07" so the parser accepts it as a float.
+		i := strings.IndexAny(tk.Value, "eE")
+		promoted := tk.Value[:i] + ".0" + tk.Value[i:]
+		// UseJSONUnmarshaler re-reads the node text from Origin, so keep it in sync.
+		// Origin may start with a comment, so rewrite the last occurrence.
+		if j := strings.LastIndex(tk.Origin, tk.Value); j >= 0 {
+			tk.Origin = tk.Origin[:j] + promoted + tk.Origin[j+len(tk.Value):]
+		}
+		tk.Value = promoted
+		tk.Type = token.FloatType
+		changed = true
+	}
+
+	return changed
 }
 
 var _ Codec = (*JSONCodec)(nil)
