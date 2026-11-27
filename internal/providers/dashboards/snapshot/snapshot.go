@@ -92,6 +92,9 @@ func (opts *snapshotOpts) Validate() error {
 	if opts.Theme != "light" && opts.Theme != "dark" {
 		return fmt.Errorf("--theme must be \"light\" or \"dark\", got %q", opts.Theme)
 	}
+	if opts.Concurrency < 1 {
+		return errors.New("--concurrency must be at least 1")
+	}
 	if opts.timeoutSet {
 		if opts.Timeout <= 0 {
 			return errors.New("--timeout must be positive")

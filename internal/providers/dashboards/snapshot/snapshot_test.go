@@ -17,7 +17,22 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 		wantTo      string
 		wantWidth   int
 		wantHeight  int
+
+		zeroConcurrency bool
 	}{
+		{
+			name:            "zero concurrency is an error",
+			opts:            snapshot.SnapshotOptsForTest{Theme: "dark"},
+			zeroConcurrency: true,
+			wantErr:         true,
+			errContains:     "--concurrency must be at least 1",
+		},
+		{
+			name:        "negative concurrency is an error",
+			opts:        snapshot.SnapshotOptsForTest{Theme: "dark", Concurrency: -1},
+			wantErr:     true,
+			errContains: "--concurrency must be at least 1",
+		},
 		{
 			name:        "since with from is an error",
 			opts:        snapshot.SnapshotOptsForTest{Theme: "dark", Since: "6h", From: "now-2h"},
@@ -118,6 +133,9 @@ func TestSnapshotOpts_Validate(t *testing.T) {
 			// entries construct opts directly (no BindFlags), so pin a valid
 			// format to keep these cases focused on the render flags.
 			tt.opts.IO.OutputFormat = "json"
+			if tt.opts.Concurrency == 0 && !tt.zeroConcurrency {
+				tt.opts.Concurrency = 10
+			}
 			err := tt.opts.Validate()
 
 			if (err != nil) != tt.wantErr {
