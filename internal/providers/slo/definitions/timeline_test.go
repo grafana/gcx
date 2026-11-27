@@ -490,3 +490,36 @@ func TestParseTimelineTime(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTimelineRange(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+
+	tests := []struct {
+		name    string
+		start   time.Time
+		end     time.Time
+		step    time.Duration
+		wantErr string
+	}{
+		{name: "valid", start: start, end: end, step: 5 * time.Minute},
+		{name: "empty range", start: start, end: start, step: time.Minute},
+		{name: "zero step", start: start, end: end, step: 0, wantErr: "--step"},
+		{name: "negative step", start: start, end: end, step: -time.Minute, wantErr: "--step"},
+		{name: "end before start", start: end, end: start, step: time.Minute, wantErr: "--to"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := definitions.ValidateTimelineRange(tt.start, tt.end, tt.step)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
