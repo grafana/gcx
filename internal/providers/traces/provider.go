@@ -42,6 +42,20 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx traces query -d UID '{ span.http.status_code >= 500 }' -o json`,
 			},
 			{
+				Build:     dstempo.ExceptionsCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx traces exceptions -d abc123 '{ resource.service.name = "checkout" }' --since 1h --limit 50 -o json`,
+				Example: `
+  # Group error-span exceptions for one service over the last hour
+  gcx traces exceptions -d UID '{ resource.service.name = "checkout" }' --since 1h
+
+  # Every service
+  gcx traces exceptions --since 1h
+
+  # JSON for an agent, with a smaller sample
+  gcx traces exceptions -d UID '{ resource.service.name = "checkout" }' --since 1h --limit 50 -o json`,
+			},
+			{
 				Build:     dstempo.GetCmd,
 				TokenCost: "medium",
 				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",

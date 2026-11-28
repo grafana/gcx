@@ -62,6 +62,47 @@ func TestFormatSearchTable(t *testing.T) {
 	assert.Contains(t, out, expectedDate)
 }
 
+func TestFormatExceptionsTable_CompactLastSeen(t *testing.T) {
+	seen := time.Date(2026, 11, 13, 9, 54, 34, 0, time.UTC)
+	resp := &tempo.ExceptionsResult{
+		Exceptions: []tempo.ExceptionGroup{{
+			Service:     "datasource.grafana.app",
+			Type:        "TimeoutError",
+			Message:     "timeout for user <num>",
+			Occurrences: 2,
+			LastSeen:    seen,
+		}},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatExceptionsTable(&buf, resp))
+	out := buf.String()
+	assert.Contains(t, out, "SERVICE")
+	assert.Contains(t, out, "datasource.grafana.app")
+	assert.Contains(t, out, "11-13 09:54:34")
+	assert.NotContains(t, out, seen.Format(time.RFC3339))
+	assert.NotContains(t, out, "LINK")
+}
+
+func TestFormatExceptionsTable_LinkColumn(t *testing.T) {
+	resp := &tempo.ExceptionsResult{
+		Exceptions: []tempo.ExceptionGroup{{
+			Service:     "checkout",
+			Type:        "TimeoutError",
+			Message:     "timeout for user <num>",
+			Occurrences: 1,
+			URL:         "https://stack.grafana.net/explore?left=exception",
+		}},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatExceptionsTable(&buf, resp))
+	out := buf.String()
+	assert.Contains(t, out, "LINK")
+	assert.Contains(t, out, "https://stack.grafana.net/explore?left=exception")
+	assert.NotContains(t, out, "\topen")
+}
+
 func TestFormatSearchTable_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	err := tempo.FormatSearchTable(&buf, &tempo.SearchResponse{})

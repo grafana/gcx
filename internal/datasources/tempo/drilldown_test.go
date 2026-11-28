@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/datasources/query/scenesfiltertest"
 	"github.com/grafana/gcx/internal/datasources/tempo"
+	qtempo "github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,7 @@ func TestTracesDrilldownURL_SimpleFilters(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC)
 
-	got, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
+	got, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", 0, "tempo-uid",
 		`{ span.http.status_code = 500 && resource.service.name = "checkout" }`, start, end)
 	require.True(t, ok)
 
@@ -35,13 +36,39 @@ func TestTracesDrilldownURL_SimpleFilters(t *testing.T) {
 	require.Len(t, q["var-filters"], 2)
 	assert.Equal(t, "span.http.status_code|=|500", q["var-filters"][0])
 	assert.Equal(t, "resource.service.name|=|checkout", q["var-filters"][1])
+	assert.False(t, q.Has("orgId"), "no org means no orgId, as for Explore")
+}
+
+func TestTracesDrilldownURLs_CarryTheGrafanaOrg(t *testing.T) {
+	const expr = `{ resource.service.name = "checkout" }`
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+
+	trace, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", 7, "tempo-uid", expr, start, end)
+	require.True(t, ok)
+	assert.Equal(t, "7", queryOf(t, trace).Get("orgId"))
+
+	tab, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", 7, "tempo-uid", expr, start, end)
+	require.True(t, ok)
+	assert.Equal(t, "7", queryOf(t, tab).Get("orgId"))
+
+	all, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", 7, "tempo-uid", "", start, end)
+	require.True(t, ok)
+	assert.Equal(t, "7", queryOf(t, all).Get("orgId"), "the every-service link needs the org too")
+
+	// A zero or negative org is not a real org, so no orgId is added.
+	for _, org := range []int64{0, -1} {
+		noOrg, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", org, "tempo-uid", expr, start, end)
+		require.True(t, ok)
+		assert.False(t, queryOf(t, noOrg).Has("orgId"), "org %d", org)
+	}
 }
 
 func TestTracesExceptionsURL(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC)
 
-	got, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid",
+	got, ok := tempo.TracesExceptionsURL("https://stack.grafana.net", 0, "tempo-uid",
 		`{ resource.service.name = "adaptive-profiles-api" }`, start, end)
 	require.True(t, ok)
 
@@ -52,8 +79,11 @@ func TestTracesExceptionsURL(t *testing.T) {
 	require.Len(t, q["var-filters"], 1)
 	assert.Equal(t, "resource.service.name|=|adaptive-profiles-api", q["var-filters"][0])
 
-	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", "tempo-uid", `{ span.http.status_code >= 500 }`, start, end)
+	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", 0, "tempo-uid", `{ span.http.status_code >= 500 }`, start, end)
 	assert.False(t, ok)
+
+	_, ok = tempo.TracesExceptionsURL("https://stack.grafana.net", 0, "tempo-uid", `{ event.exception.type = "" }`, start, end)
+	assert.False(t, ok, "an empty filter value must fall back to Explore")
 }
 
 func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
@@ -64,11 +94,16 @@ func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
 		"missing host falls back":           {"", "tempo-uid", `{ span.foo = "bar" }`},
 		"missing datasource UID falls back": {"https://stack.grafana.net", "", `{ span.foo = "bar" }`},
 		"missing expr falls back":           {"https://stack.grafana.net", "tempo-uid", ""},
+		// Drilldown drops a filter with no value, so the link would be wider
+		// than the query. Explore keeps the query intact.
+		"empty event value falls back":    {"https://stack.grafana.net", "tempo-uid", `{ event.exception.type = "" }`},
+		"empty span value falls back":     {"https://stack.grafana.net", "tempo-uid", `{ span.foo = "" }`},
+		"empty value in a set falls back": {"https://stack.grafana.net", "tempo-uid", `{ resource.service.name = "checkout" && event.exception.type != "" }`},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, ok := tempo.TracesDrilldownURL(tt.host, tt.uid, tt.expr, time.Time{}, time.Time{})
+			_, ok := tempo.TracesDrilldownURL(tt.host, 0, tt.uid, tt.expr, time.Time{}, time.Time{})
 			assert.False(t, ok)
 		})
 	}
@@ -76,7 +111,7 @@ func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
 
 func TestTracesDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing.T) {
 	for _, value := range []string{"a,b", "a#b", "foo|bar", "a,b#c|d"} {
-		got, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
+		got, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", 0, "tempo-uid",
 			`{ resource.service.name =~ "`+value+`" }`, time.Time{}, time.Time{})
 		require.True(t, ok, value)
 
@@ -90,8 +125,39 @@ func TestTracesDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing
 	}
 }
 
+func TestExceptionRowFilters(t *testing.T) {
+	got, ok := tempo.ExceptionRowFilters(`{ resource.service.name = "checkout" }`, "checkout", "TimeoutError")
+	require.True(t, ok)
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"},
+		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
+	}, got)
+
+	got, ok = tempo.ExceptionRowFilters(`{ span.http.status_code = 500 }`, "checkout", "TimeoutError")
+	require.True(t, ok)
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "span", Tag: "http.status_code", Operator: "=", Value: "500"},
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout"},
+		{Scope: "event", Tag: "exception.type", Operator: "=", Value: "TimeoutError"},
+	}, got)
+
+	_, ok = tempo.ExceptionRowFilters(`{ status = error } | count()`, "api", "TimeoutError")
+	assert.False(t, ok)
+	_, ok = tempo.ExceptionRowFilters(`{ span.http.status_code >= 500 }`, "api", "TimeoutError")
+	assert.False(t, ok)
+
+	got, ok = tempo.ExceptionRowFilters("", "api", "Unknown")
+	require.True(t, ok)
+	assert.Equal(t, []qtempo.TraceQLFilter{
+		{Scope: "resource", Tag: "service.name", Operator: "=", Value: "api"},
+	}, got)
+	got, ok = tempo.ExceptionRowFilters("", "", "Unknown")
+	require.True(t, ok)
+	assert.Empty(t, got)
+}
+
 func TestTracesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {
-	_, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
+	_, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", 0, "tempo-uid",
 		`{ span.foo = "x__gfp__y" }`, time.Time{}, time.Time{})
 	assert.False(t, ok)
 }

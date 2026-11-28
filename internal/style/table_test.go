@@ -21,6 +21,7 @@ func TestTableBuilder_AgentModeRendersPlain(t *testing.T) {
 
 	tb := style.NewTable("NAME", "STATUS")
 	tb.Row("prod-eu", "OK")
+	tb.Link(1, "https://example.grafana.net/explore")
 
 	var buf bytes.Buffer
 	if err := tb.Render(&buf); err != nil {
@@ -34,8 +35,11 @@ func TestTableBuilder_AgentModeRendersPlain(t *testing.T) {
 			t.Errorf("agent-mode table output contains box char %q:\n%s", ch, out)
 		}
 	}
-	// Must still contain the data.
-	if !strings.Contains(out, "prod-eu") {
+	// Must still contain the data. A linked cell is the URL itself, not an OSC 8 sequence.
+	if !strings.Contains(out, "prod-eu") || !strings.Contains(out, "https://example.grafana.net/explore") {
 		t.Errorf("agent-mode table output missing data:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b]8;;") {
+		t.Errorf("agent-mode table output contains a hyperlink escape:\n%s", out)
 	}
 }

@@ -4,11 +4,12 @@ import (
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/tempo"
 )
 
 // SearchExploreURL builds a Grafana Explore URL for a Tempo TraceQL search query.
 func SearchExploreURL(host string, query dsquery.ExploreQuery, limit int) string {
-	return buildTraceQLExploreURL(host, query, limit, "range")
+	return buildTraceQLExploreURL(host, query, limit, "range", "traces", 0)
 }
 
 // MetricsExploreURL builds a Grafana Explore URL for a Tempo TraceQL metrics query.
@@ -17,10 +18,16 @@ func MetricsExploreURL(host string, query dsquery.ExploreQuery, limit int) strin
 	if query.Instant {
 		metricsQueryType = "instant"
 	}
-	return buildTraceQLExploreURL(host, query, limit, metricsQueryType)
+	return buildTraceQLExploreURL(host, query, limit, metricsQueryType, "traces", 0)
 }
 
-func buildTraceQLExploreURL(host string, query dsquery.ExploreQuery, limit int, metricsQueryType string) string {
+// ExceptionsExploreURL builds a Grafana Explore URL for the Exceptions tab span
+// projection: tableType spans, with the same spans-per-span-set cap.
+func ExceptionsExploreURL(host string, query dsquery.ExploreQuery, limit int) string {
+	return buildTraceQLExploreURL(host, query, limit, "range", "spans", tempo.ExceptionsSpansPerTrace)
+}
+
+func buildTraceQLExploreURL(host string, query dsquery.ExploreQuery, limit int, metricsQueryType, tableType string, spss int) string {
 	if strings.TrimSpace(host) == "" || query.DatasourceUID == "" || strings.TrimSpace(query.Expr) == "" {
 		return ""
 	}
@@ -33,16 +40,20 @@ func buildTraceQLExploreURL(host string, query dsquery.ExploreQuery, limit int, 
 
 	from, to := dsquery.ShortExploreRange(query.From, query.To)
 
-	queries := []any{map[string]any{
+	paneQuery := map[string]any{
 		"refId":                         "A",
 		"datasource":                    dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
 		"queryType":                     "traceql",
 		"limit":                         limit,
-		"tableType":                     "traces",
+		"tableType":                     tableType,
 		"metricsQueryType":              metricsQueryType,
 		"serviceMapUseNativeHistograms": false,
 		"query":                         query.Expr,
-	}}
+	}
+	if spss > 0 {
+		paneQuery["spss"] = spss
+	}
+	queries := []any{paneQuery}
 
 	return dsquery.BuildExploreURL(host, query.OrgID, dsquery.SinglePane(query.DatasourceUID, queries, from, to, map[string]any{
 		"compact": false,

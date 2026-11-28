@@ -10,6 +10,7 @@ scoped discovery helps construct a selective query. Reuse what is already known.
 | Command | Purpose |
 | --- | --- |
 | `gcx traces query [TRACEQL]` | Bounded trace search; `search` is an alias |
+| `gcx traces exceptions [TRACEQL]` | Grouped exception messages from error spans. At most 300 traces, 10 spans each. When `spans_omitted` is above 0, counts are lower bounds; narrow the TraceQL rather than raising `--limit`. Omit TRACEQL for every service. Each row has a Traces Drilldown Exceptions `url` for that service and exception type |
 | `gcx traces get TRACE_ID --llm -o agents` | Fetch an execution for agent analysis |
 | `gcx traces labels` | Discover attribute names |
 | `gcx traces tags -l TAG --llm -o agents` | Compact attribute values; `tags` aliases `labels` |

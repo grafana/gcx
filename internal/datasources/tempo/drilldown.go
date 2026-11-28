@@ -2,6 +2,7 @@ package tempo
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -14,7 +15,14 @@ const TracesDrilldownPluginID = "grafana-exploretraces-app"
 // encodeTraceQLFilter renders one var-filters entry: scope and tag joined by
 // ".", then the operator and value, pipe-delimited. ok is false when a field
 // can't round-trip through the Scenes filter decoder.
+//
+// A filter with an empty value is also rejected: Traces Drilldown drops it, so
+// the link would show more than the query asked for. Callers fall back to the
+// Explore link, which keeps the query intact.
 func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
+	if f.Value == "" {
+		return "", false
+	}
 	key, ok := dsquery.EscapeScenesFilterField(f.Scope + "." + f.Tag)
 	if !ok {
 		return "", false
@@ -34,26 +42,84 @@ func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
 // comparisons — anything else (||, nested spansets, pipeline stages,
 // unscoped intrinsics, >=/<=, ...) returns ok=false so the caller can fall
 // back to the plain Explore link instead of showing an inaccurate Drilldown
-// link. The link opens the rate metric on the trace list. TracesExceptionsURL
-// is the same link opened on the Exceptions tab.
-func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
-	return tracesDrilldownURL(host, datasourceUID, expr, start, end, "rate", "traceList")
+// link.
+//
+// orgID is the Grafana org that owns the datasource. When it is above 0 the
+// link carries orgId, as the Explore link does, so it opens in the right org.
+func TracesDrilldownURL(host string, orgID int64, datasourceUID, expr string, start, end time.Time) (string, bool) {
+	filters, ok := drilldownFilters(host, datasourceUID, expr)
+	if !ok {
+		return "", false
+	}
+	return tracesDrilldownURL(host, orgID, datasourceUID, filters, start, end, "rate", "traceList")
 }
 
 // TracesExceptionsURL builds a Traces Drilldown link that opens the Exceptions
-// tab (var-metric=errors, actionView=exceptions). It accepts the same flat
-// filters as TracesDrilldownURL.
-func TracesExceptionsURL(host, datasourceUID, expr string, start, end time.Time) (string, bool) {
-	return tracesDrilldownURL(host, datasourceUID, expr, start, end, "errors", "exceptions")
-}
-
-func tracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time, metric, actionView string) (string, bool) {
-	if host == "" || datasourceUID == "" || expr == "" {
+// tab (var-metric=errors, actionView=exceptions). An empty expr opens the tab
+// with no var-filters, which is every service. A non-empty expr must be the
+// same flat spanset TracesDrilldownURL accepts; the tab adds status = error
+// itself, so that comparison does not belong in var-filters. orgID works as it
+// does for TracesDrilldownURL.
+func TracesExceptionsURL(host string, orgID int64, datasourceUID, expr string, start, end time.Time) (string, bool) {
+	if host == "" || datasourceUID == "" {
 		return "", false
 	}
+	var filters []tempo.TraceQLFilter
+	if strings.TrimSpace(expr) != "" {
+		parsed, ok := drilldownFilters(host, datasourceUID, expr)
+		if !ok {
+			return "", false
+		}
+		filters = parsed
+	}
+	return tracesDrilldownURL(host, orgID, datasourceUID, filters, start, end, "errors", "exceptions")
+}
 
+// ExceptionRowFilters are the Exceptions tab filters for one row: the caller's
+// flat comparisons, plus that row's service and exception type. ok is false
+// when a non-empty caller filter is not a flat spanset, so the row gets no
+// link rather than a wider one. An empty filter is every service. "Unknown"
+// is the placeholder for a missing type.
+func ExceptionRowFilters(filter, service, typ string) ([]tempo.TraceQLFilter, bool) {
+	var filters []tempo.TraceQLFilter
+	if strings.TrimSpace(filter) != "" {
+		parsed, ok := tempo.ParseFlatSpansetFilters(filter)
+		if !ok {
+			return nil, false
+		}
+		filters = append(filters, parsed...)
+	}
+	if service != "" && !hasExactFilter(filters, "resource", "service.name", service) {
+		filters = append(filters, tempo.TraceQLFilter{Scope: "resource", Tag: "service.name", Operator: "=", Value: service})
+	}
+	if typ != "" && typ != "Unknown" && !hasExactFilter(filters, "event", "exception.type", typ) {
+		filters = append(filters, tempo.TraceQLFilter{Scope: "event", Tag: "exception.type", Operator: "=", Value: typ})
+	}
+	return filters, true
+}
+
+func hasExactFilter(filters []tempo.TraceQLFilter, scope, tag, value string) bool {
+	for _, f := range filters {
+		if f.Scope == scope && f.Tag == tag && f.Operator == "=" && f.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func drilldownFilters(host, datasourceUID, expr string) ([]tempo.TraceQLFilter, bool) {
+	if host == "" || datasourceUID == "" || expr == "" {
+		return nil, false
+	}
 	filters, ok := tempo.ParseFlatSpansetFilters(expr)
 	if !ok || len(filters) == 0 {
+		return nil, false
+	}
+	return filters, true
+}
+
+func tracesDrilldownURL(host string, orgID int64, datasourceUID string, filters []tempo.TraceQLFilter, start, end time.Time, metric, actionView string) (string, bool) {
+	if host == "" || datasourceUID == "" {
 		return "", false
 	}
 
@@ -71,6 +137,9 @@ func tracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time, 
 		"var-primarySignal": {"true"},
 		"var-metric":        {metric},
 		"actionView":        {actionView},
+	}
+	if orgID > 0 {
+		params["orgId"] = []string{strconv.FormatInt(orgID, 10)}
 	}
 	for _, f := range filters {
 		encoded, ok := encodeTraceQLFilter(f)
