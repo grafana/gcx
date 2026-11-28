@@ -272,6 +272,34 @@ func TestErrorToDetailedError_VersionIncompatible(t *testing.T) {
 	assert.Equal(t, docs.GrafanaInstallation, got.DocsLink)
 }
 
+func TestErrorToDetailedError_PortalServerURL(t *testing.T) {
+	got := fail.ErrorToDetailedError(&login.PortalServerURLError{
+		Server:      "https://grafana.com",
+		Host:        "grafana.com",
+		StackSuffix: ".grafana.net",
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid command usage", got.Summary)
+	assert.Equal(t, "This is the URL for the Grafana Cloud portal. Use the URL for your Grafana Cloud stack instead.", got.Details)
+	require.NotNil(t, got.ExitCode, "a wrong flag value is a usage error")
+	assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+	require.Equal(t, []string{"Pass --server https://<stack>.grafana.net"}, got.Suggestions)
+}
+
+// A wrapped error must still convert, because login returns it through Run.
+func TestErrorToDetailedError_PortalServerURLWrapped(t *testing.T) {
+	err := fmt.Errorf("login: %w", &login.PortalServerURLError{
+		Host:        "grafana-ops.com",
+		StackSuffix: ".grafana-ops.net",
+	})
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid command usage", got.Summary)
+}
+
 func TestErrorToDetailedError_QueryParseError(t *testing.T) {
 	err := fmt.Errorf("query failed: %w", queryerror.New(
 		"loki",
