@@ -71,6 +71,30 @@ func TestServerFieldsStripper_Process(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "cluster-scoped resource gets no namespace",
+			input: resources.MustFromObject(map[string]any{
+				"apiVersion": "kgatlas.ext.grafana.app/v1alpha1",
+				"kind":       "SystemKgSchema",
+				"metadata": map[string]any{
+					"name":            "core",
+					"resourceVersion": "1",
+				},
+				"spec": map[string]any{"foo": "bar"},
+			}, resources.SourceInfo{}),
+			want: unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": "kgatlas.ext.grafana.app/v1alpha1",
+					"kind":       "SystemKgSchema",
+					"metadata": map[string]any{
+						"name":        "core",
+						"annotations": map[string]string(nil),
+						"labels":      map[string]string(nil),
+					},
+					"spec": map[string]any{"foo": "bar"},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

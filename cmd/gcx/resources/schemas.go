@@ -43,7 +43,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "list-types [RESOURCE_SELECTOR]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "List available Grafana API resource types",
-		Long:  "List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector.",
+		Long:  "List available Grafana API resource types and their schemas by querying a live Grafana instance. Requires a connection to Grafana. Use --no-schema to skip OpenAPI spec fetching for faster results. Optionally filter by a resource selector. The wide, JSON and YAML outputs show each type's scope: Namespaced or Cluster. Cluster-scoped types support get only: pull, push, edit and delete refuse them. When schemas are fetched, the JSON and YAML outputs leave out namespaced types that have no OpenAPI schema; use --no-schema to list every type.",
 		Example: `
 	gcx resources list-types
 	gcx resources list-types -o wide
@@ -162,14 +162,17 @@ func descriptorToMap(d resources.Descriptor) map[string]any {
 		"kind":     d.Kind,
 		"singular": d.Singular,
 		"plural":   d.Plural,
+		"scope":    d.Scope(),
 	}
 }
 
 // descriptorsToNested builds a nested group → version → []resource map for
 // JSON/YAML output. When schemas is non-nil, each resource entry includes a
-// "schema" key, and resources without an OpenAPI spec schema are dropped —
-// they typically represent unlistable sub-resources (connections, queryconvert)
-// that cannot be used for CRUD operations.
+// "schema" key, and namespaced resources without an OpenAPI spec schema are
+// dropped — they typically represent unlistable sub-resources (connections,
+// queryconvert) that cannot be used for CRUD operations. Cluster-scoped
+// resources are always kept, without a "schema" key when none resolves, so
+// that a client can see every cluster-scoped type the server serves.
 func descriptorsToNested(descs resources.Descriptors, schemas map[string]map[string]any) map[string]any {
 	// Use typed intermediate maps to avoid unchecked type assertions.
 	type versionMap = map[string][]map[string]any
@@ -184,15 +187,18 @@ func descriptorsToNested(descs resources.Descriptors, schemas map[string]map[str
 			"kind":     d.Kind,
 			"plural":   d.Plural,
 			"singular": d.Singular,
+			"scope":    d.Scope(),
 		}
 
 		if schemas != nil {
 			schema, hasSchema := resolveSchema(schemas, gvk, d)
-			if !hasSchema {
+			switch {
+			case hasSchema:
+				entry["schema"] = schema
+			case !d.ClusterScoped:
 				// No schema → unlistable sub-resource; skip entirely.
 				continue
 			}
-			entry["schema"] = schema
 		}
 
 		if groups[group] == nil {
@@ -236,7 +242,7 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 
 	var t *style.TableBuilder
 	if c.wide {
-		t = style.NewTable("GROUP", "VERSION", "PLURAL", "SINGULAR", "KIND")
+		t = style.NewTable("GROUP", "VERSION", "PLURAL", "SINGULAR", "KIND", "SCOPE")
 	} else {
 		t = style.NewTable("GROUP", "VERSION", "PLURAL")
 	}
@@ -249,7 +255,8 @@ func (c *tabCodec) Encode(output io.Writer, input any) error {
 				sanitizeCell(gv.Version, noTruncate),
 				sanitizeCell(r.Plural, noTruncate),
 				sanitizeCell(r.Singular, noTruncate),
-				sanitizeCell(r.Kind, noTruncate))
+				sanitizeCell(r.Kind, noTruncate),
+				sanitizeCell(r.Scope(), noTruncate))
 		} else {
 			t.Row(
 				sanitizeCell(gv.Group, noTruncate),

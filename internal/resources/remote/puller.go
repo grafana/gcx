@@ -112,6 +112,11 @@ type PullRequest struct {
 	// Whether read-only native objects should be excluded from artifact operations.
 	ExcludeReadOnly bool
 
+	// Whether to leave cluster-scoped kinds out when no filters are given.
+	// gcx resources pull sets it: cluster-scoped kinds are not part of a
+	// stack backup. gcx resources get leaves it unset and lists them.
+	ExcludeClusterScoped bool
+
 	// Whether the operation should stop upon encountering an error.
 	StopOnError bool
 
@@ -137,6 +142,9 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 
 		filters = make(resources.Filters, 0, len(preferred))
 		for _, r := range preferred {
+			if req.ExcludeClusterScoped && r.ClusterScoped {
+				continue
+			}
 			filters = append(filters, resources.Filter{
 				Type:       resources.FilterTypeAll,
 				Descriptor: r,
